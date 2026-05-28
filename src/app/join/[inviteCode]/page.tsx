@@ -45,6 +45,8 @@ export default function JoinTripPage({
   const [phoneNumber, setPhoneNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [joinedNotPublished, setJoinedNotPublished] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -70,6 +72,11 @@ export default function JoinTripPage({
       storageSet("tc_invite_code", inviteCode);
       storageSet("tc_joined_at", new Date().toISOString());
 
+      if (data.publishedVersion === 0) {
+        setJoinedNotPublished(true);
+        return;
+      }
+
       router.replace("/app/today");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Join failed");
@@ -88,7 +95,55 @@ export default function JoinTripPage({
           </p>
         </header>
 
-        {alreadyConnected ? (
+        {joinedNotPublished ? (
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5">
+            <p className="text-sm font-medium text-zinc-900">
+              You&apos;re connected on this phone
+            </p>
+            <p className="mt-2 text-sm text-zinc-600">
+              Your teachers are still preparing the trip. When it&apos;s published,
+              refresh to download your itinerary and emergency info.
+            </p>
+            <button
+              type="button"
+              disabled={refreshing}
+              onClick={async () => {
+                setRefreshing(true);
+                try {
+                  const tripId = storageGet("tc_trip_id");
+                  const token = storageGet("tc_access_token");
+                  if (!tripId || !token) {
+                    router.replace("/app/today");
+                    return;
+                  }
+                  const head = await fetch(
+                    `/api/trips/${encodeURIComponent(tripId)}/published`,
+                    {
+                      method: "HEAD",
+                      headers: { authorization: `Bearer ${token}` },
+                    },
+                  );
+                  const v = Number(head.headers.get("X-Trip-Version"));
+                  if (Number.isFinite(v) && v > 0) {
+                    router.replace("/app/today");
+                  }
+                } finally {
+                  setRefreshing(false);
+                }
+              }}
+              className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium disabled:opacity-50"
+            >
+              {refreshing ? "Checking…" : "Refresh trip data"}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.replace("/app/today")}
+              className="mt-2 inline-flex h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white"
+            >
+              Open app
+            </button>
+          </div>
+        ) : alreadyConnected ? (
           <div className="rounded-2xl border border-zinc-200 bg-white p-5">
             <p className="text-sm text-zinc-700">
               You’re already connected on this phone.

@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Trip Connect
 
-## Getting Started
+Mobile-first school trip booklet. Students use **Today** (daily schedule) and **My Trip** (contacts, emergency card, phrases) with offline caching after the first sync. Hosts manage content on a separate dashboard at `/host/[inviteCode]`.
 
-First, run the development server:
+## Stack
+
+- Next.js 16 (App Router), React 19
+- Neon Postgres + Drizzle ORM
+- IndexedDB for published trip snapshots on student devices
+
+## Environment
+
+Create `.env.local`:
+
+| Variable | Required | Notes |
+|----------|----------|--------|
+| `DATABASE_URL` | Yes | Neon (or Postgres) connection string |
+| `SESSION_SECRET` | Yes | Long random string for host session HMAC |
+| `OPENAI_API_KEY` | No | AI itinerary import and phrase translation |
+| `OPENAI_MODEL` | No | Defaults to `gpt-4o-mini` |
+
+## Scripts
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev          # http://localhost:3000
+npm run build        # production build
+npm run db:migrate   # apply Drizzle migrations
+npm run seed:japan   # sample Japan trip + host login
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Host vs student
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Role | Entry | Auth |
+|------|--------|------|
+| Host | `/host/[inviteCode]` | Email/password per trip |
+| Student | `/join/[inviteCode]` → `/app/today`, `/app/my-trip` | Name + phone; token in localStorage |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Publishing:** Before any students join (`publishedVersion === 0` and no participants), edits auto-publish. Once the trip is live, changes are draft until confirmed on the **Publish** page (with diff preview).
 
-## Learn More
+**AI features:** Itinerary import (`/host/.../itinerary`) and emergency phrase translation (`/host/.../phrases`) require `OPENAI_API_KEY` and a destination language in Settings.
 
-To learn more about Next.js, take a look at the following resources:
+## Manual QA checklist
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. **Host setup** — Log in, set trip dates/timezone/destination language in Settings.
+2. **Content** — Add or AI-import itinerary; add contacts and phrases (try “Translate with AI” and bulk category translate).
+3. **Pre-student publish** — Confirm `publishedVersion` increments automatically after edits (no manual publish).
+4. **Student join** — Open join link in a private window; join with name + phone; verify Today and My Trip load after refresh.
+5. **Live trip** — Add a participant or publish once; edit content; confirm students do **not** see changes until host confirms publish.
+6. **Offline** — On student device: load trip online, enable airplane mode, confirm Today/My Trip still work from cache.
+7. **Refresh** — Back online, tap **Refresh trip data**; confirm version line updates after host publish.
+8. **Unpublished join** — Join before first publish; see “teachers are still preparing” message; publish as host; student refresh shows content.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project layout
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/app/api/host/` — Host CRUD and publish APIs
+- `src/app/api/trips/` — Student published snapshot (HEAD/GET)
+- `src/lib/publish/` — Snapshot build, diff, auto-publish
+- `src/lib/offline/` — IndexedDB sync for students

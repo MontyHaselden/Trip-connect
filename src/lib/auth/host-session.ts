@@ -63,9 +63,10 @@ export function verifyHostSessionCookie(value: string): HostSessionPayload | nul
   }
 }
 
-export function setHostSessionCookie(tripId: string) {
+export async function setHostSessionCookie(tripId: string) {
   const value = createHostSessionCookie({ tripId, issuedAt: Date.now() });
-  cookies().set(COOKIE_NAME, value, {
+  const jar = await cookies();
+  jar.set(COOKIE_NAME, value, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -74,8 +75,9 @@ export function setHostSessionCookie(tripId: string) {
   });
 }
 
-export function clearHostSessionCookie() {
-  cookies().set(COOKIE_NAME, "", {
+export async function clearHostSessionCookie() {
+  const jar = await cookies();
+  jar.set(COOKIE_NAME, "", {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -84,8 +86,9 @@ export function clearHostSessionCookie() {
   });
 }
 
-export function requireHostSessionTripId(): string {
-  const value = cookies().get(COOKIE_NAME)?.value;
+export async function requireHostSessionTripId(): Promise<string> {
+  const jar = await cookies();
+  const value = jar.get(COOKIE_NAME)?.value;
   if (!value) throw new Error("Unauthorized");
   const payload = verifyHostSessionCookie(value);
   if (!payload) throw new Error("Unauthorized");

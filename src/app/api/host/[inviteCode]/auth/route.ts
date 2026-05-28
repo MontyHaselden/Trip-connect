@@ -38,7 +38,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid host code." }, { status: 401 });
   }
 
-  setHostSessionCookie(trip.id);
+  await setHostSessionCookie(trip.id);
   return NextResponse.json({ ok: true, tripId: trip.id });
 }
 

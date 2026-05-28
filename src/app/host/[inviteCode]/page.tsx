@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function HostLoginPage({
@@ -12,7 +12,29 @@ export default function HostLoginPage({
   const inviteCode = params.inviteCode;
   const [hostCode, setHostCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const dashboardPath = `/host/${encodeURIComponent(inviteCode)}/dashboard`;
+
+  useEffect(() => {
+    let cancelled = false;
+    async function checkSession() {
+      try {
+        const res = await fetch(`/api/host/${encodeURIComponent(inviteCode)}/me`);
+        if (!cancelled && res.ok) {
+          router.replace(dashboardPath);
+          return;
+        }
+      } finally {
+        if (!cancelled) setCheckingSession(false);
+      }
+    }
+    checkSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteCode, router, dashboardPath]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,12 +48,22 @@ export default function HostLoginPage({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "Login failed");
-      router.replace(`/host/${encodeURIComponent(inviteCode)}/publish`);
+      router.replace(dashboardPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (checkingSession) {
+    return (
+      <main className="min-h-dvh bg-zinc-50 px-5 py-10 text-zinc-900">
+        <div className="mx-auto flex w-full max-w-md flex-col gap-5">
+          <p className="text-sm text-zinc-600">Checking session…</p>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -76,4 +108,3 @@ export default function HostLoginPage({
     </main>
   );
 }
-

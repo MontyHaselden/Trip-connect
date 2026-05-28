@@ -17,14 +17,15 @@ import {
 } from "@/lib/db/schema";
 import type { PublishedTripSnapshotV1 } from "@/types/published-trip";
 
-type DbLike = typeof defaultDb;
-
 export async function buildSnapshotV1(
   tripId: string,
   version: number,
-  db: DbLike = defaultDb,
+  // Drizzle's transaction type differs from the base DB type; accept either.
+  // We only rely on the shared query builder surface.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any = defaultDb,
 ): Promise<PublishedTripSnapshotV1> {
-  const trip = await db
+  const tripRows = await db
     .select({
       id: trips.id,
       name: trips.name,
@@ -38,8 +39,9 @@ export async function buildSnapshotV1(
     })
     .from(trips)
     .where(eq(trips.id, tripId))
-    .limit(1)
-    .then((rows) => rows[0] ?? null);
+    .limit(1);
+
+  const trip = tripRows[0] ?? null;
 
   if (!trip) throw new Error("Trip not found");
 
@@ -183,11 +185,13 @@ export async function buildSnapshotV1(
   ]);
 
   // Narrow assignment rows to trip participants only (cheap safety).
-  const participantIdSet = new Set(participantRows.map((p) => p.id));
-  const tripParticipantGroups = participantGroupRows.filter((r) =>
+  const participantIdSet = new Set(
+    participantRows.map((p: { id: string }) => p.id),
+  );
+  const tripParticipantGroups = participantGroupRows.filter((r: { participantId: string }) =>
     participantIdSet.has(r.participantId),
   );
-  const tripParticipantRooms = participantRoomRows.filter((r) =>
+  const tripParticipantRooms = participantRoomRows.filter((r: { participantId: string }) =>
     participantIdSet.has(r.participantId),
   );
 

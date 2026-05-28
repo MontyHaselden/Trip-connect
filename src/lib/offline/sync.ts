@@ -45,6 +45,12 @@ export async function syncPublishedTrip(params: {
   }
 
   if (latestVersion === 0) {
+    await putMeta({
+      tripId,
+      version: 0,
+      publishedAt: publishedAtHeader,
+      cachedAt: new Date().toISOString(),
+    });
     return { status: "up_to_date", version: 0, publishedAt: publishedAtHeader };
   }
 
