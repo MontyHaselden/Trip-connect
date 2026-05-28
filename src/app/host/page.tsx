@@ -29,6 +29,24 @@ export default function HostPortalPage() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [role, setRole] = useState<"teacher" | "helper" | "host">("teacher");
   const [defaultCountryCallingCode, setDefaultCountryCallingCode] = useState("NZ");
+  const onChangeDefaultCountry = (raw: string) => {
+    const cleaned = raw.replace(/[^a-z]/gi, "").slice(0, 2).toUpperCase();
+    setDefaultCountryCallingCode(cleaned);
+  };
+  const countryOptions = useMemo(
+    () =>
+      [
+        { code: "NZ", label: "New Zealand" },
+        { code: "AU", label: "Australia" },
+        { code: "US", label: "United States" },
+        { code: "GB", label: "United Kingdom" },
+        { code: "CA", label: "Canada" },
+        { code: "IE", label: "Ireland" },
+        { code: "SG", label: "Singapore" },
+        { code: "JP", label: "Japan" },
+      ] as const,
+    [],
+  );
 
   // Trip create fields
   const tzDefault = useMemo(() => {
@@ -239,18 +257,25 @@ export default function HostPortalPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <label className="block">
                       <span className="text-sm font-medium text-zinc-900">
-                        Country code
+                        Country (ISO)
                       </span>
-                      <input
+                      <select
                         value={defaultCountryCallingCode}
-                        onChange={(e) =>
-                          setDefaultCountryCallingCode(e.target.value.toUpperCase())
-                        }
+                        onChange={(e) => onChangeDefaultCountry(e.target.value)}
                         className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-400"
-                        placeholder="NZ"
-                        maxLength={2}
+                        autoComplete="off"
                         required
-                      />
+                      >
+                        {countryOptions.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.code} — {c.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-2 text-xs text-zinc-600">
+                        Used as the default region when parsing numbers that don’t start with
+                        “+”.
+                      </p>
                     </label>
 
                     <label className="block">
@@ -379,18 +404,21 @@ export default function HostPortalPage() {
 
                 <label className="block">
                   <span className="text-sm font-medium text-zinc-900">
-                    Default calling code
+                    Default phone region (ISO)
                   </span>
-                  <input
+                  <select
                     value={defaultCountryCallingCode}
-                    onChange={(e) =>
-                      setDefaultCountryCallingCode(e.target.value.toUpperCase())
-                    }
+                    onChange={(e) => onChangeDefaultCountry(e.target.value)}
                     className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-400"
-                    placeholder="NZ"
-                    maxLength={2}
+                    autoComplete="off"
                     required
-                  />
+                  >
+                    {countryOptions.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.code} — {c.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
 
                 <button
