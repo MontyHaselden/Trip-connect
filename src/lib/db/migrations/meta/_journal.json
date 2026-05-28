@@ -8,6 +8,13 @@
       "when": 1779933696509,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779946851349,
+      "tag": "0001_aberrant_warpath",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,8 @@ import { db } from "../src/lib/db/client";
 import {
   emergencyPhraseCategories,
   emergencyPhrases,
+  hostAccounts,
+  hostTripMembers,
   trips,
 } from "../src/lib/db/schema";
 import { DEFAULT_PHRASE_CATEGORIES } from "../src/lib/phrases/default-phrases";
@@ -26,9 +28,29 @@ async function main() {
   requiredEnv("DATABASE_URL");
 
   const inviteCode = process.env.INVITE_CODE ?? randomCode(6);
-  const hostCode = process.env.HOST_CODE ?? randomCode(8);
+  const email = (process.env.HOST_EMAIL ?? "host@example.com").toLowerCase();
+  const password = process.env.HOST_PASSWORD ?? randomCode(10);
+  const phoneNumberE164 = process.env.HOST_PHONE_E164 ?? "+6421123456";
+  const fullName = process.env.HOST_NAME ?? "Trip Host";
+  const role = (process.env.HOST_ROLE ?? "teacher") as
+    | "teacher"
+    | "helper"
+    | "host"
+    | "admin";
+  const passwordHash = await bcrypt.hash(password, 10);
 
-  const hostCodeHash = await bcrypt.hash(hostCode, 10);
+  const [host] = await db
+    .insert(hostAccounts)
+    .values({
+      email,
+      phoneNumberE164,
+      passwordHash,
+      fullName,
+      role,
+    })
+    .returning({ id: hostAccounts.id });
+
+  if (!host) throw new Error("Failed to insert host account");
 
   const [trip] = await db
     .insert(trips)
@@ -36,7 +58,7 @@ async function main() {
       name: "Japan School Trip",
       schoolName: "Example School",
       inviteCode,
-      hostCodeHash,
+      hostCodeHash: null,
       startDate: "2026-07-16",
       endDate: "2026-07-23",
       destinationCountry: "Japan",
@@ -48,6 +70,8 @@ async function main() {
     .returning();
 
   if (!trip) throw new Error("Failed to insert trip");
+
+  await db.insert(hostTripMembers).values({ hostId: host.id, tripId: trip.id });
 
   let sortOrder = 0;
   for (const cat of DEFAULT_PHRASE_CATEGORIES) {
@@ -80,8 +104,8 @@ async function main() {
   console.log("Seeded trip:", {
     tripId: trip.id,
     inviteCode,
-    hostCode,
-    note: "Save the hostCode somewhere safe; only the hash is stored.",
+    hostEmail: email,
+    hostPassword: password,
   });
 }
 

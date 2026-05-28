@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
-import { trips } from "@/lib/db/schema";
-import { requireHostSessionTripId } from "@/lib/auth/host-session";
+import { hostTripMembers, trips } from "@/lib/db/schema";
+import { requireHostSessionHostId } from "@/lib/auth/host-session";
 
 export type HostTrip = {
   id: string;
@@ -22,7 +22,7 @@ export type HostTrip = {
 export async function requireHostTripForInvite(
   inviteCode: string,
 ): Promise<HostTrip> {
-  const tripId = await requireHostSessionTripId();
+  const hostId = await requireHostSessionHostId();
 
   const trip = await db
     .select({
@@ -40,11 +40,14 @@ export async function requireHostTripForInvite(
       updatedAt: trips.updatedAt,
     })
     .from(trips)
-    .where(eq(trips.id, tripId))
+    .innerJoin(hostTripMembers, eq(hostTripMembers.tripId, trips.id))
+    .where(
+      and(eq(trips.inviteCode, inviteCode), eq(hostTripMembers.hostId, hostId)),
+    )
     .limit(1)
     .then((rows) => rows[0] ?? null);
 
-  if (!trip || trip.inviteCode !== inviteCode) {
+  if (!trip) {
     throw new Error("Unauthorized");
   }
 

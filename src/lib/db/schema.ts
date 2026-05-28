@@ -42,6 +42,35 @@ export const groupType = pgEnum("group_type", [
 
 export const phraseSource = pgEnum("phrase_source", ["default", "ai", "host"]);
 
+export const hostAccountRole = pgEnum("host_account_role", [
+  "teacher",
+  "helper",
+  "host",
+  "admin",
+]);
+
+export const hostAccounts = pgTable(
+  "host_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: text("email").notNull(),
+    phoneNumberE164: text("phone_number_e164").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    fullName: text("full_name").notNull(),
+    role: hostAccountRole("role").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (h) => ({
+    emailUnique: uniqueIndex("host_accounts_email_unique").on(h.email),
+    phoneUnique: uniqueIndex("host_accounts_phone_e164_unique").on(h.phoneNumberE164),
+  }),
+);
+
 export const trips = pgTable(
   "trips",
   {
@@ -49,7 +78,8 @@ export const trips = pgTable(
     name: text("name").notNull(),
     schoolName: text("school_name").notNull(),
     inviteCode: text("invite_code").notNull(),
-    hostCodeHash: text("host_code_hash").notNull(),
+    // Legacy: replaced by host_accounts + host_trip_members. Kept for backwards compatibility.
+    hostCodeHash: text("host_code_hash"),
     startDate: date("start_date").notNull(),
     endDate: date("end_date").notNull(),
     destinationCountry: text("destination_country"),
@@ -67,6 +97,25 @@ export const trips = pgTable(
   },
   (t) => ({
     inviteCodeUnique: uniqueIndex("trips_invite_code_unique").on(t.inviteCode),
+  }),
+);
+
+export const hostTripMembers = pgTable(
+  "host_trip_members",
+  {
+    hostId: uuid("host_id")
+      .notNull()
+      .references(() => hostAccounts.id, { onDelete: "cascade" }),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (m) => ({
+    pk: primaryKey({ columns: [m.hostId, m.tripId] }),
+    tripIdx: index("host_trip_members_trip_id_idx").on(m.tripId),
   }),
 );
 

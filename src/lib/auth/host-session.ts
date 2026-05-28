@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 const COOKIE_NAME = "tc_host_session";
 
 type HostSessionPayload = {
-  tripId: string;
+  hostId: string;
+  activeTripId: string | null;
   issuedAt: number;
 };
 
@@ -55,7 +56,9 @@ export function verifyHostSessionCookie(value: string): HostSessionPayload | nul
   try {
     const decoded = b64urlDecode(data).toString("utf8");
     const parsed = JSON.parse(decoded) as HostSessionPayload;
-    if (!parsed.tripId || typeof parsed.tripId !== "string") return null;
+    if (!parsed.hostId || typeof parsed.hostId !== "string") return null;
+    if (parsed.activeTripId !== null && typeof parsed.activeTripId !== "string")
+      return null;
     if (!parsed.issuedAt || typeof parsed.issuedAt !== "number") return null;
     return parsed;
   } catch {
@@ -63,8 +66,15 @@ export function verifyHostSessionCookie(value: string): HostSessionPayload | nul
   }
 }
 
-export async function setHostSessionCookie(tripId: string) {
-  const value = createHostSessionCookie({ tripId, issuedAt: Date.now() });
+export async function setHostSessionCookie(params: {
+  hostId: string;
+  activeTripId: string | null;
+}) {
+  const value = createHostSessionCookie({
+    hostId: params.hostId,
+    activeTripId: params.activeTripId,
+    issuedAt: Date.now(),
+  });
   const jar = await cookies();
   jar.set(COOKIE_NAME, value, {
     httpOnly: true,
@@ -86,12 +96,28 @@ export async function clearHostSessionCookie() {
   });
 }
 
-export async function requireHostSessionTripId(): Promise<string> {
+export async function requireHostSessionHostId(): Promise<string> {
   const jar = await cookies();
   const value = jar.get(COOKIE_NAME)?.value;
   if (!value) throw new Error("Unauthorized");
   const payload = verifyHostSessionCookie(value);
   if (!payload) throw new Error("Unauthorized");
-  return payload.tripId;
+  return payload.hostId;
 }
 
+export async function requireHostSessionActiveTripId(): Promise<string> {
+  const jar = await cookies();
+  const value = jar.get(COOKIE_NAME)?.value;
+  if (!value) throw new Error("Unauthorized");
+  const payload = verifyHostSessionCookie(value);
+  if (!payload?.activeTripId) throw new Error("Unauthorized");
+  return payload.activeTripId;
+}
+
+export async function getHostSession():
+  Promise<HostSessionPayload | null> {
+  const jar = await cookies();
+  const value = jar.get(COOKIE_NAME)?.value;
+  if (!value) return null;
+  return verifyHostSessionCookie(value);
+}
