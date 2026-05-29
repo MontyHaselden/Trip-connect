@@ -4,18 +4,15 @@ import { useMemo } from "react";
 
 import { useTripApp } from "@/components/layout/TripAppContext";
 import { TripNotReady } from "@/components/student/TripNotReady";
-import type { ParticipantFilteredTripV1 } from "@/lib/publish/filter-for-participant";
+import {
+  hasMyTripProfile,
+  resolveStudentTripPayload,
+} from "@/lib/student/resolve-trip-payload";
 import { MyDetails } from "@/components/student/my-trip/MyDetails";
 import { MyGroupsRooms } from "@/components/student/my-trip/MyGroupsRooms";
 import { KeyContacts } from "@/components/student/my-trip/KeyContacts";
 import { EmergencyCard } from "@/components/student/my-trip/EmergencyCard";
 import { PhraseList } from "@/components/student/my-trip/PhraseList";
-
-function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
-  if (!x || typeof x !== "object") return false;
-  const o = x as { trip?: unknown; participant?: unknown; days?: unknown };
-  return Boolean(o.trip && o.participant && o.days);
-}
 
 function MyTripScroll({ children }: { children: React.ReactNode }) {
   return (
@@ -27,7 +24,10 @@ function MyTripScroll({ children }: { children: React.ReactNode }) {
 
 export default function MyTripPage() {
   const { cache } = useTripApp();
-  const trip = isTripPayload(cache.payload) ? cache.payload : null;
+  const trip = useMemo(
+    () => resolveStudentTripPayload(cache.payload, cache.participantId),
+    [cache.payload, cache.participantId],
+  );
 
   const tripNotPublished =
     cache.version === 0 ||
@@ -37,8 +37,9 @@ export default function MyTripPage() {
 
   const leadContact = useMemo(() => {
     if (!trip) return null;
-    const lead = trip.contacts.find((c) => c.isEmergencyLead);
-    return lead ?? trip.contacts[0] ?? null;
+    const contacts = trip.contacts ?? [];
+    const lead = contacts.find((c) => c.isEmergencyLead);
+    return lead ?? contacts[0] ?? null;
   }, [trip]);
 
   if (!cache.sessionReady) {
@@ -77,14 +78,18 @@ export default function MyTripPage() {
     );
   }
 
-  if (!trip) {
+  if (!hasMyTripProfile(trip)) {
     return (
       <MyTripScroll>
         <header className="shrink-0">
           <h2 className="text-lg font-semibold tracking-tight">My Trip</h2>
         </header>
         <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-700">Loading trip…</p>
+          <p className="text-sm text-zinc-700">
+            {cache.payload
+              ? "Could not load your trip profile. Tap refresh above, or re-join the trip."
+              : "Loading trip…"}
+          </p>
         </div>
       </MyTripScroll>
     );
@@ -103,15 +108,18 @@ export default function MyTripPage() {
         role={trip.participant.role}
       />
 
-      <KeyContacts contacts={trip.contacts} />
+      <KeyContacts contacts={trip.contacts ?? []} />
 
-      <PhraseList categories={trip.phraseCategories} phrases={trip.phrases} />
+      <PhraseList
+        categories={trip.phraseCategories ?? []}
+        phrases={trip.phrases ?? []}
+      />
 
       <MyGroupsRooms
-        groups={trip.groups}
+        groups={trip.groups ?? []}
         room={
           trip.room
-            ? { roomName: trip.room.roomName, roommates: trip.room.roommates }
+            ? { roomName: trip.room.roomName, roommates: trip.room.roommates ?? [] }
             : null
         }
       />

@@ -4,21 +4,21 @@ import { Suspense, useEffect, useMemo } from "react";
 
 import { useTripApp } from "@/components/layout/TripAppContext";
 import { useSelectedTripDay } from "@/hooks/useSelectedTripDay";
-import type { ParticipantFilteredTripV1 } from "@/lib/publish/filter-for-participant";
+import {
+  hasTodaySchedule,
+  resolveStudentTripPayload,
+} from "@/lib/student/resolve-trip-payload";
 import { daysUntilTrip } from "@/lib/utils/time";
 import { TripNotReady } from "@/components/student/TripNotReady";
 import { ItineraryList } from "@/components/student/today/ItineraryList";
 import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
 
-function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
-  if (!x || typeof x !== "object") return false;
-  const o = x as { trip?: unknown; days?: unknown; itineraryItems?: unknown };
-  return Boolean(o.trip && o.days && o.itineraryItems);
-}
-
 function TodayContent() {
   const { cache, setTodayNav } = useTripApp();
-  const trip = isTripPayload(cache.payload) ? cache.payload : null;
+  const trip = useMemo(
+    () => resolveStudentTripPayload(cache.payload, cache.participantId),
+    [cache.payload, cache.participantId],
+  );
 
   const tripNotPublished =
     cache.version === 0 ||
@@ -94,7 +94,7 @@ function TodayContent() {
     return <TripNotReady title="Today" />;
   }
 
-  if (!trip) {
+  if (!hasTodaySchedule(trip)) {
     return (
       <div className="py-10 text-center text-sm text-zinc-600">Loading trip…</div>
     );

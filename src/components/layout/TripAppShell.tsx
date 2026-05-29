@@ -10,7 +10,7 @@ import { TripAppContext, type TodayDayNav } from "./TripAppContext";
 import { useTripCache } from "@/hooks/useTripCache";
 import { clearStudentSessionAndCache } from "@/lib/offline/sync";
 import { formatTripDateHeader } from "@/lib/utils/time";
-import type { ParticipantFilteredTripV1 } from "@/lib/publish/filter-for-participant";
+import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
 
 function SettingsIcon() {
   return (
@@ -50,12 +50,6 @@ function RefreshIcon({ spinning }: { spinning: boolean }) {
   );
 }
 
-function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
-  if (!x || typeof x !== "object") return false;
-  const o = x as { trip?: unknown; participant?: unknown };
-  return Boolean(o.trip && o.participant);
-}
-
 export function TripAppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const cache = useTripCache();
@@ -63,7 +57,10 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
   const [todayNav, setTodayNav] = useState<TodayDayNav | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
-  const trip = isTripPayload(cache.payload) ? cache.payload : null;
+  const trip = useMemo(
+    () => resolveStudentTripPayload(cache.payload, cache.participantId),
+    [cache.payload, cache.participantId],
+  );
 
   const daySubtitle = useMemo(() => {
     if (!trip || !todayNav) return null;

@@ -7,6 +7,7 @@ import { useOnlineStatus } from "./useOnlineStatus";
 
 export type TripCacheState = {
   tripId: string | null;
+  participantId: string | null;
   version: number | null;
   cachedAt: string | null;
   publishedAt: string | null;
@@ -40,10 +41,12 @@ export function useTripCache(): TripCacheState {
   const online = useOnlineStatus();
   const [sessionReady, setSessionReady] = useState(false);
   const [tripId, setTripId] = useState<string | null>(null);
+  const [participantId, setParticipantId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   const [state, setState] = useState<Omit<TripCacheState, "refresh">>({
     tripId: null,
+    participantId: null,
     version: null,
     cachedAt: null,
     publishedAt: null,
@@ -55,13 +58,14 @@ export function useTripCache(): TripCacheState {
 
   useEffect(() => {
     setTripId(storageGet("tc_trip_id"));
+    setParticipantId(storageGet("tc_participant_id"));
     setAccessToken(storageGet("tc_access_token"));
     setSessionReady(true);
   }, []);
 
   useEffect(() => {
-    setState((s) => ({ ...s, tripId, sessionReady, online }));
-  }, [tripId, sessionReady, online]);
+    setState((s) => ({ ...s, tripId, participantId, sessionReady, online }));
+  }, [tripId, participantId, sessionReady, online]);
 
   const refresh = useCallback(async () => {
     if (!tripId || !accessToken) return;
