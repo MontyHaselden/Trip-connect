@@ -6,8 +6,8 @@ import type { ItineraryImportResult } from "@/lib/ai/itinerary-import";
 import {
   nextDaySortOrder,
   nextItemSortOrder,
-  normalizeTime,
 } from "@/lib/host/itinerary-queries";
+import { normalizeStoredTime } from "@/lib/utils/ai-time";
 
 export async function applyItineraryImport(
   tripId: string,
@@ -58,13 +58,13 @@ export async function applyItineraryImport(
       await db.insert(itineraryItems).values({
         tripId,
         tripDayId: dayId,
-        startTime: normalizeTime(item.startTime),
-        endTime: item.endTime ? normalizeTime(item.endTime) : null,
+        startTime: normalizeStoredTime(item.startTime),
+        endTime: item.endTime ? normalizeStoredTime(item.endTime) : null,
         title: item.title,
         locationName: item.locationName ?? null,
         address: item.address ?? null,
         mapQuery: null,
-        leaveByTime: item.leaveByTime ? normalizeTime(item.leaveByTime) : null,
+        leaveByTime: item.leaveByTime ? normalizeStoredTime(item.leaveByTime) : null,
         transportNote: item.transportNote ?? null,
         bringNote: item.bringNote ?? null,
         hostNote: null,

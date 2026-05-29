@@ -44,4 +44,3 @@ export function formatRelativeFromNow(target: DateTime): string {
   const days = Math.floor(hours / 24);
   return `in ${days}d`;
 }
-

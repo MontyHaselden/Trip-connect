@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { ItineraryImportSchema } from "@/lib/ai/itinerary-import";
+import { prepareDocumentForAi } from "@/lib/documents/prepare-for-ai";
+import { coerceAiTime } from "@/lib/utils/ai-time";
 
 export const TripFromDocumentSchema = z
   .object({
@@ -25,7 +27,7 @@ export async function parseTripFromDocument(params: {
     throw new Error("OPENAI_API_KEY is not configured.");
   }
 
-  const trimmed = params.text.trim();
+  const trimmed = prepareDocumentForAi(params.text);
   if (trimmed.length < 50) {
     throw new Error("The document did not contain enough itinerary text.");
   }
@@ -82,19 +84,34 @@ Rules:
 
   const validated = TripFromDocumentSchema.safeParse(parsed);
   if (!validated.success) {
-    throw new Error("AI response did not match the expected trip format.");
+    throw new Error(
+      "AI could not read the trip details from that document. Try a shorter itinerary section or create the trip manually first.",
+    );
   }
 
-  const data = validated.data;
+  return sanitizeTripFromDocument(validated.data);
+}
+
+function sanitizeTripFromDocument(
+  data: TripFromDocumentResult,
+): TripFromDocumentResult {
+  const days = data.days
+    .filter((day) => day.date >= data.startDate && day.date <= data.endDate)
+    .map((day) => ({
+      ...day,
+      items: day.items
+        .map((item) => ({
+          ...item,
+          startTime: coerceAiTime(item.startTime),
+          endTime: item.endTime ? coerceAiTime(item.endTime) : null,
+          leaveByTime: item.leaveByTime ? coerceAiTime(item.leaveByTime) : null,
+        }))
+        .filter((item) => item.title.trim().length > 0),
+    }));
+
   if (data.startDate > data.endDate) {
     throw new Error("AI returned invalid trip dates.");
   }
 
-  for (const day of data.days) {
-    if (day.date < data.startDate || day.date > data.endDate) {
-      throw new Error(`Date ${day.date} is outside the trip range.`);
-    }
-  }
-
-  return data;
+  return { ...data, days };
 }

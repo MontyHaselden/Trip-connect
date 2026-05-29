@@ -1,5 +1,5 @@
 const MAX_BYTES = 5 * 1024 * 1024;
-const MAX_TEXT_LENGTH = 20_000;
+const MAX_TEXT_LENGTH = 100_000;
 
 function normalizeWhitespace(text: string): string {
   return text.replace(/\s+/g, " ").trim();
