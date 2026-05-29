@@ -1,28 +1,38 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 import { useTripApp } from "./TripAppContext";
 import { CalendarSheet } from "@/components/student/today/CalendarSheet";
 import { tripDebug } from "@/lib/debug/trip-debug";
+
+function getTodayHref(pathname: string): string {
+  if (pathname === "/app/today" && typeof window !== "undefined") {
+    const search = window.location.search;
+    return search ? `/app/today${search}` : "/app/today";
+  }
+  try {
+    const lastDate = sessionStorage.getItem("tc_last_date");
+    if (lastDate) return `/app/today?date=${encodeURIComponent(lastDate)}`;
+  } catch {
+    // ignore
+  }
+  return "/app/today";
+}
 
 function NavItem(props: {
   href: string;
   label: string;
   active: boolean;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const { href, label, active } = props;
 
   return (
-    <button
-      type="button"
+    <a
+      href={href}
       onClick={() => {
-        tripDebug("nav.click", { from: pathname, to: href, active });
-        if (pathname !== href) {
-          router.push(href);
-        }
+        tripDebug("nav.click", { from: pathname, to: href, active, mode: "hard" });
       }}
       className={[
         "flex flex-1 items-center justify-center rounded-xl px-3 py-2.5 text-sm font-medium",
@@ -30,7 +40,7 @@ function NavItem(props: {
       ].join(" ")}
     >
       {label}
-    </button>
+    </a>
   );
 }
 
@@ -80,7 +90,11 @@ export function StudentBottomNav() {
           ) : null}
 
           <div className="flex gap-2 p-2">
-            <NavItem href="/app/today" label="Today" active={onToday} />
+            <NavItem
+              href={getTodayHref(pathname)}
+              label="Today"
+              active={onToday}
+            />
             <NavItem href="/app/my-trip" label="My Trip" active={onMyTrip} />
           </div>
         </div>

@@ -43,6 +43,15 @@ function TodayContent() {
   } = useSelectedTripDay(trip?.days ?? [], tripTz, tripDates);
 
   useEffect(() => {
+    if (!selectedDay?.date) return;
+    try {
+      sessionStorage.setItem("tc_last_date", selectedDay.date);
+    } catch {
+      // ignore
+    }
+  }, [selectedDay?.date]);
+
+  useEffect(() => {
     if (!selectedDay || !scheduledDays.length) {
       setTodayNav(null);
       return;
