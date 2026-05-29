@@ -117,9 +117,9 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
         setCalendarOpen,
       }}
     >
-      <div className="min-h-dvh bg-zinc-50 text-zinc-900">
-        <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-3 px-5 py-4">
-          <header className="border-b border-zinc-200/80 pb-3">
+      <div className="h-dvh max-h-dvh overflow-hidden bg-zinc-50 text-zinc-900">
+        <div className="mx-auto flex h-full w-full max-w-md flex-col gap-3 overflow-hidden px-5 py-4">
+          <header className="shrink-0 border-b border-zinc-200/80 pb-3">
             <div className="flex items-center gap-1">
               <h1 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-zinc-800">
                 {headerTitle}
@@ -150,7 +150,7 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
             status={bannerStatus}
             message={cache.status === "error" ? cache.message : undefined}
           />
-          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
           <StudentBottomNav />
         </div>
       </div>

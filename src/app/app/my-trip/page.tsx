@@ -17,6 +17,14 @@ function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
   return Boolean(o.trip && o.participant);
 }
 
+function MyTripScroll({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto overscroll-y-contain py-2 [-webkit-overflow-scrolling:touch]">
+      {children}
+    </main>
+  );
+}
+
 export default function MyTripPage() {
   const { cache } = useTripApp();
   const trip = isTripPayload(cache.payload) ? cache.payload : null;
@@ -33,39 +41,60 @@ export default function MyTripPage() {
     return lead ?? trip.contacts[0] ?? null;
   }, [trip]);
 
+  if (!cache.sessionReady || cache.status === "loading_cache" || cache.status === "syncing") {
+    return (
+      <MyTripScroll>
+        <header className="shrink-0">
+          <h2 className="text-lg font-semibold tracking-tight">My Trip</h2>
+        </header>
+        <div className="rounded-2xl border border-zinc-200 bg-white p-5">
+          <p className="text-sm text-zinc-700">Loading trip…</p>
+        </div>
+      </MyTripScroll>
+    );
+  }
+
   if (cache.status === "offline_no_cache") {
     return (
-      <main className="flex flex-col gap-4 py-2">
-        <h2 className="text-lg font-semibold tracking-tight">My Trip</h2>
+      <MyTripScroll>
+        <header className="shrink-0">
+          <h2 className="text-lg font-semibold tracking-tight">My Trip</h2>
+        </header>
         <div className="rounded-2xl border border-zinc-200 bg-white p-5">
           <p className="text-sm text-zinc-700">
             Connect to the internet once to download the trip.
           </p>
         </div>
-      </main>
+      </MyTripScroll>
     );
   }
 
   if (tripNotPublished && !trip) {
-    return <TripNotReady title="My Trip" />;
+    return (
+      <MyTripScroll>
+        <TripNotReady title="My Trip" />
+      </MyTripScroll>
+    );
   }
 
   if (!trip) {
     return (
-      <main className="flex flex-col gap-4 py-2">
-        <h2 className="text-lg font-semibold tracking-tight">My Trip</h2>
+      <MyTripScroll>
+        <header className="shrink-0">
+          <h2 className="text-lg font-semibold tracking-tight">My Trip</h2>
+        </header>
         <div className="rounded-2xl border border-zinc-200 bg-white p-5">
           <p className="text-sm text-zinc-700">Loading trip…</p>
         </div>
-      </main>
+      </MyTripScroll>
     );
   }
 
   return (
-    <main className="flex flex-col gap-4 py-2">
-      <header className="flex flex-col gap-1">
+    <MyTripScroll>
+      <header className="flex shrink-0 flex-col gap-1">
         <h2 className="text-lg font-semibold tracking-tight">My Trip</h2>
-        <p className="text-sm text-zinc-600">{trip.trip.name}</p>
+        <p className="break-words text-sm text-zinc-600">{trip.trip.name}</p>
       </header>
 
       <MyDetails
@@ -102,6 +131,6 @@ export default function MyTripPage() {
             : null
         }
       />
-    </main>
+    </MyTripScroll>
   );
 }

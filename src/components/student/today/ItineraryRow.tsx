@@ -46,7 +46,7 @@ export function ItineraryRow(props: {
     return (
       <article
         className={[
-          "rounded-2xl border-2 p-4 shadow-sm ring-1 ring-inset ring-black/5",
+          "w-full min-w-0 rounded-2xl border-2 p-4 shadow-sm ring-1 ring-inset ring-black/5",
           accent.featured,
         ].join(" ")}
       >
@@ -71,7 +71,7 @@ export function ItineraryRow(props: {
         </div>
         <p
           className={[
-            "mt-2 text-xl font-bold leading-snug text-zinc-900",
+            "mt-2 break-words text-xl font-bold leading-snug text-zinc-900",
             kind === "arrival" ? "text-emerald-950" : "",
           ].join(" ")}
         >
@@ -82,7 +82,9 @@ export function ItineraryRow(props: {
         {secondary.length ? (
           <div className="mt-2 space-y-1 text-sm leading-relaxed text-zinc-600">
             {secondary.map((line, i) => (
-              <p key={i}>{line}</p>
+              <p key={i} className="break-words">
+                {line}
+              </p>
             ))}
           </div>
         ) : null}
@@ -102,9 +104,9 @@ export function ItineraryRow(props: {
 
   return (
     <article
-      className={["py-3.5", isLast ? "" : "border-b border-zinc-100"].join(" ")}
+      className={["min-w-0 py-3.5", isLast ? "" : "border-b border-zinc-100"].join(" ")}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex min-w-0 items-start gap-3">
         <div className={["mt-1 h-10 w-1 rounded-full", accent.bar].join(" ")} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -125,7 +127,7 @@ export function ItineraryRow(props: {
           </div>
           <p
             className={[
-              "mt-1 text-[15px] leading-snug text-zinc-900",
+              "mt-1 break-words text-[15px] leading-snug text-zinc-900",
               kind === "arrival" ? "font-semibold" : "font-medium",
             ].join(" ")}
           >
@@ -136,7 +138,9 @@ export function ItineraryRow(props: {
           {secondary.length ? (
             <div className="mt-1.5 space-y-0.5 text-sm leading-relaxed text-zinc-500">
               {secondary.map((line, i) => (
-                <p key={i}>{line}</p>
+                <p key={i} className="break-words">
+                  {line}
+                </p>
               ))}
             </div>
           ) : null}

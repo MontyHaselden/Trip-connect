@@ -34,7 +34,7 @@ export function StudentBottomNav() {
 
   return (
     <>
-      <nav className="sticky bottom-0 z-10 mt-auto shrink-0 bg-zinc-50 pb-[max(env(safe-area-inset-bottom),0px)]">
+      <nav className="z-10 mt-auto shrink-0 bg-zinc-50 pb-[max(env(safe-area-inset-bottom),0px)]">
         <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
           {showDayNav ? (
             <div className="border-b border-zinc-100 px-2 py-2">

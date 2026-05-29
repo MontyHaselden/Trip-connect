@@ -73,7 +73,10 @@ export function ItineraryList(props: {
   }
 
   return (
-    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+    <div
+      ref={scrollRef}
+      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
+    >
       <div className="h-2 shrink-0" aria-hidden />
 
       {beforeItems.length ? (
@@ -102,7 +105,7 @@ export function ItineraryList(props: {
       {featuredItem ? (
         <div
           ref={featuredRef}
-          className="sticky top-0 z-10 -mx-1 bg-zinc-50/95 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-zinc-50/80"
+          className="sticky top-0 z-10 bg-zinc-50/95 py-2 backdrop-blur supports-[backdrop-filter]:bg-zinc-50/80"
         >
           <ItineraryRow
             item={featuredItem}
@@ -147,7 +150,7 @@ export function ItineraryList(props: {
         </section>
       ) : null}
 
-      <div className="h-4 shrink-0" aria-hidden />
+      <div className="h-6 shrink-0" aria-hidden />
     </div>
   );
 }

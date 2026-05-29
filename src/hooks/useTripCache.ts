@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getMeta, getPublishedTrip } from "@/lib/offline/trip-store";
 import { syncPublishedTrip } from "@/lib/offline/sync";
 import { useOnlineStatus } from "./useOnlineStatus";
@@ -12,6 +12,8 @@ export type TripCacheState = {
   publishedAt: string | null;
   payload: unknown | null;
   online: boolean;
+  /** False until client session keys are read — avoids SSR hydration mismatch. */
+  sessionReady: boolean;
   status:
     | "idle"
     | "loading_cache"
@@ -36,18 +38,30 @@ function storageGet(key: string): string | null {
 
 export function useTripCache(): TripCacheState {
   const online = useOnlineStatus();
-  const tripId = useMemo(() => storageGet("tc_trip_id"), []);
-  const accessToken = useMemo(() => storageGet("tc_access_token"), []);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [tripId, setTripId] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   const [state, setState] = useState<Omit<TripCacheState, "refresh">>({
-    tripId,
+    tripId: null,
     version: null,
     cachedAt: null,
     publishedAt: null,
     payload: null,
     online,
+    sessionReady: false,
     status: "idle",
   });
+
+  useEffect(() => {
+    setTripId(storageGet("tc_trip_id"));
+    setAccessToken(storageGet("tc_access_token"));
+    setSessionReady(true);
+  }, []);
+
+  useEffect(() => {
+    setState((s) => ({ ...s, tripId, sessionReady, online }));
+  }, [tripId, sessionReady, online]);
 
   const refresh = useCallback(async () => {
     if (!tripId || !accessToken) return;
@@ -83,9 +97,13 @@ export function useTripCache(): TripCacheState {
   }, [tripId, accessToken, online]);
 
   useEffect(() => {
+    if (!sessionReady) return;
     let cancelled = false;
     async function loadCache() {
-      if (!tripId) return;
+      if (!tripId) {
+        setState((s) => ({ ...s, status: "offline_no_cache" }));
+        return;
+      }
       setState((s) => ({ ...s, status: "loading_cache" }));
       const [meta, payload] = await Promise.all([
         getMeta(tripId),
@@ -105,9 +123,10 @@ export function useTripCache(): TripCacheState {
     return () => {
       cancelled = true;
     };
-  }, [tripId]);
+  }, [sessionReady, tripId]);
 
   useEffect(() => {
+    if (!sessionReady) return;
     let cancelled = false;
     async function sync() {
       if (!tripId || !accessToken) return;
@@ -151,11 +170,7 @@ export function useTripCache(): TripCacheState {
     return () => {
       cancelled = true;
     };
-  }, [tripId, accessToken, online]);
-
-  useEffect(() => {
-    setState((s) => ({ ...s, online }));
-  }, [online]);
+  }, [sessionReady, tripId, accessToken, online]);
 
   return { ...state, refresh };
 }

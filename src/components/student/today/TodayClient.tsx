@@ -129,10 +129,12 @@ function TodayContent() {
   const hasContent = dayItems.length > 0 || prepItems.length > 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col pb-2">
-      <Suspense>
-        <TodayBuildingBanner />
-      </Suspense>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-2">
+      <div className="shrink-0">
+        <Suspense>
+          <TodayBuildingBanner />
+        </Suspense>
+      </div>
 
       <TodayTitle
         tripName={trip.trip.name}

@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from "react";
 
+/** Stable on server + first client paint; real value after mount (avoids hydration mismatch). */
 export function useOnlineStatus(): boolean {
-  const [online, setOnline] = useState<boolean>(() => {
-    if (typeof navigator === "undefined") return true;
-    return navigator.onLine;
-  });
+  const [online, setOnline] = useState(true);
 
   useEffect(() => {
+    setOnline(navigator.onLine);
     function onUp() {
       setOnline(true);
     }
@@ -25,4 +24,3 @@ export function useOnlineStatus(): boolean {
 
   return online;
 }
-
