@@ -37,7 +37,8 @@ export function CalendarSheet(props: {
             selectedDateISO={selectedDateISO}
             onSelectDate={(d) => {
               onSelectDate(d);
-              onClose();
+              // Close after navigation is enqueued; avoids some mobile click quirks.
+              requestAnimationFrame(() => onClose());
             }}
           />
         </div>

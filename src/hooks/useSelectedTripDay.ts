@@ -92,7 +92,8 @@ export function useSelectedTripDay(
   function setDate(dateISO: string) {
     const params = new URLSearchParams(search.toString());
     params.set("date", dateISO);
-    router.replace(`${pathname}?${params.toString()}`);
+    // push (not replace) so App Router updates reliably across devices
+    router.push(`${pathname}?${params.toString()}`);
   }
 
   function goNext() {
