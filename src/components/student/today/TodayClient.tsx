@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 
 import { useTripApp } from "@/components/layout/TripAppContext";
 import { useSelectedTripDay } from "@/hooks/useSelectedTripDay";
@@ -9,7 +9,6 @@ import { daysUntilTrip } from "@/lib/utils/time";
 import { TripNotReady } from "@/components/student/TripNotReady";
 import { ItineraryList } from "@/components/student/today/ItineraryList";
 import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
-import { TodayCalendarDock } from "@/components/student/today/TodayCalendarDock";
 import { TodayTitle } from "@/components/student/today/TodayTitle";
 
 function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
@@ -19,7 +18,7 @@ function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
 }
 
 function TodayContent() {
-  const { cache } = useTripApp();
+  const { cache, setTodayNav } = useTripApp();
   const trip = isTripPayload(cache.payload) ? cache.payload : null;
 
   const tripNotPublished =
@@ -43,6 +42,32 @@ function TodayContent() {
     canGoNext,
     setDate,
   } = useSelectedTripDay(trip?.days ?? [], tripTz, tripDates);
+
+  useEffect(() => {
+    if (!selectedDay || !scheduledDays.length) {
+      setTodayNav(null);
+      return;
+    }
+    setTodayNav({
+      scheduledDays,
+      selectedDateISO: selectedDay.date,
+      canGoPrev,
+      canGoNext,
+      goPrev,
+      goNext,
+      setDate,
+    });
+    return () => setTodayNav(null);
+  }, [
+    scheduledDays,
+    selectedDay,
+    canGoPrev,
+    canGoNext,
+    goPrev,
+    goNext,
+    setDate,
+    setTodayNav,
+  ]);
 
   const dayItems = useMemo(() => {
     if (!trip || !selectedDay) return [];
@@ -104,7 +129,7 @@ function TodayContent() {
   const hasContent = dayItems.length > 0 || prepItems.length > 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col pb-2">
       <Suspense>
         <TodayBuildingBanner />
       </Suspense>
@@ -139,16 +164,6 @@ function TodayContent() {
           </div>
         </div>
       )}
-
-      <TodayCalendarDock
-        days={scheduledDays}
-        selectedDateISO={selectedDay.date}
-        canGoPrev={canGoPrev}
-        canGoNext={canGoNext}
-        onPrev={goPrev}
-        onNext={goNext}
-        onSelectDate={setDate}
-      />
     </div>
   );
 }

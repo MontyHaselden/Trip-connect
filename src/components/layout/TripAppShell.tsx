@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { OfflineBanner } from "./OfflineBanner";
 import { StudentBottomNav } from "./StudentBottomNav";
-import { TripAppContext } from "./TripAppContext";
+import { TripAppContext, type TodayDayNav } from "./TripAppContext";
 import { useTripCache } from "@/hooks/useTripCache";
 import { clearStudentSessionAndCache } from "@/lib/offline/sync";
 import type { ParticipantFilteredTripV1 } from "@/lib/publish/filter-for-participant";
@@ -59,6 +59,8 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const cache = useTripCache();
   const [refreshing, setRefreshing] = useState(false);
+  const [todayNav, setTodayNav] = useState<TodayDayNav | null>(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const trip = isTripPayload(cache.payload) ? cache.payload : null;
 
@@ -104,7 +106,17 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
       : "ready";
 
   return (
-    <TripAppContext.Provider value={{ refresh: onRefresh, refreshing, cache }}>
+    <TripAppContext.Provider
+      value={{
+        refresh: onRefresh,
+        refreshing,
+        cache,
+        todayNav,
+        setTodayNav,
+        calendarOpen,
+        setCalendarOpen,
+      }}
+    >
       <div className="min-h-dvh bg-zinc-50 text-zinc-900">
         <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-3 px-5 py-4">
           <header className="border-b border-zinc-200/80 pb-3">
