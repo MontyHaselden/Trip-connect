@@ -1,15 +1,14 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { requireHostSessionHostId, setHostSessionCookie } from "@/lib/auth/host-session";
-import { applyItineraryImport } from "@/lib/ai/apply-itinerary-import";
-import { parseTripFromDocument } from "@/lib/ai/parse-trip-document";
 import { extractTextFromUpload } from "@/lib/documents/extract-text";
+import { extractTripMetadataQuick } from "@/lib/documents/extract-trip-metadata";
 import { hostApiError } from "@/lib/host/api-errors";
+import { importTripFromDocumentText } from "@/lib/host/import-trip-from-document";
 import { createTripForHost } from "@/lib/host/trip-create";
-import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   try {
@@ -46,49 +45,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: msg }, { status: 400 });
     }
 
-    let parsed;
-    try {
-      parsed = await parseTripFromDocument({
-        text: documentText,
-        defaultTimezone,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "AI import failed.";
-      if (msg.includes("OPENAI_API_KEY")) {
-        return NextResponse.json({ error: msg }, { status: 503 });
-      }
-      return NextResponse.json({ error: msg }, { status: 400 });
-    }
+    const metadata = extractTripMetadataQuick(documentText, defaultTimezone);
 
     const trip = await createTripForHost({
       hostId,
-      name: parsed.name,
-      schoolName: parsed.schoolName,
-      startDate: parsed.startDate,
-      endDate: parsed.endDate,
-      timezone: parsed.timezone,
+      name: metadata.name,
+      schoolName: metadata.schoolName,
+      startDate: metadata.startDate,
+      endDate: metadata.endDate,
+      timezone: metadata.timezone,
       defaultCountryCallingCode,
-      destinationCountry: parsed.destinationCountry ?? null,
-      destinationLanguage: parsed.destinationLanguage ?? null,
     });
-
-    const stats = await applyItineraryImport(trip.id, { days: parsed.days });
-    await maybeAutoPublish(trip.id);
 
     await setHostSessionCookie({ hostId, activeTripId: trip.id });
 
+    after(async () => {
+      try {
+        await importTripFromDocumentText({
+          tripId: trip.id,
+          text: documentText,
+          defaultTimezone,
+        });
+      } catch (err) {
+        console.error("[from-document] background import failed:", err);
+      }
+    });
+
     return NextResponse.json({
       ok: true,
+      building: true,
       tripId: trip.id,
       inviteCode: trip.inviteCode,
-      stats,
-      trip: {
-        name: parsed.name,
-        schoolName: parsed.schoolName,
-        startDate: parsed.startDate,
-        endDate: parsed.endDate,
-        timezone: parsed.timezone,
-      },
+      trip: metadata,
     });
   } catch (err) {
     return hostApiError(err);

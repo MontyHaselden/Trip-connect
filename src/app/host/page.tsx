@@ -145,7 +145,9 @@ export default function HostPortalPage() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "AI trip creation failed");
 
-      router.replace(`/host/${encodeURIComponent(body.inviteCode)}/dashboard`);
+      router.replace(
+        `/host/${encodeURIComponent(body.inviteCode)}/itinerary?building=1`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI trip creation failed");
     } finally {

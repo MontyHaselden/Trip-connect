@@ -8,6 +8,7 @@ import { DayEditor } from "./DayEditor";
 import { DayList } from "./DayList";
 import { GenerateDaysButton } from "./GenerateDaysButton";
 import { ItemList } from "./ItemList";
+import { AiImportProgress } from "./AiImportProgress";
 import { ImportFromText } from "./ImportFromText";
 import { PrepList } from "./PrepList";
 import type { ItineraryTree, RosterSummary } from "./types";
@@ -140,6 +141,13 @@ export function ItineraryClient({ inviteCode }: { inviteCode: string }) {
       {error ? (
         <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
       ) : null}
+
+      <AiImportProgress
+        inviteCode={inviteCode}
+        dayCount={tree.days.length}
+        onReload={load}
+        onError={setError}
+      />
 
       <ImportFromText
         inviteCode={inviteCode}
