@@ -107,23 +107,23 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
     <TripAppContext.Provider value={{ refresh: onRefresh, refreshing, cache }}>
       <div className="min-h-dvh bg-zinc-50 text-zinc-900">
         <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-3 px-5 py-4">
-          <header className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
-            <div className="flex items-center gap-2">
-              <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight">
+          <header className="border-b border-zinc-200/80 pb-3">
+            <div className="flex items-center gap-1">
+              <h1 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-zinc-800">
                 {headerTitle}
               </h1>
               <button
                 type="button"
                 onClick={onRefresh}
                 disabled={!cache.online || refreshing || cache.status === "syncing"}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-700 disabled:opacity-50"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-zinc-600 disabled:opacity-40"
                 aria-label="Refresh trip data"
               >
                 <RefreshIcon spinning={refreshing || cache.status === "syncing"} />
               </button>
               <Link
                 href="/app/settings"
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-700"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-zinc-600"
                 aria-label="Settings"
               >
                 <SettingsIcon />

@@ -57,21 +57,19 @@ export function TodayBuildingBanner() {
 
   if (timedOut) {
     return (
-      <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+      <p className="border-b border-amber-200/80 bg-amber-50/80 px-0 py-2.5 text-xs leading-relaxed text-amber-950">
         AI is taking longer than expected. Open settings → Itinerary to check
-        progress, or import your itinerary manually.
-      </section>
+        progress, or import manually.
+      </p>
     );
   }
 
   return (
-    <section className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-950">
-      <p className="font-medium">AI is building your trip…</p>
-      <p className="mt-1">
-        {dayCount > 0
-          ? `${dayCount} day${dayCount === 1 ? "" : "s"} added so far.`
-          : "This usually takes 30–90 seconds. Your itinerary will appear when ready."}
-      </p>
-    </section>
+    <p className="border-b border-sky-200/80 bg-sky-50/80 px-0 py-2.5 text-xs leading-relaxed text-sky-950">
+      <span className="font-medium">AI is building your trip…</span>{" "}
+      {dayCount > 0
+        ? `${dayCount} day${dayCount === 1 ? "" : "s"} added so far.`
+        : "Usually 30–90 seconds."}
+    </p>
   );
 }

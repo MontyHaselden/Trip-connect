@@ -2,21 +2,15 @@
 
 import { Suspense, useMemo, useState } from "react";
 
-import { useSelectedTripDay } from "@/hooks/useSelectedTripDay";
 import { useTripApp } from "@/components/layout/TripAppContext";
+import { useSelectedTripDay } from "@/hooks/useSelectedTripDay";
 import type { ParticipantFilteredTripV1 } from "@/lib/publish/filter-for-participant";
-import { buildMapsSearchUrl } from "@/lib/utils/maps";
-import {
-  formatRelativeFromNow,
-  formatTripDateHeader,
-  formatTripTime,
-  getCountdownToStart,
-  tripLocalDateTime,
-} from "@/lib/utils/time";
+import { daysUntilTrip } from "@/lib/utils/time";
 import { TripNotReady } from "@/components/student/TripNotReady";
 import { CalendarSheet } from "@/components/student/today/CalendarSheet";
-import { DayNavFrame } from "@/components/student/today/DayNavFrame";
+import { ItineraryList } from "@/components/student/today/ItineraryList";
 import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
+import { TodayHeader } from "@/components/student/today/TodayHeader";
 
 function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
   if (!x || typeof x !== "object") return false;
@@ -41,25 +35,15 @@ function TodayContent() {
     : undefined;
 
   const {
+    scheduledDays,
     selectedDay,
-    phase,
-    tripEve,
-    firstDay,
+    isViewingToday,
     goNext,
     goPrev,
     canGoPrev,
     canGoNext,
     setDate,
-    viewDay1,
   } = useSelectedTripDay(trip?.days ?? [], tripTz, tripDates);
-
-  const countdown = useMemo(() => {
-    if (!trip || phase !== "pre") return null;
-    return getCountdownToStart({
-      startDate: trip.trip.startDate,
-      tripTimezone: tripTz,
-    });
-  }, [phase, trip, tripTz]);
 
   const dayItems = useMemo(() => {
     if (!trip || !selectedDay) return [];
@@ -68,59 +52,18 @@ function TodayContent() {
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [trip, selectedDay]);
 
-  const nextUp = useMemo(() => {
-    if (!trip || !selectedDay) return null;
-    const nowMs = Date.now();
-
-    const upcoming = dayItems
-      .map((i) => ({
-        item: i,
-        start: tripLocalDateTime({
-          dateISO: selectedDay.date,
-          timeHHMMSS: i.startTime,
-          tripTimezone: tripTz,
-        }),
-      }))
-      .filter((x) => x.start.toMillis() >= nowMs - 2 * 60 * 1000)
-      .sort((a, b) => a.start.toMillis() - b.start.toMillis())[0];
-
-    if (!upcoming) return null;
-
-    const leaveBy = upcoming.item.leaveByTime
-      ? tripLocalDateTime({
-          dateISO: selectedDay.date,
-          timeHHMMSS: upcoming.item.leaveByTime,
-          tripTimezone: tripTz,
-        })
-      : null;
-
-    return { ...upcoming, leaveBy };
-  }, [dayItems, selectedDay, trip, tripTz]);
-
-  const tomorrowPrep = useMemo(() => {
+  const prepItems = useMemo(() => {
     if (!trip || !selectedDay) return [];
     return trip.tomorrowPrepItems
       .filter((p) => p.tripDayId === selectedDay.id)
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [trip, selectedDay]);
 
-  const evePrep = useMemo(() => {
-    if (!trip || !firstDay || !tripEve || selectedDay) return [];
-    return trip.tomorrowPrepItems
-      .filter((p) => p.tripDayId === firstDay.id)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-  }, [firstDay, selectedDay, trip, tripEve]);
-
   if (cache.status === "offline_no_cache") {
     return (
-      <main className="flex flex-col gap-4 py-2">
-        <h2 className="text-2xl font-semibold tracking-tight">Today</h2>
-        <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-700">
-            Connect to the internet once to download the trip.
-          </p>
-        </div>
-      </main>
+      <div className="py-6 text-center text-sm text-zinc-600">
+        Connect to the internet once to download the trip.
+      </div>
     );
   }
 
@@ -130,277 +73,83 @@ function TodayContent() {
 
   if (!trip) {
     return (
-      <main className="flex flex-col gap-4 py-2">
-        <Suspense>
-          <TodayBuildingBanner />
-        </Suspense>
-        <h2 className="text-2xl font-semibold tracking-tight">Today</h2>
-        <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-700">Loading trip…</p>
-        </div>
-      </main>
+      <div className="py-10 text-center text-sm text-zinc-600">Loading trip…</div>
     );
   }
 
-  if (phase === "pre" && !selectedDay) {
-    const preTripBody = (
-      <>
-        <header className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold tracking-tight">Today</h2>
-          <p className="text-sm text-zinc-600">{trip.trip.name}</p>
-        </header>
-
-        {countdown ? (
-          <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Countdown
-            </p>
-            <p className="mt-2 text-xl font-semibold text-zinc-900">
-              {countdown.label}
-            </p>
-            {!tripEve && countdown.days > 0 ? (
-              <p className="mt-1 text-sm text-zinc-600">
-                {countdown.days} day{countdown.days === 1 ? "" : "s"},{" "}
-                {countdown.hours} hour{countdown.hours === 1 ? "" : "s"} to go
-              </p>
-            ) : null}
-            {firstDay ? (
-              <p className="mt-3 text-xs text-zinc-500">
-                Tap › to preview Day 1 ({firstDay.cityLabel})
-              </p>
-            ) : null}
-          </section>
-        ) : null}
-
-        <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-          <h3 className="text-base font-semibold">Trip summary</h3>
-          <dl className="mt-3 space-y-2 text-sm">
-            <div>
-              <dt className="text-xs text-zinc-500">Dates</dt>
-              <dd className="font-medium">
-                {trip.trip.startDate} → {trip.trip.endDate}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs text-zinc-500">School</dt>
-              <dd className="font-medium">{trip.trip.schoolName}</dd>
-            </div>
-            {trip.trip.destinationCountry ? (
-              <div>
-                <dt className="text-xs text-zinc-500">Destination</dt>
-                <dd className="font-medium">{trip.trip.destinationCountry}</dd>
-              </div>
-            ) : null}
-          </dl>
-        </section>
-
-        {tripEve && firstDay && evePrep.length ? (
-          <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-            <h3 className="text-base font-semibold">Pack for Day 1 (tomorrow)</h3>
-            <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-zinc-800">
-              {evePrep.map((p) => (
-                <li key={p.id}>{p.text}</li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
-      </>
-    );
-
+  if (!scheduledDays.length) {
     return (
-      <main className="flex flex-col gap-4 py-2">
-        <Suspense>
-          <TodayBuildingBanner />
-        </Suspense>
-        <DayNavFrame
-          canGoPrev={false}
-          canGoNext={canGoNext}
-          onPrev={goPrev}
-          onNext={goNext}
-        >
-          {preTripBody}
-        </DayNavFrame>
-      </main>
+      <div className="py-10 text-center text-sm text-zinc-600">
+        No scheduled days yet.
+      </div>
     );
   }
 
   if (!selectedDay) {
     return (
-      <main className="flex flex-col gap-4 py-2">
-        <h2 className="text-2xl font-semibold tracking-tight">Today</h2>
-        <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-700">No days in this trip yet.</p>
-        </div>
-      </main>
+      <div className="py-10 text-center text-sm text-zinc-600">
+        Select a day from the calendar.
+      </div>
     );
   }
 
-  const dayBody = (
-    <>
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">Today</h2>
-          <p className="text-sm text-zinc-600">
-            {formatTripDateHeader({ dateISO: selectedDay.date, tripTimezone: tripTz })}{" "}
-            — {selectedDay.cityLabel}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setCalendarOpen(true)}
-          className="h-10 shrink-0 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium"
-        >
-          Calendar
-        </button>
-      </header>
+  const daysUntil =
+    selectedDay.date < trip.trip.startDate
+      ? daysUntilTrip({
+          startDate: trip.trip.startDate,
+          dateISO: selectedDay.date,
+          tripTimezone: tripTz,
+        })
+      : null;
 
-      <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-        <h3 className="text-base font-semibold">Next up</h3>
-        {nextUp ? (
-          <div className="mt-3">
-            <div className="text-sm text-zinc-900">
-              <span className="font-medium">
-                {formatTripTime(nextUp.item.startTime, tripTz)}
-              </span>
-              <span className="text-zinc-500"> — </span>
-              <span className="font-medium">{nextUp.item.title}</span>
-            </div>
-            <div className="mt-2 text-xs text-zinc-600">
-              Starts {formatRelativeFromNow(nextUp.start)}.
-            </div>
-            {nextUp.leaveBy ? (
-              <div className="mt-1 text-xs text-zinc-600">
-                Leave by {formatTripTime(nextUp.item.leaveByTime!, tripTz)} (
-                {formatRelativeFromNow(nextUp.leaveBy)})
-              </div>
-            ) : null}
-            {nextUp.item.bringNote ? (
-              <div className="mt-3 text-sm text-zinc-700">
-                <span className="font-medium">Bring:</span> {nextUp.item.bringNote}
-              </div>
-            ) : null}
-            {nextUp.item.transportNote ? (
-              <div className="mt-2 text-sm text-zinc-700">
-                <span className="font-medium">Transport:</span>{" "}
-                {nextUp.item.transportNote}
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-zinc-700">No more items today.</p>
-        )}
-      </section>
-
-      <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-        <h3 className="text-base font-semibold">Timeline</h3>
-        <div className="mt-3 flex flex-col gap-3">
-          {dayItems.map((item) => {
-            const mapsQuery = item.mapQuery || item.address || "";
-            const mapsUrl = mapsQuery ? buildMapsSearchUrl(mapsQuery) : null;
-            return (
-              <div
-                key={item.id}
-                className="rounded-xl border border-zinc-200 bg-white p-4"
-              >
-                <div className="flex items-baseline justify-between gap-3">
-                  <div className="text-sm font-semibold">
-                    {formatTripTime(item.startTime, tripTz)}
-                    {item.endTime ? `–${formatTripTime(item.endTime, tripTz)}` : ""}
-                  </div>
-                </div>
-                <div className="mt-1 text-sm font-medium text-zinc-900">
-                  {item.title}
-                </div>
-                {item.locationName ? (
-                  <div className="mt-1 text-sm text-zinc-700">{item.locationName}</div>
-                ) : null}
-                {item.address ? (
-                  <div className="mt-1 text-sm text-zinc-700">{item.address}</div>
-                ) : null}
-                <div className="mt-3 flex gap-2">
-                  <a
-                    href={mapsUrl ?? "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-disabled={!cache.online || !mapsUrl}
-                    className={[
-                      "inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-zinc-200 bg-white text-sm font-medium",
-                      !cache.online || !mapsUrl ? "pointer-events-none opacity-50" : "",
-                    ].join(" ")}
-                  >
-                    Open in Maps
-                  </a>
-                </div>
-                {item.leaveByTime ? (
-                  <div className="mt-3 text-sm text-zinc-700">
-                    <span className="font-medium">Leave by:</span>{" "}
-                    {formatTripTime(item.leaveByTime, tripTz)}
-                  </div>
-                ) : null}
-                {item.transportNote ? (
-                  <div className="mt-2 text-sm text-zinc-700">
-                    <span className="font-medium">Transport:</span> {item.transportNote}
-                  </div>
-                ) : null}
-                {item.bringNote ? (
-                  <div className="mt-2 text-sm text-zinc-700">
-                    <span className="font-medium">Bring:</span> {item.bringNote}
-                  </div>
-                ) : null}
-                {item.hostNote ? (
-                  <div className="mt-2 text-sm text-zinc-700">
-                    <span className="font-medium">Note:</span> {item.hostNote}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-          {dayItems.length === 0 ? (
-            <p className="text-sm text-zinc-700">No itinerary items for this day.</p>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-        <h3 className="text-base font-semibold">Tomorrow prep</h3>
-        {tomorrowPrep.length ? (
-          <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-zinc-800">
-            {tomorrowPrep.map((p) => (
-              <li key={p.id}>{p.text}</li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-2 text-sm text-zinc-700">No prep notes yet.</p>
-        )}
-      </section>
-
-      <CalendarSheet
-        open={calendarOpen}
-        onClose={() => setCalendarOpen(false)}
-        days={trip.days}
-        selectedDateISO={selectedDay.date}
-        onSelectDate={(d) => {
-          setDate(d);
-          setCalendarOpen(false);
-        }}
-      />
-    </>
-  );
+  const hasContent = dayItems.length > 0 || prepItems.length > 0;
 
   return (
-    <main className="flex flex-col gap-4 py-2">
+    <div className="flex flex-col pb-4">
       <Suspense>
         <TodayBuildingBanner />
       </Suspense>
-      <DayNavFrame
+
+      <TodayHeader
+        dateISO={selectedDay.date}
+        cityLabel={selectedDay.cityLabel}
+        tripTimezone={tripTz}
+        tripStartDate={trip.trip.startDate}
         canGoPrev={canGoPrev}
         canGoNext={canGoNext}
         onPrev={goPrev}
         onNext={goNext}
-      >
-        {dayBody}
-      </DayNavFrame>
-    </main>
+        onOpenCalendar={() => setCalendarOpen(true)}
+      />
+
+      {hasContent ? (
+        <ItineraryList
+          items={dayItems}
+          tripTimezone={tripTz}
+          dateISO={selectedDay.date}
+          mapsOnline={cache.online}
+          showUpNext={isViewingToday}
+          prepItems={prepItems}
+        />
+      ) : (
+        <div className="py-16 text-center">
+          <p className="text-sm font-medium text-zinc-800">No event today</p>
+          {typeof daysUntil === "number" && daysUntil > 0 ? (
+            <p className="mt-2 text-sm text-zinc-500">
+              {daysUntil} day{daysUntil === 1 ? "" : "s"} until trip
+            </p>
+          ) : null}
+        </div>
+      )}
+
+      <CalendarSheet
+        open={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        days={scheduledDays}
+        selectedDateISO={selectedDay.date}
+        onSelectDate={setDate}
+      />
+    </div>
   );
 }
 

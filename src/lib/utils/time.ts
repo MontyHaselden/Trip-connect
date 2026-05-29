@@ -26,9 +26,42 @@ export function formatTripDateHeader(params: {
 }
 
 export function formatTripTime(timeHHMMSS: string, tripTimezone: string): string {
-  // Parse as time in the trip timezone, formatting to a user-friendly time.
   const dt = DateTime.fromISO(`1970-01-01T${timeHHMMSS}`, { zone: tripTimezone });
   return dt.toFormat("h:mma").toLowerCase();
+}
+
+export function formatItineraryTimeRange(
+  startTime: string,
+  endTime: string | null | undefined,
+  tripTimezone: string,
+): string {
+  const start = formatTripTime(startTime, tripTimezone);
+  if (!endTime) return start;
+  const end = formatTripTime(endTime, tripTimezone);
+  return `${start}–${end}`;
+}
+
+export function daysUntilTrip(params: {
+  startDate: string;
+  dateISO: string;
+  tripTimezone: string;
+}): number {
+  const start = DateTime.fromISO(params.startDate, {
+    zone: params.tripTimezone,
+  }).startOf("day");
+  const day = DateTime.fromISO(params.dateISO, {
+    zone: params.tripTimezone,
+  }).startOf("day");
+  const diff = start.diff(day, "days").days;
+  return Math.max(0, Math.floor(diff));
+}
+
+export function shortDayLabel(cityLabel: string, maxLen = 10): string {
+  const trimmed = cityLabel.trim();
+  if (!trimmed) return "";
+  const first = trimmed.split(/[→/,|·]/)[0]?.trim() ?? trimmed;
+  if (first.length <= maxLen) return first;
+  return `${first.slice(0, maxLen - 1)}…`;
 }
 
 export function formatRelativeFromNow(target: DateTime): string {

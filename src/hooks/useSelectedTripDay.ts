@@ -4,16 +4,50 @@ import { useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DateTime } from "luxon";
 
-import {
-  getTripPhase,
-  isTripEve,
-  type TripPhase,
-} from "@/lib/utils/time";
+import { getTripPhase, type TripPhase } from "@/lib/utils/time";
 
-type Day = { id: string; date: string; cityLabel: string; sortOrder: number };
+export type ScheduleDay = {
+  id: string;
+  date: string;
+  cityLabel: string;
+  sortOrder: number;
+};
+
+function sortDaysByDate(days: ScheduleDay[]) {
+  return [...days].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function pickDefaultDay(
+  scheduledDays: ScheduleDay[],
+  todayISO: string | null,
+  phase: TripPhase,
+): ScheduleDay | null {
+  if (!scheduledDays.length) return null;
+
+  if (phase === "active" && todayISO) {
+    const today = scheduledDays.find((d) => d.date === todayISO);
+    if (today) return today;
+  }
+
+  if (todayISO) {
+    const upcoming = scheduledDays.find((d) => d.date >= todayISO);
+    if (upcoming) return upcoming;
+  }
+
+  if (phase === "pre") {
+    return scheduledDays[0] ?? null;
+  }
+
+  if (todayISO) {
+    const pastOrToday = [...scheduledDays].reverse().find((d) => d.date <= todayISO);
+    if (pastOrToday) return pastOrToday;
+  }
+
+  return scheduledDays[scheduledDays.length - 1] ?? null;
+}
 
 export function useSelectedTripDay(
-  days: Day[],
+  days: ScheduleDay[],
   tripTimezone: string,
   tripDates?: { startDate: string; endDate: string },
 ) {
@@ -23,18 +57,13 @@ export function useSelectedTripDay(
 
   const dateParam = search.get("date");
 
+  const scheduledDays = useMemo(() => sortDaysByDate(days), [days]);
+
   const daysByDate = useMemo(() => {
-    const m = new Map<string, Day>();
-    for (const d of days) m.set(d.date, d);
+    const m = new Map<string, ScheduleDay>();
+    for (const d of scheduledDays) m.set(d.date, d);
     return m;
-  }, [days]);
-
-  const sortedDays = useMemo(
-    () => [...days].sort((a, b) => a.sortOrder - b.sortOrder),
-    [days],
-  );
-
-  const firstDay = sortedDays[0] ?? null;
+  }, [scheduledDays]);
 
   const todayISO = useMemo(() => {
     return DateTime.now().setZone(tripTimezone).toISODate();
@@ -49,32 +78,16 @@ export function useSelectedTripDay(
     });
   }, [tripDates, tripTimezone]);
 
-  const tripEve = useMemo(() => {
-    if (!tripDates || phase !== "pre") return false;
-    return isTripEve({ startDate: tripDates.startDate, tripTimezone });
-  }, [tripDates, phase, tripTimezone]);
-
-  const selected = useMemo(() => {
+  const selectedDay = useMemo(() => {
     if (dateParam && daysByDate.has(dateParam)) {
       return daysByDate.get(dateParam)!;
     }
+    return pickDefaultDay(scheduledDays, todayISO, phase);
+  }, [dateParam, daysByDate, scheduledDays, todayISO, phase]);
 
-    if (phase === "pre") {
-      return null;
-    }
-
-    if (phase === "active") {
-      if (todayISO && daysByDate.has(todayISO)) {
-        return daysByDate.get(todayISO)!;
-      }
-      return firstDay;
-    }
-
-    if (todayISO && daysByDate.has(todayISO)) {
-      return daysByDate.get(todayISO)!;
-    }
-    return sortedDays.at(-1) ?? null;
-  }, [dateParam, daysByDate, firstDay, phase, sortedDays, todayISO]);
+  const selectedIndex = selectedDay
+    ? scheduledDays.findIndex((d) => d.id === selectedDay.id)
+    : -1;
 
   function setDate(dateISO: string) {
     const params = new URLSearchParams(search.toString());
@@ -82,82 +95,36 @@ export function useSelectedTripDay(
     router.replace(`${pathname}?${params.toString()}`);
   }
 
-  function clearDate() {
-    const params = new URLSearchParams(search.toString());
-    params.delete("date");
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname);
-  }
-
-  function goToday() {
-    if (phase === "pre") {
-      clearDate();
-      return;
-    }
-    if (todayISO) setDate(todayISO);
-  }
-
-  function goTomorrow() {
-    if (phase === "pre") {
-      if (tripEve && firstDay) setDate(firstDay.date);
-      return;
-    }
-    if (!selected) return;
-    const dt = DateTime.fromISO(selected.date, { zone: tripTimezone }).plus({
-      days: 1,
-    });
-    const iso = dt.toISODate();
-    if (iso && daysByDate.has(iso)) setDate(iso);
-  }
-
   function goNext() {
-    if (phase === "pre" && !selected && firstDay) {
-      setDate(firstDay.date);
-      return;
-    }
-    if (!selected) return;
-    const idx = sortedDays.findIndex((d) => d.id === selected.id);
-    const next = sortedDays[idx + 1];
+    if (!selectedDay || selectedIndex < 0) return;
+    const next = scheduledDays[selectedIndex + 1];
     if (next) setDate(next.date);
   }
 
   function goPrev() {
-    if (phase === "pre" && selected && selectedIndex === 0) {
-      clearDate();
-      return;
-    }
-    if (!selected) return;
-    const idx = sortedDays.findIndex((d) => d.id === selected.id);
-    const prev = sortedDays[idx - 1];
+    if (!selectedDay || selectedIndex <= 0) return;
+    const prev = scheduledDays[selectedIndex - 1];
     if (prev) setDate(prev.date);
   }
 
-  const selectedIndex = selected
-    ? sortedDays.findIndex((d) => d.id === selected.id)
-    : -1;
-
-  const canGoPrev =
-    selectedIndex > 0 || (phase === "pre" && selectedIndex === 0);
+  const canGoPrev = selectedIndex > 0;
   const canGoNext =
-    (phase === "pre" && !selected && !!firstDay) ||
-    (selectedIndex >= 0 && selectedIndex < sortedDays.length - 1);
+    selectedIndex >= 0 && selectedIndex < scheduledDays.length - 1;
 
-  function viewDay1() {
-    if (firstDay) setDate(firstDay.date);
-  }
+  const isViewingToday =
+    Boolean(todayISO && selectedDay && selectedDay.date === todayISO);
 
   return {
-    selectedDay: selected,
+    scheduledDays,
+    selectedDay,
+    selectedIndex,
     phase,
-    tripEve,
-    firstDay,
+    todayISO,
+    isViewingToday,
     setDate,
-    goToday,
-    goTomorrow,
     goNext,
     goPrev,
     canGoPrev,
     canGoNext,
-    viewDay1,
   };
 }
