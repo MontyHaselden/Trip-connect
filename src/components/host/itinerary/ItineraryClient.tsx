@@ -156,17 +156,10 @@ export function ItineraryClient({ inviteCode }: { inviteCode: string }) {
         onError={setError}
       />
 
-      {trip?.needsPublishConfirm ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          Students with cached data need a confirmed publish before they receive
-          updates. Use the Publish tab to review and send changes.
-        </section>
-      ) : (
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
-          Changes go live automatically while no students have joined. Students
-          see updates when they join or tap Refresh trip data.
-        </section>
-      )}
+      <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+        Changes publish automatically. Students and teachers see updates when they
+        tap Refresh trip data on Today.
+      </section>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-5">
         <h2 className="text-base font-semibold">Trip days</h2>

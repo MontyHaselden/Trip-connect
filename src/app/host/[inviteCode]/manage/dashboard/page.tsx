@@ -106,8 +106,8 @@ export default function HostDashboardPage() {
 
       {trip.needsPublishConfirm ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          This trip is live. Draft changes need confirm publish before students
-          see them.
+          Draft changes are pending auto-publish. Students see updates after the
+          next save or refresh.
         </section>
       ) : trip.publishedVersion > 0 ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
@@ -118,7 +118,8 @@ export default function HostDashboardPage() {
         </section>
       ) : (
         <section className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
-          Not published yet — edits go live automatically until students join.
+          Not published yet — edits auto-publish when you save or open the trip
+          app.
         </section>
       )}
 

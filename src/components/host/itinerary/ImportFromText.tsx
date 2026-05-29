@@ -59,17 +59,10 @@ export function ImportFromText(props: {
             Paste an itinerary from email or a document. AI will create trip days
             and schedule items. You can edit everything afterward.
           </p>
-          {needsPublishConfirm ? (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-              Students will see these changes after you confirm publish on the
-              Publish tab.
-            </p>
-          ) : (
-            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
-              Imported content goes live automatically — students will see it when
-              they join or refresh trip data.
-            </p>
-          )}
+          <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
+            Imported content publishes automatically — students see it when they
+            refresh trip data.
+          </p>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}

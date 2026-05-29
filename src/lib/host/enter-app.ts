@@ -4,6 +4,7 @@ import { setHostSessionCookie } from "@/lib/auth/host-session";
 import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
 import { db } from "@/lib/db/client";
 import { hostAccounts, participants } from "@/lib/db/schema";
+import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
 import { generateAccessToken } from "@/lib/utils/tokens";
 
 function mapHostRoleToParticipantRole(
@@ -109,15 +110,21 @@ export async function enterTripApp(inviteCode: string) {
     activeTripId: membership.tripId,
   });
 
+  if (membership.publishedVersion === 0) {
+    await maybeAutoPublish(membership.tripId);
+  }
+
+  const refreshed = await requireHostTripForInvite(inviteCode);
+
   return {
-    tripId: membership.id,
-    inviteCode: membership.inviteCode,
-    tripName: membership.name,
-    schoolName: membership.schoolName,
-    startDate: membership.startDate,
-    endDate: membership.endDate,
-    timezone: membership.timezone,
-    publishedVersion: membership.publishedVersion,
+    tripId: refreshed.id,
+    inviteCode: refreshed.inviteCode,
+    tripName: refreshed.name,
+    schoolName: refreshed.schoolName,
+    startDate: refreshed.startDate,
+    endDate: refreshed.endDate,
+    timezone: refreshed.timezone,
+    publishedVersion: refreshed.publishedVersion,
     participantId: participant.id,
     accessToken: participant.accessToken,
     canEdit: membership.canEdit,
