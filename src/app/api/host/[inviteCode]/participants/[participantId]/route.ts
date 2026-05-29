@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { participants } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { normalizeToE164 } from "@/lib/utils/phone";
 import {
@@ -30,7 +30,7 @@ export async function PATCH(
 ) {
   const { inviteCode, participantId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const existing = await getParticipantForTrip(trip.id, participantId);
     if (!existing) {
       return NextResponse.json({ error: "Participant not found." }, { status: 404 });
@@ -106,7 +106,7 @@ export async function DELETE(
 ) {
   const { inviteCode, participantId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const existing = await getParticipantForTrip(trip.id, participantId);
     if (!existing) {
       return NextResponse.json({ error: "Participant not found." }, { status: 404 });

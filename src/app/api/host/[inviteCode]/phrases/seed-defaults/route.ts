@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import {
   loadPhraseTree,
@@ -14,7 +14,7 @@ export async function POST(
 ) {
   const { inviteCode } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const result = await seedDefaultPhrasesIfEmpty(trip.id);
     if (!result.created) {
       return NextResponse.json(

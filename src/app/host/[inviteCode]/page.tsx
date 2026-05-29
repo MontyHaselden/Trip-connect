@@ -3,13 +3,13 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { enterTripAppClient } from "@/lib/client/enter-trip-app";
+
 export default function HostLoginPage() {
   const router = useRouter();
   const params = useParams();
   const inviteCode = String(params.inviteCode ?? "");
   const [checkingSession, setCheckingSession] = useState(true);
-
-  const dashboardPath = `/host/${encodeURIComponent(inviteCode)}/dashboard`;
 
   useEffect(() => {
     let cancelled = false;
@@ -17,7 +17,8 @@ export default function HostLoginPage() {
       try {
         const res = await fetch(`/api/host/${encodeURIComponent(inviteCode)}/me`);
         if (!cancelled && res.ok) {
-          router.replace(dashboardPath);
+          await enterTripAppClient(inviteCode);
+          router.replace("/app/today");
           return;
         }
       } finally {
@@ -28,7 +29,7 @@ export default function HostLoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [inviteCode, router, dashboardPath]);
+  }, [inviteCode, router]);
 
   if (checkingSession) {
     return (
@@ -61,8 +62,7 @@ export default function HostLoginPage() {
             Go to host portal
           </a>
           <p className="mt-3 text-xs text-zinc-600">
-            After signing in, open:{" "}
-            <span className="font-mono">/host/{inviteCode}/dashboard</span>
+            After signing in, select your trip from the host portal to open the app.
           </p>
         </div>
       </div>

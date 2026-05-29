@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
-import { hostTripMembers, trips } from "@/lib/db/schema";
+import { hostAccounts, hostTripMembers, trips } from "@/lib/db/schema";
 import { requireHostSessionHostId } from "@/lib/auth/host-session";
 
 export type HostTrip = {
@@ -19,12 +19,18 @@ export type HostTrip = {
   updatedAt: Date;
 };
 
-export async function requireHostTripForInvite(
-  inviteCode: string,
-): Promise<HostTrip> {
-  const hostId = await requireHostSessionHostId();
+export type HostTripMembership = {
+  hostId: string;
+  tripId: string;
+  canEdit: boolean;
+  role: "teacher" | "helper" | "host" | "admin";
+};
 
-  const trip = await db
+async function loadMembership(
+  inviteCode: string,
+  hostId: string,
+): Promise<(HostTrip & HostTripMembership) | null> {
+  return db
     .select({
       id: trips.id,
       name: trips.name,
@@ -38,18 +44,45 @@ export async function requireHostTripForInvite(
       defaultCountryCallingCode: trips.defaultCountryCallingCode,
       publishedVersion: trips.publishedVersion,
       updatedAt: trips.updatedAt,
+      hostId: hostTripMembers.hostId,
+      tripId: hostTripMembers.tripId,
+      canEdit: hostTripMembers.canEdit,
+      role: hostAccounts.role,
     })
     .from(trips)
     .innerJoin(hostTripMembers, eq(hostTripMembers.tripId, trips.id))
-    .where(
-      and(eq(trips.inviteCode, inviteCode), eq(hostTripMembers.hostId, hostId)),
-    )
+    .innerJoin(hostAccounts, eq(hostAccounts.id, hostTripMembers.hostId))
+    .where(and(eq(trips.inviteCode, inviteCode), eq(hostTripMembers.hostId, hostId)))
     .limit(1)
     .then((rows) => rows[0] ?? null);
+}
 
-  if (!trip) {
-    throw new Error("Unauthorized");
+export async function requireHostTripForInvite(
+  inviteCode: string,
+): Promise<HostTrip & HostTripMembership> {
+  const hostId = await requireHostSessionHostId();
+  const row = await loadMembership(inviteCode, hostId);
+  if (!row) throw new Error("Unauthorized");
+  return row;
+}
+
+export async function requireHostTripEditAccess(
+  inviteCode: string,
+): Promise<HostTrip & HostTripMembership> {
+  const membership = await requireHostTripForInvite(inviteCode);
+  if (!membership.canEdit) {
+    throw new Error("Forbidden");
   }
+  return membership;
+}
 
-  return trip;
+export async function getHostTripMembershipIfAny(
+  inviteCode: string,
+): Promise<(HostTrip & HostTripMembership) | null> {
+  try {
+    const hostId = await requireHostSessionHostId();
+    return loadMembership(inviteCode, hostId);
+  } catch {
+    return null;
+  }
 }

@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { contacts } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import {
   getContactForTrip,
@@ -28,7 +28,7 @@ export async function PATCH(
 ) {
   const { inviteCode, contactId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const existing = await getContactForTrip(trip.id, contactId);
     if (!existing) {
       return NextResponse.json({ error: "Contact not found." }, { status: 404 });
@@ -83,7 +83,7 @@ export async function DELETE(
 ) {
   const { inviteCode, contactId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const existing = await getContactForTrip(trip.id, contactId);
     if (!existing) {
       return NextResponse.json({ error: "Contact not found." }, { status: 404 });

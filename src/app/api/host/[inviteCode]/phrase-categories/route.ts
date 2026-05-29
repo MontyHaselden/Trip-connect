@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { emergencyPhraseCategories } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { nextCategorySortOrder } from "@/lib/host/phrases-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
@@ -18,7 +18,7 @@ export async function POST(
 ) {
   const { inviteCode } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const json = await req.json().catch(() => null);
     const parsed = CreateCategorySchema.safeParse(json);
     if (!parsed.success) {

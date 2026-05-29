@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { itineraryItems } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import {
   getItemForTrip,
@@ -35,7 +35,7 @@ export async function PATCH(
 ) {
   const { inviteCode, itemId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const item = await getItemForTrip(trip.id, itemId);
     if (!item) return NextResponse.json({ error: "Item not found." }, { status: 404 });
 
@@ -98,7 +98,7 @@ export async function DELETE(
 ) {
   const { inviteCode, itemId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const item = await getItemForTrip(trip.id, itemId);
     if (!item) return NextResponse.json({ error: "Item not found." }, { status: 404 });
 

@@ -58,6 +58,7 @@ export const hostAccounts = pgTable(
     passwordHash: text("password_hash").notNull(),
     fullName: text("full_name").notNull(),
     role: hostAccountRole("role").notNull(),
+    linkedParticipantId: uuid("linked_participant_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -109,6 +110,10 @@ export const hostTripMembers = pgTable(
     tripId: uuid("trip_id")
       .notNull()
       .references(() => trips.id, { onDelete: "cascade" }),
+    canEdit: boolean("can_edit").notNull().default(true),
+    invitedEmail: text("invited_email"),
+    invitedAt: timestamp("invited_at", { withTimezone: true }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -116,6 +121,30 @@ export const hostTripMembers = pgTable(
   (m) => ({
     pk: primaryKey({ columns: [m.hostId, m.tripId] }),
     tripIdx: index("host_trip_members_trip_id_idx").on(m.tripId),
+  }),
+);
+
+export const hostTripInvites = pgTable(
+  "host_trip_invites",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    invitedEmail: text("invited_email").notNull(),
+    canEdit: boolean("can_edit").notNull().default(true),
+    invitedByHostId: uuid("invited_by_host_id").references(() => hostAccounts.id, {
+      onDelete: "set null",
+    }),
+    invitedAt: timestamp("invited_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (i) => ({
+    tripEmailUnique: uniqueIndex("host_trip_invites_trip_email_unique").on(
+      i.tripId,
+      i.invitedEmail,
+    ),
   }),
 );
 

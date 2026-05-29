@@ -44,3 +44,72 @@ export function formatRelativeFromNow(target: DateTime): string {
   const days = Math.floor(hours / 24);
   return `in ${days}d`;
 }
+
+export type TripPhase = "pre" | "active" | "post";
+
+export function getTripPhase(params: {
+  now?: DateTime;
+  startDate: string;
+  endDate: string;
+  tripTimezone: string;
+}): TripPhase {
+  const now = params.now ?? DateTime.now().setZone(params.tripTimezone);
+  const start = DateTime.fromISO(params.startDate, {
+    zone: params.tripTimezone,
+  }).startOf("day");
+  const end = DateTime.fromISO(params.endDate, {
+    zone: params.tripTimezone,
+  }).endOf("day");
+  if (now < start) return "pre";
+  if (now > end) return "post";
+  return "active";
+}
+
+export function isTripEve(params: {
+  now?: DateTime;
+  startDate: string;
+  tripTimezone: string;
+}): boolean {
+  const now = params.now ?? DateTime.now().setZone(params.tripTimezone);
+  const start = DateTime.fromISO(params.startDate, {
+    zone: params.tripTimezone,
+  }).startOf("day");
+  const eve = start.minus({ days: 1 });
+  return now.hasSame(eve, "day");
+}
+
+export function getCountdownToStart(params: {
+  now?: DateTime;
+  startDate: string;
+  tripTimezone: string;
+}): { days: number; hours: number; label: string } {
+  const now = params.now ?? DateTime.now().setZone(params.tripTimezone);
+  const start = DateTime.fromISO(params.startDate, {
+    zone: params.tripTimezone,
+  }).startOf("day");
+
+  if (isTripEve(params)) {
+    const diff = start.diff(now, ["hours"]);
+    const hours = Math.max(0, Math.ceil(diff.hours));
+    return { days: 0, hours, label: "Starts tomorrow!" };
+  }
+
+  const diff = start.diff(now, ["days", "hours"]);
+  const days = Math.max(0, Math.floor(diff.days));
+  const hours = Math.max(0, Math.floor(diff.hours % 24));
+
+  if (days === 0 && hours === 0) {
+    return { days: 0, hours: 0, label: "Starts today!" };
+  }
+
+  let label: string;
+  if (days === 0) {
+    label = `Starts in ${hours} hour${hours === 1 ? "" : "s"}`;
+  } else if (hours > 0) {
+    label = `Starts in ${days} day${days === 1 ? "" : "s"}, ${hours} hour${hours === 1 ? "" : "s"}`;
+  } else {
+    label = `Starts in ${days} day${days === 1 ? "" : "s"}`;
+  }
+
+  return { days, hours, label };
+}

@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { rooms } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getRoomForTrip } from "@/lib/host/roster-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
@@ -24,7 +24,7 @@ export async function PATCH(
 ) {
   const { inviteCode, roomId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const room = await getRoomForTrip(trip.id, roomId);
     if (!room) return NextResponse.json({ error: "Room not found." }, { status: 404 });
 
@@ -67,7 +67,7 @@ export async function DELETE(
 ) {
   const { inviteCode, roomId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const room = await getRoomForTrip(trip.id, roomId);
     if (!room) return NextResponse.json({ error: "Room not found." }, { status: 404 });
 

@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { tripDays } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getTripDayForTrip } from "@/lib/host/itinerary-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
@@ -21,7 +21,7 @@ export async function PATCH(
 ) {
   const { inviteCode, dayId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const day = await getTripDayForTrip(trip.id, dayId);
     if (!day) return NextResponse.json({ error: "Day not found." }, { status: 404 });
 
@@ -55,7 +55,7 @@ export async function DELETE(
 ) {
   const { inviteCode, dayId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const day = await getTripDayForTrip(trip.id, dayId);
     if (!day) return NextResponse.json({ error: "Day not found." }, { status: 404 });
 

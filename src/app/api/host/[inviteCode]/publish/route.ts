@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { buildSnapshotV1 } from "@/lib/publish/build-snapshot";
 import {
@@ -26,7 +26,7 @@ export async function POST(
   const { inviteCode } = await ctx.params;
 
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const json = await req.json().catch(() => ({}));
     const parsed = PublishBodySchema.safeParse(json);
 

@@ -1,6 +1,6 @@
-import { StudentAppShell } from "@/components/layout/StudentAppShell";
+import { TripAppShell } from "@/components/layout/TripAppShell";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return <StudentAppShell>{children}</StudentAppShell>;
+  return <TripAppShell>{children}</TripAppShell>;
 }
 

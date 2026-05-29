@@ -26,12 +26,13 @@ const shortcuts = [
   { href: "contacts", label: "Contacts" },
   { href: "phrases", label: "Phrases" },
   { href: "publish", label: "Publish" },
+  { href: "team", label: "Team" },
 ] as const;
 
 export default function HostDashboardPage() {
   const params = useParams();
   const inviteCode = String(params.inviteCode ?? "");
-  const base = `/host/${encodeURIComponent(inviteCode)}`;
+  const base = `/host/${encodeURIComponent(inviteCode)}/manage`;
 
   const [trip, setTrip] = useState<HostTripResponse | null>(null);
   const [loading, setLoading] = useState(true);

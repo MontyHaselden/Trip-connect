@@ -18,7 +18,7 @@ type TripMeta = {
 
 export function PhrasesClient({ inviteCode }: { inviteCode: string }) {
   const api = `/api/host/${encodeURIComponent(inviteCode)}`;
-  const settingsHref = `/host/${encodeURIComponent(inviteCode)}/settings`;
+  const settingsHref = `/host/${encodeURIComponent(inviteCode)}/manage/settings`;
 
   const [tree, setTree] = useState<PhraseTree | null>(null);
   const [tripMeta, setTripMeta] = useState<TripMeta | null>(null);

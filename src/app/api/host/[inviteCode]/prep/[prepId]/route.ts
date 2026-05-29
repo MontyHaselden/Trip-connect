@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { tomorrowPrepItems } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getPrepForTrip } from "@/lib/host/itinerary-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
@@ -20,7 +20,7 @@ export async function PATCH(
 ) {
   const { inviteCode, prepId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const prep = await getPrepForTrip(trip.id, prepId);
     if (!prep) return NextResponse.json({ error: "Prep not found." }, { status: 404 });
 
@@ -52,7 +52,7 @@ export async function DELETE(
 ) {
   const { inviteCode, prepId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const prep = await getPrepForTrip(trip.id, prepId);
     if (!prep) return NextResponse.json({ error: "Prep not found." }, { status: 404 });
 

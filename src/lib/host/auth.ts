@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 
+import { acceptPendingInvitesForEmail } from "@/lib/host/accept-invites";
 import { db } from "@/lib/db/client";
 import { hostAccounts } from "@/lib/db/schema";
 import { normalizeToE164 } from "@/lib/utils/phone";
@@ -65,6 +66,7 @@ export async function createHostAccount(params: {
     });
 
   if (!created) throw new Error("Failed to create host account.");
+  await acceptPendingInvitesForEmail(email, created.id);
   return created;
 }
 
@@ -89,6 +91,8 @@ export async function authenticateHostAccount(params: {
   if (!row) throw new Error("Invalid email or password.");
   const ok = await bcrypt.compare(params.password, row.passwordHash);
   if (!ok) throw new Error("Invalid email or password.");
+
+  await acceptPendingInvitesForEmail(email, row.id);
 
   return { id: row.id, email: row.email, fullName: row.fullName, role: row.role };
 }

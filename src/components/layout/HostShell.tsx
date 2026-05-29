@@ -2,23 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
-function NavLink(props: {
-  href: string;
-  label: string;
-  active: boolean;
-}) {
-  const { href, label, active } = props;
+function ReadOnlyBanner() {
   return (
-    <Link
-      href={href}
-      className={[
-        "rounded-lg px-3 py-2 text-sm font-medium",
-        active ? "bg-zinc-900 text-white" : "text-zinc-700 hover:bg-zinc-100",
-      ].join(" ")}
-    >
-      {label}
-    </Link>
+    <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+      View-only — you can browse but cannot edit this trip.
+    </section>
   );
 }
 
@@ -29,72 +19,67 @@ export function HostShell(props: {
   const { inviteCode, children } = props;
   const pathname = usePathname();
   const router = useRouter();
-  const base = `/host/${encodeURIComponent(inviteCode)}`;
+  const [canEdit, setCanEdit] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(
+          `/api/host/${encodeURIComponent(inviteCode)}/me`,
+        );
+        if (!res.ok) return;
+        const body = (await res.json()) as { canEdit: boolean };
+        if (!cancelled) setCanEdit(body.canEdit);
+      } catch {
+        // ignore
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteCode]);
 
   async function onLogout() {
     await fetch(`/api/host/${encodeURIComponent(inviteCode)}/logout`, {
       method: "POST",
     });
-    router.replace(base);
+    router.replace("/host");
   }
+
+  const pageTitle = (() => {
+    const tail = pathname.split("/").pop() ?? "";
+    if (tail === "manage") return "Manage trip";
+    return tail.charAt(0).toUpperCase() + tail.slice(1);
+  })();
 
   return (
     <div className="min-h-dvh bg-zinc-50 text-zinc-900">
       <header className="border-b border-zinc-200 bg-white">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Trip Connect Host
-            </p>
-            <p className="text-sm text-zinc-600">Invite: {inviteCode}</p>
-          </div>
-          <nav className="-mx-1 flex items-center gap-1 overflow-x-auto px-1 pb-1">
-            <NavLink
-              href={`${base}/dashboard`}
-              label="Dashboard"
-              active={pathname === `${base}/dashboard`}
-            />
-            <NavLink
-              href={`${base}/itinerary`}
-              label="Itinerary"
-              active={pathname === `${base}/itinerary`}
-            />
-            <NavLink
-              href={`${base}/participants`}
-              label="Participants"
-              active={pathname === `${base}/participants`}
-            />
-            <NavLink
-              href={`${base}/contacts`}
-              label="Contacts"
-              active={pathname === `${base}/contacts`}
-            />
-            <NavLink
-              href={`${base}/phrases`}
-              label="Phrases"
-              active={pathname === `${base}/phrases`}
-            />
-            <NavLink
-              href={`${base}/settings`}
-              label="Settings"
-              active={pathname === `${base}/settings`}
-            />
-            <NavLink
-              href={`${base}/publish`}
-              label="Publish"
-              active={pathname === `${base}/publish`}
-            />
-            <button
-              type="button"
-              onClick={onLogout}
-              className="ml-1 rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100"
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-5 py-4">
+          <div className="min-w-0">
+            <Link
+              href="/app/today"
+              className="text-sm font-medium text-zinc-600 hover:text-zinc-900"
             >
-              Log out
-            </button>
-          </nav>
+              ← Back to app
+            </Link>
+            <p className="truncate text-base font-semibold">{pageTitle}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100"
+          >
+            Log out
+          </button>
         </div>
       </header>
-      <div className="mx-auto w-full max-w-3xl px-5 py-6">{children}</div>
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-5 py-6">
+        {canEdit === false ? <ReadOnlyBanner /> : null}
+        {children}
+      </div>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { tripDays } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { eachDateInclusive, nextDaySortOrder } from "@/lib/host/itinerary-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
@@ -14,7 +14,7 @@ export async function POST(
 ) {
   const { inviteCode } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
 
     const existing = await db
       .select({ date: tripDays.date })

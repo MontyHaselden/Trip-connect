@@ -46,7 +46,7 @@ export function AiImportProgress(props: {
 
     setActive(false);
     setTimedOut(false);
-    router.replace(`/host/${encodeURIComponent(inviteCode)}/itinerary`);
+    router.replace(`/host/${encodeURIComponent(inviteCode)}/manage/itinerary`);
   }, [active, dayCount, inviteCode, router]);
 
   if (!active && !timedOut) return null;

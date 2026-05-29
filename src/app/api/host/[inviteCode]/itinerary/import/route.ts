@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { applyItineraryImport } from "@/lib/ai/apply-itinerary-import";
 import { parseItineraryText } from "@/lib/ai/itinerary-import";
 import { hostApiError } from "@/lib/host/api-errors";
@@ -19,7 +19,7 @@ export async function POST(
 ) {
   const { inviteCode } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const json = await req.json().catch(() => null);
     const parsed = ImportBodySchema.safeParse(json);
     if (!parsed.success) {

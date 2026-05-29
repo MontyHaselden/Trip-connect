@@ -4,7 +4,11 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { publishedTripSnapshots, trips } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import {
+  requireHostTripEditAccess,
+  requireHostTripForInvite,
+  type HostTrip,
+} from "@/lib/auth/require-host-trip";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
 import { tripNeedsPublishConfirm } from "@/lib/publish/trip-live";
 
@@ -47,7 +51,7 @@ async function getLastPublishedAt(tripId: string, version: number) {
 }
 
 function tripToJson(
-  trip: Awaited<ReturnType<typeof requireHostTripForInvite>>,
+  trip: HostTrip,
   lastPublishedAt: string | null,
   needsPublishConfirm: boolean,
 ) {
@@ -81,7 +85,11 @@ export async function GET(
       getLastPublishedAt(trip.id, trip.publishedVersion),
       tripNeedsPublishConfirm(trip.id),
     ]);
-    return NextResponse.json(tripToJson(trip, lastPublishedAt, needsConfirm));
+    return NextResponse.json({
+      ...tripToJson(trip, lastPublishedAt, needsConfirm),
+      canEdit: trip.canEdit,
+      role: trip.role,
+    });
   } catch {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
@@ -94,7 +102,7 @@ export async function PATCH(
   const { inviteCode } = await ctx.params;
 
   try {
-    const existing = await requireHostTripForInvite(inviteCode);
+    const existing = await requireHostTripEditAccess(inviteCode);
     const json = await req.json().catch(() => null);
     const parsed = PatchTripSchema.safeParse(json);
 
@@ -158,6 +166,8 @@ export async function PATCH(
         lastPublishedAt,
         needsConfirm,
       ),
+      canEdit: existing.canEdit,
+      role: existing.role,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Update failed.";

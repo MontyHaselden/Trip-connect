@@ -56,7 +56,12 @@ export async function createTripForHost(params: {
 
   if (!trip) throw new Error("Failed to create trip.");
 
-  await db.insert(hostTripMembers).values({ hostId: params.hostId, tripId: trip.id });
+  await db.insert(hostTripMembers).values({
+    hostId: params.hostId,
+    tripId: trip.id,
+    canEdit: true,
+    acceptedAt: new Date(),
+  });
 
   return trip;
 }

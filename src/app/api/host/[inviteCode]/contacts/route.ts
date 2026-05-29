@@ -3,7 +3,10 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { contacts } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import {
+  requireHostTripEditAccess,
+  requireHostTripForInvite,
+} from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import {
   clearEmergencyLeadExcept,
@@ -41,7 +44,7 @@ export async function POST(
 ) {
   const { inviteCode } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const json = await req.json().catch(() => null);
     const parsed = CreateContactSchema.safeParse(json);
     if (!parsed.success) {

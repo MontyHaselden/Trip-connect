@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { emergencyPhrases } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import {
   getCategoryForTrip,
@@ -24,7 +24,7 @@ export async function POST(
 ) {
   const { inviteCode, categoryId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const category = await getCategoryForTrip(trip.id, categoryId);
     if (!category) {
       return NextResponse.json({ error: "Category not found." }, { status: 404 });

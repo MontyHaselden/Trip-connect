@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { enterTripAppClient } from "@/lib/client/enter-trip-app";
+
 type TripsResponse = {
   trips: Array<{
     id: string;
@@ -124,6 +126,24 @@ export default function HostPortalPage() {
     }
   }
 
+  async function enterTripAndGo(
+    inviteCode: string,
+    opts?: { building?: boolean; setLoading?: (v: boolean) => void },
+  ) {
+    const setLoading = opts?.setLoading ?? setBusy;
+    setLoading(true);
+    setError(null);
+    try {
+      await enterTripAppClient(inviteCode);
+      const qs = opts?.building ? "?building=1" : "";
+      router.replace(`/app/today${qs}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to open trip");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function onCreateTripFromDocument() {
     if (!aiDocument) {
       setError("Choose a PDF or document to upload.");
@@ -145,9 +165,10 @@ export default function HostPortalPage() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "AI trip creation failed");
 
-      router.replace(
-        `/host/${encodeURIComponent(body.inviteCode)}/itinerary?building=1`,
-      );
+      await enterTripAndGo(body.inviteCode, {
+        building: true,
+        setLoading: setAiBusy,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI trip creation failed");
     } finally {
@@ -174,7 +195,7 @@ export default function HostPortalPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "Create trip failed");
-      router.replace(`/host/${encodeURIComponent(body.inviteCode)}/dashboard`);
+      await enterTripAndGo(body.inviteCode);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create trip failed");
     } finally {
@@ -350,11 +371,7 @@ export default function HostPortalPage() {
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() =>
-                        router.replace(
-                          `/host/${encodeURIComponent(t.inviteCode)}/dashboard`,
-                        )
-                      }
+                      onClick={() => enterTripAndGo(t.inviteCode)}
                       className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 text-left"
                     >
                       <div>

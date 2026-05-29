@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { groups } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getGroupForTrip } from "@/lib/host/roster-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
@@ -22,7 +22,7 @@ export async function PATCH(
 ) {
   const { inviteCode, groupId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const group = await getGroupForTrip(trip.id, groupId);
     if (!group) return NextResponse.json({ error: "Group not found." }, { status: 404 });
 
@@ -59,7 +59,7 @@ export async function DELETE(
 ) {
   const { inviteCode, groupId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const group = await getGroupForTrip(trip.id, groupId);
     if (!group) return NextResponse.json({ error: "Group not found." }, { status: 404 });
 

@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { emergencyPhrases } from "@/lib/db/schema";
-import { requireHostTripForInvite } from "@/lib/auth/require-host-trip";
+import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getPhraseForTrip } from "@/lib/host/phrases-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
@@ -23,7 +23,7 @@ export async function PATCH(
 ) {
   const { inviteCode, phraseId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const phrase = await getPhraseForTrip(trip.id, phraseId);
     if (!phrase) {
       return NextResponse.json({ error: "Phrase not found." }, { status: 404 });
@@ -64,7 +64,7 @@ export async function DELETE(
 ) {
   const { inviteCode, phraseId } = await ctx.params;
   try {
-    const trip = await requireHostTripForInvite(inviteCode);
+    const trip = await requireHostTripEditAccess(inviteCode);
     const phrase = await getPhraseForTrip(trip.id, phraseId);
     if (!phrase) {
       return NextResponse.json({ error: "Phrase not found." }, { status: 404 });

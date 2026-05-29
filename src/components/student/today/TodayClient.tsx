@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 
 import { useTripCache } from "@/hooks/useTripCache";
 import { useSelectedTripDay } from "@/hooks/useSelectedTripDay";
@@ -10,10 +10,12 @@ import {
   formatRelativeFromNow,
   formatTripDateHeader,
   formatTripTime,
+  getCountdownToStart,
   tripLocalDateTime,
 } from "@/lib/utils/time";
 import { TripNotReady } from "@/components/student/TripNotReady";
 import { CalendarSheet } from "@/components/student/today/CalendarSheet";
+import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
 
 function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
   if (!x || typeof x !== "object") return false;
@@ -21,7 +23,7 @@ function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
   return Boolean(o.trip && o.days && o.itineraryItems);
 }
 
-export function TodayClient() {
+function TodayContent() {
   const cache = useTripCache();
   const trip = isTripPayload(cache.payload) ? cache.payload : null;
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -34,10 +36,29 @@ export function TodayClient() {
       (cache.status === "up_to_date" || cache.status === "ready"));
 
   const tripTz = trip?.trip.timezone ?? "UTC";
-  const { selectedDay, goToday, goTomorrow, goNext, setDate } = useSelectedTripDay(
-    trip?.days ?? [],
-    tripTz,
-  );
+  const tripDates = trip
+    ? { startDate: trip.trip.startDate, endDate: trip.trip.endDate }
+    : undefined;
+
+  const {
+    selectedDay,
+    phase,
+    tripEve,
+    firstDay,
+    goToday,
+    goTomorrow,
+    goNext,
+    setDate,
+    viewDay1,
+  } = useSelectedTripDay(trip?.days ?? [], tripTz, tripDates);
+
+  const countdown = useMemo(() => {
+    if (!trip || phase !== "pre") return null;
+    return getCountdownToStart({
+      startDate: trip.trip.startDate,
+      tripTimezone: tripTz,
+    });
+  }, [phase, trip, tripTz]);
 
   const dayItems = useMemo(() => {
     if (!trip || !selectedDay) return [];
@@ -64,14 +85,13 @@ export function TodayClient() {
 
     if (!upcoming) return null;
 
-    const leaveBy =
-      upcoming.item.leaveByTime
-        ? tripLocalDateTime({
-            dateISO: selectedDay.date,
-            timeHHMMSS: upcoming.item.leaveByTime,
-            tripTimezone: tripTz,
-          })
-        : null;
+    const leaveBy = upcoming.item.leaveByTime
+      ? tripLocalDateTime({
+          dateISO: selectedDay.date,
+          timeHHMMSS: upcoming.item.leaveByTime,
+          tripTimezone: tripTz,
+        })
+      : null;
 
     return { ...upcoming, leaveBy };
   }, [dayItems, selectedDay, trip, tripTz]);
@@ -82,6 +102,13 @@ export function TodayClient() {
       .filter((p) => p.tripDayId === selectedDay.id)
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [trip, selectedDay]);
+
+  const evePrep = useMemo(() => {
+    if (!trip || !firstDay || !tripEve || selectedDay) return [];
+    return trip.tomorrowPrepItems
+      .filter((p) => p.tripDayId === firstDay.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [firstDay, selectedDay, trip, tripEve]);
 
   async function onRefresh() {
     setRefreshing(true);
@@ -94,8 +121,8 @@ export function TodayClient() {
 
   if (cache.status === "offline_no_cache") {
     return (
-      <main className="flex flex-col gap-4 py-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
+      <main className="flex flex-col gap-4 py-2">
+        <h2 className="text-2xl font-semibold tracking-tight">Today</h2>
         <div className="rounded-2xl border border-zinc-200 bg-white p-5">
           <p className="text-sm text-zinc-700">
             Connect to the internet once to download the trip.
@@ -107,18 +134,26 @@ export function TodayClient() {
 
   if (tripNotPublished && !trip) {
     return (
-      <TripNotReady
-        title="Today"
-        onRefresh={cache.online ? onRefresh : undefined}
-        refreshing={refreshing}
-      />
+      <>
+        <Suspense>
+          <TodayBuildingBanner />
+        </Suspense>
+        <TripNotReady
+          title="Today"
+          onRefresh={cache.online ? onRefresh : undefined}
+          refreshing={refreshing}
+        />
+      </>
     );
   }
 
-  if (!trip || !selectedDay) {
+  if (!trip) {
     return (
-      <main className="flex flex-col gap-4 py-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
+      <main className="flex flex-col gap-4 py-2">
+        <Suspense>
+          <TodayBuildingBanner />
+        </Suspense>
+        <h2 className="text-2xl font-semibold tracking-tight">Today</h2>
         <div className="rounded-2xl border border-zinc-200 bg-white p-5">
           <p className="text-sm text-zinc-700">Loading trip…</p>
         </div>
@@ -126,10 +161,104 @@ export function TodayClient() {
     );
   }
 
+  if (phase === "pre" && !selectedDay) {
+    return (
+      <main className="flex flex-col gap-4 py-2">
+        <Suspense>
+          <TodayBuildingBanner />
+        </Suspense>
+        <header className="flex flex-col gap-1">
+          <h2 className="text-2xl font-semibold tracking-tight">Today</h2>
+          <p className="text-sm text-zinc-600">{trip.trip.name}</p>
+        </header>
+
+        {countdown ? (
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Countdown
+            </p>
+            <p className="mt-2 text-xl font-semibold text-zinc-900">
+              {countdown.label}
+            </p>
+            {!tripEve && countdown.days > 0 ? (
+              <p className="mt-1 text-sm text-zinc-600">
+                {countdown.days} day{countdown.days === 1 ? "" : "s"},{" "}
+                {countdown.hours} hour{countdown.hours === 1 ? "" : "s"} to go
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-5">
+          <h3 className="text-base font-semibold">Trip summary</h3>
+          <dl className="mt-3 space-y-2 text-sm">
+            <div>
+              <dt className="text-xs text-zinc-500">Dates</dt>
+              <dd className="font-medium">
+                {trip.trip.startDate} → {trip.trip.endDate}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-zinc-500">School</dt>
+              <dd className="font-medium">{trip.trip.schoolName}</dd>
+            </div>
+            {trip.trip.destinationCountry ? (
+              <div>
+                <dt className="text-xs text-zinc-500">Destination</dt>
+                <dd className="font-medium">{trip.trip.destinationCountry}</dd>
+              </div>
+            ) : null}
+          </dl>
+        </section>
+
+        {tripEve && firstDay ? (
+          <>
+            {evePrep.length ? (
+              <section className="rounded-2xl border border-zinc-200 bg-white p-5">
+                <h3 className="text-base font-semibold">
+                  Pack for Day 1 (tomorrow)
+                </h3>
+                <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-zinc-800">
+                  {evePrep.map((p) => (
+                    <li key={p.id}>{p.text}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+            <button
+              type="button"
+              onClick={viewDay1}
+              className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white"
+            >
+              View Day 1
+            </button>
+          </>
+        ) : null}
+      </main>
+    );
+  }
+
+  if (!selectedDay) {
+    return (
+      <main className="flex flex-col gap-4 py-2">
+        <h2 className="text-2xl font-semibold tracking-tight">Today</h2>
+        <div className="rounded-2xl border border-zinc-200 bg-white p-5">
+          <p className="text-sm text-zinc-700">No days in this trip yet.</p>
+        </div>
+      </main>
+    );
+  }
+
+  const tomorrowLabel =
+    phase === "pre" && tripEve ? "Day 1" : "Tomorrow";
+
   return (
-    <main className="flex flex-col gap-4 py-6">
+    <main className="flex flex-col gap-4 py-2">
+      <Suspense>
+        <TodayBuildingBanner />
+      </Suspense>
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
+        <h2 className="text-2xl font-semibold tracking-tight">Today</h2>
         <p className="text-sm text-zinc-600">
           {formatTripDateHeader({ dateISO: selectedDay.date, tripTimezone: tripTz })}{" "}
           — {selectedDay.cityLabel}
@@ -149,7 +278,7 @@ export function TodayClient() {
           onClick={goTomorrow}
           className="h-10 flex-1 rounded-xl border border-zinc-200 bg-white text-sm font-medium"
         >
-          Tomorrow
+          {tomorrowLabel}
         </button>
         <button
           type="button"
@@ -168,7 +297,7 @@ export function TodayClient() {
       </div>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-        <h2 className="text-base font-semibold">Next up</h2>
+        <h3 className="text-base font-semibold">Next up</h3>
         {nextUp ? (
           <div className="mt-3">
             <div className="text-sm text-zinc-900">
@@ -205,7 +334,7 @@ export function TodayClient() {
       </section>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-        <h2 className="text-base font-semibold">Timeline</h2>
+        <h3 className="text-base font-semibold">Timeline</h3>
         <div className="mt-3 flex flex-col gap-3">
           {dayItems.map((item) => {
             const mapsQuery = item.mapQuery || item.address || "";
@@ -275,7 +404,7 @@ export function TodayClient() {
       </section>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-        <h2 className="text-base font-semibold">Tomorrow prep</h2>
+        <h3 className="text-base font-semibold">Tomorrow prep</h3>
         {tomorrowPrep.length ? (
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-zinc-800">
             {tomorrowPrep.map((p) => (
@@ -301,3 +430,10 @@ export function TodayClient() {
   );
 }
 
+export function TodayClient() {
+  return (
+    <Suspense>
+      <TodayContent />
+    </Suspense>
+  );
+}
