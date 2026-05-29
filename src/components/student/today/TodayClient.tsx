@@ -105,12 +105,35 @@ function TodayContent() {
   const hasContent = dayItems.length > 0 || prepItems.length > 0;
 
   return (
-    <div className="flex flex-col pb-4">
+    <div className="flex h-full min-h-[60dvh] flex-col">
       <Suspense>
         <TodayBuildingBanner />
       </Suspense>
 
+      <div className="flex-1 overflow-y-auto pb-6 pt-3">
+        {hasContent ? (
+          <ItineraryList
+            items={dayItems}
+            tripTimezone={tripTz}
+            dateISO={selectedDay.date}
+            mapsOnline={cache.online}
+            showUpNext={isViewingToday}
+            prepItems={prepItems}
+          />
+        ) : (
+          <div className="py-16 text-center">
+            <p className="text-sm font-medium text-zinc-800">No event today</p>
+            {typeof daysUntil === "number" && daysUntil > 0 ? (
+              <p className="mt-2 text-sm text-zinc-500">
+                {daysUntil} day{daysUntil === 1 ? "" : "s"} until trip
+              </p>
+            ) : null}
+          </div>
+        )}
+      </div>
+
       <TodayHeader
+        variant="dock"
         dateISO={selectedDay.date}
         cityLabel={selectedDay.cityLabel}
         tripTimezone={tripTz}
@@ -121,26 +144,6 @@ function TodayContent() {
         onNext={goNext}
         onOpenCalendar={() => setCalendarOpen(true)}
       />
-
-      {hasContent ? (
-        <ItineraryList
-          items={dayItems}
-          tripTimezone={tripTz}
-          dateISO={selectedDay.date}
-          mapsOnline={cache.online}
-          showUpNext={isViewingToday}
-          prepItems={prepItems}
-        />
-      ) : (
-        <div className="py-16 text-center">
-          <p className="text-sm font-medium text-zinc-800">No event today</p>
-          {typeof daysUntil === "number" && daysUntil > 0 ? (
-            <p className="mt-2 text-sm text-zinc-500">
-              {daysUntil} day{daysUntil === 1 ? "" : "s"} until trip
-            </p>
-          ) : null}
-        </div>
-      )}
 
       <CalendarSheet
         open={calendarOpen}

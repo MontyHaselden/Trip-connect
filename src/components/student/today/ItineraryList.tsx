@@ -37,7 +37,7 @@ export function ItineraryList(props: {
       {upcoming ? (
         <p className="mb-4 border-b border-zinc-100 pb-4 text-sm text-zinc-500">
           Up next · starts {formatRelativeFromNow(upcoming.start)} ·{" "}
-          {formatTripTime(upcoming.item.startTime, tripTimezone)} —{" "}
+          {formatTripTime(upcoming.item.startTime, tripTimezone)} ·{" "}
           {upcoming.item.title}
         </p>
       ) : null}

@@ -14,14 +14,13 @@ export function CalendarSheet(props: {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
-      <button
-        type="button"
-        aria-label="Close calendar"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-5">
+      <div
+        role="presentation"
         onClick={onClose}
         className="absolute inset-0 bg-black/30"
       />
-      <div className="relative mx-auto flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-2xl bg-zinc-50 shadow-xl">
+      <div className="relative mx-auto flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-zinc-50 shadow-xl">
         <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/80 px-5 py-4">
           <h2 className="text-base font-semibold text-zinc-900">Calendar</h2>
           <button
