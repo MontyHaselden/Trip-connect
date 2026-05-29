@@ -107,13 +107,15 @@ export function ItineraryList(props: {
     : "Up first";
 
   useEffect(() => {
+    if (beforeItems.length === 0) return;
+
     const container = scrollRef.current;
     const featured = featuredRef.current;
     if (!container || !featured) return;
 
     const top = featured.offsetTop - 56;
     container.scrollTop = Math.max(0, top);
-  }, [dateISO, featuredIndex]);
+  }, [dateISO, featuredIndex, beforeItems.length]);
 
   if (!items.length && !prepItems.length) {
     return null;
@@ -144,7 +146,7 @@ export function ItineraryList(props: {
       {featuredItem ? (
         <div
           ref={featuredRef}
-          className="sticky top-0 z-10 bg-zinc-50/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-zinc-50/80"
+          className="sticky top-0 z-10 bg-zinc-50/95 pb-3 backdrop-blur supports-[backdrop-filter]:bg-zinc-50/80"
         >
           <ItineraryRow
             item={featuredItem}
@@ -157,10 +159,7 @@ export function ItineraryList(props: {
       ) : null}
 
       {afterItems.length ? (
-        <section className="pt-1">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
-            {isViewingToday ? "Later today" : "Rest of day"}
-          </p>
+        <section className="mt-1 border-t border-zinc-100 pt-3">
           {afterItems.map((item, i) => (
             <ItineraryRow
               key={item.id}
