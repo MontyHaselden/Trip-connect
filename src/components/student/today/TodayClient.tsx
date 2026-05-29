@@ -1,16 +1,16 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo } from "react";
 
 import { useTripApp } from "@/components/layout/TripAppContext";
 import { useSelectedTripDay } from "@/hooks/useSelectedTripDay";
 import type { ParticipantFilteredTripV1 } from "@/lib/publish/filter-for-participant";
 import { daysUntilTrip } from "@/lib/utils/time";
 import { TripNotReady } from "@/components/student/TripNotReady";
-import { CalendarSheet } from "@/components/student/today/CalendarSheet";
 import { ItineraryList } from "@/components/student/today/ItineraryList";
 import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
-import { TodayHeader } from "@/components/student/today/TodayHeader";
+import { TodayCalendarDock } from "@/components/student/today/TodayCalendarDock";
+import { TodayTitle } from "@/components/student/today/TodayTitle";
 
 function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
   if (!x || typeof x !== "object") return false;
@@ -21,7 +21,6 @@ function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
 function TodayContent() {
   const { cache } = useTripApp();
   const trip = isTripPayload(cache.payload) ? cache.payload : null;
-  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const tripNotPublished =
     cache.version === 0 ||
@@ -105,23 +104,32 @@ function TodayContent() {
   const hasContent = dayItems.length > 0 || prepItems.length > 0;
 
   return (
-    <div className="flex h-full min-h-[60dvh] flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <Suspense>
         <TodayBuildingBanner />
       </Suspense>
 
-      <div className="flex-1 overflow-y-auto pb-6 pt-3">
-        {hasContent ? (
-          <ItineraryList
-            items={dayItems}
-            tripTimezone={tripTz}
-            dateISO={selectedDay.date}
-            mapsOnline={cache.online}
-            showUpNext={isViewingToday}
-            prepItems={prepItems}
-          />
-        ) : (
-          <div className="py-16 text-center">
+      <TodayTitle
+        tripName={trip.trip.name}
+        schoolName={trip.trip.schoolName}
+        dateISO={selectedDay.date}
+        cityLabel={selectedDay.cityLabel}
+        tripTimezone={tripTz}
+        tripStartDate={trip.trip.startDate}
+      />
+
+      {hasContent ? (
+        <ItineraryList
+          items={dayItems}
+          tripTimezone={tripTz}
+          dateISO={selectedDay.date}
+          mapsOnline={cache.online}
+          isViewingToday={isViewingToday}
+          prepItems={prepItems}
+        />
+      ) : (
+        <div className="flex flex-1 items-center justify-center py-8 text-center">
+          <div>
             <p className="text-sm font-medium text-zinc-800">No event today</p>
             {typeof daysUntil === "number" && daysUntil > 0 ? (
               <p className="mt-2 text-sm text-zinc-500">
@@ -129,27 +137,16 @@ function TodayContent() {
               </p>
             ) : null}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      <TodayHeader
-        variant="dock"
-        dateISO={selectedDay.date}
-        cityLabel={selectedDay.cityLabel}
-        tripTimezone={tripTz}
-        tripStartDate={trip.trip.startDate}
+      <TodayCalendarDock
+        days={scheduledDays}
+        selectedDateISO={selectedDay.date}
         canGoPrev={canGoPrev}
         canGoNext={canGoNext}
         onPrev={goPrev}
         onNext={goNext}
-        onOpenCalendar={() => setCalendarOpen(true)}
-      />
-
-      <CalendarSheet
-        open={calendarOpen}
-        onClose={() => setCalendarOpen(false)}
-        days={scheduledDays}
-        selectedDateISO={selectedDay.date}
         onSelectDate={setDate}
       />
     </div>

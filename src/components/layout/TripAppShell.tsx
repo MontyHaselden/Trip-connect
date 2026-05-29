@@ -138,7 +138,7 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
             status={bannerStatus}
             message={cache.status === "error" ? cache.message : undefined}
           />
-          <div className="flex-1">{children}</div>
+          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
           <StudentBottomNav />
         </div>
       </div>

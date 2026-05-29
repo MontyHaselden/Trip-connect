@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DateTime } from "luxon";
 
@@ -78,21 +78,37 @@ export function useSelectedTripDay(
     });
   }, [tripDates, tripTimezone]);
 
-  const selectedDay = useMemo(() => {
+  const defaultDateISO = useMemo(() => {
+    return pickDefaultDay(scheduledDays, todayISO, phase)?.date ?? null;
+  }, [scheduledDays, todayISO, phase]);
+
+  const [activeDateISO, setActiveDateISO] = useState<string | null>(null);
+
+  useEffect(() => {
     if (dateParam && daysByDate.has(dateParam)) {
-      return daysByDate.get(dateParam)!;
+      setActiveDateISO(dateParam);
+      return;
     }
+    if (defaultDateISO) {
+      setActiveDateISO(defaultDateISO);
+    }
+  }, [dateParam, daysByDate, defaultDateISO]);
+
+  const selectedDay = useMemo(() => {
+    const iso = activeDateISO ?? dateParam ?? defaultDateISO;
+    if (iso && daysByDate.has(iso)) return daysByDate.get(iso)!;
     return pickDefaultDay(scheduledDays, todayISO, phase);
-  }, [dateParam, daysByDate, scheduledDays, todayISO, phase]);
+  }, [activeDateISO, dateParam, defaultDateISO, daysByDate, scheduledDays, todayISO, phase]);
 
   const selectedIndex = selectedDay
     ? scheduledDays.findIndex((d) => d.id === selectedDay.id)
     : -1;
 
   function setDate(dateISO: string) {
+    if (!daysByDate.has(dateISO)) return;
+    setActiveDateISO(dateISO);
     const params = new URLSearchParams(search.toString());
     params.set("date", dateISO);
-    // push (not replace) so App Router updates reliably across devices
     router.push(`${pathname}?${params.toString()}`);
   }
 
