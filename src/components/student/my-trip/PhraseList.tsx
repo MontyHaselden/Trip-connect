@@ -14,7 +14,14 @@ export function PhraseList(props: {
 }) {
   const { categories, phrases } = props;
 
-  if (!categories.length) return null;
+  if (!categories.length) {
+    return (
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5">
+        <h2 className="text-base font-semibold">Emergency phrases</h2>
+        <p className="mt-2 text-sm text-zinc-600">No phrases added yet.</p>
+      </section>
+    );
+  }
 
   const phrasesByCategory = new Map<string, typeof phrases>();
   for (const p of phrases) {

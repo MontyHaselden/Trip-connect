@@ -117,6 +117,21 @@ export function useSelectedTripDay(
     if (next) setDate(next.date);
   }
 
+  function goPrev() {
+    if (!selected) return;
+    const idx = sortedDays.findIndex((d) => d.id === selected.id);
+    const prev = sortedDays[idx - 1];
+    if (prev) setDate(prev.date);
+  }
+
+  const selectedIndex = selected
+    ? sortedDays.findIndex((d) => d.id === selected.id)
+    : -1;
+
+  const canGoPrev = selectedIndex > 0;
+  const canGoNext =
+    selectedIndex >= 0 && selectedIndex < sortedDays.length - 1;
+
   function viewDay1() {
     if (firstDay) setDate(firstDay.date);
   }
@@ -130,6 +145,9 @@ export function useSelectedTripDay(
     goToday,
     goTomorrow,
     goNext,
+    goPrev,
+    canGoPrev,
+    canGoNext,
     viewDay1,
   };
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
-import { useTripCache } from "@/hooks/useTripCache";
+import { useTripApp } from "@/components/layout/TripAppContext";
 import { TripNotReady } from "@/components/student/TripNotReady";
 import type { ParticipantFilteredTripV1 } from "@/lib/publish/filter-for-participant";
 import { MyDetails } from "@/components/student/my-trip/MyDetails";
@@ -18,24 +18,14 @@ function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
 }
 
 export default function MyTripPage() {
-  const cache = useTripCache();
+  const { cache } = useTripApp();
   const trip = isTripPayload(cache.payload) ? cache.payload : null;
-  const [refreshing, setRefreshing] = useState(false);
 
   const tripNotPublished =
     cache.version === 0 ||
     (cache.version === null &&
       !trip &&
       (cache.status === "up_to_date" || cache.status === "ready"));
-
-  async function onRefresh() {
-    setRefreshing(true);
-    try {
-      await cache.refresh();
-    } finally {
-      setRefreshing(false);
-    }
-  }
 
   const leadContact = useMemo(() => {
     if (!trip) return null;
@@ -45,8 +35,8 @@ export default function MyTripPage() {
 
   if (cache.status === "offline_no_cache") {
     return (
-      <main className="flex flex-col gap-4 py-6">
-        <h1 className="text-2xl font-semibold tracking-tight">My Trip</h1>
+      <main className="flex flex-col gap-4 py-2">
+        <h2 className="text-lg font-semibold tracking-tight">My Trip</h2>
         <div className="rounded-2xl border border-zinc-200 bg-white p-5">
           <p className="text-sm text-zinc-700">
             Connect to the internet once to download the trip.
@@ -57,19 +47,13 @@ export default function MyTripPage() {
   }
 
   if (tripNotPublished && !trip) {
-    return (
-      <TripNotReady
-        title="My Trip"
-        onRefresh={cache.online ? onRefresh : undefined}
-        refreshing={refreshing}
-      />
-    );
+    return <TripNotReady title="My Trip" />;
   }
 
   if (!trip) {
     return (
-      <main className="flex flex-col gap-4 py-6">
-        <h1 className="text-2xl font-semibold tracking-tight">My Trip</h1>
+      <main className="flex flex-col gap-4 py-2">
+        <h2 className="text-lg font-semibold tracking-tight">My Trip</h2>
         <div className="rounded-2xl border border-zinc-200 bg-white p-5">
           <p className="text-sm text-zinc-700">Loading trip…</p>
         </div>
@@ -78,9 +62,9 @@ export default function MyTripPage() {
   }
 
   return (
-    <main className="flex flex-col gap-4 py-6">
+    <main className="flex flex-col gap-4 py-2">
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">My Trip</h1>
+        <h2 className="text-lg font-semibold tracking-tight">My Trip</h2>
         <p className="text-sm text-zinc-600">{trip.trip.name}</p>
       </header>
 
@@ -90,12 +74,18 @@ export default function MyTripPage() {
         role={trip.participant.role}
       />
 
+      <KeyContacts contacts={trip.contacts} />
+
+      <PhraseList categories={trip.phraseCategories} phrases={trip.phrases} />
+
       <MyGroupsRooms
         groups={trip.groups}
-        room={trip.room ? { roomName: trip.room.roomName, roommates: trip.room.roommates } : null}
+        room={
+          trip.room
+            ? { roomName: trip.room.roomName, roommates: trip.room.roommates }
+            : null
+        }
       />
-
-      <KeyContacts contacts={trip.contacts} />
 
       <EmergencyCard
         tripName={trip.trip.name}
@@ -112,9 +102,6 @@ export default function MyTripPage() {
             : null
         }
       />
-
-      <PhraseList categories={trip.phraseCategories} phrases={trip.phrases} />
     </main>
   );
 }
-

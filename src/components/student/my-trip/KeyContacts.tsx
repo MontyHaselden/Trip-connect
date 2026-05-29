@@ -18,7 +18,14 @@ export function KeyContacts(props: {
 }) {
   const { contacts } = props;
 
-  if (!contacts.length) return null;
+  if (!contacts.length) {
+    return (
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5">
+        <h2 className="text-base font-semibold">Key contacts</h2>
+        <p className="mt-2 text-sm text-zinc-600">No contacts added yet.</p>
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-5">

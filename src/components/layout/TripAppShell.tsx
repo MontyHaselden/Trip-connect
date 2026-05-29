@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { OfflineBanner } from "./OfflineBanner";
 import { StudentBottomNav } from "./StudentBottomNav";
+import { TripAppContext } from "./TripAppContext";
 import { useTripCache } from "@/hooks/useTripCache";
 import { clearStudentSessionAndCache } from "@/lib/offline/sync";
+import type { ParticipantFilteredTripV1 } from "@/lib/publish/filter-for-participant";
 
 function SettingsIcon() {
   return (
@@ -28,20 +30,44 @@ function SettingsIcon() {
   );
 }
 
+function RefreshIcon({ spinning }: { spinning: boolean }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={["h-5 w-5", spinning ? "animate-spin" : ""].join(" ")}
+      aria-hidden
+    >
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v6h-6" />
+    </svg>
+  );
+}
+
+function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
+  if (!x || typeof x !== "object") return false;
+  const o = x as { trip?: unknown; participant?: unknown };
+  return Boolean(o.trip && o.participant);
+}
+
 export function TripAppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const cache = useTripCache();
   const [refreshing, setRefreshing] = useState(false);
 
-  const tripName =
-    cache.payload &&
-    typeof cache.payload === "object" &&
-    "trip" in cache.payload &&
-    cache.payload.trip &&
-    typeof cache.payload.trip === "object" &&
-    "name" in cache.payload.trip
-      ? String((cache.payload.trip as { name: string }).name)
-      : "Trip";
+  const trip = isTripPayload(cache.payload) ? cache.payload : null;
+
+  const headerTitle = useMemo(() => {
+    if (trip) {
+      return `${trip.trip.schoolName} ${trip.trip.name}`.toLowerCase();
+    }
+    return "trip";
+  }, [trip]);
 
   async function onRefresh() {
     setRefreshing(true);
@@ -67,42 +93,55 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
     }
   }, [cache.status, router]);
 
-  return (
-    <div className="min-h-dvh bg-zinc-50 text-zinc-900">
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-3 px-5 py-4">
-        <header className="flex items-center justify-between gap-3">
-          <h1 className="truncate text-base font-semibold tracking-tight">
-            {tripName}
-          </h1>
-          <Link
-            href="/app/settings"
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700"
-            aria-label="Settings"
-          >
-            <SettingsIcon />
-          </Link>
-        </header>
+  const bannerStatus =
+    cache.status === "updated" ||
+    cache.status === "up_to_date" ||
+    cache.status === "offline_no_cache" ||
+    cache.status === "syncing" ||
+    cache.status === "ready" ||
+    cache.status === "error"
+      ? cache.status
+      : "ready";
 
-        <OfflineBanner
-          online={cache.online}
-          cachedAt={cache.cachedAt}
-          version={cache.version}
-          onRefresh={onRefresh}
-          refreshing={refreshing}
-          status={
-            cache.status === "updated" ||
-            cache.status === "up_to_date" ||
-            cache.status === "offline_no_cache" ||
-            cache.status === "syncing" ||
-            cache.status === "ready" ||
-            cache.status === "error"
-              ? cache.status
-              : "ready"
-          }
-        />
-        <div className="flex-1">{children}</div>
-        <StudentBottomNav />
+  return (
+    <TripAppContext.Provider value={{ refresh: onRefresh, refreshing, cache }}>
+      <div className="min-h-dvh bg-zinc-50 text-zinc-900">
+        <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-3 px-5 py-4">
+          <header className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-2">
+              <h1 className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight">
+                {headerTitle}
+              </h1>
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={!cache.online || refreshing || cache.status === "syncing"}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-700 disabled:opacity-50"
+                aria-label="Refresh trip data"
+              >
+                <RefreshIcon spinning={refreshing || cache.status === "syncing"} />
+              </button>
+              <Link
+                href="/app/settings"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-700"
+                aria-label="Settings"
+              >
+                <SettingsIcon />
+              </Link>
+            </div>
+          </header>
+
+          <OfflineBanner
+            online={cache.online}
+            cachedAt={cache.cachedAt}
+            version={cache.version}
+            status={bannerStatus}
+            message={cache.status === "error" ? cache.message : undefined}
+          />
+          <div className="flex-1">{children}</div>
+          <StudentBottomNav />
+        </div>
       </div>
-    </div>
+    </TripAppContext.Provider>
   );
 }

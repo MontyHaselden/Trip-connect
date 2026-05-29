@@ -2,8 +2,8 @@
 
 import { Suspense, useMemo, useState } from "react";
 
-import { useTripCache } from "@/hooks/useTripCache";
 import { useSelectedTripDay } from "@/hooks/useSelectedTripDay";
+import { useTripApp } from "@/components/layout/TripAppContext";
 import type { ParticipantFilteredTripV1 } from "@/lib/publish/filter-for-participant";
 import { buildMapsSearchUrl } from "@/lib/utils/maps";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/lib/utils/time";
 import { TripNotReady } from "@/components/student/TripNotReady";
 import { CalendarSheet } from "@/components/student/today/CalendarSheet";
+import { DayNavFrame } from "@/components/student/today/DayNavFrame";
 import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
 
 function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
@@ -24,10 +25,9 @@ function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
 }
 
 function TodayContent() {
-  const cache = useTripCache();
+  const { cache } = useTripApp();
   const trip = isTripPayload(cache.payload) ? cache.payload : null;
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
   const tripNotPublished =
     cache.version === 0 ||
@@ -45,9 +45,10 @@ function TodayContent() {
     phase,
     tripEve,
     firstDay,
-    goToday,
-    goTomorrow,
     goNext,
+    goPrev,
+    canGoPrev,
+    canGoNext,
     setDate,
     viewDay1,
   } = useSelectedTripDay(trip?.days ?? [], tripTz, tripDates);
@@ -110,15 +111,6 @@ function TodayContent() {
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [firstDay, selectedDay, trip, tripEve]);
 
-  async function onRefresh() {
-    setRefreshing(true);
-    try {
-      await cache.refresh();
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
   if (cache.status === "offline_no_cache") {
     return (
       <main className="flex flex-col gap-4 py-2">
@@ -138,11 +130,7 @@ function TodayContent() {
         <Suspense>
           <TodayBuildingBanner />
         </Suspense>
-        <TripNotReady
-          title="Today"
-          onRefresh={cache.online ? onRefresh : undefined}
-          refreshing={refreshing}
-        />
+    return <TripNotReady title="Today" />;
       </>
     );
   }
@@ -249,52 +237,24 @@ function TodayContent() {
     );
   }
 
-  const tomorrowLabel =
-    phase === "pre" && tripEve ? "Day 1" : "Tomorrow";
-
-  return (
-    <main className="flex flex-col gap-4 py-2">
-      <Suspense>
-        <TodayBuildingBanner />
-      </Suspense>
-      <header className="flex flex-col gap-1">
-        <h2 className="text-2xl font-semibold tracking-tight">Today</h2>
-        <p className="text-sm text-zinc-600">
-          {formatTripDateHeader({ dateISO: selectedDay.date, tripTimezone: tripTz })}{" "}
-          — {selectedDay.cityLabel}
-        </p>
-      </header>
-
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={goToday}
-          className="h-10 flex-1 rounded-xl border border-zinc-200 bg-white text-sm font-medium"
-        >
-          Today
-        </button>
-        <button
-          type="button"
-          onClick={goTomorrow}
-          className="h-10 flex-1 rounded-xl border border-zinc-200 bg-white text-sm font-medium"
-        >
-          {tomorrowLabel}
-        </button>
-        <button
-          type="button"
-          onClick={goNext}
-          className="h-10 flex-1 rounded-xl border border-zinc-200 bg-white text-sm font-medium"
-        >
-          Next day
-        </button>
+  const dayBody = (
+    <>
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Today</h2>
+          <p className="text-sm text-zinc-600">
+            {formatTripDateHeader({ dateISO: selectedDay.date, tripTimezone: tripTz })}{" "}
+            — {selectedDay.cityLabel}
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => setCalendarOpen(true)}
-          className="h-10 flex-1 rounded-xl border border-zinc-200 bg-white text-sm font-medium"
+          className="h-10 shrink-0 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium"
         >
           Calendar
         </button>
-      </div>
+      </header>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-5">
         <h3 className="text-base font-semibold">Next up</h3>
@@ -426,6 +386,22 @@ function TodayContent() {
           setCalendarOpen(false);
         }}
       />
+    </>
+  );
+
+  return (
+    <main className="flex flex-col gap-4 py-2">
+      <Suspense>
+        <TodayBuildingBanner />
+      </Suspense>
+      <DayNavFrame
+        canGoPrev={canGoPrev}
+        canGoNext={canGoNext}
+        onPrev={goPrev}
+        onNext={goNext}
+      >
+        {dayBody}
+      </DayNavFrame>
     </main>
   );
 }

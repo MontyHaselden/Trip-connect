@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@/lib/db/client";
 import { participants, trips } from "@/lib/db/schema";
 import { normalizeToE164 } from "@/lib/utils/phone";
+import { ensureTripPublishedIfReady } from "@/lib/publish/ensure-published";
 import { generateAccessToken } from "@/lib/utils/tokens";
 
 const JoinBodySchema = z.object({
@@ -64,12 +65,13 @@ export async function POST(
       .then((rows) => rows[0] ?? null);
 
     if (existing) {
+      const publishedVersion = await ensureTripPublishedIfReady(trip.id);
       return NextResponse.json({
         tripId: trip.id,
         participantId: existing.id,
         accessToken: existing.accessToken,
         tripName: trip.name,
-        publishedVersion: trip.publishedVersion,
+        publishedVersion,
       });
     }
 
@@ -91,12 +93,14 @@ export async function POST(
       return NextResponse.json({ error: "Join failed." }, { status: 500 });
     }
 
+    const publishedVersion = await ensureTripPublishedIfReady(trip.id);
+
     return NextResponse.json({
       tripId: trip.id,
       participantId: created.id,
       accessToken: created.accessToken,
       tripName: trip.name,
-      publishedVersion: trip.publishedVersion,
+      publishedVersion,
     });
   } catch (err) {
     const message =

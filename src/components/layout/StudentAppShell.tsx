@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { OfflineBanner } from "./OfflineBanner";
 import { StudentBottomNav } from "./StudentBottomNav";
@@ -10,16 +10,6 @@ import { clearStudentSessionAndCache } from "@/lib/offline/sync";
 export function StudentAppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const cache = useTripCache();
-  const [refreshing, setRefreshing] = useState(false);
-
-  async function onRefresh() {
-    setRefreshing(true);
-    try {
-      await cache.refresh();
-    } finally {
-      setRefreshing(false);
-    }
-  }
 
   useEffect(() => {
     // Guard: must have tripId + token to use /app/*
@@ -44,8 +34,6 @@ export function StudentAppShell({ children }: { children: React.ReactNode }) {
           online={cache.online}
           cachedAt={cache.cachedAt}
           version={cache.version}
-          onRefresh={onRefresh}
-          refreshing={refreshing}
           status={
             cache.status === "updated" ||
             cache.status === "up_to_date" ||
@@ -56,6 +44,7 @@ export function StudentAppShell({ children }: { children: React.ReactNode }) {
               ? cache.status
               : "ready"
           }
+          message={cache.status === "error" ? cache.message : undefined}
         />
         <div className="flex-1">{children}</div>
         <StudentBottomNav />
