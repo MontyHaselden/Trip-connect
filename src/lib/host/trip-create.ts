@@ -32,6 +32,8 @@ export async function createTripForHost(params: {
   endDate: string; // YYYY-MM-DD
   timezone: string;
   defaultCountryCallingCode: string; // e.g. NZ
+  destinationCountry?: string | null;
+  destinationLanguage?: string | null;
 }) {
   const inviteCode = await uniqueInviteCode();
 
@@ -46,6 +48,8 @@ export async function createTripForHost(params: {
       endDate: params.endDate,
       timezone: params.timezone.trim(),
       defaultCountryCallingCode: params.defaultCountryCallingCode.trim().toUpperCase(),
+      destinationCountry: params.destinationCountry ?? null,
+      destinationLanguage: params.destinationLanguage ?? null,
       publishedVersion: 0,
     })
     .returning({ id: trips.id, inviteCode: trips.inviteCode });

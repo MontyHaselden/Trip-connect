@@ -18,6 +18,34 @@ export async function createHostAccount(params: {
     params.phoneNumber,
     params.defaultCountryCallingCode,
   );
+
+  const existing = await db
+    .select({
+      email: hostAccounts.email,
+      phoneNumberE164: hostAccounts.phoneNumberE164,
+    })
+    .from(hostAccounts)
+    .where(eq(hostAccounts.email, email))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  if (existing) {
+    throw new Error("An account already exists with that email. Try logging in instead.");
+  }
+
+  const phoneTaken = await db
+    .select({ id: hostAccounts.id })
+    .from(hostAccounts)
+    .where(eq(hostAccounts.phoneNumberE164, phoneNumberE164))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  if (phoneTaken) {
+    throw new Error(
+      "An account already exists with that phone number. Try logging in instead.",
+    );
+  }
+
   const passwordHash = await bcrypt.hash(params.password, 10);
 
   const [created] = await db

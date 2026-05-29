@@ -64,6 +64,8 @@ export default function HostPortalPage() {
 
   const [trips, setTrips] = useState<TripsResponse["trips"] | null>(null);
   const [loadingTrips, setLoadingTrips] = useState(true);
+  const [aiDocument, setAiDocument] = useState<File | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
 
   async function loadTrips() {
     setLoadingTrips(true);
@@ -119,6 +121,35 @@ export default function HostPortalPage() {
       setError(err instanceof Error ? err.message : "Auth failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onCreateTripFromDocument() {
+    if (!aiDocument) {
+      setError("Choose a PDF or document to upload.");
+      return;
+    }
+
+    setAiBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", aiDocument);
+      form.append("defaultCountryCallingCode", defaultCountryCallingCode);
+      form.append("timezone", timezone);
+
+      const res = await fetch("/api/host/trips/from-document", {
+        method: "POST",
+        body: form,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || "AI trip creation failed");
+
+      router.replace(`/host/${encodeURIComponent(body.inviteCode)}/dashboard`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "AI trip creation failed");
+    } finally {
+      setAiBusy(false);
     }
   }
 
@@ -423,12 +454,61 @@ export default function HostPortalPage() {
 
                 <button
                   type="submit"
-                  disabled={busy}
+                  disabled={busy || aiBusy}
                   className="mt-2 inline-flex h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-50"
                 >
                   {busy ? "Creating…" : "Create trip"}
                 </button>
               </form>
+
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-zinc-200" />
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="bg-white px-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    Or
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <div>
+                  <h3 className="text-sm font-medium text-zinc-900">
+                    Upload a PDF or document
+                  </h3>
+                  <p className="mt-1 text-sm text-zinc-600">
+                    AI will read it and attempt to create your trip — name, dates,
+                    timezone, and day-by-day itinerary. You can edit everything
+                    afterward.
+                  </p>
+                </div>
+
+                <label className="block">
+                  <span className="sr-only">Trip document</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md,.csv,.rtf,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={(e) => setAiDocument(e.target.files?.[0] ?? null)}
+                    className="block w-full text-sm text-zinc-700 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-zinc-900"
+                  />
+                </label>
+
+                {aiDocument ? (
+                  <p className="text-xs text-zinc-600">
+                    Selected: {aiDocument.name} ({Math.ceil(aiDocument.size / 1024)} KB)
+                  </p>
+                ) : null}
+
+                <button
+                  type="button"
+                  disabled={aiBusy || busy || !aiDocument}
+                  onClick={onCreateTripFromDocument}
+                  className="inline-flex h-11 w-full items-center justify-center rounded-xl border border-zinc-900 bg-white px-4 text-sm font-medium text-zinc-900 disabled:opacity-50"
+                >
+                  {aiBusy ? "AI is building your trip…" : "Create trip with AI"}
+                </button>
+              </div>
             </section>
           </>
         )}
