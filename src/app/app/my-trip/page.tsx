@@ -13,13 +13,13 @@ import { PhraseList } from "@/components/student/my-trip/PhraseList";
 
 function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
   if (!x || typeof x !== "object") return false;
-  const o = x as { trip?: unknown; participant?: unknown };
-  return Boolean(o.trip && o.participant);
+  const o = x as { trip?: unknown; participant?: unknown; days?: unknown };
+  return Boolean(o.trip && o.participant && o.days);
 }
 
 function MyTripScroll({ children }: { children: React.ReactNode }) {
   return (
-    <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto overscroll-y-contain py-2 [-webkit-overflow-scrolling:touch]">
+    <main className="no-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto overscroll-y-contain py-2 [-webkit-overflow-scrolling:touch]">
       {children}
     </main>
   );
@@ -41,7 +41,7 @@ export default function MyTripPage() {
     return lead ?? trip.contacts[0] ?? null;
   }, [trip]);
 
-  if (!cache.sessionReady || cache.status === "loading_cache" || cache.status === "syncing") {
+  if (!cache.sessionReady) {
     return (
       <MyTripScroll>
         <header className="shrink-0">

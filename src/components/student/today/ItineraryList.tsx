@@ -1,10 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { tripLocalDateTime } from "@/lib/utils/time";
 import type { ItineraryRowItem } from "@/lib/utils/itinerary-item-style";
 import { ItineraryRow } from "./ItineraryRow";
+
+function itemWindow(
+  item: ItineraryRowItem,
+  dateISO: string,
+  tripTimezone: string,
+) {
+  return {
+    start: tripLocalDateTime({
+      dateISO,
+      timeHHMMSS: item.startTime,
+      tripTimezone,
+    }),
+    end: item.endTime
+      ? tripLocalDateTime({
+          dateISO,
+          timeHHMMSS: item.endTime,
+          tripTimezone,
+        })
+      : null,
+  };
+}
 
 function pickFeaturedIndex(
   items: ItineraryRowItem[],
@@ -16,20 +37,38 @@ function pickFeaturedIndex(
   if (!isViewingToday) return 0;
 
   const nowMs = Date.now();
-  const withStart = items.map((item, index) => ({
+  const withTimes = items.map((item, index) => ({
     index,
-    start: tripLocalDateTime({
-      dateISO,
-      timeHHMMSS: item.startTime,
-      tripTimezone,
-    }),
+    ...itemWindow(item, dateISO, tripTimezone),
   }));
 
-  const upcoming = withStart.find((x) => x.start.toMillis() >= nowMs - 2 * 60 * 1000);
+  const inProgress = withTimes.find((x) => {
+    const started = x.start.toMillis() <= nowMs;
+    const notEnded = !x.end || x.end.toMillis() >= nowMs;
+    return started && notEnded;
+  });
+  if (inProgress) return inProgress.index;
+
+  const upcoming = withTimes.find((x) => x.start.toMillis() > nowMs);
   if (upcoming) return upcoming.index;
 
-  const lastStarted = [...withStart].reverse().find((x) => x.start.toMillis() <= nowMs);
-  return lastStarted?.index ?? 0;
+  return withTimes[withTimes.length - 1]?.index ?? 0;
+}
+
+function featuredLabelForItem(
+  item: ItineraryRowItem,
+  dateISO: string,
+  tripTimezone: string,
+  isViewingToday: boolean,
+): string {
+  if (!isViewingToday) return "Up first";
+
+  const nowMs = Date.now();
+  const { start, end } = itemWindow(item, dateISO, tripTimezone);
+  if (start.toMillis() > nowMs) return "Up first";
+
+  const inProgress = start.toMillis() <= nowMs && (!end || end.toMillis() >= nowMs);
+  return inProgress ? "Now" : "Up first";
 }
 
 export function ItineraryList(props: {
@@ -45,10 +84,17 @@ export function ItineraryList(props: {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const featuredRef = useRef<HTMLDivElement>(null);
+  const [nowTick, setNowTick] = useState(0);
+
+  useEffect(() => {
+    if (!isViewingToday) return;
+    const id = window.setInterval(() => setNowTick((t) => t + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, [isViewingToday]);
 
   const featuredIndex = useMemo(
     () => pickFeaturedIndex(items, dateISO, tripTimezone, isViewingToday),
-    [items, dateISO, tripTimezone, isViewingToday],
+    [items, dateISO, tripTimezone, isViewingToday, nowTick],
   );
 
   const beforeItems = featuredIndex > 0 ? items.slice(0, featuredIndex) : [];
@@ -56,8 +102,9 @@ export function ItineraryList(props: {
   const afterItems =
     featuredIndex >= 0 ? items.slice(featuredIndex + 1) : items;
 
-  const featuredLabel = isViewingToday ? "Now" : "Up first";
-  const showYesterdaySlot = !isViewingToday && beforeItems.length === 0;
+  const featuredLabel = featuredItem
+    ? featuredLabelForItem(featuredItem, dateISO, tripTimezone, isViewingToday)
+    : "Up first";
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -77,8 +124,6 @@ export function ItineraryList(props: {
       ref={scrollRef}
       className="no-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
     >
-      <div className="h-2 shrink-0" aria-hidden />
-
       {beforeItems.length ? (
         <section className="pb-2">
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
@@ -96,16 +141,10 @@ export function ItineraryList(props: {
         </section>
       ) : null}
 
-      {showYesterdaySlot ? (
-        <p className="mb-2 py-2 text-center text-sm font-medium text-zinc-400">
-          Yesterday
-        </p>
-      ) : null}
-
       {featuredItem ? (
         <div
           ref={featuredRef}
-          className="sticky top-0 z-10 bg-zinc-50/95 py-2 backdrop-blur supports-[backdrop-filter]:bg-zinc-50/80"
+          className="sticky top-0 z-10 bg-zinc-50/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-zinc-50/80"
         >
           <ItineraryRow
             item={featuredItem}

@@ -131,37 +131,48 @@ export function useTripCache(): TripCacheState {
     async function sync() {
       if (!tripId || !accessToken) return;
       setState((s) => ({ ...s, online, status: "syncing" }));
-      const res = await syncPublishedTrip({ tripId, accessToken, online });
-      if (cancelled) return;
+      try {
+        const res = await syncPublishedTrip({ tripId, accessToken, online });
+        if (cancelled) return;
 
-      if (res.status === "unauthorized") {
-        setState((s) => ({ ...s, status: "unauthorized", online }));
-        return;
-      }
+        if (res.status === "unauthorized") {
+          setState((s) => ({ ...s, status: "unauthorized", online }));
+          return;
+        }
 
-      if (res.status === "offline_no_cache") {
-        setState((s) => ({ ...s, status: "offline_no_cache", online }));
-        return;
-      }
+        if (res.status === "offline_no_cache") {
+          setState((s) => ({ ...s, status: "offline_no_cache", online }));
+          return;
+        }
 
-      if (res.status === "error") {
-        setState((s) => ({ ...s, status: "error", online, message: res.message }));
-        return;
-      }
+        if (res.status === "error") {
+          setState((s) => ({ ...s, status: "error", online, message: res.message }));
+          return;
+        }
 
-      if (res.status === "updated" || res.status === "up_to_date") {
-        const [meta, payload] = await Promise.all([
-          getMeta(tripId),
-          getPublishedTrip(tripId),
-        ]);
+        if (res.status === "updated" || res.status === "up_to_date") {
+          const [meta, payload] = await Promise.all([
+            getMeta(tripId),
+            getPublishedTrip(tripId),
+          ]);
+          if (cancelled) return;
+          setState((s) => ({
+            ...s,
+            version: meta?.version ?? null,
+            publishedAt: meta?.publishedAt ?? null,
+            cachedAt: meta?.cachedAt ?? null,
+            payload,
+            online,
+            status: res.status === "updated" ? "updated" : "up_to_date",
+          }));
+        }
+      } catch (e) {
+        if (cancelled) return;
         setState((s) => ({
           ...s,
-          version: meta?.version ?? null,
-          publishedAt: meta?.publishedAt ?? null,
-          cachedAt: meta?.cachedAt ?? null,
-          payload,
           online,
-          status: res.status === "updated" ? "updated" : "up_to_date",
+          status: s.payload ? "ready" : "error",
+          message: e instanceof Error ? e.message : "Sync failed",
         }));
       }
     }
