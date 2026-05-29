@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { AI_TIME_NORMALIZATION_RULES } from "@/lib/ai/time-prompt";
+import { sanitizeItineraryTimes } from "@/lib/utils/ai-time";
+
 const ImportItemSchema = z.object({
   startTime: z.string(),
   endTime: z.string().nullable().optional(),
@@ -60,7 +63,7 @@ Return ONLY valid JSON with this shape:
 
 Rules:
 - Every day date must be within the trip date range.
-- Times use 24h HH:MM (no timezone suffix).
+- ${AI_TIME_NORMALIZATION_RULES}
 - If a day has no items, use an empty items array.
 - Omit fields you cannot infer (use null).
 - Do not include markdown or commentary.`;
@@ -111,5 +114,5 @@ Rules:
     }
   }
 
-  return validated.data;
+  return sanitizeItineraryTimes(validated.data);
 }

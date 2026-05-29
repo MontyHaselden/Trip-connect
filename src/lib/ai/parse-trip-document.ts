@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 import { ItineraryImportSchema } from "@/lib/ai/itinerary-import";
+import { AI_TIME_NORMALIZATION_RULES } from "@/lib/ai/time-prompt";
 import { prepareDocumentForAi } from "@/lib/documents/prepare-for-ai";
-import { coerceAiTime } from "@/lib/utils/ai-time";
+import { sanitizeItineraryTimes } from "@/lib/utils/ai-time";
 
 export const TripFromDocumentSchema = z
   .object({
@@ -42,7 +43,7 @@ Rules:
 - Infer trip name, school name, start/end dates, and timezone from the document when possible.
 - If timezone is missing, use "${params.defaultTimezone}".
 - Every day date must fall within startDate and endDate.
-- Times use 24h HH:MM.
+- ${AI_TIME_NORMALIZATION_RULES}
 - Include all scheduled activities you can find; use empty items arrays for travel/rest days with no events.
 - destinationCountry and destinationLanguage should reflect the trip destination when clear (e.g. "Japan", "Japanese"); otherwise null.
 - Do not include markdown or commentary.`;
@@ -95,23 +96,17 @@ Rules:
 function sanitizeTripFromDocument(
   data: TripFromDocumentResult,
 ): TripFromDocumentResult {
-  const days = data.days
+  const sanitized = sanitizeItineraryTimes(data);
+  const days = sanitized.days
     .filter((day) => day.date >= data.startDate && day.date <= data.endDate)
     .map((day) => ({
       ...day,
-      items: day.items
-        .map((item) => ({
-          ...item,
-          startTime: coerceAiTime(item.startTime),
-          endTime: item.endTime ? coerceAiTime(item.endTime) : null,
-          leaveByTime: item.leaveByTime ? coerceAiTime(item.leaveByTime) : null,
-        }))
-        .filter((item) => item.title.trim().length > 0),
+      items: day.items.filter((item) => item.title.trim().length > 0),
     }));
 
   if (data.startDate > data.endDate) {
     throw new Error("AI returned invalid trip dates.");
   }
 
-  return { ...data, days };
+  return { ...sanitized, days };
 }

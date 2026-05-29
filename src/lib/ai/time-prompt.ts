@@ -1,0 +1,14 @@
+export const AI_TIME_NORMALIZATION_RULES = `Time normalization (critical):
+- Source documents may use messy human times: "6:30am", "6-00", "6.00", "6 in the morning", "half past six", "around 2pm", "14h30", "1430", "noon", "midday", "late evening".
+- You MUST convert every startTime, endTime, and leaveByTime to strict 24-hour HH:MM before returning JSON.
+- Use leading zeros on hours and minutes: "06:30", "14:00", "23:15".
+- Examples:
+  - "6:30am" -> "06:30"
+  - "2:00pm" -> "14:00"
+  - "6-00" or "6.00" -> "06:00"
+  - "6 in the morning" -> "06:00"
+  - "noon" / "midday" -> "12:00"
+  - "late evening" -> "20:00"
+  - "1430" -> "14:30"
+- If a time is vague ("morning", "afternoon"), pick a reasonable default: morning 09:00, afternoon 14:00, evening 18:00.
+- Never return am/pm, words, or dashes in time fields — only HH:MM.`;
