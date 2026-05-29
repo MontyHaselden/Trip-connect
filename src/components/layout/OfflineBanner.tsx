@@ -41,7 +41,7 @@ export function OfflineBanner(props: {
 
       {version === 0 ? (
         <p className="text-xs text-zinc-600">
-          Trip not published yet — refresh after your teachers publish.
+          Preparing trip data… tap refresh to download when ready.
         </p>
       ) : null}
 

@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
-import { participants, publishedTripSnapshots, trips } from "@/lib/db/schema";
+import { participants, publishedTripSnapshots } from "@/lib/db/schema";
 import type { PublishedTripSnapshotV1 } from "@/types/published-trip";
+import { ensureTripPublishedIfReady } from "@/lib/publish/ensure-published";
 import { filterSnapshotForParticipantV1 } from "@/lib/publish/filter-for-participant";
 
 function getBearerToken(req: Request): string | null {
@@ -33,16 +34,9 @@ export async function HEAD(
     return new NextResponse(null, { status: 401 });
   }
 
-  const meta = await db
-    .select({ publishedVersion: trips.publishedVersion })
-    .from(trips)
-    .where(eq(trips.id, tripId))
-    .limit(1)
-    .then((rows) => rows[0] ?? null);
+  const publishedVersion = await ensureTripPublishedIfReady(tripId);
 
-  if (!meta) return new NextResponse(null, { status: 404 });
-
-  if (meta.publishedVersion === 0) {
+  if (publishedVersion === 0) {
     const res = new NextResponse(null, { status: 204 });
     res.headers.set("X-Trip-Version", "0");
     return res;
@@ -54,14 +48,14 @@ export async function HEAD(
     .where(
       and(
         eq(publishedTripSnapshots.tripId, tripId),
-        eq(publishedTripSnapshots.version, meta.publishedVersion),
+        eq(publishedTripSnapshots.version, publishedVersion),
       ),
     )
     .limit(1)
     .then((rows) => rows[0] ?? null);
 
   const res = new NextResponse(null, { status: 204 });
-  res.headers.set("X-Trip-Version", String(meta.publishedVersion));
+  res.headers.set("X-Trip-Version", String(publishedVersion));
   if (snap?.publishedAt) res.headers.set("X-Published-At", snap.publishedAt.toISOString());
   return res;
 }
@@ -89,15 +83,9 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const meta = await db
-    .select({ publishedVersion: trips.publishedVersion })
-    .from(trips)
-    .where(eq(trips.id, tripId))
-    .limit(1)
-    .then((rows) => rows[0] ?? null);
+  const publishedVersion = await ensureTripPublishedIfReady(tripId);
 
-  if (!meta) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
-  if (meta.publishedVersion === 0) {
+  if (publishedVersion === 0) {
     return NextResponse.json(
       { error: "Trip has not been published yet." },
       { status: 404 },
