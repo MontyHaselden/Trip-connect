@@ -111,6 +111,10 @@ export function useSelectedTripDay(
   }
 
   function goNext() {
+    if (phase === "pre" && !selected && firstDay) {
+      setDate(firstDay.date);
+      return;
+    }
     if (!selected) return;
     const idx = sortedDays.findIndex((d) => d.id === selected.id);
     const next = sortedDays[idx + 1];
@@ -118,6 +122,10 @@ export function useSelectedTripDay(
   }
 
   function goPrev() {
+    if (phase === "pre" && selected && selectedIndex === 0) {
+      clearDate();
+      return;
+    }
     if (!selected) return;
     const idx = sortedDays.findIndex((d) => d.id === selected.id);
     const prev = sortedDays[idx - 1];
@@ -128,9 +136,11 @@ export function useSelectedTripDay(
     ? sortedDays.findIndex((d) => d.id === selected.id)
     : -1;
 
-  const canGoPrev = selectedIndex > 0;
+  const canGoPrev =
+    selectedIndex > 0 || (phase === "pre" && selectedIndex === 0);
   const canGoNext =
-    selectedIndex >= 0 && selectedIndex < sortedDays.length - 1;
+    (phase === "pre" && !selected && !!firstDay) ||
+    (selectedIndex >= 0 && selectedIndex < sortedDays.length - 1);
 
   function viewDay1() {
     if (firstDay) setDate(firstDay.date);

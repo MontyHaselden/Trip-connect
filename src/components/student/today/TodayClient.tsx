@@ -125,14 +125,7 @@ function TodayContent() {
   }
 
   if (tripNotPublished && !trip) {
-    return (
-      <>
-        <Suspense>
-          <TodayBuildingBanner />
-        </Suspense>
     return <TripNotReady title="Today" />;
-      </>
-    );
   }
 
   if (!trip) {
@@ -150,13 +143,10 @@ function TodayContent() {
   }
 
   if (phase === "pre" && !selectedDay) {
-    return (
-      <main className="flex flex-col gap-4 py-2">
-        <Suspense>
-          <TodayBuildingBanner />
-        </Suspense>
+    const preTripBody = (
+      <>
         <header className="flex flex-col gap-1">
-          <h2 className="text-2xl font-semibold tracking-tight">Today</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Today</h2>
           <p className="text-sm text-zinc-600">{trip.trip.name}</p>
         </header>
 
@@ -172,6 +162,11 @@ function TodayContent() {
               <p className="mt-1 text-sm text-zinc-600">
                 {countdown.days} day{countdown.days === 1 ? "" : "s"},{" "}
                 {countdown.hours} hour{countdown.hours === 1 ? "" : "s"} to go
+              </p>
+            ) : null}
+            {firstDay ? (
+              <p className="mt-3 text-xs text-zinc-500">
+                Tap › to preview Day 1 ({firstDay.cityLabel})
               </p>
             ) : null}
           </section>
@@ -199,29 +194,32 @@ function TodayContent() {
           </dl>
         </section>
 
-        {tripEve && firstDay ? (
-          <>
-            {evePrep.length ? (
-              <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-                <h3 className="text-base font-semibold">
-                  Pack for Day 1 (tomorrow)
-                </h3>
-                <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-zinc-800">
-                  {evePrep.map((p) => (
-                    <li key={p.id}>{p.text}</li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
-            <button
-              type="button"
-              onClick={viewDay1}
-              className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white"
-            >
-              View Day 1
-            </button>
-          </>
+        {tripEve && firstDay && evePrep.length ? (
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5">
+            <h3 className="text-base font-semibold">Pack for Day 1 (tomorrow)</h3>
+            <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-zinc-800">
+              {evePrep.map((p) => (
+                <li key={p.id}>{p.text}</li>
+              ))}
+            </ul>
+          </section>
         ) : null}
+      </>
+    );
+
+    return (
+      <main className="flex flex-col gap-4 py-2">
+        <Suspense>
+          <TodayBuildingBanner />
+        </Suspense>
+        <DayNavFrame
+          canGoPrev={false}
+          canGoNext={canGoNext}
+          onPrev={goPrev}
+          onNext={goNext}
+        >
+          {preTripBody}
+        </DayNavFrame>
       </main>
     );
   }
