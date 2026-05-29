@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import { usePathname } from "next/navigation";
 
+import { MyTripErrorBoundary } from "@/components/debug/MyTripErrorBoundary";
 import { useTripApp } from "@/components/layout/TripAppContext";
 import { TripNotReady } from "@/components/student/TripNotReady";
+import { tripDebug } from "@/lib/debug/trip-debug";
 import {
   hasMyTripProfile,
   resolveStudentTripPayload,
@@ -22,7 +25,8 @@ function MyTripScroll({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function MyTripPage() {
+function MyTripPageContent() {
+  const pathname = usePathname();
   const { cache } = useTripApp();
   const trip = useMemo(
     () => resolveStudentTripPayload(cache.payload, cache.participantId),
@@ -42,6 +46,16 @@ export default function MyTripPage() {
     return lead ?? contacts[0] ?? null;
   }, [trip]);
 
+  useEffect(() => {
+    tripDebug("my-trip.mount", {
+      pathname,
+      status: cache.status,
+      sessionReady: cache.sessionReady,
+      hasPayload: Boolean(cache.payload),
+      hasProfile: hasMyTripProfile(trip),
+    });
+  }, [pathname, cache.status, cache.sessionReady, cache.payload, trip]);
+
   if (!cache.sessionReady) {
     return (
       <MyTripScroll>
@@ -50,6 +64,7 @@ export default function MyTripPage() {
         </header>
         <div className="rounded-2xl border border-zinc-200 bg-white p-5">
           <p className="text-sm text-zinc-700">Loading trip…</p>
+          <p className="mt-2 text-xs text-zinc-500">Debug: waiting for session</p>
         </div>
       </MyTripScroll>
     );
@@ -89,6 +104,9 @@ export default function MyTripPage() {
             {cache.payload
               ? "Could not load your trip profile. Tap refresh above, or re-join the trip."
               : "Loading trip…"}
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">
+            Debug: status={cache.status} participant={cache.participantId ?? "missing"}
           </p>
         </div>
       </MyTripScroll>
@@ -140,5 +158,13 @@ export default function MyTripPage() {
         }
       />
     </MyTripScroll>
+  );
+}
+
+export default function MyTripPage() {
+  return (
+    <MyTripErrorBoundary>
+      <MyTripPageContent />
+    </MyTripErrorBoundary>
   );
 }

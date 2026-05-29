@@ -1,40 +1,49 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { useTripApp } from "./TripAppContext";
 import { CalendarSheet } from "@/components/student/today/CalendarSheet";
+import { tripDebug } from "@/lib/debug/trip-debug";
 
 function NavItem(props: {
   href: string;
   label: string;
   active: boolean;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const { href, label, active } = props;
+
   return (
-    <Link
-      href={href}
+    <button
+      type="button"
+      onClick={() => {
+        tripDebug("nav.click", { from: pathname, to: href, active });
+        if (pathname !== href) {
+          router.push(href);
+        }
+      }}
       className={[
         "flex flex-1 items-center justify-center rounded-xl px-3 py-2.5 text-sm font-medium",
         active ? "bg-zinc-900 text-white" : "text-zinc-700",
       ].join(" ")}
     >
       {label}
-    </Link>
+    </button>
   );
 }
 
 export function StudentBottomNav() {
   const pathname = usePathname();
   const { todayNav, calendarOpen, setCalendarOpen } = useTripApp();
-  const onToday = pathname === "/app/today";
+  const onToday = pathname === "/app/today" || pathname.startsWith("/app/today/");
   const onMyTrip = pathname === "/app/my-trip";
   const showDayNav = onToday && todayNav !== null;
 
   return (
     <>
-      <nav className="z-10 mt-auto shrink-0 bg-zinc-50 pb-[max(env(safe-area-inset-bottom),0px)]">
+      <nav className="relative z-20 mt-auto shrink-0 bg-zinc-50 pb-[max(env(safe-area-inset-bottom),0px)]">
         <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
           {showDayNav ? (
             <div className="border-b border-zinc-100 px-2 py-2">

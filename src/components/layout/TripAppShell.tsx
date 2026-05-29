@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
 import { OfflineBanner } from "./OfflineBanner";
 import { StudentBottomNav } from "./StudentBottomNav";
 import { TripAppContext, type TodayDayNav } from "./TripAppContext";
+import { TripDebugPanel } from "@/components/debug/TripDebugPanel";
 import { useTripCache } from "@/hooks/useTripCache";
 import { clearStudentSessionAndCache } from "@/lib/offline/sync";
+import { installTripDebugGlobal, tripDebug } from "@/lib/debug/trip-debug";
 import { formatTripDateHeader } from "@/lib/utils/time";
 import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
 
@@ -52,6 +54,7 @@ function RefreshIcon({ spinning }: { spinning: boolean }) {
 
 export function TripAppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const cache = useTripCache();
   const [refreshing, setRefreshing] = useState(false);
   const [todayNav, setTodayNav] = useState<TodayDayNav | null>(null);
@@ -83,6 +86,11 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
       setRefreshing(false);
     }
   }
+
+  useEffect(() => {
+    installTripDebugGlobal();
+    tripDebug("shell.mount", { pathname });
+  }, [pathname]);
 
   useEffect(() => {
     const tripId = localStorage.getItem("tc_trip_id");
@@ -161,7 +169,15 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
             status={bannerStatus}
             message={cache.status === "error" ? cache.message : undefined}
           />
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+          <div
+            key={pathname}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
+            {children}
+          </div>
+          <Suspense fallback={null}>
+            <TripDebugPanel />
+          </Suspense>
           <StudentBottomNav />
         </div>
       </div>
