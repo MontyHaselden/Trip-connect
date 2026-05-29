@@ -1,5 +1,6 @@
 "use client";
 
+import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { PublishDiff } from "@/components/host/publish/PublishDiff";
@@ -14,12 +15,9 @@ type PublishPreview = {
   diff: SnapshotDiff;
 };
 
-export default function HostPublishPage({
-  params,
-}: {
-  params: { inviteCode: string };
-}) {
-  const inviteCode = params.inviteCode;
+export default function HostPublishPage() {
+  const params = useParams();
+  const inviteCode = String(params.inviteCode ?? "");
   const api = `/api/host/${encodeURIComponent(inviteCode)}`;
 
   const [preview, setPreview] = useState<PublishPreview | null>(null);

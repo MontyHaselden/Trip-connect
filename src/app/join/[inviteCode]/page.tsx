@@ -1,7 +1,7 @@
 "use client";
 
+import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 
 type JoinResponse = {
   tripId: string;
@@ -27,13 +27,10 @@ function storageSet(key: string, value: string) {
   }
 }
 
-export default function JoinTripPage({
-  params,
-}: {
-  params: { inviteCode: string };
-}) {
+export default function JoinTripPage() {
   const router = useRouter();
-  const inviteCode = params.inviteCode;
+  const params = useParams();
+  const inviteCode = String(params.inviteCode ?? "");
 
   const alreadyConnected = useMemo(() => {
     const storedInvite = storageGet("tc_invite_code");

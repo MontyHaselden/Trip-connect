@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 type HostTripResponse = {
@@ -27,12 +28,9 @@ const shortcuts = [
   { href: "publish", label: "Publish" },
 ] as const;
 
-export default function HostDashboardPage({
-  params,
-}: {
-  params: { inviteCode: string };
-}) {
-  const inviteCode = params.inviteCode;
+export default function HostDashboardPage() {
+  const params = useParams();
+  const inviteCode = String(params.inviteCode ?? "");
   const base = `/host/${encodeURIComponent(inviteCode)}`;
 
   const [trip, setTrip] = useState<HostTripResponse | null>(null);

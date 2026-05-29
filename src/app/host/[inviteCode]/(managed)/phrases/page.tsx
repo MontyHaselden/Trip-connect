@@ -1,9 +1,10 @@
 import { PhrasesClient } from "@/components/host/phrases/PhrasesClient";
 
-export default function HostPhrasesPage({
+export default async function HostPhrasesPage({
   params,
 }: {
-  params: { inviteCode: string };
+  params: Promise<{ inviteCode: string }>;
 }) {
-  return <PhrasesClient inviteCode={params.inviteCode} />;
+  const { inviteCode } = await params;
+  return <PhrasesClient inviteCode={inviteCode} />;
 }

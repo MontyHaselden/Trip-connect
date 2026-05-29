@@ -1,15 +1,12 @@
 "use client";
 
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
-export default function HostLoginPage({
-  params,
-}: {
-  params: { inviteCode: string };
-}) {
+export default function HostLoginPage() {
   const router = useRouter();
-  const inviteCode = params.inviteCode;
+  const params = useParams();
+  const inviteCode = String(params.inviteCode ?? "");
   const [checkingSession, setCheckingSession] = useState(true);
 
   const dashboardPath = `/host/${encodeURIComponent(inviteCode)}/dashboard`;

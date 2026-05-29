@@ -1,5 +1,6 @@
 "use client";
 
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 type HostTripResponse = {
@@ -16,12 +17,9 @@ type HostTripResponse = {
   publishedVersion: number;
 };
 
-export default function HostSettingsPage({
-  params,
-}: {
-  params: { inviteCode: string };
-}) {
-  const inviteCode = params.inviteCode;
+export default function HostSettingsPage() {
+  const params = useParams();
+  const inviteCode = String(params.inviteCode ?? "");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

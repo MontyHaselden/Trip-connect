@@ -1,9 +1,10 @@
 import { RosterClient } from "@/components/host/roster/RosterClient";
 
-export default function HostParticipantsPage({
+export default async function HostParticipantsPage({
   params,
 }: {
-  params: { inviteCode: string };
+  params: Promise<{ inviteCode: string }>;
 }) {
-  return <RosterClient inviteCode={params.inviteCode} />;
+  const { inviteCode } = await params;
+  return <RosterClient inviteCode={inviteCode} />;
 }
