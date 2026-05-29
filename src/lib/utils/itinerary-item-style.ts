@@ -97,12 +97,22 @@ export function durationLabel(
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-export function itemSecondaryLines(item: ItineraryRowItem): string[] {
+export function itemLocationLine(item: ItineraryRowItem): string | null {
+  if (item.locationName) return item.locationName;
+  if (item.address) return item.address;
+  return null;
+}
+
+export function itemExtraInfoLines(item: ItineraryRowItem): string[] {
   const lines: string[] = [];
-  if (item.locationName) lines.push(item.locationName);
   if (item.address && item.address !== item.locationName) lines.push(item.address);
   if (item.transportNote) lines.push(item.transportNote);
   if (item.bringNote) lines.push(item.bringNote);
   if (item.hostNote) lines.push(item.hostNote);
   return lines;
+}
+
+export function itemSecondaryLines(item: ItineraryRowItem): string[] {
+  const location = itemLocationLine(item);
+  return location ? [location, ...itemExtraInfoLines(item)] : itemExtraInfoLines(item);
 }

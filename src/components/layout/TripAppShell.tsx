@@ -9,6 +9,7 @@ import { StudentBottomNav } from "./StudentBottomNav";
 import { TripAppContext, type TodayDayNav } from "./TripAppContext";
 import { useTripCache } from "@/hooks/useTripCache";
 import { clearStudentSessionAndCache } from "@/lib/offline/sync";
+import { formatTripDateHeader } from "@/lib/utils/time";
 import type { ParticipantFilteredTripV1 } from "@/lib/publish/filter-for-participant";
 
 function SettingsIcon() {
@@ -64,12 +65,18 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
 
   const trip = isTripPayload(cache.payload) ? cache.payload : null;
 
-  const headerTitle = useMemo(() => {
-    if (trip) {
-      return `${trip.trip.schoolName} ${trip.trip.name}`.toLowerCase();
-    }
-    return "trip";
-  }, [trip]);
+  const daySubtitle = useMemo(() => {
+    if (!trip || !todayNav) return null;
+    const selectedDay = todayNav.scheduledDays.find(
+      (d) => d.date === todayNav.selectedDateISO,
+    );
+    if (!selectedDay) return null;
+    const dateLine = formatTripDateHeader({
+      dateISO: selectedDay.date,
+      tripTimezone: trip.trip.timezone,
+    });
+    return selectedDay.cityLabel ? `${dateLine} - ${selectedDay.cityLabel}` : dateLine;
+  }, [trip, todayNav]);
 
   async function onRefresh() {
     setRefreshing(true);
@@ -119,23 +126,30 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
     >
       <div className="h-dvh max-h-dvh overflow-hidden bg-zinc-50 text-zinc-900">
         <div className="mx-auto flex h-full w-full max-w-md flex-col gap-3 overflow-hidden px-5 py-4">
-          <header className="shrink-0 border-b border-zinc-200/80 pb-3">
-            <div className="flex items-center gap-1">
-              <h1 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-zinc-800">
-                {headerTitle}
-              </h1>
+          <header className="shrink-0 border-b border-zinc-200/80 pb-2 pt-0.5">
+            <div className="flex items-start gap-1">
+              <div className="min-w-0 flex-1">
+                <h1 className="truncate text-sm font-semibold leading-tight tracking-tight text-zinc-900">
+                  {trip?.trip.name ?? "Trip"}
+                </h1>
+                {daySubtitle ? (
+                  <p className="mt-0.5 truncate text-xs font-medium text-zinc-600">
+                    {daySubtitle}
+                  </p>
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={onRefresh}
                 disabled={!cache.online || refreshing || cache.status === "syncing"}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-zinc-600 disabled:opacity-40"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-zinc-600 disabled:opacity-40"
                 aria-label="Refresh trip data"
               >
                 <RefreshIcon spinning={refreshing || cache.status === "syncing"} />
               </button>
               <Link
                 href="/app/settings"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-zinc-600"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-zinc-600"
                 aria-label="Settings"
               >
                 <SettingsIcon />

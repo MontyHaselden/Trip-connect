@@ -9,7 +9,6 @@ import { daysUntilTrip } from "@/lib/utils/time";
 import { TripNotReady } from "@/components/student/TripNotReady";
 import { ItineraryList } from "@/components/student/today/ItineraryList";
 import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
-import { TodayTitle } from "@/components/student/today/TodayTitle";
 
 function isTripPayload(x: unknown): x is ParticipantFilteredTripV1 {
   if (!x || typeof x !== "object") return false;
@@ -135,15 +134,6 @@ function TodayContent() {
           <TodayBuildingBanner />
         </Suspense>
       </div>
-
-      <TodayTitle
-        tripName={trip.trip.name}
-        schoolName={trip.trip.schoolName}
-        dateISO={selectedDay.date}
-        cityLabel={selectedDay.cityLabel}
-        tripTimezone={tripTz}
-        tripStartDate={trip.trip.startDate}
-      />
 
       {hasContent ? (
         <ItineraryList

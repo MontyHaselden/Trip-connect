@@ -75,7 +75,7 @@ export function ItineraryList(props: {
   return (
     <div
       ref={scrollRef}
-      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
+      className="no-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"
     >
       <div className="h-2 shrink-0" aria-hidden />
 
