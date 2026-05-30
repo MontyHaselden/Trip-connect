@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -152,13 +151,14 @@ export function TripAppShell({ children }: { children: React.ReactNode }) {
               >
                 <RefreshIcon spinning={refreshing || cache.status === "syncing"} />
               </button>
-              <Link
+              <a
                 href="/app/settings"
+                onClick={() => tripDebug("nav.click", { to: "/app/settings", mode: "hard" })}
                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center text-zinc-600"
                 aria-label="Settings"
               >
                 <SettingsIcon />
-              </Link>
+              </a>
             </div>
           </header>
 
