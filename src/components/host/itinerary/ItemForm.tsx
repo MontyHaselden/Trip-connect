@@ -28,11 +28,21 @@ export function ItemForm(props: {
   dayId: string;
   roster: RosterSummary;
   item?: ItineraryItem;
+  hideTimeFields?: boolean;
   onSaved: () => void;
   onCancel?: () => void;
   onError: (msg: string) => void;
 }) {
-  const { inviteCode, dayId, roster, item, onSaved, onCancel, onError } = props;
+  const {
+    inviteCode,
+    dayId,
+    roster,
+    item,
+    hideTimeFields,
+    onSaved,
+    onCancel,
+    onError,
+  } = props;
   const api = `/api/host/${encodeURIComponent(inviteCode)}`;
   const editing = Boolean(item);
 
@@ -63,8 +73,15 @@ export function ItemForm(props: {
     e.preventDefault();
     setSaving(true);
     const payload = {
-      startTime: form.startTime,
-      endTime: form.endTime.trim() || null,
+      ...(hideTimeFields && editing && item
+        ? {
+            startTime: item.startTime,
+            endTime: item.endTime,
+          }
+        : {
+            startTime: form.startTime,
+            endTime: form.endTime.trim() || null,
+          }),
       title: form.title.trim(),
       locationName: form.locationName.trim() || null,
       address: form.address.trim() || null,
@@ -104,27 +121,29 @@ export function ItemForm(props: {
       className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-4"
     >
       <p className="text-sm font-medium">{editing ? "Edit item" : "Add item"}</p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="block">
-          <span className="text-xs font-medium text-zinc-600">Start time</span>
-          <input
-            type="time"
-            required
-            value={form.startTime}
-            onChange={(e) => set("startTime", e.target.value)}
-            className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm"
-          />
-        </label>
-        <label className="block">
-          <span className="text-xs font-medium text-zinc-600">End time</span>
-          <input
-            type="time"
-            value={form.endTime}
-            onChange={(e) => set("endTime", e.target.value)}
-            className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm"
-          />
-        </label>
-      </div>
+      {hideTimeFields ? null : (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-xs font-medium text-zinc-600">Start time</span>
+            <input
+              type="time"
+              required
+              value={form.startTime}
+              onChange={(e) => set("startTime", e.target.value)}
+              className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-zinc-600">End time</span>
+            <input
+              type="time"
+              value={form.endTime}
+              onChange={(e) => set("endTime", e.target.value)}
+              className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm"
+            />
+          </label>
+        </div>
+      )}
       <label className="mt-3 block">
         <span className="text-xs font-medium text-zinc-600">Title</span>
         <input

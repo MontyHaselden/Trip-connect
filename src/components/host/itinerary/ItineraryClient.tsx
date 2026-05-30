@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { hostJson } from "@/components/host/shared/host-fetch";
+import { tripNow } from "@/lib/utils/time";
 
 import { DayEditor } from "./DayEditor";
 import { DayList } from "./DayList";
 import { GenerateDaysButton } from "./GenerateDaysButton";
-import { ItemList } from "./ItemList";
+import { DayTimeline } from "@/components/timeline/DayTimeline";
 import { AiImportProgress } from "./AiImportProgress";
 import { ImportFromText } from "./ImportFromText";
 import { PrepList } from "./PrepList";
@@ -16,6 +17,7 @@ import type { ItineraryTree, RosterSummary } from "./types";
 type HostTrip = {
   startDate: string;
   endDate: string;
+  timezone: string;
   needsPublishConfirm?: boolean;
 };
 
@@ -26,7 +28,6 @@ export function ItineraryClient({ inviteCode }: { inviteCode: string }) {
   const [tree, setTree] = useState<ItineraryTree | null>(null);
   const [roster, setRoster] = useState<RosterSummary | null>(null);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingPrepId, setEditingPrepId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -80,6 +81,11 @@ export function ItineraryClient({ inviteCode }: { inviteCode: string }) {
     () => tree?.days.find((d) => d.id === selectedDayId) ?? null,
     [tree, selectedDayId],
   );
+
+  const isViewingToday = useMemo(() => {
+    if (!trip || !selectedDay) return false;
+    return selectedDay.date === tripNow(trip.timezone).toISODate();
+  }, [trip, selectedDay]);
 
   async function reload() {
     setBusy(true);
@@ -169,7 +175,6 @@ export function ItineraryClient({ inviteCode }: { inviteCode: string }) {
             selectedId={selectedDayId}
             onSelect={(id) => {
               setSelectedDayId(id);
-              setEditingItemId(null);
               setEditingPrepId(null);
             }}
           />
@@ -223,15 +228,26 @@ export function ItineraryClient({ inviteCode }: { inviteCode: string }) {
             }}
             onError={setError}
           />
-          <ItemList
-            inviteCode={inviteCode}
-            day={selectedDay}
-            roster={roster}
-            editingId={editingItemId}
-            onEdit={setEditingItemId}
-            onReload={reload}
-            onError={setError}
-          />
+          <section className="rounded-2xl border border-zinc-200 bg-white p-5">
+            <h2 className="text-base font-semibold">Day schedule</h2>
+            <p className="mt-1 text-sm text-zinc-600">
+              Drag blocks to set times. Tap a block to edit details.
+            </p>
+            <div className="mt-4 flex min-h-[420px] flex-col">
+              <DayTimeline
+                mode="edit"
+                items={selectedDay.items}
+                dateISO={selectedDay.date}
+                tripTimezone={trip.timezone}
+                isViewingToday={isViewingToday}
+                inviteCode={inviteCode}
+                dayId={selectedDay.id}
+                roster={roster}
+                onReload={reload}
+                onError={setError}
+              />
+            </div>
+          </section>
           <PrepList
             inviteCode={inviteCode}
             day={selectedDay}

@@ -10,7 +10,8 @@ import {
 } from "@/lib/student/resolve-trip-payload";
 import { daysUntilTrip } from "@/lib/utils/time";
 import { TripNotReady } from "@/components/student/TripNotReady";
-import { ItineraryList } from "@/components/student/today/ItineraryList";
+import { DayTimeline } from "@/components/timeline/DayTimeline";
+import { sortItemsByStartTime } from "@/lib/timeline/time-math";
 import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
 
 function TodayContent() {
@@ -79,9 +80,9 @@ function TodayContent() {
 
   const dayItems = useMemo(() => {
     if (!trip || !selectedDay) return [];
-    return trip.itineraryItems
-      .filter((i) => i.tripDayId === selectedDay.id)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
+    return sortItemsByStartTime(
+      trip.itineraryItems.filter((i) => i.tripDayId === selectedDay.id),
+    );
   }, [trip, selectedDay]);
 
   const prepItems = useMemo(() => {
@@ -145,7 +146,8 @@ function TodayContent() {
       </div>
 
       {hasContent ? (
-        <ItineraryList
+        <DayTimeline
+          mode="view"
           items={dayItems}
           tripTimezone={tripTz}
           dateISO={selectedDay.date}
