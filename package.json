@@ -9,6 +9,7 @@
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:apply": "tsx scripts/apply-sql-migrations.ts",
     "seed:japan": "tsx scripts/seed-japan-trip.ts"
   },
   "dependencies": {
