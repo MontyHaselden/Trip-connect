@@ -12,6 +12,7 @@ const EXAMPLE_PROMPTS = [
 
 export function AiChatPanel(props: {
   tripId: string;
+  onClose?: () => void;
   onProposal: (data: {
     proposalId: string;
     assistantReply: string;
@@ -21,7 +22,7 @@ export function AiChatPanel(props: {
   }) => void;
   onDocumentImported?: () => void;
 }) {
-  const { tripId, onProposal, onDocumentImported } = props;
+  const { tripId, onClose, onProposal, onDocumentImported } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [messages, setMessages] = useState<
     Array<{ role: "user" | "assistant"; text: string }>
@@ -114,12 +115,24 @@ export function AiChatPanel(props: {
 
   return (
     <div className="flex h-full min-h-0 flex-col border-r border-zinc-200 bg-white">
-      <div className="border-b border-zinc-100 px-4 py-3">
-        <h2 className="text-sm font-semibold">AI trip editor</h2>
-        <p className="text-xs text-zinc-500">
-          Upload a PDF or describe changes. Add instructions like &quot;move dates to
-          this year&quot; with your file.
-        </p>
+      <div className="flex items-start justify-between border-b border-zinc-100 px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold">AI trip editor</h2>
+          <p className="text-xs text-zinc-500">
+            Upload a PDF or describe changes. Add instructions like &quot;move dates to
+            this year&quot; with your file.
+          </p>
+        </div>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-2 shrink-0 text-sm text-zinc-500"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        ) : null}
       </div>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {messages.length === 0 ? (

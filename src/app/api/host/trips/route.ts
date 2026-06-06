@@ -6,15 +6,12 @@ import { db } from "@/lib/db/client";
 import { hostTripMembers, trips } from "@/lib/db/schema";
 import { hostApiError } from "@/lib/host/api-errors";
 import { requireHostSessionHostId, setHostSessionCookie } from "@/lib/auth/host-session";
-import { createTripWithOptionalDocument } from "@/lib/host/create-trip-with-document";
-import { normalizeImportInstructions } from "@/lib/documents/document-import-instructions";
+import { createTripShell } from "@/lib/host/create-trip-with-document";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
 
 const CreateJsonSchema = z.object({
   name: z.string().trim().min(2).max(200),
-  instructions: z.string().trim().max(2000).optional(),
 });
 
 function parseCreateName(value: FormDataEntryValue | null): string | null {
@@ -46,34 +43,24 @@ export async function GET() {
   }
 }
 
+/** Fast trip shell creation only — import document from the builder for live preview. */
 export async function POST(req: Request) {
   try {
     const hostId = await requireHostSessionHostId();
     const contentType = req.headers.get("content-type") ?? "";
 
     let name: string;
-    let instructions: string | null = null;
-    let file: File | null = null;
 
     if (contentType.includes("multipart/form-data")) {
       const form = await req.formData().catch(() => null);
       if (!form) {
         return NextResponse.json({ error: "Invalid request." }, { status: 400 });
       }
-
       const parsedName = parseCreateName(form.get("name"));
       if (!parsedName) {
         return NextResponse.json({ error: "Enter a trip name (at least 2 characters)." }, { status: 400 });
       }
       name = parsedName;
-      instructions = normalizeImportInstructions(
-        typeof form.get("instructions") === "string" ? String(form.get("instructions")) : null,
-      );
-
-      const uploaded = form.get("file");
-      if (uploaded instanceof File && uploaded.size > 0) {
-        file = uploaded;
-      }
     } else {
       const json = await req.json().catch(() => null);
       const parsed = CreateJsonSchema.safeParse(json);
@@ -81,30 +68,17 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Enter a trip name (at least 2 characters)." }, { status: 400 });
       }
       name = parsed.data.name;
-      instructions = normalizeImportInstructions(parsed.data.instructions);
     }
 
-    const result = await createTripWithOptionalDocument({
-      hostId,
-      name,
-      instructions,
-      file,
-    });
-
-    await setHostSessionCookie({ hostId, activeTripId: result.trip.id });
+    const trip = await createTripShell({ hostId, name });
+    await setHostSessionCookie({ hostId, activeTripId: trip.id });
 
     return NextResponse.json({
       ok: true,
-      tripId: result.trip.id,
-      inviteCode: result.trip.inviteCode,
-      imported: result.imported,
-      importError: result.importError,
+      tripId: trip.id,
+      inviteCode: trip.inviteCode,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Failed to create trip.";
-    if (msg.includes("OPENAI_API_KEY")) {
-      return NextResponse.json({ error: msg }, { status: 503 });
-    }
     return hostApiError(err);
   }
 }

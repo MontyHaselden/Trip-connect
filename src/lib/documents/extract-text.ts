@@ -10,6 +10,15 @@ function capText(text: string): string {
   return text.slice(0, MAX_TEXT_LENGTH);
 }
 
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  // pdf-parse v1 uses a Node-friendly API (no DOMMatrix / canvas required).
+  const pdfParse = (await import("pdf-parse")).default as (
+    data: Buffer,
+  ) => Promise<{ text: string }>;
+  const parsed = await pdfParse(buffer);
+  return parsed.text ?? "";
+}
+
 export async function extractTextFromUpload(
   file: File,
   options?: { minTextLength?: number },
@@ -25,14 +34,7 @@ export async function extractTextFromUpload(
   let text = "";
 
   if (name.endsWith(".pdf") || file.type === "application/pdf") {
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: buffer });
-    try {
-      const parsed = await parser.getText();
-      text = parsed.text ?? "";
-    } finally {
-      await parser.destroy();
-    }
+    text = await extractPdfText(buffer);
   } else if (
     name.endsWith(".docx") ||
     file.type ===
@@ -58,7 +60,7 @@ export async function extractTextFromUpload(
   const cleaned = capText(normalizeWhitespace(text));
   if (cleaned.length < minTextLength) {
     throw new Error(
-      "Could not read enough text from this PDF (it may be mostly photos). Try exporting a text version, or create the trip first and paste the schedule in the builder.",
+      "Could not read enough text from this PDF (it may be mostly photos). Try exporting a text version, or paste the schedule in the AI editor.",
     );
   }
 

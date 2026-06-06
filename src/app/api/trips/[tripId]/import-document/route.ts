@@ -51,6 +51,7 @@ export async function POST(
       text: documentText,
       defaultTimezone: trip.timezone,
       instructions,
+      preserveTripName: trip.name,
     });
 
     return NextResponse.json({
