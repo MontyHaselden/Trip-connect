@@ -11,7 +11,6 @@ import { TripDayNavBridge } from "./TripDayNavBridge";
 import { TripDebugPanel } from "@/components/debug/TripDebugPanel";
 import { DayCalendarSheet } from "@/components/student/today/DayCalendarSheet";
 import { useTripCache } from "@/hooks/useTripCache";
-import { clearStudentSessionAndCache } from "@/lib/offline/sync";
 import { installTripDebugGlobal, tripDebug } from "@/lib/debug/trip-debug";
 import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
 
@@ -43,7 +42,7 @@ export function TripAppShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const cache = useTripCache();
+  const cache = useTripCache(tripId);
   const [refreshing, setRefreshing] = useState(false);
   const [todayNav, setTodayNavState] = useState<TodayDayNav | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -121,18 +120,13 @@ export function TripAppShell({
     }
   }, [router, tripId]);
 
-  useEffect(() => {
-    if (cache.status === "unauthorized") {
-      clearStudentSessionAndCache().finally(() => router.replace("/"));
-    }
-  }, [cache.status, router]);
-
   const bannerStatus =
     cache.status === "updated" ||
     cache.status === "up_to_date" ||
     cache.status === "offline_no_cache" ||
     cache.status === "syncing" ||
     cache.status === "ready" ||
+    cache.status === "unauthorized" ||
     cache.status === "error"
       ? cache.status
       : "ready";
@@ -220,7 +214,13 @@ export function TripAppShell({
             cachedAt={cache.cachedAt}
             version={cache.version}
             status={bannerStatus}
-            message={cache.status === "error" ? cache.message : undefined}
+            message={
+              cache.status === "unauthorized"
+                ? "Could not refresh — your session may have expired. You can still view saved trip data."
+                : cache.status === "error"
+                  ? cache.message
+                  : undefined
+            }
           />
           <TripDayNavBridge />
           <div key={pathname} className="flex min-h-0 flex-1 flex-col overflow-hidden">

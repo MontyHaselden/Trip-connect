@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { formatTripDateRangeLabel } from "@/lib/host/trip-date-display";
+
 import { DashboardShell } from "./DashboardShell";
 
 type TripRow = {
@@ -61,7 +63,7 @@ export function DashboardClient() {
                 >
                   <p className="font-semibold">{t.name}</p>
                   <p className="mt-1 text-sm text-zinc-600">
-                    {t.schoolName} · {t.startDate} → {t.endDate}
+                    {t.schoolName} · {formatTripDateRangeLabel(t.startDate, t.endDate)}
                   </p>
                   <p className="mt-1 text-xs text-zinc-500">
                     Published v{t.publishedVersion} · invite {t.inviteCode}

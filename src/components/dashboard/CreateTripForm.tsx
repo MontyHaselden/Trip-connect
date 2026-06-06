@@ -19,8 +19,6 @@ export function CreateTripForm() {
   const [schoolName, setSchoolName] = useState("");
   const [destinationCountry, setDestinationCountry] = useState("Japan");
   const [destinationLanguage, setDestinationLanguage] = useState("ja");
-  const [startDate, setStartDate] = useState("2026-07-16");
-  const [endDate, setEndDate] = useState("2026-07-23");
   const [timezone, setTimezone] = useState("Asia/Tokyo");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +33,6 @@ export function CreateTripForm() {
         body: JSON.stringify({
           name,
           schoolName,
-          startDate,
-          endDate,
           timezone: timezone || tzDefault,
           defaultCountryCallingCode: "NZ",
           destinationCountry,
@@ -58,7 +54,8 @@ export function CreateTripForm() {
       <div className="mx-auto max-w-lg px-5 py-10">
         <h1 className="text-2xl font-semibold">Create a trip</h1>
         <p className="mt-2 text-sm text-zinc-600">
-          Set up the basics, then build the itinerary with AI.
+          Set up the basics, then describe your itinerary in the AI builder — dates are
+          worked out automatically from your schedule.
         </p>
         {error ? <p className="mt-4 text-sm text-red-700">{error}</p> : null}
         <form
@@ -100,28 +97,6 @@ export function CreateTripForm() {
               <input
                 value={destinationLanguage}
                 onChange={(e) => setDestinationLanguage(e.target.value)}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
-              />
-            </label>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-sm font-medium">Start date</span>
-              <input
-                type="date"
-                required
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm font-medium">End date</span>
-              <input
-                type="date"
-                required
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
                 className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
               />
             </label>

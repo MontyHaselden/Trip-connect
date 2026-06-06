@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { hostTripMembers, trips } from "@/lib/db/schema";
+import { unsetTripDateRange } from "@/lib/host/trip-dates";
 
 function randomInvite(len: number) {
   return randomBytes(Math.ceil(len / 2))
@@ -28,8 +29,8 @@ export async function createTripForHost(params: {
   hostId: string;
   name: string;
   schoolName: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
+  startDate?: string; // YYYY-MM-DD — omitted until AI/import sets dates
+  endDate?: string; // YYYY-MM-DD
   timezone: string;
   defaultCountryCallingCode: string; // e.g. NZ
   destinationCountry?: string | null;
@@ -37,6 +38,10 @@ export async function createTripForHost(params: {
 }) {
   const inviteCode = await uniqueTripCode("inviteCode");
   const viewerCode = await uniqueTripCode("viewerCode");
+  const dates =
+    params.startDate && params.endDate
+      ? { startDate: params.startDate, endDate: params.endDate }
+      : unsetTripDateRange();
 
   const [trip] = await db
     .insert(trips)
@@ -46,8 +51,8 @@ export async function createTripForHost(params: {
       inviteCode,
       viewerCode,
       hostCodeHash: null,
-      startDate: params.startDate,
-      endDate: params.endDate,
+      startDate: dates.startDate,
+      endDate: dates.endDate,
       timezone: params.timezone.trim(),
       defaultCountryCallingCode: params.defaultCountryCallingCode.trim().toUpperCase(),
       destinationCountry: params.destinationCountry ?? null,

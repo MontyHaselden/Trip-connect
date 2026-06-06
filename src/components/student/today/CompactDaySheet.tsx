@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { DayWeatherSnapshot } from "@/types/activity-category";
+import { computeCompactBlockLayouts } from "@/lib/timeline/compact-day-layout";
 import { daysUntilTrip } from "@/lib/utils/time";
 import {
   computeDisplayDurationsById,
@@ -91,11 +92,25 @@ export function CompactDaySheet(props: {
   }, [isPreTrip, items, nowMinutes]);
 
   const durationById = useMemo(() => computeDisplayDurationsById(items), [items]);
-  const totalDurationMinutes = useMemo(() => {
-    let sum = 0;
-    for (const mins of durationById.values()) sum += mins;
-    return sum;
-  }, [durationById]);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [containerHeight, setContainerHeight] = useState(0);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+
+    const measure = () => setContainerHeight(el.clientHeight);
+    measure();
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [items.length]);
+
+  const blockLayout = useMemo(
+    () => computeCompactBlockLayouts(items, durationById, containerHeight),
+    [items, durationById, containerHeight],
+  );
 
   const hasContent = items.length > 0 || prepItems.length > 0;
 
@@ -135,7 +150,15 @@ export function CompactDaySheet(props: {
         </div>
 
         {items.length > 0 ? (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+          <div
+            ref={listRef}
+            className={[
+              "flex min-h-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white shadow-sm",
+              blockLayout.needsScroll
+                ? "no-scrollbar overflow-y-auto overscroll-y-contain"
+                : "overflow-hidden",
+            ].join(" ")}
+          >
             {items.map((item) => (
               <CompactItineraryRow
                 key={item.id}
@@ -145,7 +168,7 @@ export function CompactDaySheet(props: {
                 isNext={item.id === nextId && item.id !== activeId}
                 onTap={() => setSelectedItem(item)}
                 durationMinutes={durationById.get(item.id) ?? 60}
-                totalDurationMinutes={totalDurationMinutes}
+                heightPx={blockLayout.heightsById.get(item.id) ?? 48}
               />
             ))}
           </div>

@@ -1,6 +1,12 @@
 import { z } from "zod";
 
 import { AI_TIME_NORMALIZATION_RULES } from "@/lib/ai/time-prompt";
+import {
+  buildDocumentImportUserMessage,
+  documentImportSystemRules,
+  normalizeImportInstructions,
+} from "@/lib/documents/document-import-instructions";
+import { tripDatesAreUnset } from "@/lib/host/trip-date-display";
 import { ACTIVITY_CATEGORIES } from "@/types/activity-category";
 import { sanitizeItineraryTimes } from "@/lib/utils/ai-time";
 
@@ -45,6 +51,7 @@ const CATEGORY_LIST = ACTIVITY_CATEGORIES.join(", ");
 export async function parseItineraryText(params: {
   text: string;
   trip: TripContext;
+  instructions?: string | null;
 }): Promise<ItineraryImportResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -58,16 +65,28 @@ export async function parseItineraryText(params: {
   if (trimmed.length > MAX_TEXT_LENGTH) {
     throw new Error(`Text is too long (max ${MAX_TEXT_LENGTH} characters).`);
   }
+  const instructions = normalizeImportInstructions(params.instructions);
 
   const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
-  const system = `You extract school trip itineraries into JSON. Trip: ${params.trip.name}. Trip dates: ${params.trip.startDate} to ${params.trip.endDate} (itinerary days may also be BEFORE ${params.trip.startDate} for pre-trip meetings). Timezone: ${params.trip.timezone}. Destination: ${params.trip.destinationCountry ?? "unknown"} (${params.trip.destinationLanguage ?? ""}).
+  const datesUnset = tripDatesAreUnset(params.trip.startDate, params.trip.endDate);
+  const dateRules = datesUnset
+    ? `- Trip dates are not set yet. Infer every day date from the pasted text (include pre-trip meetings before the main trip if mentioned).
+- Use the year mentioned in the text, or the next sensible future year if omitted.`
+    : `- Trip dates: ${params.trip.startDate} to ${params.trip.endDate} (itinerary days may also be BEFORE ${params.trip.startDate} for pre-trip meetings).
+- Day dates may be before the trip start date (pre-trip meetings) or within ${params.trip.startDate} to ${params.trip.endDate}.
+- Day dates must not be after ${params.trip.endDate}.`;
+  const instructionRules = instructions
+    ? `- Follow the host instructions in the user message (e.g. shift all dates to a new year).
+- ${documentImportSystemRules({ defaultTimezone: params.trip.timezone })}`
+    : `- ${documentImportSystemRules({ defaultTimezone: params.trip.timezone })}`;
+  const system = `You extract school trip itineraries into JSON. Trip: ${params.trip.name}. Timezone: ${params.trip.timezone}. Destination: ${params.trip.destinationCountry ?? "unknown"} (${params.trip.destinationLanguage ?? ""}).
 
 Return ONLY valid JSON with this shape:
 {"days":[{"date":"YYYY-MM-DD","cityLabel":"string","summary":null,"items":[{"startTime":"HH:MM","endTime":null,"title":"string","locationName":null,"address":null,"leaveByTime":null,"transportNote":null,"bringNote":null,"category":null}]}]}
 
 Rules:
-- Day dates may be before the trip start date (pre-trip meetings) or within ${params.trip.startDate} to ${params.trip.endDate}.
-- Day dates must not be after ${params.trip.endDate}.
+${dateRules}
+${instructionRules}
 - ${AI_TIME_NORMALIZATION_RULES}
 - For each item, set category to one of: ${CATEGORY_LIST}. Use null only if truly unclear.
 - If a day has no items, use an empty items array.
@@ -86,7 +105,13 @@ Rules:
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
-        { role: "user", content: trimmed },
+        {
+          role: "user",
+          content: buildDocumentImportUserMessage({
+            documentText: trimmed,
+            instructions,
+          }),
+        },
       ],
     }),
   });
@@ -114,9 +139,11 @@ Rules:
     throw new Error("AI response did not match the expected itinerary format.");
   }
 
-  for (const day of validated.data.days) {
-    if (day.date > params.trip.endDate) {
-      throw new Error(`Date ${day.date} is after the trip end date.`);
+  if (!datesUnset) {
+    for (const day of validated.data.days) {
+      if (day.date > params.trip.endDate) {
+        throw new Error(`Date ${day.date} is after the trip end date.`);
+      }
     }
   }
 

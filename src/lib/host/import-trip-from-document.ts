@@ -10,10 +10,12 @@ export async function importTripFromDocumentText(params: {
   tripId: string;
   text: string;
   defaultTimezone: string;
+  instructions?: string | null;
 }) {
   const parsed = await parseTripFromDocument({
     text: params.text,
     defaultTimezone: params.defaultTimezone,
+    instructions: params.instructions,
   });
 
   await db

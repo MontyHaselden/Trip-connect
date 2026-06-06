@@ -11,6 +11,7 @@ export function ImportFromText(props: {
   const { inviteCode, needsPublishConfirm, onImported, onError } = props;
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [instructions, setInstructions] = useState("");
   const [importing, setImporting] = useState(false);
   const [stats, setStats] = useState<{
     daysCreated: number;
@@ -27,7 +28,10 @@ export function ImportFromText(props: {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({
+            text,
+            instructions: instructions.trim() || undefined,
+          }),
         },
       );
       const body = await res.json().catch(() => ({}));
@@ -56,9 +60,16 @@ export function ImportFromText(props: {
       {open ? (
         <div className="mt-4 flex flex-col gap-3">
           <p className="text-sm text-zinc-600">
-            Paste an itinerary from email or a document. AI will create trip days
-            and schedule items. You can edit everything afterward.
+            Paste an itinerary from email or a document. Add instructions if needed
+            (e.g. move all dates to this year). AI will create trip days and
+            schedule items.
           </p>
+          <input
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            placeholder="Optional: e.g. This is last year's trip — shift all dates to 2026"
+            className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm"
+          />
           <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
             Imported content publishes automatically — students see it when they
             refresh trip data.

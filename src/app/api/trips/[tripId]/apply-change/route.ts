@@ -3,13 +3,14 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/lib/db/client";
-import { aiChangeProposals, itineraryItems, tripDays } from "@/lib/db/schema";
+import { aiChangeProposals, itineraryItems, tripDays, trips } from "@/lib/db/schema";
 import type { ProposedChange } from "@/lib/ai/mock-chat";
 import { requireHostSessionHostId } from "@/lib/auth/host-session";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import { nextDaySortOrder, nextItemSortOrder } from "@/lib/host/itinerary-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
+import { syncTripDatesFromDays } from "@/lib/host/trip-dates";
 
 const BodySchema = z.object({
   proposalId: z.string().uuid(),
@@ -52,9 +53,25 @@ export async function POST(
     let applied = 0;
 
     for (const change of changes) {
+      if (change.type === "update_trip_dates") {
+        const startDate = String(change.payload.startDate ?? "");
+        const endDate = String(change.payload.endDate ?? "");
+        if (/^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+          if (endDate >= startDate) {
+            await db
+              .update(trips)
+              .set({ startDate, endDate, updatedAt: new Date() })
+              .where(eq(trips.id, tripId));
+            applied++;
+          }
+        }
+      }
       if (change.type === "add_day") {
         const sortOrder = await nextDaySortOrder(tripId);
-        const date = new Date().toISOString().slice(0, 10);
+        const date =
+          typeof change.payload.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(change.payload.date)
+            ? change.payload.date
+            : new Date().toISOString().slice(0, 10);
         await db.insert(tripDays).values({
           tripId,
           date,
@@ -119,6 +136,7 @@ export async function POST(
       .set({ status: "applied", appliedAt: new Date() })
       .where(eq(aiChangeProposals.id, proposal.id));
 
+    await syncTripDatesFromDays(tripId);
     await maybeAutoPublish(tripId);
 
     return NextResponse.json({ ok: true, applied });

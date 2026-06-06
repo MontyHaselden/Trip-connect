@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { OfflineBanner } from "./OfflineBanner";
 import { StudentBottomNav } from "./StudentBottomNav";
 import { useTripCache } from "@/hooks/useTripCache";
-import { clearStudentSessionAndCache } from "@/lib/offline/sync";
 
 export function StudentAppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -21,12 +20,6 @@ export function StudentAppShell({ children }: { children: React.ReactNode }) {
     }
   }, [router]);
 
-  useEffect(() => {
-    if (cache.status === "unauthorized") {
-      clearStudentSessionAndCache().finally(() => router.replace("/"));
-    }
-  }, [cache.status, router]);
-
   return (
     <div className="min-h-dvh bg-zinc-50 text-zinc-900">
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col gap-3 px-5 py-4">
@@ -40,11 +33,18 @@ export function StudentAppShell({ children }: { children: React.ReactNode }) {
             cache.status === "offline_no_cache" ||
             cache.status === "syncing" ||
             cache.status === "ready" ||
+            cache.status === "unauthorized" ||
             cache.status === "error"
               ? cache.status
               : "ready"
           }
-          message={cache.status === "error" ? cache.message : undefined}
+          message={
+            cache.status === "unauthorized"
+              ? "Could not refresh — your session may have expired. You can still view saved trip data."
+              : cache.status === "error"
+                ? cache.message
+                : undefined
+          }
         />
         <div className="flex-1">{children}</div>
         <StudentBottomNav />

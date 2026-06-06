@@ -37,7 +37,7 @@ function storageGet(key: string): string | null {
   }
 }
 
-export function useTripCache(): TripCacheState {
+export function useTripCache(expectedTripId?: string | null): TripCacheState {
   const online = useOnlineStatus();
   const [sessionReady, setSessionReady] = useState(false);
   const [tripId, setTripId] = useState<string | null>(null);
@@ -57,11 +57,20 @@ export function useTripCache(): TripCacheState {
   });
 
   useEffect(() => {
-    setTripId(storageGet("tc_trip_id"));
+    const storedTripId = storageGet("tc_trip_id");
+    const resolvedTripId = expectedTripId ?? storedTripId;
+    if (expectedTripId && storedTripId !== expectedTripId) {
+      try {
+        localStorage.setItem("tc_trip_id", expectedTripId);
+      } catch {
+        // ignore
+      }
+    }
+    setTripId(resolvedTripId);
     setParticipantId(storageGet("tc_participant_id"));
     setAccessToken(storageGet("tc_access_token"));
     setSessionReady(true);
-  }, []);
+  }, [expectedTripId]);
 
   useEffect(() => {
     setState((s) => ({ ...s, tripId, participantId, sessionReady, online }));

@@ -1,10 +1,62 @@
 import type { ItineraryTree } from "@/components/host/itinerary/types";
 
 export type ProposedChange = {
-  type: "add_item" | "update_item" | "add_day" | "add_prep";
+  type: "add_item" | "update_item" | "add_day" | "add_prep" | "update_trip_dates";
   summary: string;
   payload: Record<string, unknown>;
 };
+
+const MONTHS: Record<string, string> = {
+  january: "01",
+  jan: "01",
+  february: "02",
+  feb: "02",
+  march: "03",
+  mar: "03",
+  april: "04",
+  apr: "04",
+  may: "05",
+  june: "06",
+  jun: "06",
+  july: "07",
+  jul: "07",
+  august: "08",
+  aug: "08",
+  september: "09",
+  sep: "09",
+  sept: "09",
+  october: "10",
+  oct: "10",
+  november: "11",
+  nov: "11",
+  december: "12",
+  dec: "12",
+};
+
+function inferYear(message: string): number {
+  const yearMatch = message.match(/\b(20\d{2})\b/);
+  if (yearMatch) return Number(yearMatch[1]);
+  const now = new Date();
+  return now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear();
+}
+
+/** Parse "5 July to 21 July" style ranges from a chat message. */
+function parseDateRangeFromMessage(message: string): { startDate: string; endDate: string } | null {
+  const year = inferYear(message);
+  const pattern =
+    /(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(?:to|-|–)\s*(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)/i;
+  const match = message.match(pattern);
+  if (!match) return null;
+
+  const startMonth = MONTHS[match[2]!.toLowerCase()];
+  const endMonth = MONTHS[match[4]!.toLowerCase()];
+  if (!startMonth || !endMonth) return null;
+
+  const startDate = `${year}-${startMonth}-${match[1]!.padStart(2, "0")}`;
+  const endDate = `${year}-${endMonth}-${match[3]!.padStart(2, "0")}`;
+  if (endDate < startDate) return null;
+  return { startDate, endDate };
+}
 
 export type MockChatResult = {
   assistantReply: string;
@@ -98,17 +150,37 @@ export function processMockChatMessage(params: {
   }
 
   if (/create.*japan|japan trip/.test(lower)) {
-    return {
-      assistantReply:
-        "I'll scaffold a Japan trip with Tokyo, Osaka, Hiroshima, and Kagoshima days. Review the proposed schedule on the right, then click Apply.",
-      needsClarification: false,
-      proposedChanges: [
-        {
-          type: "add_day",
-          summary: "Add Tokyo arrival day",
-          payload: { cityLabel: "Tokyo", calendarLabel: "Tokyo" },
+    const range = parseDateRangeFromMessage(msg);
+    const proposedChanges: ProposedChange[] = [];
+    if (range) {
+      proposedChanges.push({
+        type: "update_trip_dates",
+        summary: `Set trip dates ${range.startDate} to ${range.endDate}`,
+        payload: range,
+      });
+      proposedChanges.push({
+        type: "add_day",
+        summary: "Add Tokyo arrival day",
+        payload: {
+          cityLabel: "Tokyo",
+          calendarLabel: "Tokyo",
+          date: range.startDate,
         },
-      ],
+      });
+    } else {
+      proposedChanges.push({
+        type: "add_day",
+        summary: "Add Tokyo arrival day",
+        payload: { cityLabel: "Tokyo", calendarLabel: "Tokyo" },
+      });
+    }
+
+    return {
+      assistantReply: range
+        ? `I'll set the trip to ${range.startDate} through ${range.endDate} and scaffold your Japan itinerary. Review the proposal, then click Apply.`
+        : "I'll scaffold a Japan trip with Tokyo, Osaka, Hiroshima, and Kagoshima days. Mention dates in your message (e.g. 5 July to 21 July) and I'll set those automatically.",
+      needsClarification: false,
+      proposedChanges,
       warnings: [],
     };
   }

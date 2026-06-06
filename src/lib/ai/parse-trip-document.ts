@@ -2,6 +2,10 @@ import { z } from "zod";
 
 import { ItineraryImportSchema } from "@/lib/ai/itinerary-import";
 import { AI_TIME_NORMALIZATION_RULES } from "@/lib/ai/time-prompt";
+import {
+  buildDocumentImportUserMessage,
+  documentImportSystemRules,
+} from "@/lib/documents/document-import-instructions";
 import { prepareDocumentForAi } from "@/lib/documents/prepare-for-ai";
 import { sanitizeItineraryTimes } from "@/lib/utils/ai-time";
 
@@ -22,6 +26,7 @@ export type TripFromDocumentResult = z.infer<typeof TripFromDocumentSchema>;
 export async function parseTripFromDocument(params: {
   text: string;
   defaultTimezone: string;
+  instructions?: string | null;
 }): Promise<TripFromDocumentResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -41,12 +46,17 @@ Return ONLY valid JSON with this shape:
 
 Rules:
 - Infer trip name, school name, start/end dates, and timezone from the document when possible.
-- If timezone is missing, use "${params.defaultTimezone}".
 - Every day date must fall within startDate and endDate.
+- ${documentImportSystemRules({ defaultTimezone: params.defaultTimezone })}
 - ${AI_TIME_NORMALIZATION_RULES}
 - Include all scheduled activities you can find; use empty items arrays for travel/rest days with no events.
-- destinationCountry and destinationLanguage should reflect the trip destination when clear (e.g. "Japan", "Japanese"); otherwise null.
+- destinationCountry and destinationLanguage should reflect the trip destination when clear (e.g. "Japan", "ja"); otherwise null.
 - Do not include markdown or commentary.`;
+
+  const userContent = buildDocumentImportUserMessage({
+    documentText: trimmed,
+    instructions: params.instructions,
+  });
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -60,7 +70,7 @@ Rules:
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
-        { role: "user", content: trimmed },
+        { role: "user", content: userContent },
       ],
     }),
   });

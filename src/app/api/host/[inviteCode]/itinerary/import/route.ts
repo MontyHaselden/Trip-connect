@@ -11,6 +11,7 @@ import { tripNeedsPublishConfirm } from "@/lib/publish/trip-live";
 
 const ImportBodySchema = z.object({
   text: z.string().trim().min(20).max(12_000),
+  instructions: z.string().trim().max(2000).optional(),
 });
 
 export async function POST(
@@ -30,6 +31,7 @@ export async function POST(
     try {
       importData = await parseItineraryText({
         text: parsed.data.text,
+        instructions: parsed.data.instructions,
         trip: {
           name: trip.name,
           startDate: trip.startDate,

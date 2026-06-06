@@ -1,19 +1,20 @@
 "use client";
 
 import {
+  COMPACT_SHORT_THRESHOLD_MINUTES,
+} from "@/lib/timeline/compact-day-layout";
+import {
   categoryAccent,
   formatCompactStartTime,
-  itemLocationLine,
   resolveCategory,
   type ItineraryRowItem,
 } from "@/lib/utils/itinerary-item-style";
 
-function titleSizeClass(durationMinutes: number, shareOfDay: number) {
-  if (shareOfDay >= 0.4 || durationMinutes >= 180) return "text-2xl font-bold leading-tight";
-  if (shareOfDay >= 0.2 || durationMinutes >= 90) return "text-xl font-semibold leading-snug";
-  if (shareOfDay >= 0.12 || durationMinutes >= 60) return "text-base font-semibold leading-snug";
-  if (durationMinutes >= 45) return "text-sm font-medium leading-snug";
-  return "text-xs font-medium leading-snug";
+function titleSizeClass(durationMinutes: number, blockHeightPx: number) {
+  if (durationMinutes >= 180 || blockHeightPx >= 200) return "text-2xl font-bold leading-tight";
+  if (durationMinutes >= 90 || blockHeightPx >= 120) return "text-xl font-semibold leading-snug";
+  if (durationMinutes >= 60 || blockHeightPx >= 80) return "text-base font-semibold leading-snug";
+  return "text-sm font-medium leading-snug";
 }
 
 function blockTint(category: ReturnType<typeof resolveCategory>, isActive: boolean, isNext: boolean) {
@@ -46,33 +47,21 @@ export function CompactItineraryRow(props: {
   isNext?: boolean;
   onTap: () => void;
   durationMinutes: number;
-  totalDurationMinutes: number;
+  heightPx: number;
 }) {
-  const {
-    item,
-    tripTimezone,
-    isActive,
-    isNext,
-    onTap,
-    durationMinutes,
-    totalDurationMinutes,
-  } = props;
+  const { item, tripTimezone, isActive, isNext, onTap, durationMinutes, heightPx } = props;
   const category = resolveCategory(item);
   const accent = categoryAccent(category);
   const time = formatCompactStartTime(item.startTime, tripTimezone);
-  const locationLine = itemLocationLine(item);
-  const shareOfDay =
-    totalDurationMinutes > 0 ? durationMinutes / totalDurationMinutes : 1;
-  const showLocation = Boolean(locationLine) && (shareOfDay >= 0.12 || durationMinutes >= 60);
-  const isCompact = shareOfDay < 0.08 && durationMinutes < 45;
+  const isShort = durationMinutes <= COMPACT_SHORT_THRESHOLD_MINUTES;
 
   return (
     <button
       type="button"
       onClick={onTap}
-      style={{ flex: `${durationMinutes} 1 0%` }}
+      style={{ height: heightPx, flexShrink: 0 }}
       className={[
-        "flex min-h-0 flex-col justify-center gap-0.5 overflow-hidden border-b border-zinc-200/70 px-3 py-2 text-left transition-colors last:border-b-0",
+        "flex w-full flex-col justify-center gap-0.5 overflow-hidden border-b border-zinc-200/70 px-3 py-2 text-left transition-colors last:border-b-0",
         blockTint(category, Boolean(isActive), Boolean(isNext) && !isActive),
         isActive ? "ring-2 ring-inset ring-red-200" : "",
       ].join(" ")}
@@ -88,27 +77,19 @@ export function CompactItineraryRow(props: {
         <span className="shrink-0 text-xs font-semibold tabular-nums text-zinc-600">
           {time}
         </span>
-        <span
-          className={[
-            "truncate text-[10px] font-medium uppercase tracking-wide text-zinc-500",
-            isCompact ? "hidden" : "",
-          ].join(" ")}
-        >
+        <span className="truncate text-[10px] font-medium uppercase tracking-wide text-zinc-500">
           {accent.label}
         </span>
       </div>
       <span
         className={[
           "min-w-0 text-zinc-900",
-          titleSizeClass(durationMinutes, shareOfDay),
-          isCompact ? "line-clamp-1" : shareOfDay < 0.15 ? "line-clamp-2" : "",
+          titleSizeClass(durationMinutes, heightPx),
+          isShort ? "line-clamp-2" : heightPx < 100 ? "line-clamp-2" : "line-clamp-3",
         ].join(" ")}
       >
         {item.title}
       </span>
-      {showLocation ? (
-        <span className="truncate text-xs text-zinc-500">{locationLine}</span>
-      ) : null}
     </button>
   );
 }

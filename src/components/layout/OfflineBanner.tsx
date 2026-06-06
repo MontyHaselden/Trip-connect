@@ -12,6 +12,7 @@ export function OfflineBanner(props: {
     | "offline_no_cache"
     | "syncing"
     | "ready"
+    | "unauthorized"
     | "error";
   message?: string;
 }) {
@@ -29,6 +30,7 @@ export function OfflineBanner(props: {
   if (
     online &&
     status !== "error" &&
+    status !== "unauthorized" &&
     status !== "updated" &&
     !(version !== null && version > 0 && cachedAt)
   ) {
@@ -48,7 +50,7 @@ export function OfflineBanner(props: {
         </div>
       ) : null}
 
-      {status === "error" && message ? (
+      {(status === "error" || status === "unauthorized") && message ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
           {message}
         </div>

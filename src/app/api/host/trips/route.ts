@@ -11,8 +11,8 @@ import { createTripForHost } from "@/lib/host/trip-create";
 const CreateSchema = z.object({
   name: z.string().trim().min(2).max(200),
   schoolName: z.string().trim().min(2).max(200),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   timezone: z.string().trim().min(1).max(80),
   defaultCountryCallingCode: z.string().trim().min(2).max(2),
   destinationCountry: z.string().trim().max(100).nullable().optional(),

@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 
 import { requireHostSessionHostId, setHostSessionCookie } from "@/lib/auth/host-session";
+import { normalizeImportInstructions } from "@/lib/documents/document-import-instructions";
 import { extractTextFromUpload } from "@/lib/documents/extract-text";
 import { extractTripMetadataQuick } from "@/lib/documents/extract-trip-metadata";
 import { hostApiError } from "@/lib/host/api-errors";
@@ -37,6 +38,12 @@ export async function POST(req: Request) {
         ? String(form.get("timezone")).trim()
         : "UTC";
 
+    const instructions = normalizeImportInstructions(
+      typeof form.get("instructions") === "string"
+        ? String(form.get("instructions"))
+        : null,
+    );
+
     let documentText: string;
     try {
       documentText = await extractTextFromUpload(file);
@@ -65,6 +72,7 @@ export async function POST(req: Request) {
           tripId: trip.id,
           text: documentText,
           defaultTimezone,
+          instructions,
         });
       } catch (err) {
         console.error("[from-document] background import failed:", err);

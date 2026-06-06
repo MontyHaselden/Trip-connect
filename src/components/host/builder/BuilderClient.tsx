@@ -38,7 +38,11 @@ export function BuilderClient(props: { tripId: string }) {
   return (
     <div className="flex h-[calc(100dvh-0px)] min-h-0">
       <div className="w-full max-w-md shrink-0 lg:max-w-lg">
-        <AiChatPanel tripId={tripId} onProposal={setProposal} />
+        <AiChatPanel
+          tripId={tripId}
+          onProposal={setProposal}
+          onDocumentImported={() => setReloadKey((k) => k + 1)}
+        />
       </div>
       <div className="min-w-0 flex-1">
         <LivePreviewPanel

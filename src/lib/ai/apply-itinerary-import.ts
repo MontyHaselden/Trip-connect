@@ -7,6 +7,7 @@ import {
   nextDaySortOrder,
   nextItemSortOrder,
 } from "@/lib/host/itinerary-queries";
+import { syncTripDatesFromDays } from "@/lib/host/trip-dates";
 import { normalizeStoredTime } from "@/lib/utils/ai-time";
 
 export async function applyItineraryImport(
@@ -76,6 +77,8 @@ export async function applyItineraryImport(
       itemsCreated++;
     }
   }
+
+  await syncTripDatesFromDays(tripId);
 
   return { daysCreated, daysUpdated, itemsCreated };
 }
