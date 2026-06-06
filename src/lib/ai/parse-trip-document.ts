@@ -45,7 +45,8 @@ Return ONLY valid JSON with this shape:
 {"name":"string","schoolName":"string","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD","timezone":"IANA/Timezone","destinationCountry":null,"destinationLanguage":null,"days":[{"date":"YYYY-MM-DD","cityLabel":"string","summary":null,"items":[{"startTime":"HH:MM","endTime":null,"title":"string","locationName":null,"address":null,"leaveByTime":null,"transportNote":null,"bringNote":null}]}]}
 
 Rules:
-- Infer trip name, school name, start/end dates, and timezone from the document when possible.
+- Infer school name, start/end dates, timezone, destination country, and destination language from the document when possible.
+- Do not override the trip name from host context unless the document clearly contains a better official trip title.
 - Every day date must fall within startDate and endDate.
 - ${documentImportSystemRules({ defaultTimezone: params.defaultTimezone })}
 - ${AI_TIME_NORMALIZATION_RULES}

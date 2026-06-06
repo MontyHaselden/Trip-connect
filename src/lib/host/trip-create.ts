@@ -28,11 +28,11 @@ async function uniqueTripCode(column: "inviteCode" | "viewerCode"): Promise<stri
 export async function createTripForHost(params: {
   hostId: string;
   name: string;
-  schoolName: string;
+  schoolName?: string;
   startDate?: string; // YYYY-MM-DD — omitted until AI/import sets dates
   endDate?: string; // YYYY-MM-DD
-  timezone: string;
-  defaultCountryCallingCode: string; // e.g. NZ
+  timezone?: string;
+  defaultCountryCallingCode?: string; // e.g. NZ
   destinationCountry?: string | null;
   destinationLanguage?: string | null;
 }) {
@@ -47,14 +47,16 @@ export async function createTripForHost(params: {
     .insert(trips)
     .values({
       name: params.name.trim(),
-      schoolName: params.schoolName.trim(),
+      schoolName: (params.schoolName ?? "School trip").trim(),
       inviteCode,
       viewerCode,
       hostCodeHash: null,
       startDate: dates.startDate,
       endDate: dates.endDate,
-      timezone: params.timezone.trim(),
-      defaultCountryCallingCode: params.defaultCountryCallingCode.trim().toUpperCase(),
+      timezone: (params.timezone ?? "UTC").trim(),
+      defaultCountryCallingCode: (params.defaultCountryCallingCode ?? "NZ")
+        .trim()
+        .toUpperCase(),
       destinationCountry: params.destinationCountry ?? null,
       destinationLanguage: params.destinationLanguage ?? null,
       publishedVersion: 0,

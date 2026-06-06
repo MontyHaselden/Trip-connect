@@ -11,6 +11,8 @@ export async function importTripFromDocumentText(params: {
   text: string;
   defaultTimezone: string;
   instructions?: string | null;
+  /** When set, keep this trip name instead of the AI-extracted title. */
+  preserveTripName?: string | null;
 }) {
   const parsed = await parseTripFromDocument({
     text: params.text,
@@ -21,7 +23,9 @@ export async function importTripFromDocumentText(params: {
   await db
     .update(trips)
     .set({
-      name: parsed.name.trim(),
+      ...(params.preserveTripName
+        ? {}
+        : { name: parsed.name.trim() }),
       schoolName: parsed.schoolName.trim(),
       startDate: parsed.startDate,
       endDate: parsed.endDate,
