@@ -73,6 +73,34 @@ export function defaultCreateEndMinutes(
   return getDisplayEndMinutes(startMinutes, null, next ?? null);
 }
 
+export function computeDisplayDurationMinutes(
+  item: { startTime: string; endTime: string | null },
+  nextStartMinutes: number | null,
+): number {
+  const start = timeToMinutes(item.startTime);
+  const end = getDisplayEndMinutes(start, item.endTime, nextStartMinutes);
+  return Math.max(MIN_DURATION_MINUTES, end - start);
+}
+
+/** Minutes per item for proportional day-sheet block heights. */
+export function computeDisplayDurationsById(
+  items: Array<{ id: string; startTime: string; endTime: string | null; sortOrder?: number }>,
+): Map<string, number> {
+  const sorted = [...items].sort((a, b) => {
+    const cmp = a.startTime.localeCompare(b.startTime);
+    if (cmp !== 0) return cmp;
+    return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+  });
+  const map = new Map<string, number>();
+  for (let i = 0; i < sorted.length; i++) {
+    const item = sorted[i];
+    const next = sorted[i + 1];
+    const nextStart = next ? timeToMinutes(next.startTime) : null;
+    map.set(item.id, computeDisplayDurationMinutes(item, nextStart));
+  }
+  return map;
+}
+
 export function sortItemsByStartTime<T extends { startTime: string; sortOrder: number }>(
   items: T[],
 ): T[] {

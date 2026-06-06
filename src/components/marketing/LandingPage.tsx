@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ContinueTripCta } from "./ContinueTripCta";
 import { MarketingShell } from "./MarketingShell";
 import { MockPhoneItinerary } from "./MockPhoneItinerary";
 import {
@@ -24,6 +25,7 @@ export function LandingPage() {
             updates — even when students have no mobile data.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
+            <ContinueTripCta />
             <Link
               href="/signup"
               className="inline-flex h-11 items-center justify-center rounded-xl bg-zinc-900 px-6 text-sm font-medium text-white"

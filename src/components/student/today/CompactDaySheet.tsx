@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import type { DayWeatherSnapshot } from "@/types/activity-category";
 import { daysUntilTrip } from "@/lib/utils/time";
 import {
+  computeDisplayDurationsById,
   getNowMinutes,
   isActiveAtNow,
   timeToMinutes,
@@ -89,6 +90,13 @@ export function CompactDaySheet(props: {
     return `Next meeting: ${next.title} at ${time}`;
   }, [isPreTrip, items, nowMinutes]);
 
+  const durationById = useMemo(() => computeDisplayDurationsById(items), [items]);
+  const totalDurationMinutes = useMemo(() => {
+    let sum = 0;
+    for (const mins of durationById.values()) sum += mins;
+    return sum;
+  }, [durationById]);
+
   const hasContent = items.length > 0 || prepItems.length > 0;
 
   if (!hasContent) {
@@ -136,7 +144,8 @@ export function CompactDaySheet(props: {
                 isActive={item.id === activeId}
                 isNext={item.id === nextId && item.id !== activeId}
                 onTap={() => setSelectedItem(item)}
-                totalCount={items.length}
+                durationMinutes={durationById.get(item.id) ?? 60}
+                totalDurationMinutes={totalDurationMinutes}
               />
             ))}
           </div>
