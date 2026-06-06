@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 
+import { PlacePicker } from "@/components/geo/PlacePicker";
+import { TripTimezoneNote } from "@/components/geo/TripTimezoneNote";
 import { buildDefaultDayPlaces } from "@/lib/host/wizard/detect-city-moves";
 import { DAY_TYPES, type DayPlaceDraft, type TripWizardDraft } from "@/lib/host/wizard/types";
 
@@ -69,19 +71,21 @@ export function DatesPlacesStep({
                 ].join(" ")}
               >
                 <div className="text-sm font-medium">{day.date}</div>
-                <input
+                <PlacePicker
                   value={day.primaryCity}
-                  onChange={(e) => updateDay(i, { primaryCity: e.target.value })}
+                  onChange={(primaryCity) => updateDay(i, { primaryCity })}
                   placeholder="Primary city"
-                  className="h-9 rounded-lg border border-zinc-200 px-2 text-sm"
+                  countryNames={basics.destinationCountries}
+                  inputClassName="h-9 w-full rounded-lg border border-zinc-200 px-2 text-sm focus:border-zinc-400 focus:outline-none"
                 />
-                <input
+                <PlacePicker
                   value={day.secondaryCity ?? ""}
-                  onChange={(e) =>
-                    updateDay(i, { secondaryCity: e.target.value || null })
+                  onChange={(secondaryCity) =>
+                    updateDay(i, { secondaryCity: secondaryCity || null })
                   }
                   placeholder="Second city (travel days)"
-                  className="h-9 rounded-lg border border-zinc-200 px-2 text-sm"
+                  countryNames={basics.destinationCountries}
+                  inputClassName="h-9 w-full rounded-lg border border-zinc-200 px-2 text-sm focus:border-zinc-400 focus:outline-none"
                 />
                 <select
                   value={day.dayType}
@@ -114,6 +118,15 @@ export function DatesPlacesStep({
           })}
         </div>
       )}
+      <TripTimezoneNote
+        countries={basics.destinationCountries}
+        cities={dayPlaces.map((d) => d.primaryCity).filter(Boolean)}
+        departureCity={basics.departureCity}
+        currentTimezone={basics.timezone}
+        onTimezoneResolved={(timezone) =>
+          onChange({ ...draft, basics: { ...basics, timezone } })
+        }
+      />
     </div>
   );
 }

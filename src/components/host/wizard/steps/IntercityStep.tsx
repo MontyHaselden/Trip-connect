@@ -39,6 +39,7 @@ export function IntercityStep({
               </p>
               <TransportLegForm
                 leg={leg}
+                countryNames={draft.basics.destinationCountries}
                 onChange={(next) => {
                   const updated: IntercityLegDraft = {
                     ...next,

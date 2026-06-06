@@ -1,5 +1,6 @@
 "use client";
 
+import { PlacePicker } from "@/components/geo/PlacePicker";
 import type { BookingStatus, TransportLegDraft, TransportType } from "@/lib/host/wizard/types";
 import { BOOKING_STATUSES, TRANSPORT_TYPES, newId } from "@/lib/host/wizard/types";
 
@@ -39,11 +40,13 @@ export function TransportLegForm({
   onChange,
   onRemove,
   showRemove,
+  countryNames = [],
 }: {
   leg: TransportLegDraft;
   onChange: (leg: TransportLegDraft) => void;
   onRemove?: () => void;
   showRemove?: boolean;
+  countryNames?: string[];
 }) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-zinc-50/50 p-4 space-y-3">
@@ -132,19 +135,25 @@ export function TransportLegForm({
         </label>
         <label className="block text-sm">
           <span className="font-medium">From city</span>
-          <input
-            value={leg.fromCity}
-            onChange={(e) => onChange({ ...leg, fromCity: e.target.value })}
-            className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2"
-          />
+          <div className="mt-1">
+            <PlacePicker
+              value={leg.fromCity}
+              onChange={(fromCity) => onChange({ ...leg, fromCity })}
+              countryNames={countryNames}
+              inputClassName="h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm focus:border-zinc-400 focus:outline-none"
+            />
+          </div>
         </label>
         <label className="block text-sm">
           <span className="font-medium">To city</span>
-          <input
-            value={leg.toCity}
-            onChange={(e) => onChange({ ...leg, toCity: e.target.value })}
-            className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2"
-          />
+          <div className="mt-1">
+            <PlacePicker
+              value={leg.toCity}
+              onChange={(toCity) => onChange({ ...leg, toCity })}
+              countryNames={countryNames}
+              inputClassName="h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm focus:border-zinc-400 focus:outline-none"
+            />
+          </div>
         </label>
         <label className="block text-sm">
           <span className="font-medium">From station/airport</span>

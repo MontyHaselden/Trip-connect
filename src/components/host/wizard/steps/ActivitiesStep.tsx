@@ -1,5 +1,6 @@
 "use client";
 
+import { PlacePicker } from "@/components/geo/PlacePicker";
 import { ACTIVITY_CATEGORIES, type ActivityCategory } from "@/types/activity-category";
 import type { ActivityDraft, ReminderDraft, TripWizardDraft } from "@/lib/host/wizard/types";
 import { BOOKING_STATUSES, newId } from "@/lib/host/wizard/types";
@@ -130,13 +131,14 @@ export function ActivitiesStep({
                 Location TBC
               </label>
               {!act.isLocationTbc ? (
-                <input
+                <PlacePicker
                   value={act.locationName ?? ""}
-                  onChange={(e) =>
-                    updateActivity(i, { locationName: e.target.value || null })
+                  onChange={(locationName) =>
+                    updateActivity(i, { locationName: locationName || null })
                   }
-                  placeholder="Location"
-                  className="h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm"
+                  placeholder="Venue or address"
+                  countryNames={draft.basics.destinationCountries}
+                  inputClassName="h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm focus:border-zinc-400 focus:outline-none"
                 />
               ) : null}
               <select

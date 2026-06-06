@@ -39,7 +39,7 @@ const BasicsSchema = z.object({
   startDate: DraftDateSchema,
   endDate: DraftDateSchema,
   destinationCountries: z.array(z.string()),
-  destinationLanguages: z.array(z.string()),
+  destinationLanguages: z.array(z.string()).default([]),
   timezone: z.string().min(1),
   departureCity: z.string(),
   returnCity: z.string(),

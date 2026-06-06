@@ -1,5 +1,6 @@
 "use client";
 
+import { buildTimezoneDisplay } from "@/lib/geo/resolve-timezone";
 import type { WizardWarning } from "@/lib/host/wizard/review-warnings";
 import type { TripWizardDraft } from "@/lib/host/wizard/types";
 
@@ -21,6 +22,7 @@ export function ReviewStep({
   finishing: boolean;
 }) {
   const { basics } = draft;
+  const tz = buildTimezoneDisplay(basics.timezone, undefined, basics.startDate || undefined);
 
   return (
     <div className="space-y-6">
@@ -32,7 +34,7 @@ export function ReviewStep({
           {basics.name} · {basics.schoolName}
         </p>
         <p>
-          {basics.startDate} – {basics.endDate} · {basics.timezone}
+          {basics.startDate} – {basics.endDate} · {tz.label}
         </p>
         <p>
           {basics.departureCity} → {basics.destinationCountries.join(", ")} →{" "}

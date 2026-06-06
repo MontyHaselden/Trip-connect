@@ -4,6 +4,8 @@ import { db } from "@/lib/db/client";
 import { hostTripMembers, tripWizardDrafts, trips } from "@/lib/db/schema";
 import { tripDatesAreUnset } from "@/lib/host/trip-dates";
 
+import { inferTimezoneFromWizardBasics } from "@/lib/geo/resolve-timezone";
+
 import { emptyWizardDraft, type TripWizardDraft } from "./types";
 import { parseWizardDraft } from "./validate";
 
@@ -63,12 +65,6 @@ export function hydrateWizardDraftFromTrip(
   }
   if (!next.basics.destinationCountries.length && trip.destinationCountry) {
     next.basics.destinationCountries = trip.destinationCountry
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  if (!next.basics.destinationLanguages.length && trip.destinationLanguage) {
-    next.basics.destinationLanguages = trip.destinationLanguage
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
@@ -137,7 +133,6 @@ export async function syncTripFromWizardDraft(tripId: string, draft: TripWizardD
   const name = draft.basics.name.trim();
   const schoolName = draft.basics.schoolName.trim();
   const countries = draft.basics.destinationCountries.filter(Boolean).join(", ") || null;
-  const languages = draft.basics.destinationLanguages.filter(Boolean).join(", ") || null;
 
   await db
     .update(trips)
@@ -148,7 +143,7 @@ export async function syncTripFromWizardDraft(tripId: string, draft: TripWizardD
       ...(draft.basics.startDate ? { startDate: draft.basics.startDate } : {}),
       ...(draft.basics.endDate ? { endDate: draft.basics.endDate } : {}),
       destinationCountry: countries,
-      destinationLanguage: languages,
+      destinationLanguage: null,
       departureCity: draft.basics.departureCity.trim() || null,
       returnCity: draft.basics.returnCity.trim() || null,
       updatedAt: new Date(),
@@ -162,20 +157,30 @@ export async function saveWizardDraft(
   draft: TripWizardDraft,
 ) {
   const parsed = parseWizardDraft(draft);
-  await syncTripFromWizardDraft(tripId, parsed);
+  const timezone = await inferTimezoneFromWizardBasics({
+    destinationCountries: parsed.basics.destinationCountries,
+    departureCity: parsed.basics.departureCity,
+    returnCity: parsed.basics.returnCity,
+    dayPlaces: parsed.dayPlaces,
+  });
+  const withTimezone: TripWizardDraft = {
+    ...parsed,
+    basics: { ...parsed.basics, timezone, destinationLanguages: [] },
+  };
+  await syncTripFromWizardDraft(tripId, withTimezone);
   await db
     .insert(tripWizardDrafts)
     .values({
       tripId,
       currentStep,
-      draftJson: parsed,
+      draftJson: withTimezone,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: tripWizardDrafts.tripId,
       set: {
         currentStep,
-        draftJson: parsed,
+        draftJson: withTimezone,
         updatedAt: new Date(),
       },
     });

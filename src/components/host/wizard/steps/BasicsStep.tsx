@@ -2,6 +2,12 @@
 
 import type { TripWizardDraft } from "@/lib/host/wizard/types";
 
+import { CountryPicker } from "@/components/geo/CountryPicker";
+import { PlacePicker } from "@/components/geo/PlacePicker";
+import { TripTimezoneNote } from "@/components/geo/TripTimezoneNote";
+
+import { TripDateRangePicker } from "../shared/TripDateRangePicker";
+
 export function BasicsStep({
   draft,
   onChange,
@@ -37,76 +43,48 @@ export function BasicsStep({
           className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
         />
       </label>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="font-medium">Start date</span>
-          <input
-            type="date"
-            value={b.startDate}
-            onChange={(e) => setBasics({ startDate: e.target.value })}
-            className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
+      <div className="block text-sm">
+        <span className="font-medium">Trip dates</span>
+        <div className="mt-2">
+          <TripDateRangePicker
+            startDate={b.startDate}
+            endDate={b.endDate}
+            onChange={({ startDate, endDate }) => setBasics({ startDate, endDate })}
           />
-        </label>
-        <label className="block text-sm">
-          <span className="font-medium">End date</span>
-          <input
-            type="date"
-            value={b.endDate}
-            onChange={(e) => setBasics({ endDate: e.target.value })}
-            className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
-          />
-        </label>
+        </div>
       </div>
-      <label className="block text-sm">
-        <span className="font-medium">Destination countries</span>
-        <input
-          value={b.destinationCountries.join(", ")}
-          onChange={(e) =>
-            setBasics({
-              destinationCountries: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-            })
-          }
-          placeholder="Japan"
-          className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="font-medium">Languages</span>
-        <input
-          value={b.destinationLanguages.join(", ")}
-          onChange={(e) =>
-            setBasics({
-              destinationLanguages: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-            })
-          }
-          placeholder="Japanese"
-          className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="font-medium">Timezone</span>
-        <input
-          value={b.timezone}
-          onChange={(e) => setBasics({ timezone: e.target.value })}
-          className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
-        />
-      </label>
+      <CountryPicker
+        value={b.destinationCountries}
+        onChange={(destinationCountries) => setBasics({ destinationCountries })}
+        hint="Official country names — used for weather and place search."
+      />
+      <TripTimezoneNote
+        countries={b.destinationCountries}
+        cities={draft.dayPlaces.map((d) => d.primaryCity).filter(Boolean)}
+        departureCity={b.departureCity}
+        currentTimezone={b.timezone}
+        onTimezoneResolved={(timezone) => setBasics({ timezone })}
+      />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
           <span className="font-medium">Main departure city</span>
-          <input
-            value={b.departureCity}
-            onChange={(e) => setBasics({ departureCity: e.target.value })}
-            className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
-          />
+          <div className="mt-1">
+            <PlacePicker
+              value={b.departureCity}
+              onChange={(departureCity) => setBasics({ departureCity })}
+              placeholder="e.g. Christchurch, New Zealand"
+            />
+          </div>
         </label>
         <label className="block text-sm">
           <span className="font-medium">Main return city</span>
-          <input
-            value={b.returnCity}
-            onChange={(e) => setBasics({ returnCity: e.target.value })}
-            className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
-          />
+          <div className="mt-1">
+            <PlacePicker
+              value={b.returnCity}
+              onChange={(returnCity) => setBasics({ returnCity })}
+              placeholder="Usually same as departure city"
+            />
+          </div>
         </label>
       </div>
     </div>

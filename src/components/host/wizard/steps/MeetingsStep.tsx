@@ -1,5 +1,6 @@
 "use client";
 
+import { PlacePicker } from "@/components/geo/PlacePicker";
 import { MEETING_TYPES, type MeetingDraft, type TripWizardDraft, newId } from "@/lib/host/wizard/types";
 
 export function MeetingsStep({
@@ -76,11 +77,11 @@ export function MeetingsStep({
                 className="h-10 rounded-lg border border-zinc-200 px-2 text-sm"
               />
             </div>
-            <input
+            <PlacePicker
               value={mtg.location ?? ""}
-              onChange={(e) => updateMeeting(i, { location: e.target.value || null })}
-              placeholder="Location"
-              className="h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm"
+              onChange={(location) => updateMeeting(i, { location: location || null })}
+              placeholder="School hall, meeting room…"
+              inputClassName="h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm focus:border-zinc-400 focus:outline-none"
             />
             <select
               value={mtg.meetingType}

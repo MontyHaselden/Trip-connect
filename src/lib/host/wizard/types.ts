@@ -159,7 +159,9 @@ export type WizardBasics = {
   startDate: string;
   endDate: string;
   destinationCountries: string[];
+  /** @deprecated Auto-managed; kept for draft compatibility */
   destinationLanguages: string[];
+  /** IANA zone — inferred automatically from places */
   timezone: string;
   departureCity: string;
   returnCity: string;

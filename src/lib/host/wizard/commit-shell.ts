@@ -10,6 +10,7 @@ import {
   tripTransportLegs,
   trips,
 } from "@/lib/db/schema";
+import { inferTimezoneFromWizardBasics } from "@/lib/geo/resolve-timezone";
 import { nextDaySortOrder, nextItemSortOrder } from "@/lib/host/itinerary-queries";
 import { normalizeStoredTime } from "@/lib/utils/ai-time";
 
@@ -294,7 +295,12 @@ function hasActivityOnDate(draft: TripWizardDraft, date: string): boolean {
 export async function commitWizardShell(tripId: string, draft: TripWizardDraft) {
   const { basics } = draft;
   const countries = basics.destinationCountries.filter(Boolean).join(", ") || null;
-  const languages = basics.destinationLanguages.filter(Boolean).join(", ") || null;
+  const timezone = await inferTimezoneFromWizardBasics({
+    destinationCountries: basics.destinationCountries,
+    departureCity: basics.departureCity,
+    returnCity: basics.returnCity,
+    dayPlaces: draft.dayPlaces,
+  });
 
   await db
     .update(trips)
@@ -304,8 +310,8 @@ export async function commitWizardShell(tripId: string, draft: TripWizardDraft) 
       startDate: basics.startDate,
       endDate: basics.endDate,
       destinationCountry: countries,
-      destinationLanguage: languages,
-      timezone: basics.timezone,
+      destinationLanguage: null,
+      timezone,
       departureCity: basics.departureCity || null,
       returnCity: basics.returnCity || null,
       setupMethod: "wizard",
