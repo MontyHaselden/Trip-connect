@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { HostMobileLinkCard } from "./HostMobileLinkCard";
+
 export function DashboardShell(props: {
   children: React.ReactNode;
   tripId?: string;
@@ -15,6 +17,7 @@ export function DashboardShell(props: {
     ? [
         { href: `/dashboard/trips/${tripId}/builder`, label: "Builder" },
         { href: `/dashboard/trips/${tripId}/participants`, label: "Participants" },
+        { href: `/dashboard/trips/${tripId}/accommodation`, label: "Accommodation" },
         { href: `/dashboard/trips/${tripId}/photos`, label: "Photos" },
         { href: `/dashboard/trips/${tripId}/viewers`, label: "Viewers" },
         { href: `/dashboard/trips/${tripId}/settings`, label: "Settings" },
@@ -80,7 +83,21 @@ export function DashboardShell(props: {
           </button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1">{children}</main>
+      <main className="min-w-0 flex-1">
+        {tripId ? (
+          <div className="border-b border-sky-100 bg-sky-50/40 px-5 py-4 lg:hidden">
+            <HostMobileLinkCard tripId={tripId} />
+          </div>
+        ) : null}
+        {children}
+        {tripId ? (
+          <div className="hidden border-t border-zinc-100 px-5 py-6 lg:block">
+            <div className="mx-auto max-w-5xl">
+              <HostMobileLinkCard tripId={tripId} />
+            </div>
+          </div>
+        ) : null}
+      </main>
     </div>
   );
 }

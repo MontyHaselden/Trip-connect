@@ -67,6 +67,66 @@ export const hostAccountRole = pgEnum("host_account_role", [
   "admin",
 ]);
 
+export const mobileTokenPurpose = pgEnum("mobile_token_purpose", [
+  "host_admin",
+  "host_trip",
+  "student_invite",
+]);
+
+export const tripSetupMethod = pgEnum("trip_setup_method", ["ai", "wizard"]);
+
+export const tripDayType = pgEnum("trip_day_type", [
+  "trip",
+  "travel",
+  "meeting",
+  "free",
+  "buffer",
+  "return",
+]);
+
+export const bookingStatus = pgEnum("booking_status", [
+  "booked",
+  "not_booked",
+  "placeholder",
+]);
+
+export const wizardSource = pgEnum("wizard_source", [
+  "outbound",
+  "return",
+  "intercity",
+  "activity",
+  "meeting",
+  "accommodation",
+]);
+
+export const accommodationStayType = pgEnum("accommodation_stay_type", [
+  "hotel",
+  "hostel",
+  "homestay",
+  "multiple_hosts",
+  "multiple_hotels",
+  "not_booked",
+  "other",
+]);
+
+export const transportLegKind = pgEnum("transport_leg_kind", [
+  "outbound",
+  "return",
+  "intercity",
+]);
+
+export const transportType = pgEnum("transport_type", [
+  "plane",
+  "train",
+  "bus",
+  "coach",
+  "ferry",
+  "car",
+  "taxi",
+  "walking",
+  "other",
+]);
+
 export const hostAccounts = pgTable(
   "host_accounts",
   {
@@ -112,6 +172,9 @@ export const trips = pgTable(
     timezone: text("timezone").notNull(),
     defaultCountryCallingCode: text("default_country_calling_code").notNull(),
     publishedVersion: integer("published_version").notNull().default(0),
+    setupMethod: tripSetupMethod("setup_method").default("ai"),
+    departureCity: text("departure_city"),
+    returnCity: text("return_city"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -253,6 +316,10 @@ export const tripDays = pgTable(
     calendarLabel: text("calendar_label"),
     summary: text("summary"),
     sortOrder: integer("sort_order").notNull(),
+    dayType: tripDayType("day_type").default("trip"),
+    secondaryCityLabel: text("secondary_city_label"),
+    isBufferDay: boolean("is_buffer_day").notNull().default(false),
+    weatherLocationQuery: text("weather_location_query"),
   },
   (d) => ({
     tripDateUnique: uniqueIndex("trip_days_trip_id_date_unique").on(
@@ -290,11 +357,131 @@ export const itineraryItems = pgTable(
     audienceId: uuid("audience_id"),
     category: activityCategory("category"),
     sortOrder: integer("sort_order").notNull(),
+    bookingStatus: bookingStatus("booking_status"),
+    wizardSource: wizardSource("wizard_source"),
+    isTimeTbc: boolean("is_time_tbc").notNull().default(false),
+    isLocationTbc: boolean("is_location_tbc").notNull().default(false),
   },
   (i) => ({
     daySortIndex: index("itinerary_items_trip_day_id_sort_order_idx").on(
       i.tripDayId,
       i.sortOrder,
+    ),
+  }),
+);
+
+export const tripWizardDrafts = pgTable("trip_wizard_drafts", {
+  tripId: uuid("trip_id")
+    .primaryKey()
+    .references(() => trips.id, { onDelete: "cascade" }),
+  currentStep: integer("current_step").notNull().default(1),
+  draftJson: jsonb("draft_json").notNull().default({}),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const tripTransportLegs = pgTable(
+  "trip_transport_legs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    legKind: transportLegKind("leg_kind").notNull(),
+    transportType: transportType("transport_type").notNull(),
+    bookingStatus: bookingStatus("booking_status").notNull().default("not_booked"),
+    travelDate: date("travel_date").notNull(),
+    departureTime: time("departure_time"),
+    arrivalTime: time("arrival_time"),
+    fromCity: text("from_city"),
+    toCity: text("to_city"),
+    fromStation: text("from_station"),
+    toStation: text("to_station"),
+    operator: text("operator"),
+    referenceNumber: text("reference_number"),
+    flightNumber: text("flight_number"),
+    notes: text("notes"),
+    intercityFromCity: text("intercity_from_city"),
+    intercityToCity: text("intercity_to_city"),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (l) => ({
+    tripSortIndex: index("trip_transport_legs_trip_id_sort_order_idx").on(
+      l.tripId,
+      l.sortOrder,
+    ),
+  }),
+);
+
+export const tripAccommodationStays = pgTable(
+  "trip_accommodation_stays",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    cityLabel: text("city_label").notNull(),
+    stayType: accommodationStayType("stay_type").notNull().default("hotel"),
+    name: text("name"),
+    url: text("url"),
+    address: text("address"),
+    phone: text("phone"),
+    checkInDate: date("check_in_date").notNull(),
+    checkOutDate: date("check_out_date").notNull(),
+    notes: text("notes"),
+    isHomestayGroup: boolean("is_homestay_group").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (s) => ({
+    tripSortIndex: index("trip_accommodation_stays_trip_id_sort_order_idx").on(
+      s.tripId,
+      s.sortOrder,
+    ),
+  }),
+);
+
+export const accommodationAssignments = pgTable(
+  "accommodation_assignments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    stayId: uuid("stay_id")
+      .notNull()
+      .references(() => tripAccommodationStays.id, { onDelete: "cascade" }),
+    participantId: uuid("participant_id").references(() => participants.id, {
+      onDelete: "cascade",
+    }),
+    groupId: uuid("group_id").references(() => groups.id, { onDelete: "cascade" }),
+    roomId: uuid("room_id").references(() => rooms.id, { onDelete: "cascade" }),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+  },
+  (a) => ({
+    stayIdx: index("accommodation_assignments_stay_id_idx").on(a.stayId),
+  }),
+);
+
+export const tripDayReminders = pgTable(
+  "trip_day_reminders",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    tripDayId: uuid("trip_day_id")
+      .notNull()
+      .references(() => tripDays.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    reminderTime: time("reminder_time"),
+    note: text("note"),
+    audienceType: itineraryAudienceType("audience_type").notNull().default("everyone"),
+    audienceId: uuid("audience_id"),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (r) => ({
+    daySortIndex: index("trip_day_reminders_trip_day_id_sort_order_idx").on(
+      r.tripDayId,
+      r.sortOrder,
     ),
   }),
 );
@@ -331,6 +518,7 @@ export const participants = pgTable(
     phoneNumberE164: text("phone_number_e164").notNull(),
     role: participantRole("role").notNull(),
     accessToken: text("access_token").notNull(),
+    passwordHash: text("password_hash"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -350,6 +538,37 @@ export const participants = pgTable(
       p.tripId,
       p.fullName,
       p.phoneNumberE164,
+    ),
+  }),
+);
+
+export const mobileAccessTokens = pgTable(
+  "mobile_access_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    hostId: uuid("host_id").references(() => hostAccounts.id, {
+      onDelete: "cascade",
+    }),
+    participantId: uuid("participant_id").references(() => participants.id, {
+      onDelete: "cascade",
+    }),
+    purpose: mobileTokenPurpose("purpose").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tokenHashUnique: uniqueIndex("mobile_access_tokens_token_hash_unique").on(
+      t.tokenHash,
+    ),
+    tripPurposeIdx: index("mobile_access_tokens_trip_purpose_idx").on(
+      t.tripId,
+      t.purpose,
     ),
   }),
 );

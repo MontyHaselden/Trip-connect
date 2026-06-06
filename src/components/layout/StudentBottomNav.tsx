@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
+import { DayLocationButton } from "@/components/student/today/DayLocationSheet";
 import { tripDebug } from "@/lib/debug/trip-debug";
 
 function NavItem(props: { href: string; label: string; active: boolean }) {
@@ -64,8 +65,9 @@ export function StudentBottomNav() {
   return (
     <nav className="relative z-20 mt-auto shrink-0 bg-zinc-50 pb-[max(env(safe-area-inset-bottom),0px)]">
       <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
-        <div className="flex gap-1 p-1.5">
+        <div className="flex items-center gap-1 p-1.5">
           <NavItem href={todayHref} label="Today" active={onToday} />
+          <DayLocationButton />
           <NavItem href={`/trip/${tripId}/my-trip`} label="My Trip" active={onMyTrip} />
         </div>
       </div>

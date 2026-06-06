@@ -21,7 +21,27 @@ export type PublishedTripSnapshotV1 = {
     calendarLabel: string | null;
     summary: string | null;
     sortOrder: number;
+    dayType?: string | null;
+    secondaryCityLabel?: string | null;
+    isBufferDay?: boolean;
     weather?: DayWeatherSnapshot | null;
+  }>;
+  accommodationStays?: Array<{
+    id: string;
+    cityLabel: string;
+    stayType: string;
+    name: string | null;
+    address: string | null;
+    checkInDate: string;
+    checkOutDate: string;
+  }>;
+  dayReminders?: Array<{
+    id: string;
+    tripDayId: string;
+    title: string;
+    reminderTime: string | null;
+    note: string | null;
+    sortOrder: number;
   }>;
   itineraryItems: Array<{
     id: string;

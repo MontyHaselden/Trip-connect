@@ -7,7 +7,11 @@ import { sortItemsByStartTime } from "@/lib/timeline/time-math";
 import type { ActivityCategory } from "@/types/activity-category";
 import type { TripImportProgress } from "@/types/trip-import-progress";
 
+import type { ImportGap } from "@/lib/host/wizard/analyze-import-gaps";
+
 import { BuildingGhostRow } from "./BuildingGhostRow";
+import { ImportGapChecklist } from "./ImportGapChecklist";
+import { PublishSuccessModal } from "./PublishSuccessModal";
 
 type ProposalState = {
   proposalId: string;
@@ -77,6 +81,7 @@ function buildStatusLine(progress: TripImportProgress | null) {
 
 export function LivePreviewPanel(props: {
   tripId: string;
+  tripName: string;
   inviteCode: string;
   timezone: string;
   startDate: string;
@@ -89,6 +94,7 @@ export function LivePreviewPanel(props: {
 }) {
   const {
     tripId,
+    tripName,
     inviteCode,
     timezone,
     startDate,
@@ -102,6 +108,13 @@ export function LivePreviewPanel(props: {
   const [days, setDays] = useState<ItineraryDay[]>([]);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [publishResult, setPublishResult] = useState<{
+    version: number;
+    links: {
+      hostTrip: { url: string; path: string };
+      studentInvite: { url: string; path: string };
+    };
+  } | null>(null);
   const [applying, setApplying] = useState(false);
   const [buildTimedOut, setBuildTimedOut] = useState(false);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(() => new Set());
@@ -110,6 +123,7 @@ export function LivePreviewPanel(props: {
     title: string;
     category: string | null;
   } | null>(null);
+  const [importGaps, setImportGaps] = useState<ImportGap[]>([]);
   const knownIdsRef = useRef<Set<string>>(new Set());
   const revealTimersRef = useRef<number[]>([]);
 
@@ -153,6 +167,16 @@ export function LivePreviewPanel(props: {
 
     return () => window.clearInterval(interval);
   }, [building, onBuildingDone, reload]);
+
+  useEffect(() => {
+    if (!buildProgress) return;
+    if (buildProgress.type === "gaps") {
+      setImportGaps(buildProgress.gaps);
+    }
+    if (buildProgress.type === "done" && buildProgress.gaps?.length) {
+      setImportGaps(buildProgress.gaps);
+    }
+  }, [buildProgress]);
 
   useEffect(() => {
     if (!building || !buildProgress) return;
@@ -239,7 +263,12 @@ export function LivePreviewPanel(props: {
   async function publish() {
     setPublishing(true);
     try {
-      await fetch(`/api/trips/${tripId}/publish`, { method: "POST" });
+      const res = await fetch(`/api/trips/${tripId}/publish`, { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Publish failed");
+      if (body.links && body.version) {
+        setPublishResult({ version: body.version, links: body.links });
+      }
     } finally {
       setPublishing(false);
     }
@@ -288,6 +317,15 @@ export function LivePreviewPanel(props: {
                 : "Deciding trip dates, then filling in each day.")}
           </p>
         </div>
+      ) : null}
+
+      {!building && importGaps.length > 0 ? (
+        <ImportGapChecklist
+          gaps={importGaps}
+          inviteCode={inviteCode}
+          days={days.map((d) => ({ id: d.id, date: d.date }))}
+          onResolved={() => reload()}
+        />
       ) : null}
 
       {buildTimedOut && totalItems === 0 ? (
@@ -375,6 +413,15 @@ export function LivePreviewPanel(props: {
           </p>
         )}
       </div>
+
+      {publishResult ? (
+        <PublishSuccessModal
+          version={publishResult.version}
+          links={publishResult.links}
+          tripName={tripName}
+          onClose={() => setPublishResult(null)}
+        />
+      ) : null}
     </div>
   );
 }

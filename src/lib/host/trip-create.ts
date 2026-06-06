@@ -35,6 +35,7 @@ export async function createTripForHost(params: {
   defaultCountryCallingCode?: string; // e.g. NZ
   destinationCountry?: string | null;
   destinationLanguage?: string | null;
+  setupMethod?: "ai" | "wizard";
 }) {
   const inviteCode = await uniqueTripCode("inviteCode");
   const viewerCode = await uniqueTripCode("viewerCode");
@@ -59,6 +60,7 @@ export async function createTripForHost(params: {
         .toUpperCase(),
       destinationCountry: params.destinationCountry ?? null,
       destinationLanguage: params.destinationLanguage ?? null,
+      setupMethod: params.setupMethod ?? "ai",
       publishedVersion: 0,
     })
     .returning({

@@ -29,6 +29,20 @@
       "when": 1779970000000,
       "tag": "0004_viewer_photos_ai_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779980000000,
+      "tag": "0005_mobile_links_participant_password",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779990000000,
+      "tag": "0006_trip_wizard",
+      "breakpoints": true
     }
   ]
 }

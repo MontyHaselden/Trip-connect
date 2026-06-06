@@ -7,11 +7,16 @@ import { hostTripMembers, trips } from "@/lib/db/schema";
 import { hostApiError } from "@/lib/host/api-errors";
 import { requireHostSessionHostId, setHostSessionCookie } from "@/lib/auth/host-session";
 import { createTripShell } from "@/lib/host/create-trip-with-document";
+import {
+  loadItineraryBuildStatsForTrips,
+  resolveTripDeleteStatus,
+} from "@/lib/host/trip-delete-eligibility";
 
 export const runtime = "nodejs";
 
 const CreateJsonSchema = z.object({
   name: z.string().trim().min(2).max(200),
+  setupMethod: z.enum(["ai", "wizard"]).optional(),
 });
 
 function parseCreateName(value: FormDataEntryValue | null): string | null {
@@ -31,13 +36,31 @@ export async function GET() {
         schoolName: trips.schoolName,
         startDate: trips.startDate,
         endDate: trips.endDate,
+        timezone: trips.timezone,
         publishedVersion: trips.publishedVersion,
       })
       .from(trips)
       .innerJoin(hostTripMembers, eq(hostTripMembers.tripId, trips.id))
       .where(eq(hostTripMembers.hostId, hostId));
 
-    return NextResponse.json({ trips: rows });
+    const statsByTrip = await loadItineraryBuildStatsForTrips(rows.map((row) => row.id));
+    const tripsWithDelete = rows.map((row) => {
+      const deleteStatus = resolveTripDeleteStatus(
+        row,
+        statsByTrip.get(row.id) ?? {
+          dayCount: 0,
+          itemCount: 0,
+          allDaysHaveItems: false,
+        },
+      );
+      return {
+        ...row,
+        canDelete: deleteStatus.canDelete,
+        deleteBlockedReason: deleteStatus.reason,
+      };
+    });
+
+    return NextResponse.json({ trips: tripsWithDelete });
   } catch (err) {
     return hostApiError(err);
   }
@@ -50,6 +73,7 @@ export async function POST(req: Request) {
     const contentType = req.headers.get("content-type") ?? "";
 
     let name: string;
+    let setupMethod: "ai" | "wizard" = "ai";
 
     if (contentType.includes("multipart/form-data")) {
       const form = await req.formData().catch(() => null);
@@ -61,6 +85,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Enter a trip name (at least 2 characters)." }, { status: 400 });
       }
       name = parsedName;
+      if (form.get("setupMethod") === "wizard") setupMethod = "wizard";
     } else {
       const json = await req.json().catch(() => null);
       const parsed = CreateJsonSchema.safeParse(json);
@@ -68,9 +93,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Enter a trip name (at least 2 characters)." }, { status: 400 });
       }
       name = parsed.data.name;
+      if (parsed.data.setupMethod) setupMethod = parsed.data.setupMethod;
     }
 
-    const trip = await createTripShell({ hostId, name });
+    const trip = await createTripShell({ hostId, name, setupMethod });
     await setHostSessionCookie({ hostId, activeTripId: trip.id });
 
     return NextResponse.json({

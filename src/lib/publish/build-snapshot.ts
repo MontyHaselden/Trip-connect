@@ -13,6 +13,8 @@ import {
   participants,
   rooms,
   tomorrowPrepItems,
+  tripAccommodationStays,
+  tripDayReminders,
   tripDays,
   tripPhotos,
   trips,
@@ -63,6 +65,8 @@ export async function buildSnapshotV1(
     categoryRows,
     phraseRows,
     photoRows,
+    stayRows,
+    reminderRows,
   ] = await Promise.all([
     db
       .select({
@@ -72,6 +76,9 @@ export async function buildSnapshotV1(
         calendarLabel: tripDays.calendarLabel,
         summary: tripDays.summary,
         sortOrder: tripDays.sortOrder,
+        dayType: tripDays.dayType,
+        secondaryCityLabel: tripDays.secondaryCityLabel,
+        isBufferDay: tripDays.isBufferDay,
       })
       .from(tripDays)
       .where(eq(tripDays.tripId, tripId))
@@ -217,6 +224,31 @@ export async function buildSnapshotV1(
       .from(tripPhotos)
       .where(eq(tripPhotos.tripId, tripId))
       .orderBy(asc(tripPhotos.uploadedAt)),
+    db
+      .select({
+        id: tripAccommodationStays.id,
+        cityLabel: tripAccommodationStays.cityLabel,
+        stayType: tripAccommodationStays.stayType,
+        name: tripAccommodationStays.name,
+        address: tripAccommodationStays.address,
+        checkInDate: tripAccommodationStays.checkInDate,
+        checkOutDate: tripAccommodationStays.checkOutDate,
+      })
+      .from(tripAccommodationStays)
+      .where(eq(tripAccommodationStays.tripId, tripId))
+      .orderBy(asc(tripAccommodationStays.sortOrder)),
+    db
+      .select({
+        id: tripDayReminders.id,
+        tripDayId: tripDayReminders.tripDayId,
+        title: tripDayReminders.title,
+        reminderTime: tripDayReminders.reminderTime,
+        note: tripDayReminders.note,
+        sortOrder: tripDayReminders.sortOrder,
+      })
+      .from(tripDayReminders)
+      .where(eq(tripDayReminders.tripId, tripId))
+      .orderBy(asc(tripDayReminders.tripDayId), asc(tripDayReminders.sortOrder)),
   ]);
 
   // Narrow assignment rows to trip participants only (cheap safety).
@@ -254,19 +286,55 @@ export async function buildSnapshotV1(
     ),
   );
 
-  const daysWithWeather = dayRows.map(
-    (d: {
-      id: string;
-      date: string;
-      cityLabel: string;
-      calendarLabel: string | null;
-      summary: string | null;
-      sortOrder: number;
-    }) => ({
-      ...d,
-      weather: weatherByDayId.get(d.id) ?? null,
-    }),
-  );
+  const itemCountByDayId = new Map<string, number>();
+  for (const item of itemRows) {
+    itemCountByDayId.set(
+      item.tripDayId,
+      (itemCountByDayId.get(item.tripDayId) ?? 0) + 1,
+    );
+  }
+  const reminderCountByDayId = new Map<string, number>();
+  for (const rem of reminderRows) {
+    reminderCountByDayId.set(
+      rem.tripDayId,
+      (reminderCountByDayId.get(rem.tripDayId) ?? 0) + 1,
+    );
+  }
+
+  const daysWithWeather = dayRows
+    .filter(
+      (d: { id: string; isBufferDay: boolean }) => {
+        if (!d.isBufferDay) return true;
+        return (
+          (itemCountByDayId.get(d.id) ?? 0) > 0 ||
+          (reminderCountByDayId.get(d.id) ?? 0) > 0
+        );
+      },
+    )
+    .map(
+      (d: {
+        id: string;
+        date: string;
+        cityLabel: string;
+        calendarLabel: string | null;
+        summary: string | null;
+        sortOrder: number;
+        dayType: string | null;
+        secondaryCityLabel: string | null;
+        isBufferDay: boolean;
+      }) => ({
+        id: d.id,
+        date: d.date,
+        cityLabel: d.cityLabel,
+        calendarLabel: d.calendarLabel,
+        summary: d.summary,
+        sortOrder: d.sortOrder,
+        dayType: d.dayType,
+        secondaryCityLabel: d.secondaryCityLabel,
+        isBufferDay: d.isBufferDay,
+        weather: weatherByDayId.get(d.id) ?? null,
+      }),
+    );
 
   return {
     version,
@@ -284,6 +352,8 @@ export async function buildSnapshotV1(
     },
     days: daysWithWeather,
     itineraryItems: itemRows,
+    accommodationStays: stayRows,
+    dayReminders: reminderRows,
     tomorrowPrepItems: prepRows,
     contacts: contactRows,
     participants: participantRows,

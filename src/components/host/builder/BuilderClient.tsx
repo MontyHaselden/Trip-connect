@@ -23,7 +23,7 @@ export function BuilderClient(props: { tripId: string }) {
   const importStarted = useRef(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [trip, setTrip] = useState<{
-    name: string;
+    name?: string;
     inviteCode: string;
     timezone: string;
     startDate: string;
@@ -147,6 +147,7 @@ export function BuilderClient(props: { tripId: string }) {
         <LivePreviewPanel
           key={reloadKey}
           tripId={tripId}
+          tripName={trip.name ?? "Your trip"}
           inviteCode={trip.inviteCode}
           timezone={trip.timezone}
           startDate={trip.startDate}

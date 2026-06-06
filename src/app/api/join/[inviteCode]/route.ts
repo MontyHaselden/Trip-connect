@@ -4,13 +4,18 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { participants, trips } from "@/lib/db/schema";
-import { normalizeToE164 } from "@/lib/utils/phone";
+import {
+  hashParticipantPassword,
+  verifyParticipantPassword,
+} from "@/lib/participants/password";
 import { ensureTripPublishedIfReady } from "@/lib/publish/ensure-published";
+import { normalizeToE164 } from "@/lib/utils/phone";
 import { generateAccessToken } from "@/lib/utils/tokens";
 
 const JoinBodySchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   phoneNumber: z.string().trim().min(3).max(40),
+  password: z.string().min(8).max(200).optional(),
 });
 
 export async function POST(
@@ -29,7 +34,7 @@ export async function POST(
       );
     }
 
-    const { fullName, phoneNumber } = parsed.data;
+    const { fullName, phoneNumber, password } = parsed.data;
 
     const trip = await db
       .select({
@@ -53,6 +58,7 @@ export async function POST(
       .select({
         id: participants.id,
         accessToken: participants.accessToken,
+        passwordHash: participants.passwordHash,
       })
       .from(participants)
       .where(
@@ -65,6 +71,27 @@ export async function POST(
       .then((rows) => rows[0] ?? null);
 
     if (existing) {
+      if (existing.passwordHash) {
+        if (!password) {
+          return NextResponse.json(
+            { error: "This phone number is already registered. Sign in with your password." },
+            { status: 409 },
+          );
+        }
+        const ok = await verifyParticipantPassword(password, existing.passwordHash);
+        if (!ok) {
+          return NextResponse.json({ error: "Incorrect password." }, { status: 401 });
+        }
+      } else if (password) {
+        await db
+          .update(participants)
+          .set({
+            passwordHash: await hashParticipantPassword(password),
+            updatedAt: new Date(),
+          })
+          .where(eq(participants.id, existing.id));
+      }
+
       const publishedVersion = await ensureTripPublishedIfReady(trip.id);
       return NextResponse.json({
         tripId: trip.id,
@@ -76,6 +103,9 @@ export async function POST(
     }
 
     const token = generateAccessToken();
+    const passwordHash = password
+      ? await hashParticipantPassword(password)
+      : null;
 
     const created = await db
       .insert(participants)
@@ -85,6 +115,7 @@ export async function POST(
         phoneNumberE164: phoneE164,
         role: "student",
         accessToken: token,
+        passwordHash,
       })
       .returning({ id: participants.id, accessToken: participants.accessToken })
       .then((rows) => rows[0] ?? null);
@@ -108,4 +139,3 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
-

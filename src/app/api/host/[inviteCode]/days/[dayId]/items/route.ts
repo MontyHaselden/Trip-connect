@@ -28,6 +28,7 @@ const CreateItemSchema = z.object({
   audienceType: z.enum(["everyone", "group", "room", "participant"]),
   audienceId: z.string().uuid().nullable().optional(),
   category: z.enum(ACTIVITY_CATEGORIES).nullable().optional(),
+  bookingStatus: z.enum(["booked", "not_booked", "placeholder"]).nullable().optional(),
 });
 
 export async function POST(
@@ -72,6 +73,7 @@ export async function POST(
         audienceType: data.audienceType,
         audienceId,
         category: data.category ?? null,
+        bookingStatus: data.bookingStatus ?? null,
         sortOrder,
       })
       .returning();

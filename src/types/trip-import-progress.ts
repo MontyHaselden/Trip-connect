@@ -1,3 +1,5 @@
+import type { ImportGap } from "@/lib/host/wizard/analyze-import-gaps";
+
 export type TripImportProgress =
   | { type: "phase"; phase: "reading" | "planning" | "building" }
   | {
@@ -24,6 +26,10 @@ export type TripImportProgress =
     }
   | { type: "day_complete"; date: string; itemCount: number }
   | {
+      type: "gaps";
+      gaps: ImportGap[];
+    }
+  | {
       type: "done";
       stats: { daysCreated: number; daysUpdated: number; itemsCreated: number };
       trip: {
@@ -33,5 +39,6 @@ export type TripImportProgress =
         endDate: string;
         timezone: string;
       };
+      gaps?: ImportGap[];
     }
   | { type: "error"; error: string };

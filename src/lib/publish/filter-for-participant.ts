@@ -80,6 +80,8 @@ export function filterSnapshotForParticipantV1(
     trip: snapshot.trip,
     days: snapshot.days,
     itineraryItems,
+    accommodationStays: snapshot.accommodationStays,
+    dayReminders: snapshot.dayReminders,
     tomorrowPrepItems: snapshot.tomorrowPrepItems,
     contacts,
     groups: myGroups,

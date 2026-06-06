@@ -1,5 +1,5 @@
-import { CreateTripForm } from "@/components/dashboard/CreateTripForm";
+import { CreateTripChoice } from "@/components/dashboard/CreateTripChoice";
 
 export default function NewTripPage() {
-  return <CreateTripForm />;
+  return <CreateTripChoice />;
 }

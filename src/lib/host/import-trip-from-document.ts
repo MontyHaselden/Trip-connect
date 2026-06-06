@@ -8,6 +8,7 @@ import { parseDayItemsFromDocument } from "@/lib/ai/parse-day-items-from-documen
 import { parseTripOutlineFromDocument } from "@/lib/ai/parse-trip-outline";
 import { db } from "@/lib/db/client";
 import { trips } from "@/lib/db/schema";
+import { analyzeImportGaps } from "@/lib/host/wizard/analyze-import-gaps";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
 import type { TripImportProgress } from "@/types/trip-import-progress";
 
@@ -116,6 +117,11 @@ export async function importTripFromDocumentText(params: {
 
   await maybeAutoPublish(params.tripId);
 
+  const gaps = await analyzeImportGaps(params.tripId);
+  if (gaps.length) {
+    emit({ type: "gaps", gaps });
+  }
+
   const result = {
     stats: { daysCreated, daysUpdated, itemsCreated },
     trip: {
@@ -125,6 +131,7 @@ export async function importTripFromDocumentText(params: {
       endDate: outline.endDate,
       timezone: outline.timezone,
     },
+    gaps,
   };
 
   emit({ type: "done", ...result });

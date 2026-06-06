@@ -18,7 +18,7 @@ export default async function DashboardParticipantsPage({
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-8">
-      <RosterClient inviteCode={trip.inviteCode} />
+      <RosterClient inviteCode={trip.inviteCode} tripId={tripId} />
     </div>
   );
 }

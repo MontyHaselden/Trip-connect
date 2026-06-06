@@ -4,12 +4,20 @@ import { useCallback, useEffect, useState } from "react";
 
 import { hostJson } from "@/components/host/shared/host-fetch";
 
+import { HostMobileLinkCard } from "@/components/dashboard/HostMobileLinkCard";
+
 import { GroupList } from "./GroupList";
 import { ParticipantTable } from "./ParticipantTable";
 import { RoomList } from "./RoomList";
 import type { RosterPayload } from "./types";
 
-export function RosterClient({ inviteCode }: { inviteCode: string }) {
+export function RosterClient({
+  inviteCode,
+  tripId,
+}: {
+  inviteCode: string;
+  tripId?: string;
+}) {
   const api = `/api/host/${encodeURIComponent(inviteCode)}`;
   const [roster, setRoster] = useState<RosterPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,6 +74,11 @@ export function RosterClient({ inviteCode }: { inviteCode: string }) {
         <p className="text-sm text-zinc-600">
           Manage roster, rooms, and groups. Publish for students to see updates.
         </p>
+        {tripId ? (
+          <div className="mt-3">
+            <HostMobileLinkCard tripId={tripId} />
+          </div>
+        ) : null}
       </header>
 
       {error ? (

@@ -70,6 +70,7 @@ export function ParticipantTable(props: {
             <thead>
               <tr className="border-b border-zinc-200 text-xs text-zinc-500">
                 <th className="pb-2 pr-3 font-medium">Name</th>
+                <th className="pb-2 pr-3 font-medium">App</th>
                 <th className="pb-2 pr-3 font-medium">Phone</th>
                 <th className="pb-2 pr-3 font-medium">Role</th>
                 <th className="pb-2 pr-3 font-medium">Room</th>
@@ -81,6 +82,9 @@ export function ParticipantTable(props: {
               {participants.map((p) => (
                 <tr key={p.id} className="border-b border-zinc-100">
                   <td className="py-3 pr-3 font-medium">{p.fullName}</td>
+                  <td className="py-3 pr-3 text-xs text-zinc-500">
+                    {p.hasPassword ? "Joined" : "No password"}
+                  </td>
                   <td className="py-3 pr-3 font-mono text-xs">{p.phoneNumberE164}</td>
                   <td className="py-3 pr-3 capitalize">{p.role}</td>
                   <td className="py-3 pr-3">

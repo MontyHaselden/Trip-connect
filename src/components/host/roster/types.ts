@@ -3,6 +3,7 @@ export type RosterParticipant = {
   fullName: string;
   phoneNumberE164: string;
   role: "student" | "helper" | "teacher" | "host";
+  hasPassword?: boolean;
   roomId: string | null;
   groupIds: string[];
 };
