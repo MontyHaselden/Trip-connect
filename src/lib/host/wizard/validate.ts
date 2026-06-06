@@ -55,6 +55,7 @@ export const TripWizardDraftSchema = z.object({
       date: DraftDateSchema,
       primaryCity: z.string(),
       secondaryCity: z.string().nullable(),
+      primaryShare: z.number().min(0).max(1).default(1),
       dayType: z.enum(DAY_TYPES),
       includeBuffer: z.boolean(),
     }),
@@ -132,6 +133,14 @@ export const TripWizardDraftSchema = z.object({
 });
 
 export function parseWizardDraft(json: unknown): TripWizardDraft {
+  const raw = json as { dayPlaces?: Array<Record<string, unknown>> } | null;
+  if (raw?.dayPlaces) {
+    for (const day of raw.dayPlaces) {
+      if (typeof day.primaryShare !== "number") {
+        day.primaryShare = day.secondaryCity ? 0.5 : 1;
+      }
+    }
+  }
   return TripWizardDraftSchema.parse(json);
 }
 

@@ -84,6 +84,8 @@ export type DayPlaceDraft = {
   date: string;
   primaryCity: string;
   secondaryCity: string | null;
+  /** Fraction of the day spent in primaryCity (0–1). Secondary gets the rest. */
+  primaryShare: number;
   dayType: DayType;
   includeBuffer: boolean;
 };

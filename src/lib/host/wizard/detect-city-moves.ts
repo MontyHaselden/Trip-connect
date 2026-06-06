@@ -130,6 +130,7 @@ export function buildDefaultDayPlaces(
     date: bufferBefore,
     primaryCity: departureCity,
     secondaryCity: null,
+    primaryShare: 0.5,
     dayType: "buffer",
     includeBuffer: false,
   });
@@ -142,6 +143,7 @@ export function buildDefaultDayPlaces(
       date,
       primaryCity: "",
       secondaryCity: null,
+      primaryShare: 1,
       dayType,
       includeBuffer: false,
     });
@@ -151,6 +153,7 @@ export function buildDefaultDayPlaces(
     date: bufferAfter,
     primaryCity: returnCity,
     secondaryCity: null,
+    primaryShare: 0.5,
     dayType: "buffer",
     includeBuffer: false,
   });
