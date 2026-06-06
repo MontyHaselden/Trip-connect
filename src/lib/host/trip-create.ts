@@ -10,18 +10,18 @@ function randomInvite(len: number) {
     .slice(0, len);
 }
 
-async function uniqueInviteCode(): Promise<string> {
+async function uniqueTripCode(column: "inviteCode" | "viewerCode"): Promise<string> {
   for (let i = 0; i < 10; i++) {
-    const candidate = randomInvite(6);
+    const candidate = randomInvite(column === "inviteCode" ? 6 : 8);
     const exists = await db
       .select({ id: trips.id })
       .from(trips)
-      .where(eq(trips.inviteCode, candidate))
+      .where(eq(trips[column], candidate))
       .limit(1)
       .then((rows) => rows[0] ?? null);
     if (!exists) return candidate;
   }
-  throw new Error("Could not generate invite code.");
+  throw new Error(`Could not generate ${column}.`);
 }
 
 export async function createTripForHost(params: {
@@ -35,7 +35,8 @@ export async function createTripForHost(params: {
   destinationCountry?: string | null;
   destinationLanguage?: string | null;
 }) {
-  const inviteCode = await uniqueInviteCode();
+  const inviteCode = await uniqueTripCode("inviteCode");
+  const viewerCode = await uniqueTripCode("viewerCode");
 
   const [trip] = await db
     .insert(trips)
@@ -43,6 +44,7 @@ export async function createTripForHost(params: {
       name: params.name.trim(),
       schoolName: params.schoolName.trim(),
       inviteCode,
+      viewerCode,
       hostCodeHash: null,
       startDate: params.startDate,
       endDate: params.endDate,
@@ -52,7 +54,11 @@ export async function createTripForHost(params: {
       destinationLanguage: params.destinationLanguage ?? null,
       publishedVersion: 0,
     })
-    .returning({ id: trips.id, inviteCode: trips.inviteCode });
+    .returning({
+      id: trips.id,
+      inviteCode: trips.inviteCode,
+      viewerCode: trips.viewerCode,
+    });
 
   if (!trip) throw new Error("Failed to create trip.");
 

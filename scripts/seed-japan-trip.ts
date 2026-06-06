@@ -28,6 +28,7 @@ async function main() {
   requiredEnv("DATABASE_URL");
 
   const inviteCode = process.env.INVITE_CODE ?? randomCode(6);
+  const viewerCode = process.env.VIEWER_CODE ?? randomCode(8);
   const email = (process.env.HOST_EMAIL ?? "host@example.com").toLowerCase();
   const password = process.env.HOST_PASSWORD ?? randomCode(10);
   const phoneNumberE164 = process.env.HOST_PHONE_E164 ?? "+6421123456";
@@ -58,6 +59,7 @@ async function main() {
       name: "Japan School Trip",
       schoolName: "Example School",
       inviteCode,
+      viewerCode,
       hostCodeHash: null,
       startDate: "2026-07-16",
       endDate: "2026-07-23",

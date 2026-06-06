@@ -20,6 +20,7 @@ export function DayEditor(props: {
   const api = `/api/host/${encodeURIComponent(inviteCode)}`;
 
   const [cityLabel, setCityLabel] = useState(day.cityLabel);
+  const [calendarLabel, setCalendarLabel] = useState(day.calendarLabel ?? "");
   const [summary, setSummary] = useState(day.summary ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -31,6 +32,7 @@ export function DayEditor(props: {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           cityLabel: cityLabel.trim(),
+          calendarLabel: calendarLabel.trim() || null,
           summary: summary.trim() || null,
         }),
       });
@@ -70,6 +72,15 @@ export function DayEditor(props: {
             value={cityLabel}
             onChange={(e) => setCityLabel(e.target.value)}
             placeholder="Tokyo → Kyoto"
+            className="mt-2 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+          />
+        </label>
+        <label className="block">
+          <span className="text-sm font-medium">Calendar label (optional)</span>
+          <input
+            value={calendarLabel}
+            onChange={(e) => setCalendarLabel(e.target.value)}
+            placeholder="Meeting, Depart, Tokyo…"
             className="mt-2 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
           />
         </label>

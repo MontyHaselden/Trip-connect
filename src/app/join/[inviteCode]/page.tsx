@@ -69,7 +69,7 @@ export default function JoinTripPage() {
       storageSet("tc_invite_code", inviteCode);
       storageSet("tc_joined_at", new Date().toISOString());
 
-      router.replace("/app/today");
+      router.replace(`/trip/${data.tripId}/today`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Join failed");
     } finally {

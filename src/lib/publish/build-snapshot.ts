@@ -3,6 +3,7 @@ import { asc, eq } from "drizzle-orm";
 import { db as defaultDb } from "@/lib/db/client";
 import {
   contacts,
+  dayWeatherSnapshots,
   emergencyPhraseCategories,
   emergencyPhrases,
   groups,
@@ -13,6 +14,7 @@ import {
   rooms,
   tomorrowPrepItems,
   tripDays,
+  tripPhotos,
   trips,
 } from "@/lib/db/schema";
 import type { PublishedTripSnapshotV1 } from "@/types/published-trip";
@@ -36,6 +38,8 @@ export async function buildSnapshotV1(
       destinationLanguage: trips.destinationLanguage,
       timezone: trips.timezone,
       publishedVersion: trips.publishedVersion,
+      viewerGalleryEnabled: trips.viewerGalleryEnabled,
+      viewerRoomDetailsEnabled: trips.viewerRoomDetailsEnabled,
     })
     .from(trips)
     .where(eq(trips.id, tripId))
@@ -47,6 +51,7 @@ export async function buildSnapshotV1(
 
   const [
     dayRows,
+    weatherRows,
     itemRows,
     prepRows,
     contactRows,
@@ -57,18 +62,33 @@ export async function buildSnapshotV1(
     participantRoomRows,
     categoryRows,
     phraseRows,
+    photoRows,
   ] = await Promise.all([
     db
       .select({
         id: tripDays.id,
         date: tripDays.date,
         cityLabel: tripDays.cityLabel,
+        calendarLabel: tripDays.calendarLabel,
         summary: tripDays.summary,
         sortOrder: tripDays.sortOrder,
       })
       .from(tripDays)
       .where(eq(tripDays.tripId, tripId))
       .orderBy(asc(tripDays.sortOrder)),
+    db
+      .select({
+        tripDayId: dayWeatherSnapshots.tripDayId,
+        locationQuery: dayWeatherSnapshots.locationQuery,
+        tempC: dayWeatherSnapshots.tempC,
+        condition: dayWeatherSnapshots.condition,
+        advice: dayWeatherSnapshots.advice,
+        status: dayWeatherSnapshots.status,
+        fetchedAt: dayWeatherSnapshots.fetchedAt,
+      })
+      .from(dayWeatherSnapshots)
+      .innerJoin(tripDays, eq(dayWeatherSnapshots.tripDayId, tripDays.id))
+      .where(eq(tripDays.tripId, tripId)),
     db
       .select({
         id: itineraryItems.id,
@@ -85,6 +105,7 @@ export async function buildSnapshotV1(
         hostNote: itineraryItems.hostNote,
         audienceType: itineraryItems.audienceType,
         audienceId: itineraryItems.audienceId,
+        category: itineraryItems.category,
         sortOrder: itineraryItems.sortOrder,
       })
       .from(itineraryItems)
@@ -182,6 +203,20 @@ export async function buildSnapshotV1(
       .from(emergencyPhrases)
       .where(eq(emergencyPhrases.tripId, tripId))
       .orderBy(asc(emergencyPhrases.categoryId), asc(emergencyPhrases.sortOrder)),
+    db
+      .select({
+        id: tripPhotos.id,
+        tripDayId: tripPhotos.tripDayId,
+        participantId: tripPhotos.participantId,
+        type: tripPhotos.type,
+        imageUrl: tripPhotos.imageUrl,
+        thumbnailUrl: tripPhotos.thumbnailUrl,
+        caption: tripPhotos.caption,
+        status: tripPhotos.status,
+      })
+      .from(tripPhotos)
+      .where(eq(tripPhotos.tripId, tripId))
+      .orderBy(asc(tripPhotos.uploadedAt)),
   ]);
 
   // Narrow assignment rows to trip participants only (cheap safety).
@@ -193,6 +228,44 @@ export async function buildSnapshotV1(
   );
   const tripParticipantRooms = participantRoomRows.filter((r: { participantId: string }) =>
     participantIdSet.has(r.participantId),
+  );
+
+  const weatherByDayId = new Map(
+    weatherRows.map(
+      (w: {
+        tripDayId: string;
+        locationQuery: string;
+        tempC: number | null;
+        condition: string | null;
+        advice: string | null;
+        status: "available" | "too_far" | "unavailable";
+        fetchedAt: Date;
+      }) => [
+        w.tripDayId,
+        {
+          locationQuery: w.locationQuery,
+          tempC: w.tempC,
+          condition: w.condition,
+          advice: w.advice,
+          status: w.status,
+          fetchedAt: w.fetchedAt.toISOString(),
+        },
+      ],
+    ),
+  );
+
+  const daysWithWeather = dayRows.map(
+    (d: {
+      id: string;
+      date: string;
+      cityLabel: string;
+      calendarLabel: string | null;
+      summary: string | null;
+      sortOrder: number;
+    }) => ({
+      ...d,
+      weather: weatherByDayId.get(d.id) ?? null,
+    }),
   );
 
   return {
@@ -209,7 +282,7 @@ export async function buildSnapshotV1(
       timezone: trip.timezone,
       publishedVersion: trip.publishedVersion,
     },
-    days: dayRows,
+    days: daysWithWeather,
     itineraryItems: itemRows,
     tomorrowPrepItems: prepRows,
     contacts: contactRows,
@@ -220,6 +293,13 @@ export async function buildSnapshotV1(
     participantRooms: tripParticipantRooms,
     phraseCategories: categoryRows,
     phrases: phraseRows,
+    photos: photoRows.filter(
+      (p: { status: string }) => p.status === "visible",
+    ),
+    viewerSettings: {
+      galleryEnabled: trip.viewerGalleryEnabled,
+      roomDetailsEnabled: trip.viewerRoomDetailsEnabled,
+    },
   };
 }
 

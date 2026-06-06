@@ -15,6 +15,20 @@
       "when": 1779950000000,
       "tag": "0002_trip_member_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779960000000,
+      "tag": "0003_weather_categories_pretrip",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779970000000,
+      "tag": "0004_viewer_photos_ai_proposals",
+      "breakpoints": true
     }
   ]
 }

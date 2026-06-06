@@ -1,3 +1,5 @@
+import type { ActivityCategory } from "@/types/activity-category";
+
 export type ItineraryItem = {
   id: string;
   tripDayId: string;
@@ -13,6 +15,7 @@ export type ItineraryItem = {
   hostNote: string | null;
   audienceType: "everyone" | "group" | "room" | "participant";
   audienceId: string | null;
+  category: ActivityCategory | null;
   sortOrder: number;
 };
 
@@ -27,6 +30,7 @@ export type TripDay = {
   id: string;
   date: string;
   cityLabel: string;
+  calendarLabel: string | null;
   summary: string | null;
   sortOrder: number;
   items: ItineraryItem[];

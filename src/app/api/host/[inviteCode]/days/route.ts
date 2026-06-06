@@ -6,10 +6,7 @@ import { db } from "@/lib/db/client";
 import { tripDays } from "@/lib/db/schema";
 import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
-import {
-  isDateInRange,
-  nextDaySortOrder,
-} from "@/lib/host/itinerary-queries";
+import { nextDaySortOrder } from "@/lib/host/itinerary-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
 
 const CreateDaySchema = z.object({
@@ -32,9 +29,9 @@ export async function POST(
     }
 
     const { date, cityLabel, summary } = parsed.data;
-    if (!isDateInRange(date, trip.startDate, trip.endDate)) {
+    if (date > trip.endDate) {
       return NextResponse.json(
-        { error: "Date must be within trip start and end dates." },
+        { error: "Date must be on or before the trip end date." },
         { status: 400 },
       );
     }

@@ -42,6 +42,24 @@ export const groupType = pgEnum("group_type", [
 
 export const phraseSource = pgEnum("phrase_source", ["default", "ai", "host"]);
 
+export const activityCategory = pgEnum("activity_category", [
+  "travel",
+  "meal",
+  "school",
+  "activity",
+  "free_time",
+  "hotel",
+  "meeting",
+  "important",
+  "other",
+]);
+
+export const weatherSnapshotStatus = pgEnum("weather_snapshot_status", [
+  "available",
+  "too_far",
+  "unavailable",
+]);
+
 export const hostAccountRole = pgEnum("host_account_role", [
   "teacher",
   "helper",
@@ -79,6 +97,12 @@ export const trips = pgTable(
     name: text("name").notNull(),
     schoolName: text("school_name").notNull(),
     inviteCode: text("invite_code").notNull(),
+    viewerCode: text("viewer_code").notNull(),
+    viewerGalleryEnabled: boolean("viewer_gallery_enabled").notNull().default(false),
+    viewerRoomDetailsEnabled: boolean("viewer_room_details_enabled")
+      .notNull()
+      .default(false),
+    studentGalleryEnabled: boolean("student_gallery_enabled").notNull().default(true),
     // Legacy: replaced by host_accounts + host_trip_members. Kept for backwards compatibility.
     hostCodeHash: text("host_code_hash"),
     startDate: date("start_date").notNull(),
@@ -98,6 +122,75 @@ export const trips = pgTable(
   },
   (t) => ({
     inviteCodeUnique: uniqueIndex("trips_invite_code_unique").on(t.inviteCode),
+    viewerCodeUnique: uniqueIndex("trips_viewer_code_unique").on(t.viewerCode),
+  }),
+);
+
+export const photoType = pgEnum("photo_type", ["selfie", "place"]);
+
+export const photoStatus = pgEnum("photo_status", ["visible", "hidden", "deleted"]);
+
+export const aiProposalStatus = pgEnum("ai_proposal_status", [
+  "draft",
+  "applied",
+  "rejected",
+]);
+
+export const tripPhotos = pgTable(
+  "trip_photos",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    tripDayId: uuid("trip_day_id")
+      .notNull()
+      .references(() => tripDays.id, { onDelete: "cascade" }),
+    participantId: uuid("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    type: photoType("type").notNull(),
+    imageUrl: text("image_url").notNull(),
+    thumbnailUrl: text("thumbnail_url"),
+    caption: text("caption"),
+    status: photoStatus("status").notNull().default("visible"),
+    uploadedAt: timestamp("uploaded_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    deletedBy: uuid("deleted_by"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (p) => ({
+    dayParticipantTypeIdx: index("trip_photos_day_participant_type_idx").on(
+      p.tripDayId,
+      p.participantId,
+      p.type,
+    ),
+  }),
+);
+
+export const aiChangeProposals = pgTable(
+  "ai_change_proposals",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => hostAccounts.id, { onDelete: "cascade" }),
+    userMessage: text("user_message").notNull(),
+    assistantReply: text("assistant_reply").notNull(),
+    proposedChangesJson: jsonb("proposed_changes_json").notNull(),
+    warningsJson: jsonb("warnings_json"),
+    status: aiProposalStatus("status").notNull().default("draft"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+  },
+  (p) => ({
+    tripStatusIdx: index("ai_change_proposals_trip_status_idx").on(p.tripId, p.status),
   }),
 );
 
@@ -157,6 +250,7 @@ export const tripDays = pgTable(
       .references(() => trips.id, { onDelete: "cascade" }),
     date: date("date").notNull(),
     cityLabel: text("city_label").notNull(),
+    calendarLabel: text("calendar_label"),
     summary: text("summary"),
     sortOrder: integer("sort_order").notNull(),
   },
@@ -194,6 +288,7 @@ export const itineraryItems = pgTable(
     hostNote: text("host_note"),
     audienceType: itineraryAudienceType("audience_type").notNull(),
     audienceId: uuid("audience_id"),
+    category: activityCategory("category"),
     sortOrder: integer("sort_order").notNull(),
   },
   (i) => ({
@@ -393,6 +488,23 @@ export const emergencyPhrases = pgTable(
       p.sortOrder,
     ),
   }),
+);
+
+export const dayWeatherSnapshots = pgTable(
+  "day_weather_snapshots",
+  {
+    tripDayId: uuid("trip_day_id")
+      .primaryKey()
+      .references(() => tripDays.id, { onDelete: "cascade" }),
+    locationQuery: text("location_query").notNull(),
+    tempC: integer("temp_c"),
+    condition: text("condition"),
+    advice: text("advice"),
+    status: weatherSnapshotStatus("status").notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
 );
 
 export const publishedTripSnapshots = pgTable(

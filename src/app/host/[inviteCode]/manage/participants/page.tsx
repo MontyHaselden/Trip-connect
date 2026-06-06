@@ -1,10 +1,10 @@
-import { RosterClient } from "@/components/host/roster/RosterClient";
+import { redirectHostManageToDashboard } from "@/lib/host/redirect-to-dashboard";
 
-export default async function HostParticipantsPage({
+export default async function LegacyHostParticipantsPage({
   params,
 }: {
   params: Promise<{ inviteCode: string }>;
 }) {
   const { inviteCode } = await params;
-  return <RosterClient inviteCode={inviteCode} />;
+  await redirectHostManageToDashboard(inviteCode, "participants");
 }

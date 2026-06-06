@@ -1,10 +1,10 @@
-import { ContactsClient } from "@/components/host/contacts/ContactsClient";
+import { redirectHostManageToDashboard } from "@/lib/host/redirect-to-dashboard";
 
-export default async function HostContactsPage({
+export default async function LegacyHostContactsPage({
   params,
 }: {
   params: Promise<{ inviteCode: string }>;
 }) {
   const { inviteCode } = await params;
-  return <ContactsClient inviteCode={inviteCode} />;
+  await redirectHostManageToDashboard(inviteCode, "builder");
 }

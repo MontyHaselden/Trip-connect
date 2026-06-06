@@ -11,6 +11,7 @@ import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
 
 const PatchDaySchema = z.object({
   cityLabel: z.string().trim().min(1).max(200).optional(),
+  calendarLabel: z.string().trim().max(50).nullable().optional(),
   summary: z.string().trim().max(500).nullable().optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
@@ -35,6 +36,10 @@ export async function PATCH(
       .update(tripDays)
       .set({
         cityLabel: parsed.data.cityLabel ?? day.cityLabel,
+        calendarLabel:
+          parsed.data.calendarLabel !== undefined
+            ? parsed.data.calendarLabel
+            : day.calendarLabel,
         summary:
           parsed.data.summary !== undefined ? parsed.data.summary : day.summary,
         sortOrder: parsed.data.sortOrder ?? day.sortOrder,

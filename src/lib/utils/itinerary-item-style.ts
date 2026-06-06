@@ -1,5 +1,7 @@
 import { DateTime } from "luxon";
 
+import type { ActivityCategory } from "@/types/activity-category";
+
 export type ItineraryRowItem = {
   id: string;
   startTime: string;
@@ -11,74 +13,112 @@ export type ItineraryRowItem = {
   transportNote: string | null;
   bringNote: string | null;
   hostNote: string | null;
+  category?: ActivityCategory | null;
 };
 
-export type ItemKind = "travel" | "arrival" | "meal" | "activity" | "free" | "other";
+/** @deprecated Use ActivityCategory */
+export type ItemKind = ActivityCategory;
 
-export function inferKind(title: string): ItemKind {
+export function inferCategoryFromTitle(title: string): ActivityCategory {
   const t = title.trim().toLowerCase();
   if (!t) return "other";
-  if (/(arrive|arrival|landing|touch down|welcome)/.test(t)) return "arrival";
+  if (/(arrive|arrival|landing|touch down|welcome)/.test(t)) return "important";
+  if (/(meeting|briefing|assembly|orientation)/.test(t)) return "meeting";
+  if (/(hotel|check.?in|check.?out|accommodation|lodging)/.test(t)) return "hotel";
   if (
-    /(flight|airport|depart|departure|transfer|bus|coach|train|metro|subway|ferry|drive|shuttle)/.test(
+    /(flight|airport|depart|departure|transfer|bus|coach|train|metro|subway|ferry|drive|shuttle|travel)/.test(
       t,
     )
   ) {
     return "travel";
   }
   if (/(breakfast|lunch|dinner|meal|eat|restaurant|cafe|coffee)/.test(t)) return "meal";
-  if (/(free|rest|downtime|at leisure)/.test(t)) return "free";
-  if (/(tour|museum|activity|class|match|practice|visit|shopping|game)/.test(t)) {
+  if (/(school|class|lesson|lecture|study)/.test(t)) return "school";
+  if (/(free|rest|downtime|at leisure)/.test(t)) return "free_time";
+  if (/(tour|museum|activity|match|practice|visit|shopping|game|shrine|temple)/.test(t)) {
     return "activity";
   }
   return "other";
 }
 
-export function kindAccent(kind: ItemKind) {
-  switch (kind) {
+export function resolveCategory(item: ItineraryRowItem): ActivityCategory {
+  if (item.category) return item.category;
+  return inferCategoryFromTitle(item.title);
+}
+
+/** @deprecated Use resolveCategory */
+export function inferKind(title: string): ActivityCategory {
+  return inferCategoryFromTitle(title);
+}
+
+export function categoryAccent(category: ActivityCategory) {
+  switch (category) {
     case "travel":
       return {
+        dot: "bg-sky-500",
         bar: "bg-sky-500",
-        chip: "bg-sky-50 text-sky-700 ring-sky-200",
         label: "Travel",
-        featured: "border-sky-200 bg-sky-50/80",
-      };
-    case "arrival":
-      return {
-        bar: "bg-emerald-500",
-        chip: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-        label: "Arrival",
-        featured: "border-emerald-200 bg-emerald-50/80",
       };
     case "meal":
       return {
+        dot: "bg-amber-500",
         bar: "bg-amber-500",
-        chip: "bg-amber-50 text-amber-800 ring-amber-200",
         label: "Meal",
-        featured: "border-amber-200 bg-amber-50/80",
+      };
+    case "school":
+      return {
+        dot: "bg-indigo-400",
+        bar: "bg-indigo-400",
+        label: "School",
       };
     case "activity":
       return {
-        bar: "bg-violet-500",
-        chip: "bg-violet-50 text-violet-700 ring-violet-200",
+        dot: "bg-violet-400",
+        bar: "bg-violet-400",
         label: "Activity",
-        featured: "border-violet-200 bg-violet-50/80",
       };
-    case "free":
+    case "free_time":
       return {
+        dot: "bg-zinc-300",
         bar: "bg-zinc-300",
-        chip: "bg-zinc-100 text-zinc-700 ring-zinc-200",
         label: "Free time",
-        featured: "border-zinc-200 bg-zinc-50",
+      };
+    case "hotel":
+      return {
+        dot: "bg-teal-500",
+        bar: "bg-teal-500",
+        label: "Hotel",
+      };
+    case "meeting":
+      return {
+        dot: "bg-rose-400",
+        bar: "bg-rose-400",
+        label: "Meeting",
+      };
+    case "important":
+      return {
+        dot: "bg-emerald-500",
+        bar: "bg-emerald-500",
+        label: "Important",
       };
     default:
       return {
-        bar: "bg-zinc-200",
-        chip: "bg-zinc-100 text-zinc-700 ring-zinc-200",
+        dot: "bg-zinc-300",
+        bar: "bg-zinc-300",
         label: "Event",
-        featured: "border-zinc-200 bg-white",
       };
   }
+}
+
+/** @deprecated Use categoryAccent */
+export function kindAccent(kind: ActivityCategory) {
+  const accent = categoryAccent(kind);
+  return {
+    bar: accent.bar,
+    chip: "bg-zinc-100 text-zinc-700 ring-zinc-200",
+    label: accent.label,
+    featured: "border-zinc-200 bg-white",
+  };
 }
 
 export function durationLabel(
@@ -115,4 +155,9 @@ export function itemExtraInfoLines(item: ItineraryRowItem): string[] {
 export function itemSecondaryLines(item: ItineraryRowItem): string[] {
   const location = itemLocationLine(item);
   return location ? [location, ...itemExtraInfoLines(item)] : itemExtraInfoLines(item);
+}
+
+export function formatCompactStartTime(timeHHMMSS: string, tripTimezone: string): string {
+  const dt = DateTime.fromISO(`1970-01-01T${timeHHMMSS}`, { zone: tripTimezone });
+  return dt.toFormat("HH:mm");
 }

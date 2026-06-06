@@ -3,6 +3,8 @@
 import { useState } from "react";
 
 import { hostJson } from "@/components/host/shared/host-fetch";
+import { ACTIVITY_CATEGORIES } from "@/types/activity-category";
+import type { ActivityCategory } from "@/types/activity-category";
 
 import type { ItineraryItem, RosterSummary } from "./types";
 import { timeToInput } from "./types";
@@ -21,6 +23,7 @@ const emptyForm = {
   hostNote: "",
   audienceType: "everyone" as AudienceType,
   audienceId: "",
+  category: "" as ActivityCategory | "",
 };
 
 export function ItemForm(props: {
@@ -60,6 +63,7 @@ export function ItemForm(props: {
           hostNote: item.hostNote ?? "",
           audienceType: item.audienceType,
           audienceId: item.audienceId ?? "",
+          category: item.category ?? "",
         }
       : emptyForm,
   );
@@ -92,6 +96,7 @@ export function ItemForm(props: {
       audienceType: form.audienceType,
       audienceId:
         form.audienceType === "everyone" ? null : form.audienceId || null,
+      category: form.category || null,
     };
     try {
       if (editing && item) {
@@ -152,6 +157,23 @@ export function ItemForm(props: {
           onChange={(e) => set("title", e.target.value)}
           className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm"
         />
+      </label>
+      <label className="mt-3 block">
+        <span className="text-xs font-medium text-zinc-600">Category</span>
+        <select
+          value={form.category}
+          onChange={(e) =>
+            set("category", e.target.value as ActivityCategory | "")
+          }
+          className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm"
+        >
+          <option value="">Auto-detect</option>
+          {ACTIVITY_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c.replace(/_/g, " ")}
+            </option>
+          ))}
+        </select>
       </label>
       <label className="mt-3 block">
         <span className="text-xs font-medium text-zinc-600">Location</span>

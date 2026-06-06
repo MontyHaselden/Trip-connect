@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/lib/db/client";
+import { ACTIVITY_CATEGORIES } from "@/types/activity-category";
 import { itineraryItems } from "@/lib/db/schema";
 import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
@@ -26,6 +27,7 @@ const PatchItemSchema = z.object({
   hostNote: z.string().trim().max(500).nullable().optional(),
   audienceType: z.enum(["everyone", "group", "room", "participant"]).optional(),
   audienceId: z.string().uuid().nullable().optional(),
+  category: z.enum(ACTIVITY_CATEGORIES).nullable().optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
 
@@ -80,6 +82,7 @@ export async function PATCH(
         hostNote: data.hostNote !== undefined ? data.hostNote : item.hostNote,
         audienceType,
         audienceId,
+        category: data.category !== undefined ? data.category : item.category,
         sortOrder: data.sortOrder ?? item.sortOrder,
       })
       .where(eq(itineraryItems.id, itemId))

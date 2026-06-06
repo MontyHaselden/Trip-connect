@@ -49,6 +49,7 @@ export async function loadItineraryTree(tripId: string) {
       id: d.id,
       date: d.date,
       cityLabel: d.cityLabel,
+      calendarLabel: d.calendarLabel,
       summary: d.summary,
       sortOrder: d.sortOrder,
       items: items
@@ -68,6 +69,7 @@ export async function loadItineraryTree(tripId: string) {
           hostNote: i.hostNote,
           audienceType: i.audienceType,
           audienceId: i.audienceId,
+          category: i.category,
           sortOrder: i.sortOrder,
         })),
       prep: prep

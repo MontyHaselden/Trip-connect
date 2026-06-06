@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { AI_TIME_NORMALIZATION_RULES } from "@/lib/ai/time-prompt";
+import { ACTIVITY_CATEGORIES } from "@/types/activity-category";
 import { sanitizeItineraryTimes } from "@/lib/utils/ai-time";
 
 const ImportItemSchema = z.object({
@@ -12,6 +13,7 @@ const ImportItemSchema = z.object({
   leaveByTime: z.string().nullable().optional(),
   transportNote: z.string().nullable().optional(),
   bringNote: z.string().nullable().optional(),
+  category: z.enum(ACTIVITY_CATEGORIES).nullable().optional(),
 });
 
 const ImportDaySchema = z.object({
@@ -38,6 +40,8 @@ export type TripContext = {
 
 const MAX_TEXT_LENGTH = 12_000;
 
+const CATEGORY_LIST = ACTIVITY_CATEGORIES.join(", ");
+
 export async function parseItineraryText(params: {
   text: string;
   trip: TripContext;
@@ -56,14 +60,16 @@ export async function parseItineraryText(params: {
   }
 
   const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
-  const system = `You extract school trip itineraries into JSON. Trip: ${params.trip.name}. Dates: ${params.trip.startDate} to ${params.trip.endDate}. Timezone: ${params.trip.timezone}. Destination: ${params.trip.destinationCountry ?? "unknown"} (${params.trip.destinationLanguage ?? ""}).
+  const system = `You extract school trip itineraries into JSON. Trip: ${params.trip.name}. Trip dates: ${params.trip.startDate} to ${params.trip.endDate} (itinerary days may also be BEFORE ${params.trip.startDate} for pre-trip meetings). Timezone: ${params.trip.timezone}. Destination: ${params.trip.destinationCountry ?? "unknown"} (${params.trip.destinationLanguage ?? ""}).
 
 Return ONLY valid JSON with this shape:
-{"days":[{"date":"YYYY-MM-DD","cityLabel":"string","summary":null,"items":[{"startTime":"HH:MM","endTime":null,"title":"string","locationName":null,"address":null,"leaveByTime":null,"transportNote":null,"bringNote":null}]}]}
+{"days":[{"date":"YYYY-MM-DD","cityLabel":"string","summary":null,"items":[{"startTime":"HH:MM","endTime":null,"title":"string","locationName":null,"address":null,"leaveByTime":null,"transportNote":null,"bringNote":null,"category":null}]}]}
 
 Rules:
-- Every day date must be within the trip date range.
+- Day dates may be before the trip start date (pre-trip meetings) or within ${params.trip.startDate} to ${params.trip.endDate}.
+- Day dates must not be after ${params.trip.endDate}.
 - ${AI_TIME_NORMALIZATION_RULES}
+- For each item, set category to one of: ${CATEGORY_LIST}. Use null only if truly unclear.
 - If a day has no items, use an empty items array.
 - Omit fields you cannot infer (use null).
 - Do not include markdown or commentary.`;
@@ -109,8 +115,8 @@ Rules:
   }
 
   for (const day of validated.data.days) {
-    if (day.date < params.trip.startDate || day.date > params.trip.endDate) {
-      throw new Error(`Date ${day.date} is outside the trip range.`);
+    if (day.date > params.trip.endDate) {
+      throw new Error(`Date ${day.date} is after the trip end date.`);
     }
   }
 

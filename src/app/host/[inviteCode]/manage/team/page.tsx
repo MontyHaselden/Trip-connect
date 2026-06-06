@@ -1,11 +1,10 @@
-"use client";
+import { redirectHostManageToDashboard } from "@/lib/host/redirect-to-dashboard";
 
-import { useParams } from "next/navigation";
-
-import { TeamClient } from "@/components/host/team/TeamClient";
-
-export default function TeamPage() {
-  const params = useParams();
-  const inviteCode = String(params.inviteCode ?? "");
-  return <TeamClient inviteCode={inviteCode} />;
+export default async function LegacyHostTeamPage({
+  params,
+}: {
+  params: Promise<{ inviteCode: string }>;
+}) {
+  const { inviteCode } = await params;
+  await redirectHostManageToDashboard(inviteCode, "participants");
 }

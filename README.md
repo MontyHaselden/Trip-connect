@@ -1,6 +1,6 @@
 # Trip Connect
 
-Mobile-first school trip booklet. Students use **Today** (daily schedule) and **My Trip** (contacts, emergency card, phrases) with offline caching after the first sync. Hosts manage content on a separate dashboard at `/host/[inviteCode]`.
+Mobile-first school trip booklet. Students use **Today** (daily schedule) and **My Trip** (contacts, emergency card, phrases) with offline caching after the first sync. Hosts manage trips from a desktop dashboard with an AI-assisted builder.
 
 ## Stack
 
@@ -18,6 +18,7 @@ Create `.env.local`:
 | `SESSION_SECRET` | Yes | Long random string for host session HMAC |
 | `OPENAI_API_KEY` | No | AI itinerary import and phrase translation |
 | `OPENAI_MODEL` | No | Defaults to `gpt-4o-mini` |
+| `WEATHER_MODE` | No | `live` (default) or `mock` for demos |
 
 ## Scripts
 
@@ -29,31 +30,52 @@ npm run db:migrate   # apply Drizzle migrations
 npm run seed:japan   # sample Japan trip + host login
 ```
 
+## Route map
+
+| Audience | Routes |
+|----------|--------|
+| Public | `/`, `/features`, `/pricing`, `/demo`, `/login`, `/signup` |
+| Host | `/dashboard`, `/dashboard/trips/[tripId]/builder`, `.../participants`, `.../photos`, `.../viewers`, `.../settings` |
+| Student | `/join/[inviteCode]` → `/trip/[tripId]/today`, `/trip/[tripId]/my-trip` |
+| Viewer | `/view/[viewerCode]` (read-only itinerary + gallery) |
+
+Legacy URLs redirect automatically:
+
+- `/host` → `/dashboard`
+- `/host/[inviteCode]/manage/*` → `/dashboard/trips/[tripId]/*`
+- `/app/today`, `/app/my-trip`, `/app/calendar` → `/trip/[tripId]/*` (uses stored trip id)
+
 ## Host vs student
 
 | Role | Entry | Auth |
 |------|--------|------|
-| Host | `/host/[inviteCode]` | Email/password per trip |
-| Student | `/join/[inviteCode]` → `/app/today`, `/app/my-trip` | Name + phone; token in localStorage |
+| Host | `/login` → `/dashboard` | Email/password (session cookie) |
+| Student | `/join/[inviteCode]` | Name + phone; token in localStorage |
+| Viewer | `/view/[viewerCode]` | Read-only; no personal data |
 
-**Publishing:** Before any students join (`publishedVersion === 0` and no participants), edits auto-publish. Once the trip is live, changes are draft until confirmed on the **Publish** page (with diff preview).
+**Publishing:** Before any students join (`publishedVersion === 0` and no participants), edits auto-publish. Once the trip is live, changes are draft until the host publishes from the builder.
 
-**AI features:** Itinerary import (`/host/.../itinerary`) and emergency phrase translation (`/host/.../phrases`) require `OPENAI_API_KEY` and a destination language in Settings.
+**AI builder:** Mock conversational editing at `/dashboard/trips/[tripId]/builder` — review proposals before applying. Optional OpenAI path behind env flag later.
 
 ## Manual QA checklist
 
-1. **Host setup** — Log in, set trip dates/timezone/destination language in Settings.
-2. **Content** — Add or AI-import itinerary; add contacts and phrases (try “Translate with AI” and bulk category translate).
-3. **Pre-student publish** — Confirm `publishedVersion` increments automatically after edits (no manual publish).
-4. **Student join** — Open join link in a private window; join with name + phone; verify Today and My Trip load after refresh.
-5. **Live trip** — Add a participant or publish once; edit content; confirm students do **not** see changes until host confirms publish.
-6. **Offline** — On student device: load trip online, enable airplane mode, confirm Today/My Trip still work from cache.
-7. **Refresh** — Back online, tap **Refresh trip data**; confirm version line updates after host publish.
-8. **Unpublished join** — Join before first publish; see “teachers are still preparing” message; publish as host; student refresh shows content.
+1. **Marketing** — Landing, features, pricing, demo phone mock render correctly.
+2. **Host signup** — Sign up → dashboard → create trip → builder split layout loads.
+3. **Mock AI** — Chat proposes changes; Apply updates itinerary; Publish increments version.
+4. **Student join** — Join link → `/trip/{id}/today`; 2-tab nav; calendar button opens month sheet.
+5. **Pre-trip** — Countdown and next-meeting line on pre-trip days.
+6. **Viewer** — Viewer link shows itinerary; no student phones.
+7. **Photos** — Student upload compresses; host can hide from moderation page.
+8. **Offline** — Load trip online, airplane mode, Today/My Trip still work from cache.
+9. **Legacy redirects** — `/host`, `/app/today` still reach correct destinations.
 
 ## Project layout
 
-- `src/app/api/host/` — Host CRUD and publish APIs
-- `src/app/api/trips/` — Student published snapshot (HEAD/GET)
-- `src/lib/publish/` — Snapshot build, diff, auto-publish
+- `src/app/api/auth/` — Host login/signup aliases
+- `src/app/api/trips/` — Trip CRUD, publish, AI chat, snapshots
+- `src/app/api/view/` — Viewer filtered snapshot
+- `src/components/marketing/` — Public site
+- `src/components/host/builder/` — AI split builder
+- `src/lib/publish/` — Snapshot build, diff, auto-publish, viewer filter
 - `src/lib/offline/` — IndexedDB sync for students
+- `src/lib/ai/mock-chat.ts` — Rule-based AI proposals (MVP)

@@ -93,7 +93,7 @@ function ItemTitleBlock(props: {
   const [expanded, setExpanded] = useState(false);
   const hasDetails = extraLines.length > 0 || Boolean(mapsUrl && mapsEnabled);
   const title =
-    kind === "arrival" && !/welcome/i.test(item.title)
+    kind === "important" && !/welcome/i.test(item.title)
       ? `Welcome! ${item.title}`
       : item.title;
 
@@ -104,7 +104,7 @@ function ItemTitleBlock(props: {
           className={[
             "min-w-0 flex-1 break-words leading-snug text-zinc-900",
             titleClassName,
-            kind === "arrival" ? "font-semibold" : "",
+            kind === "important" ? "font-semibold" : "",
           ].join(" ")}
         >
           {title}

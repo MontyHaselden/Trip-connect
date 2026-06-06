@@ -70,6 +70,7 @@ export async function applyItineraryImport(
         hostNote: null,
         audienceType: "everyone",
         audienceId: null,
+        category: item.category ?? null,
         sortOrder,
       });
       itemsCreated++;

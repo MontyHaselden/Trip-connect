@@ -191,7 +191,6 @@ export function ItineraryClient({ inviteCode }: { inviteCode: string }) {
           <input
             type="date"
             required
-            min={trip.startDate}
             max={trip.endDate}
             value={newDate}
             onChange={(e) => setNewDate(e.target.value)}

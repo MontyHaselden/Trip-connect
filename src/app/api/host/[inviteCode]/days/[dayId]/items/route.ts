@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { db } from "@/lib/db/client";
+import { ACTIVITY_CATEGORIES } from "@/types/activity-category";
 import { itineraryItems } from "@/lib/db/schema";
 import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
@@ -26,6 +27,7 @@ const CreateItemSchema = z.object({
   hostNote: z.string().trim().max(500).nullable().optional(),
   audienceType: z.enum(["everyone", "group", "room", "participant"]),
   audienceId: z.string().uuid().nullable().optional(),
+  category: z.enum(ACTIVITY_CATEGORIES).nullable().optional(),
 });
 
 export async function POST(
@@ -69,6 +71,7 @@ export async function POST(
         hostNote: data.hostNote ?? null,
         audienceType: data.audienceType,
         audienceId,
+        category: data.category ?? null,
         sortOrder,
       })
       .returning();

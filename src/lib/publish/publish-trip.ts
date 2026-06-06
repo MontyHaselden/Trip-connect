@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { publishedTripSnapshots, trips } from "@/lib/db/schema";
 import { buildSnapshotV1 } from "@/lib/publish/build-snapshot";
+import { refreshTripWeather } from "@/lib/weather/refresh-trip-weather";
 
 export type PublishTripResult = {
   tripId: string;
@@ -21,6 +22,7 @@ export async function publishTrip(tripId: string): Promise<PublishTripResult> {
   if (!locked) throw new Error("Trip not found");
 
   const nextVersion = locked.publishedVersion + 1;
+  await refreshTripWeather(tripId);
   const snapshot = await buildSnapshotV1(tripId, nextVersion);
 
   const [inserted] = await db

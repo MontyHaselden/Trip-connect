@@ -1,6 +1,10 @@
-import { TripAppShell } from "@/components/layout/TripAppShell";
+import { LegacyAppRedirect } from "@/components/layout/LegacyAppRedirect";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return <TripAppShell>{children}</TripAppShell>;
+  return (
+    <>
+      <LegacyAppRedirect />
+      {children}
+    </>
+  );
 }
-

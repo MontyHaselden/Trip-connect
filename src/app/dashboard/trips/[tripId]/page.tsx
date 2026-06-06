@@ -1,0 +1,10 @@
+import { redirect } from "next/navigation";
+
+export default async function TripHubPage({
+  params,
+}: {
+  params: Promise<{ tripId: string }>;
+}) {
+  const { tripId } = await params;
+  redirect(`/dashboard/trips/${tripId}/builder`);
+}

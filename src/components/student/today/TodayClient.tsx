@@ -8,14 +8,14 @@ import {
   hasTodaySchedule,
   resolveStudentTripPayload,
 } from "@/lib/student/resolve-trip-payload";
-import { daysUntilTrip } from "@/lib/utils/time";
 import { TripNotReady } from "@/components/student/TripNotReady";
-import { DayTimeline } from "@/components/timeline/DayTimeline";
 import { sortItemsByStartTime } from "@/lib/timeline/time-math";
 import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
+import { CompactDaySheet } from "@/components/student/today/CompactDaySheet";
+import { TodayPhotoPrompt } from "@/components/student/photos/TodayPhotoPrompt";
 
 function TodayContent() {
-  const { cache, setTodayNav } = useTripApp();
+  const { cache } = useTripApp();
   const trip = useMemo(
     () => resolveStudentTripPayload(cache.payload, cache.participantId),
     [cache.payload, cache.participantId],
@@ -32,16 +32,11 @@ function TodayContent() {
     ? { startDate: trip.trip.startDate, endDate: trip.trip.endDate }
     : undefined;
 
-  const {
-    scheduledDays,
-    selectedDay,
-    isViewingToday,
-    goNext,
-    goPrev,
-    canGoPrev,
-    canGoNext,
-    setDate,
-  } = useSelectedTripDay(trip?.days ?? [], tripTz, tripDates);
+  const { scheduledDays, selectedDay, isViewingToday } = useSelectedTripDay(
+    trip?.days ?? [],
+    tripTz,
+    tripDates,
+  );
 
   useEffect(() => {
     if (!selectedDay?.date) return;
@@ -51,32 +46,6 @@ function TodayContent() {
       // ignore
     }
   }, [selectedDay?.date]);
-
-  useEffect(() => {
-    if (!selectedDay || !scheduledDays.length) {
-      setTodayNav(null);
-      return;
-    }
-    setTodayNav({
-      scheduledDays,
-      selectedDateISO: selectedDay.date,
-      canGoPrev,
-      canGoNext,
-      goPrev,
-      goNext,
-      setDate,
-    });
-    return () => setTodayNav(null);
-  }, [
-    scheduledDays,
-    selectedDay,
-    canGoPrev,
-    canGoNext,
-    goPrev,
-    goNext,
-    setDate,
-    setTodayNav,
-  ]);
 
   const dayItems = useMemo(() => {
     if (!trip || !selectedDay) return [];
@@ -126,47 +95,26 @@ function TodayContent() {
     );
   }
 
-  const daysUntil =
-    selectedDay.date < trip.trip.startDate
-      ? daysUntilTrip({
-          startDate: trip.trip.startDate,
-          dateISO: selectedDay.date,
-          tripTimezone: tripTz,
-        })
-      : null;
-
-  const hasContent = dayItems.length > 0 || prepItems.length > 0;
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-2">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="shrink-0">
         <Suspense>
           <TodayBuildingBanner />
         </Suspense>
       </div>
 
-      {hasContent ? (
-        <DayTimeline
-          mode="view"
-          items={dayItems}
-          tripTimezone={tripTz}
-          dateISO={selectedDay.date}
-          mapsOnline={cache.online}
-          isViewingToday={isViewingToday}
-          prepItems={prepItems}
-        />
-      ) : (
-        <div className="flex flex-1 items-center justify-center py-8 text-center">
-          <div>
-            <p className="text-sm font-medium text-zinc-800">No event today</p>
-            {typeof daysUntil === "number" && daysUntil > 0 ? (
-              <p className="mt-2 text-sm text-zinc-500">
-                {daysUntil} day{daysUntil === 1 ? "" : "s"} until trip
-              </p>
-            ) : null}
-          </div>
-        </div>
-      )}
+      <CompactDaySheet
+        items={dayItems}
+        prepItems={prepItems}
+        tripTimezone={tripTz}
+        dateISO={selectedDay.date}
+        cityLabel={selectedDay.cityLabel}
+        weather={selectedDay.weather}
+        tripStartDate={trip.trip.startDate}
+        isViewingToday={isViewingToday}
+        mapsOnline={cache.online}
+      />
+      <TodayPhotoPrompt tripId={trip.trip.id} tripTimezone={tripTz} />
     </div>
   );
 }

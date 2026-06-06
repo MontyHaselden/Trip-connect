@@ -1,30 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
-import { useTripApp } from "./TripAppContext";
-import { CalendarSheet } from "@/components/student/today/CalendarSheet";
 import { tripDebug } from "@/lib/debug/trip-debug";
 
-function getTodayHref(pathname: string): string {
-  if (pathname === "/app/today" && typeof window !== "undefined") {
-    const search = window.location.search;
-    return search ? `/app/today${search}` : "/app/today";
-  }
-  try {
-    const lastDate = sessionStorage.getItem("tc_last_date");
-    if (lastDate) return `/app/today?date=${encodeURIComponent(lastDate)}`;
-  } catch {
-    // ignore
-  }
-  return "/app/today";
-}
-
-function NavItem(props: {
-  href: string;
-  label: string;
-  active: boolean;
-}) {
+function NavItem(props: { href: string; label: string; active: boolean }) {
   const pathname = usePathname();
   const { href, label, active } = props;
 
@@ -35,7 +16,7 @@ function NavItem(props: {
         tripDebug("nav.click", { from: pathname, to: href, active, mode: "hard" });
       }}
       className={[
-        "flex flex-1 items-center justify-center rounded-xl px-3 py-2.5 text-sm font-medium",
+        "flex flex-1 items-center justify-center rounded-lg px-2 py-2 text-sm font-medium",
         active ? "bg-zinc-900 text-white" : "text-zinc-700",
       ].join(" ")}
     >
@@ -44,71 +25,50 @@ function NavItem(props: {
   );
 }
 
+function extractTripId(pathname: string): string | null {
+  const m = pathname.match(/^\/trip\/([^/]+)/);
+  return m?.[1] ?? null;
+}
+
 export function StudentBottomNav() {
   const pathname = usePathname();
-  const { todayNav, calendarOpen, setCalendarOpen } = useTripApp();
-  const onToday = pathname === "/app/today" || pathname.startsWith("/app/today/");
-  const onMyTrip = pathname === "/app/my-trip";
-  const showDayNav = onToday && todayNav !== null;
+  const tripId = extractTripId(pathname);
+  const [todayHref, setTodayHref] = useState(tripId ? `/trip/${tripId}/today` : "/");
+
+  const onToday =
+    Boolean(tripId) &&
+    (pathname === `/trip/${tripId}/today` || pathname.startsWith(`/trip/${tripId}/today`));
+  const onMyTrip = Boolean(tripId) && pathname === `/trip/${tripId}/my-trip`;
+
+  useEffect(() => {
+    if (!tripId) return;
+    if (pathname.includes("/today") && typeof window !== "undefined") {
+      const search = window.location.search;
+      setTodayHref(search ? `/trip/${tripId}/today${search}` : `/trip/${tripId}/today`);
+      return;
+    }
+    try {
+      const lastDate = sessionStorage.getItem("tc_last_date");
+      if (lastDate) {
+        setTodayHref(`/trip/${tripId}/today?date=${encodeURIComponent(lastDate)}`);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+    setTodayHref(`/trip/${tripId}/today`);
+  }, [pathname, tripId]);
+
+  if (!tripId) return null;
 
   return (
-    <>
-      <nav className="relative z-20 mt-auto shrink-0 bg-zinc-50 pb-[max(env(safe-area-inset-bottom),0px)]">
-        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-          {showDayNav ? (
-            <div className="border-b border-zinc-100 px-2 py-2">
-              <div className="grid grid-cols-[2.75rem_1fr_2.75rem] items-center gap-2">
-                <button
-                  type="button"
-                  onClick={todayNav.goPrev}
-                  disabled={!todayNav.canGoPrev}
-                  aria-label="Previous day"
-                  className="flex h-10 w-11 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 text-xl font-light text-zinc-800 disabled:pointer-events-none disabled:opacity-30"
-                >
-                  ‹
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setCalendarOpen(true)}
-                  className="h-10 rounded-xl border border-zinc-200 bg-zinc-50 text-sm font-medium text-zinc-800"
-                >
-                  Calendar
-                </button>
-
-                <button
-                  type="button"
-                  onClick={todayNav.goNext}
-                  disabled={!todayNav.canGoNext}
-                  aria-label="Next day"
-                  className="flex h-10 w-11 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 text-xl font-light text-zinc-800 disabled:pointer-events-none disabled:opacity-30"
-                >
-                  ›
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="flex gap-2 p-2">
-            <NavItem
-              href={getTodayHref(pathname)}
-              label="Today"
-              active={onToday}
-            />
-            <NavItem href="/app/my-trip" label="My Trip" active={onMyTrip} />
-          </div>
+    <nav className="relative z-20 mt-auto shrink-0 bg-zinc-50 pb-[max(env(safe-area-inset-bottom),0px)]">
+      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
+        <div className="flex gap-1 p-1.5">
+          <NavItem href={todayHref} label="Today" active={onToday} />
+          <NavItem href={`/trip/${tripId}/my-trip`} label="My Trip" active={onMyTrip} />
         </div>
-      </nav>
-
-      {showDayNav ? (
-        <CalendarSheet
-          open={calendarOpen}
-          onClose={() => setCalendarOpen(false)}
-          days={todayNav.scheduledDays}
-          selectedDateISO={todayNav.selectedDateISO}
-          onSelectDate={todayNav.setDate}
-        />
-      ) : null}
-    </>
+      </div>
+    </nav>
   );
 }

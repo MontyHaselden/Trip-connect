@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DateTime } from "luxon";
 
+import type { DayWeatherSnapshot } from "@/types/activity-category";
 import { getTripPhase, type TripPhase } from "@/lib/utils/time";
 
 export type ScheduleDay = {
   id: string;
   date: string;
   cityLabel: string;
+  calendarLabel?: string | null;
   sortOrder: number;
+  weather?: DayWeatherSnapshot | null;
 };
 
 function sortDaysByDate(days: ScheduleDay[]) {
@@ -104,25 +107,28 @@ export function useSelectedTripDay(
     ? scheduledDays.findIndex((d) => d.id === selectedDay.id)
     : -1;
 
-  function setDate(dateISO: string) {
-    if (!daysByDate.has(dateISO)) return;
-    setActiveDateISO(dateISO);
-    const params = new URLSearchParams(search.toString());
-    params.set("date", dateISO);
-    router.push(`${pathname}?${params.toString()}`);
-  }
+  const setDate = useCallback(
+    (dateISO: string) => {
+      if (!daysByDate.has(dateISO)) return;
+      setActiveDateISO(dateISO);
+      const params = new URLSearchParams(search.toString());
+      params.set("date", dateISO);
+      router.push(`${pathname}?${params.toString()}`);
+    },
+    [daysByDate, pathname, router, search],
+  );
 
-  function goNext() {
+  const goNext = useCallback(() => {
     if (!selectedDay || selectedIndex < 0) return;
     const next = scheduledDays[selectedIndex + 1];
     if (next) setDate(next.date);
-  }
+  }, [selectedDay, selectedIndex, scheduledDays, setDate]);
 
-  function goPrev() {
+  const goPrev = useCallback(() => {
     if (!selectedDay || selectedIndex <= 0) return;
     const prev = scheduledDays[selectedIndex - 1];
     if (prev) setDate(prev.date);
-  }
+  }, [selectedDay, selectedIndex, scheduledDays, setDate]);
 
   const canGoPrev = selectedIndex > 0;
   const canGoNext =

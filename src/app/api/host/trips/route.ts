@@ -15,6 +15,8 @@ const CreateSchema = z.object({
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   timezone: z.string().trim().min(1).max(80),
   defaultCountryCallingCode: z.string().trim().min(2).max(2),
+  destinationCountry: z.string().trim().max(100).nullable().optional(),
+  destinationLanguage: z.string().trim().max(20).nullable().optional(),
 });
 
 export async function GET() {
@@ -49,7 +51,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid request." }, { status: 400 });
     }
 
-    const trip = await createTripForHost({ hostId, ...parsed.data });
+    const trip = await createTripForHost({
+      hostId,
+      ...parsed.data,
+      destinationCountry: parsed.data.destinationCountry ?? null,
+      destinationLanguage: parsed.data.destinationLanguage ?? null,
+    });
     await setHostSessionCookie({ hostId, activeTripId: trip.id });
 
     return NextResponse.json({ ok: true, tripId: trip.id, inviteCode: trip.inviteCode });

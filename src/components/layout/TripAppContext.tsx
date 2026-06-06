@@ -9,6 +9,7 @@ export type TodayDayNav = {
     id: string;
     date: string;
     cityLabel: string;
+    calendarLabel?: string | null;
     sortOrder: number;
   }>;
   selectedDateISO: string;
@@ -17,6 +18,8 @@ export type TodayDayNav = {
   goPrev: () => void;
   goNext: () => void;
   setDate: (dateISO: string) => void;
+  tripStartDate: string;
+  tripEndDate: string;
 };
 
 export type TripAppContextValue = {
@@ -25,6 +28,7 @@ export type TripAppContextValue = {
   cache: TripCacheState;
   todayNav: TodayDayNav | null;
   setTodayNav: (nav: TodayDayNav | null) => void;
+  tripId: string;
   calendarOpen: boolean;
   setCalendarOpen: (open: boolean) => void;
 };

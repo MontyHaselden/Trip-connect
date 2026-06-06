@@ -1,3 +1,5 @@
+import type { ActivityCategory, DayWeatherSnapshot } from "./activity-category";
+
 export type PublishedTripSnapshotV1 = {
   version: number;
   publishedAt: string; // ISO
@@ -16,8 +18,10 @@ export type PublishedTripSnapshotV1 = {
     id: string;
     date: string; // YYYY-MM-DD
     cityLabel: string;
+    calendarLabel: string | null;
     summary: string | null;
     sortOrder: number;
+    weather?: DayWeatherSnapshot | null;
   }>;
   itineraryItems: Array<{
     id: string;
@@ -34,6 +38,7 @@ export type PublishedTripSnapshotV1 = {
     hostNote: string | null;
     audienceType: "everyone" | "group" | "room" | "participant";
     audienceId: string | null;
+    category: ActivityCategory | null;
     sortOrder: number;
   }>;
   tomorrowPrepItems: Array<{
@@ -86,5 +91,19 @@ export type PublishedTripSnapshotV1 = {
     source: "default" | "ai" | "host";
     sortOrder: number;
   }>;
+  photos?: Array<{
+    id: string;
+    tripDayId: string;
+    participantId: string;
+    type: "selfie" | "place";
+    imageUrl: string;
+    thumbnailUrl: string | null;
+    caption: string | null;
+    status: "visible" | "hidden" | "deleted";
+  }>;
+  viewerSettings?: {
+    galleryEnabled: boolean;
+    roomDetailsEnabled: boolean;
+  };
 };
 
