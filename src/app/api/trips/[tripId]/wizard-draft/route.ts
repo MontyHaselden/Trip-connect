@@ -6,7 +6,9 @@ import { hostApiError } from "@/lib/host/api-errors";
 import {
   assertHostTripAccess,
   ensureWizardDraft,
+  getTripWizardContext,
   getWizardDraft,
+  hydrateWizardDraftFromTrip,
   saveWizardDraft,
 } from "@/lib/host/wizard/draft-queries";
 import { parseWizardDraft } from "@/lib/host/wizard/validate";
@@ -27,12 +29,22 @@ export async function GET(
     const { tripId } = await ctx.params;
     await assertHostTripAccess(hostId, tripId);
 
-    const row = await getWizardDraft(tripId);
-    if (!row) {
-      return NextResponse.json({ error: "Wizard draft not found." }, { status: 404 });
+    const trip = await getTripWizardContext(tripId);
+    if (!trip) {
+      return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-    return NextResponse.json(row);
+    let row = await getWizardDraft(tripId);
+    if (!row) {
+      row = await ensureWizardDraft(tripId, trip.name);
+    }
+
+    const draft = hydrateWizardDraftFromTrip(row.draft, trip);
+    if (JSON.stringify(draft) !== JSON.stringify(row.draft)) {
+      await saveWizardDraft(tripId, row.currentStep, draft);
+    }
+
+    return NextResponse.json({ currentStep: row.currentStep, draft, tripName: trip.name });
   } catch (err) {
     return hostApiError(err);
   }

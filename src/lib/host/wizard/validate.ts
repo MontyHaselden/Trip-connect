@@ -13,11 +13,14 @@ import {
   type WizardStep,
 } from "./types";
 
+/** Dates may be empty while the wizard is in progress. */
+const DraftDateSchema = z.string();
+
 const TransportLegSchema = z.object({
   id: z.string().uuid(),
   transportType: z.enum(TRANSPORT_TYPES),
   bookingStatus: z.enum(BOOKING_STATUSES),
-  travelDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  travelDate: DraftDateSchema,
   departureTime: z.string().nullable(),
   arrivalTime: z.string().nullable(),
   fromCity: z.string(),
@@ -31,10 +34,10 @@ const TransportLegSchema = z.object({
 });
 
 const BasicsSchema = z.object({
-  name: z.string().trim().min(2).max(200),
-  schoolName: z.string().trim().min(1).max(200),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  name: z.string().max(200),
+  schoolName: z.string().max(200),
+  startDate: DraftDateSchema,
+  endDate: DraftDateSchema,
   destinationCountries: z.array(z.string()),
   destinationLanguages: z.array(z.string()),
   timezone: z.string().min(1),
@@ -49,7 +52,7 @@ export const TripWizardDraftSchema = z.object({
   returnLegs: z.array(TransportLegSchema),
   dayPlaces: z.array(
     z.object({
-      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      date: DraftDateSchema,
       primaryCity: z.string(),
       secondaryCity: z.string().nullable(),
       dayType: z.enum(DAY_TYPES),
@@ -65,8 +68,8 @@ export const TripWizardDraftSchema = z.object({
       url: z.string().nullable(),
       address: z.string().nullable(),
       phone: z.string().nullable(),
-      checkInDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      checkOutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      checkInDate: DraftDateSchema,
+      checkOutDate: DraftDateSchema,
       notes: z.string().nullable(),
       isHomestayGroup: z.boolean(),
       multipleInCity: z.boolean(),
@@ -81,9 +84,9 @@ export const TripWizardDraftSchema = z.object({
   activities: z.array(
     z.object({
       id: z.string().uuid(),
-      title: z.string().min(1),
-      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+      title: z.string(),
+      date: DraftDateSchema,
+      endDate: DraftDateSchema.nullable(),
       startTime: z.string().nullable(),
       endTime: z.string().nullable(),
       isTimeTbc: z.boolean(),
@@ -103,8 +106,8 @@ export const TripWizardDraftSchema = z.object({
   reminders: z.array(
     z.object({
       id: z.string().uuid(),
-      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-      title: z.string().min(1),
+      date: DraftDateSchema,
+      title: z.string(),
       reminderTime: z.string().nullable(),
       note: z.string().nullable(),
       audienceType: z.enum(AUDIENCE_TYPES),
@@ -114,9 +117,9 @@ export const TripWizardDraftSchema = z.object({
   meetings: z.array(
     z.object({
       id: z.string().uuid(),
-      title: z.string().min(1),
+      title: z.string(),
       description: z.string().nullable(),
-      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      date: DraftDateSchema,
       time: z.string().nullable(),
       location: z.string().nullable(),
       meetingType: z.enum(MEETING_TYPES),

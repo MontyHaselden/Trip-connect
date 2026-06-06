@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { emptyTransportLeg } from "@/components/host/wizard/shared/TransportLegForm";
 import { buildDefaultDayPlaces, syncIntercityLegs } from "@/lib/host/wizard/detect-city-moves";
 import type { WizardWarning } from "@/lib/host/wizard/review-warnings";
@@ -26,9 +25,11 @@ import { TransportThereBackStep } from "./steps/TransportThereBackStep";
 export function WizardClient({
   tripId,
   initialStep,
+  initialTripName,
 }: {
   tripId: string;
   initialStep: number;
+  initialTripName: string;
 }) {
   const router = useRouter();
   const [step, setStep] = useState<WizardStep>(initialStep as WizardStep);
@@ -39,19 +40,25 @@ export function WizardClient({
   const [warnings, setWarnings] = useState<WizardWarning[]>([]);
   const [finishing, setFinishing] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSyncedName = useRef(initialTripName);
 
   const loadDraft = useCallback(async () => {
     const res = await fetch(`/api/trips/${tripId}/wizard-draft`);
     if (!res.ok) {
-      setDraft(emptyWizardDraft(""));
+      setDraft(emptyWizardDraft(initialTripName));
       setLoading(false);
       return;
     }
     const body = await res.json();
-    setDraft(body.draft as TripWizardDraft);
+    const loaded = body.draft as TripWizardDraft;
+    if (!loaded.basics.name.trim()) {
+      loaded.basics.name = initialTripName;
+    }
+    setDraft(loaded);
+    lastSyncedName.current = loaded.basics.name.trim();
     if (body.currentStep) setStep(body.currentStep as WizardStep);
     setLoading(false);
-  }, [tripId]);
+  }, [tripId, initialTripName]);
 
   useEffect(() => {
     loadDraft();
@@ -61,16 +68,23 @@ export function WizardClient({
     async (nextDraft: TripWizardDraft, nextStep: WizardStep) => {
       setSaving(true);
       try {
-        await fetch(`/api/trips/${tripId}/wizard-draft`, {
+        const res = await fetch(`/api/trips/${tripId}/wizard-draft`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ currentStep: nextStep, draft: nextDraft }),
         });
+        if (res.ok) {
+          const newName = nextDraft.basics.name.trim();
+          if (newName && newName !== lastSyncedName.current) {
+            lastSyncedName.current = newName;
+            router.refresh();
+          }
+        }
       } finally {
         setSaving(false);
       }
     },
-    [tripId],
+    [tripId, router],
   );
 
   const updateDraft = useCallback(
@@ -194,15 +208,11 @@ export function WizardClient({
   }
 
   if (loading || !draft) {
-    return (
-      <DashboardShell>
-        <p className="px-5 py-10 text-sm text-zinc-600">Loading wizard…</p>
-      </DashboardShell>
-    );
+    return <p className="px-5 py-10 text-sm text-zinc-600">Loading wizard…</p>;
   }
 
   return (
-    <DashboardShell>
+    <>
       {error ? <p className="mx-auto max-w-3xl px-5 pt-4 text-sm text-red-700">{error}</p> : null}
       <WizardShell
         currentStep={step}
@@ -229,6 +239,6 @@ export function WizardClient({
           />
         ) : null}
       </WizardShell>
-    </DashboardShell>
+    </>
   );
 }

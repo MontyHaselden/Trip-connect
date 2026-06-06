@@ -2,9 +2,86 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { hostTripMembers, tripWizardDrafts, trips } from "@/lib/db/schema";
+import { tripDatesAreUnset } from "@/lib/host/trip-dates";
 
 import { emptyWizardDraft, type TripWizardDraft } from "./types";
 import { parseWizardDraft } from "./validate";
+
+export type TripWizardContext = {
+  name: string;
+  schoolName: string;
+  startDate: string;
+  endDate: string;
+  timezone: string;
+  destinationCountry: string | null;
+  destinationLanguage: string | null;
+  departureCity: string | null;
+  returnCity: string | null;
+};
+
+export async function getTripWizardContext(tripId: string): Promise<TripWizardContext | null> {
+  const row = await db
+    .select({
+      name: trips.name,
+      schoolName: trips.schoolName,
+      startDate: trips.startDate,
+      endDate: trips.endDate,
+      timezone: trips.timezone,
+      destinationCountry: trips.destinationCountry,
+      destinationLanguage: trips.destinationLanguage,
+      departureCity: trips.departureCity,
+      returnCity: trips.returnCity,
+    })
+    .from(trips)
+    .where(eq(trips.id, tripId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  return row;
+}
+
+export function hydrateWizardDraftFromTrip(
+  draft: TripWizardDraft,
+  trip: TripWizardContext,
+): TripWizardDraft {
+  const next = { ...draft, basics: { ...draft.basics } };
+
+  if (!next.basics.name.trim()) {
+    next.basics.name = trip.name;
+  }
+  if (!next.basics.schoolName.trim()) {
+    next.basics.schoolName = trip.schoolName;
+  }
+  if (!next.basics.timezone.trim()) {
+    next.basics.timezone = trip.timezone;
+  }
+  if (!next.basics.startDate && !tripDatesAreUnset(trip.startDate, trip.endDate)) {
+    next.basics.startDate = trip.startDate;
+  }
+  if (!next.basics.endDate && !tripDatesAreUnset(trip.startDate, trip.endDate)) {
+    next.basics.endDate = trip.endDate;
+  }
+  if (!next.basics.destinationCountries.length && trip.destinationCountry) {
+    next.basics.destinationCountries = trip.destinationCountry
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (!next.basics.destinationLanguages.length && trip.destinationLanguage) {
+    next.basics.destinationLanguages = trip.destinationLanguage
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (!next.basics.departureCity.trim() && trip.departureCity) {
+    next.basics.departureCity = trip.departureCity;
+  }
+  if (!next.basics.returnCity.trim() && trip.returnCity) {
+    next.basics.returnCity = trip.returnCity;
+  }
+
+  return next;
+}
 
 export async function assertHostTripAccess(hostId: string, tripId: string) {
   const row = await db
@@ -56,12 +133,36 @@ export async function ensureWizardDraft(tripId: string, tripName: string) {
   return { currentStep: 1, draft };
 }
 
+export async function syncTripFromWizardDraft(tripId: string, draft: TripWizardDraft) {
+  const name = draft.basics.name.trim();
+  const schoolName = draft.basics.schoolName.trim();
+  const countries = draft.basics.destinationCountries.filter(Boolean).join(", ") || null;
+  const languages = draft.basics.destinationLanguages.filter(Boolean).join(", ") || null;
+
+  await db
+    .update(trips)
+    .set({
+      ...(name.length >= 2 ? { name } : {}),
+      ...(schoolName ? { schoolName } : {}),
+      ...(draft.basics.timezone.trim() ? { timezone: draft.basics.timezone.trim() } : {}),
+      ...(draft.basics.startDate ? { startDate: draft.basics.startDate } : {}),
+      ...(draft.basics.endDate ? { endDate: draft.basics.endDate } : {}),
+      destinationCountry: countries,
+      destinationLanguage: languages,
+      departureCity: draft.basics.departureCity.trim() || null,
+      returnCity: draft.basics.returnCity.trim() || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(trips.id, tripId));
+}
+
 export async function saveWizardDraft(
   tripId: string,
   currentStep: number,
   draft: TripWizardDraft,
 ) {
   const parsed = parseWizardDraft(draft);
+  await syncTripFromWizardDraft(tripId, parsed);
   await db
     .insert(tripWizardDrafts)
     .values({

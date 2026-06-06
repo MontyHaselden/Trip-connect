@@ -1,4 +1,8 @@
+import { redirect } from "next/navigation";
+
 import { WizardClient } from "@/components/host/wizard/WizardClient";
+import { getHostSession } from "@/lib/auth/host-session";
+import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 
 export default async function TripWizardPage({
   params,
@@ -11,5 +15,17 @@ export default async function TripWizardPage({
   const { step } = await searchParams;
   const initialStep = Math.min(8, Math.max(1, Number(step) || 1));
 
-  return <WizardClient tripId={tripId} initialStep={initialStep} />;
+  const session = await getHostSession();
+  if (!session) redirect("/login");
+
+  const trip = await getTripByIdForHost(session.hostId, tripId);
+  if (!trip) redirect("/dashboard");
+
+  return (
+    <WizardClient
+      tripId={tripId}
+      initialStep={initialStep}
+      initialTripName={trip.name}
+    />
+  );
 }
