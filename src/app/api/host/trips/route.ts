@@ -84,34 +84,26 @@ export async function POST(req: Request) {
       instructions = normalizeImportInstructions(parsed.data.instructions);
     }
 
-    const { trip, imported } = await createTripWithOptionalDocument({
+    const result = await createTripWithOptionalDocument({
       hostId,
       name,
       instructions,
       file,
     });
 
-    await setHostSessionCookie({ hostId, activeTripId: trip.id });
+    await setHostSessionCookie({ hostId, activeTripId: result.trip.id });
 
     return NextResponse.json({
       ok: true,
-      tripId: trip.id,
-      inviteCode: trip.inviteCode,
-      imported,
-      building: imported,
+      tripId: result.trip.id,
+      inviteCode: result.trip.inviteCode,
+      imported: result.imported,
+      importError: result.importError,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to create trip.";
     if (msg.includes("OPENAI_API_KEY")) {
       return NextResponse.json({ error: msg }, { status: 503 });
-    }
-    if (
-      msg.includes("Could not read") ||
-      msg.includes("Unsupported file") ||
-      msg.includes("too large") ||
-      msg.includes("enough text")
-    ) {
-      return NextResponse.json({ error: msg }, { status: 400 });
     }
     return hostApiError(err);
   }

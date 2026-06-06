@@ -20,19 +20,32 @@ export async function createTripWithOptionalDocument(params: {
   });
 
   if (!params.file || params.file.size === 0) {
-    return { trip, imported: false as const };
+    return { trip, imported: false as const, importError: null as string | null };
   }
 
-  const documentText = await extractTextFromUpload(params.file);
-  const instructions = normalizeImportInstructions(params.instructions);
+  try {
+    const documentText = await extractTextFromUpload(params.file, {
+      minTextLength: params.instructions ? 30 : 50,
+    });
+    const instructions = normalizeImportInstructions(params.instructions);
 
-  const result = await importTripFromDocumentText({
-    tripId: trip.id,
-    text: documentText,
-    defaultTimezone: timezone,
-    instructions,
-    preserveTripName: params.name.trim(),
-  });
+    const result = await importTripFromDocumentText({
+      tripId: trip.id,
+      text: documentText,
+      defaultTimezone: timezone,
+      instructions,
+      preserveTripName: params.name.trim(),
+    });
 
-  return { trip, imported: true as const, importResult: result };
+    return {
+      trip,
+      imported: true as const,
+      importError: null as string | null,
+      importResult: result,
+    };
+  } catch (err) {
+    const importError =
+      err instanceof Error ? err.message : "Could not import the document.";
+    return { trip, imported: false as const, importError };
+  }
 }

@@ -11,11 +11,11 @@ import { sanitizeItineraryTimes } from "@/lib/utils/ai-time";
 
 export const TripFromDocumentSchema = z
   .object({
-    name: z.string().min(2).max(200),
-    schoolName: z.string().min(2).max(200),
-    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    timezone: z.string().min(1).max(80),
+    name: z.string().min(1).max(200).optional(),
+    schoolName: z.string().max(200).nullable().optional(),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    timezone: z.string().min(1).max(80).optional(),
     destinationCountry: z.string().nullable().optional(),
     destinationLanguage: z.string().nullable().optional(),
   })
@@ -23,11 +23,19 @@ export const TripFromDocumentSchema = z
 
 export type TripFromDocumentResult = z.infer<typeof TripFromDocumentSchema>;
 
+export type ResolvedTripFromDocument = TripFromDocumentResult & {
+  name: string;
+  schoolName: string;
+  startDate: string;
+  endDate: string;
+  timezone: string;
+};
+
 export async function parseTripFromDocument(params: {
   text: string;
   defaultTimezone: string;
   instructions?: string | null;
-}): Promise<TripFromDocumentResult> {
+}): Promise<ResolvedTripFromDocument> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is not configured.");
@@ -101,23 +109,49 @@ Rules:
     );
   }
 
-  return sanitizeTripFromDocument(validated.data);
+  return sanitizeTripFromDocument(validated.data, {
+    timezone: params.defaultTimezone,
+  });
 }
 
 function sanitizeTripFromDocument(
   data: TripFromDocumentResult,
-): TripFromDocumentResult {
+  defaults: { timezone: string },
+): ResolvedTripFromDocument {
   const sanitized = sanitizeItineraryTimes(data);
   const days = sanitized.days
-    .filter((day) => day.date >= data.startDate && day.date <= data.endDate)
     .map((day) => ({
       ...day,
       items: day.items.filter((item) => item.title.trim().length > 0),
-    }));
+    }))
+    .filter((day) => day.items.length > 0 || day.cityLabel.trim().length > 0);
 
-  if (data.startDate > data.endDate) {
+  if (!days.length) {
+    throw new Error(
+      "AI could not find scheduled activities in that document. Try adding clearer instructions or paste the itinerary text in the builder.",
+    );
+  }
+
+  const sortedDates = days.map((d) => d.date).sort();
+  const startDate = data.startDate ?? sortedDates[0]!;
+  const endDate = data.endDate ?? sortedDates[sortedDates.length - 1]!;
+
+  if (endDate < startDate) {
     throw new Error("AI returned invalid trip dates.");
   }
 
-  return { ...sanitized, days };
+  const inRange = days.filter(
+    (day) => day.date >= startDate && day.date <= endDate,
+  );
+
+  const resolved: ResolvedTripFromDocument = {
+    ...sanitized,
+    name: data.name?.trim() || "Imported trip",
+    schoolName: data.schoolName?.trim() || "School trip",
+    startDate,
+    endDate,
+    timezone: data.timezone?.trim() || defaults.timezone,
+    days: inRange.length > 0 ? inRange : days,
+  };
+  return resolved;
 }

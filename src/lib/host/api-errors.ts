@@ -34,6 +34,13 @@ function sanitizeHostApiErrorMessage(raw: string, fallback: string) {
     return "An account already exists with that email or phone number. Try logging in instead.";
   }
 
+  if (/column "[^"]+" does not exist/i.test(msg)) {
+    return "Database schema is out of date. Run npm run db:migrate against your production database.";
+  }
+  if (/type "public\.[^"]+" does not exist/i.test(msg)) {
+    return "Database schema is out of date. Run npm run db:migrate against your production database.";
+  }
+
   // Don't leak SQL or internal query details to end users.
   if (/failed query:/i.test(msg)) return fallback;
   if (/\binsert into\b|\bselect\b|\bupdate\b|\bdelete\b/i.test(msg)) return fallback;

@@ -50,7 +50,12 @@ export function CreateTripForm() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Failed to create trip");
 
-      router.push(`/dashboard/trips/${body.tripId}/builder`);
+      const importError =
+        typeof body.importError === "string" ? body.importError : null;
+      const next = importError
+        ? `/dashboard/trips/${body.tripId}/builder?importError=${encodeURIComponent(importError)}`
+        : `/dashboard/trips/${body.tripId}/builder`;
+      router.push(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create trip");
     } finally {

@@ -10,7 +10,11 @@ function capText(text: string): string {
   return text.slice(0, MAX_TEXT_LENGTH);
 }
 
-export async function extractTextFromUpload(file: File): Promise<string> {
+export async function extractTextFromUpload(
+  file: File,
+  options?: { minTextLength?: number },
+): Promise<string> {
+  const minTextLength = options?.minTextLength ?? 50;
   if (file.size > MAX_BYTES) {
     throw new Error("File is too large (max 5 MB).");
   }
@@ -52,9 +56,9 @@ export async function extractTextFromUpload(file: File): Promise<string> {
   }
 
   const cleaned = capText(normalizeWhitespace(text));
-  if (cleaned.length < 50) {
+  if (cleaned.length < minTextLength) {
     throw new Error(
-      "Could not read enough text from the document. Try a text-based PDF or paste into the itinerary import after creating the trip.",
+      "Could not read enough text from this PDF (it may be mostly photos). Try exporting a text version, or create the trip first and paste the schedule in the builder.",
     );
   }
 
