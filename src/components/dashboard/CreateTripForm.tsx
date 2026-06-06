@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState } from "react";
 
+import { savePendingTripImport } from "@/lib/client/pending-trip-import";
+
 import { DashboardShell } from "./DashboardShell";
 
 export function CreateTripForm() {
@@ -50,16 +52,12 @@ export function CreateTripForm() {
       const tripId = body.tripId as string;
 
       if (file) {
-        const importForm = new FormData();
-        importForm.set("file", file);
-        const trimmedInstructions = instructions.trim();
-        if (trimmedInstructions) importForm.set("instructions", trimmedInstructions);
-
-        void fetch(`/api/trips/${tripId}/import-document`, {
-          method: "POST",
-          body: importForm,
+        const trimmedInstructions = instructions.trim() || null;
+        await savePendingTripImport({
+          tripId,
+          file,
+          instructions: trimmedInstructions,
         });
-
         router.push(`/dashboard/trips/${tripId}/builder?building=1`);
         return;
       }

@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+
+import {
+  clearPendingTripImport,
+  peekPendingTripImport,
+} from "@/lib/client/pending-trip-import";
+import { runTripDocumentImport } from "@/lib/client/run-trip-document-import";
+import type { TripImportProgress } from "@/types/trip-import-progress";
 
 import { AiChatPanel } from "./AiChatPanel";
 import { LivePreviewPanel } from "./LivePreviewPanel";
@@ -11,14 +18,16 @@ export function BuilderClient(props: { tripId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const building = searchParams.get("building") === "1";
-  const importError = searchParams.get("importError");
+  const importErrorParam = searchParams.get("importError");
 
+  const importStarted = useRef(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [trip, setTrip] = useState<{
     name: string;
     inviteCode: string;
     timezone: string;
     startDate: string;
+    endDate: string;
   } | null>(null);
   const [proposal, setProposal] = useState<{
     proposalId: string;
@@ -29,6 +38,8 @@ export function BuilderClient(props: { tripId: string }) {
   } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [isBuilding, setIsBuilding] = useState(building);
+  const [importError, setImportError] = useState<string | null>(importErrorParam);
+  const [buildProgress, setBuildProgress] = useState<TripImportProgress | null>(null);
 
   useEffect(() => {
     fetch(`/api/trips/${tripId}`)
@@ -40,10 +51,80 @@ export function BuilderClient(props: { tripId: string }) {
   }, [tripId]);
 
   useEffect(() => {
-    if (importError) {
+    if (!building || importStarted.current) return;
+    importStarted.current = true;
+
+    let cancelled = false;
+
+    (async () => {
+      const pending = await peekPendingTripImport(tripId);
+      if (cancelled) return;
+
+      if (!pending) {
+        setIsBuilding(false);
+        if (building) clearBuildingParam();
+        return;
+      }
+
+      const result = await runTripDocumentImport({
+        tripId,
+        file: pending.file,
+        fileName: pending.fileName,
+        instructions: pending.instructions,
+        onProgress: (event) => {
+          if (cancelled) return;
+          setBuildProgress(event);
+          if (event.type === "trip_dates") {
+            setTrip((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    startDate: event.startDate,
+                    endDate: event.endDate,
+                    timezone: event.timezone,
+                  }
+                : prev,
+            );
+          }
+          if (event.type === "done") {
+            setTrip((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    startDate: event.trip.startDate,
+                    endDate: event.trip.endDate,
+                    timezone: event.trip.timezone,
+                  }
+                : prev,
+            );
+          }
+        },
+      });
+
+      if (cancelled) return;
+
+      if (!result.ok) {
+        await clearPendingTripImport(tripId);
+        setImportError(result.error);
+        setIsBuilding(false);
+        setBuildProgress(null);
+        router.replace(
+          `/dashboard/trips/${tripId}/builder?importError=${encodeURIComponent(result.error)}`,
+        );
+        return;
+      }
+
+      await clearPendingTripImport(tripId);
       setIsBuilding(false);
-    }
-  }, [importError]);
+      setBuildProgress(null);
+      setReloadKey((k) => k + 1);
+      clearBuildingParam();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [building, tripId, router]);
 
   function clearBuildingParam() {
     router.replace(`/dashboard/trips/${tripId}/builder`);
@@ -69,10 +150,13 @@ export function BuilderClient(props: { tripId: string }) {
           inviteCode={trip.inviteCode}
           timezone={trip.timezone}
           startDate={trip.startDate}
+          endDate={trip.endDate}
           proposal={proposal}
           building={isBuilding}
+          buildProgress={buildProgress}
           onBuildingDone={() => {
             setIsBuilding(false);
+            setBuildProgress(null);
             clearBuildingParam();
           }}
           onApplied={() => {
@@ -107,7 +191,26 @@ export function BuilderClient(props: { tripId: string }) {
                   setProposal(data);
                   setEditorOpen(false);
                 }}
+                onImportProgress={(event) => {
+                  setIsBuilding(true);
+                  setBuildProgress(event);
+                  if (event.type === "trip_dates") {
+                    setTrip((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            startDate: event.startDate,
+                            endDate: event.endDate,
+                            timezone: event.timezone,
+                          }
+                        : prev,
+                    );
+                  }
+                }}
                 onDocumentImported={() => {
+                  setIsBuilding(false);
+                  setImportError(null);
+                  setBuildProgress(null);
                   setReloadKey((k) => k + 1);
                 }}
               />

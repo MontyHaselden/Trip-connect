@@ -1,20 +1,34 @@
 import { eq } from "drizzle-orm";
 
-import { applyItineraryImport } from "@/lib/ai/apply-itinerary-import";
-import { parseTripFromDocument } from "@/lib/ai/parse-trip-document";
+import {
+  applyItineraryItem,
+  ensureTripDay,
+} from "@/lib/ai/apply-itinerary-import";
+import { parseDayItemsFromDocument } from "@/lib/ai/parse-day-items-from-document";
+import { parseTripOutlineFromDocument } from "@/lib/ai/parse-trip-outline";
 import { db } from "@/lib/db/client";
 import { trips } from "@/lib/db/schema";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
+import type { TripImportProgress } from "@/types/trip-import-progress";
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export async function importTripFromDocumentText(params: {
   tripId: string;
   text: string;
   defaultTimezone: string;
   instructions?: string | null;
-  /** When set, keep this trip name instead of the AI-extracted title. */
   preserveTripName?: string | null;
+  onProgress?: (event: TripImportProgress) => void;
 }) {
-  const parsed = await parseTripFromDocument({
+  const emit = (event: TripImportProgress) => params.onProgress?.(event);
+
+  emit({ type: "phase", phase: "reading" });
+
+  emit({ type: "phase", phase: "planning" });
+  const outline = await parseTripOutlineFromDocument({
     text: params.text,
     defaultTimezone: params.defaultTimezone,
     instructions: params.instructions,
@@ -23,40 +37,96 @@ export async function importTripFromDocumentText(params: {
   await db
     .update(trips)
     .set({
-      ...(params.preserveTripName
-        ? {}
-        : { name: parsed.name.trim() }),
-      schoolName: parsed.schoolName.trim(),
-      startDate: parsed.startDate,
-      endDate: parsed.endDate,
-      timezone: parsed.timezone.trim(),
-      destinationCountry: parsed.destinationCountry ?? null,
-      destinationLanguage: parsed.destinationLanguage ?? null,
+      ...(params.preserveTripName ? {} : { name: outline.name.trim() }),
+      schoolName: outline.schoolName.trim(),
+      startDate: outline.startDate,
+      endDate: outline.endDate,
+      timezone: outline.timezone.trim(),
+      destinationCountry: outline.destinationCountry,
+      destinationLanguage: outline.destinationLanguage,
       updatedAt: new Date(),
     })
     .where(eq(trips.id, params.tripId));
+
+  emit({
+    type: "trip_dates",
+    startDate: outline.startDate,
+    endDate: outline.endDate,
+    dayCount: outline.days.length,
+    timezone: outline.timezone,
+  });
 
   let daysCreated = 0;
   let daysUpdated = 0;
   let itemsCreated = 0;
 
-  for (const day of parsed.days) {
-    const stats = await applyItineraryImport(params.tripId, { days: [day] });
-    daysCreated += stats.daysCreated;
-    daysUpdated += stats.daysUpdated;
-    itemsCreated += stats.itemsCreated;
+  for (const day of outline.days) {
+    const ensured = await ensureTripDay(params.tripId, day);
+    if (ensured.created) daysCreated++;
+    if (ensured.updated) daysUpdated++;
+  }
+
+  emit({ type: "phase", phase: "building" });
+
+  for (let i = 0; i < outline.days.length; i++) {
+    const day = outline.days[i]!;
+    emit({
+      type: "day_start",
+      index: i + 1,
+      total: outline.days.length,
+      date: day.date,
+      cityLabel: day.cityLabel,
+    });
+
+    const items = await parseDayItemsFromDocument({
+      text: params.text,
+      date: day.date,
+      cityLabel: day.cityLabel,
+      defaultTimezone: outline.timezone,
+      startDate: outline.startDate,
+      endDate: outline.endDate,
+      instructions: params.instructions,
+    });
+
+    const ensured = await ensureTripDay(params.tripId, day);
+
+    for (let j = 0; j < items.length; j++) {
+      const item = items[j]!;
+      await applyItineraryItem(params.tripId, ensured.dayId, item);
+      itemsCreated++;
+
+      emit({
+        type: "item_added",
+        date: day.date,
+        index: j + 1,
+        total: items.length,
+        title: item.title,
+        category: item.category ?? null,
+      });
+
+      await sleep(150);
+    }
+
+    emit({
+      type: "day_complete",
+      date: day.date,
+      itemCount: items.length,
+    });
   }
 
   await maybeAutoPublish(params.tripId);
 
-  return {
+  const result = {
     stats: { daysCreated, daysUpdated, itemsCreated },
     trip: {
-      name: parsed.name,
-      schoolName: parsed.schoolName,
-      startDate: parsed.startDate,
-      endDate: parsed.endDate,
-      timezone: parsed.timezone,
+      name: outline.name,
+      schoolName: outline.schoolName,
+      startDate: outline.startDate,
+      endDate: outline.endDate,
+      timezone: outline.timezone,
     },
   };
+
+  emit({ type: "done", ...result });
+  return result;
 }

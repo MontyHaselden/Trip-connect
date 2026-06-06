@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { DayWeatherSnapshot } from "@/types/activity-category";
@@ -28,6 +29,10 @@ export function CompactDaySheet(props: {
   tripStartDate: string;
   isViewingToday: boolean;
   mapsOnline: boolean;
+  animateItemIds?: Set<string>;
+  typewriterItemId?: string | null;
+  buildingEmptyLabel?: string | null;
+  listFooter?: ReactNode;
 }) {
   const {
     items,
@@ -39,6 +44,10 @@ export function CompactDaySheet(props: {
     tripStartDate,
     isViewingToday,
     mapsOnline,
+    animateItemIds,
+    typewriterItemId,
+    buildingEmptyLabel,
+    listFooter,
   } = props;
 
   const [selectedItem, setSelectedItem] = useState<ItineraryRowItem | null>(null);
@@ -112,7 +121,7 @@ export function CompactDaySheet(props: {
     [items, durationById, containerHeight],
   );
 
-  const hasContent = items.length > 0 || prepItems.length > 0;
+  const hasContent = items.length > 0 || prepItems.length > 0 || listFooter;
 
   if (!hasContent) {
     return (
@@ -127,7 +136,9 @@ export function CompactDaySheet(props: {
           <p className="text-xs font-medium text-sky-800">{nextMeetingLine}</p>
         ) : null}
         <div className="flex flex-1 items-center justify-center text-center">
-          <p className="text-sm font-medium text-zinc-800">No event today</p>
+          <p className="text-sm font-medium text-zinc-800">
+            {buildingEmptyLabel ?? "No event today"}
+          </p>
         </div>
       </div>
     );
@@ -169,8 +180,11 @@ export function CompactDaySheet(props: {
                 onTap={() => setSelectedItem(item)}
                 durationMinutes={durationById.get(item.id) ?? 60}
                 heightPx={blockLayout.heightsById.get(item.id) ?? 48}
+                animateIn={animateItemIds?.has(item.id)}
+                typewriterTitle={typewriterItemId === item.id}
               />
             ))}
+            {listFooter}
           </div>
         ) : null}
 

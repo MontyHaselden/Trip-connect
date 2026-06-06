@@ -3,6 +3,7 @@
 import {
   COMPACT_SHORT_THRESHOLD_MINUTES,
 } from "@/lib/timeline/compact-day-layout";
+import { useTypewriterText } from "@/hooks/useTypewriterText";
 import {
   categoryAccent,
   formatCompactStartTime,
@@ -48,12 +49,25 @@ export function CompactItineraryRow(props: {
   onTap: () => void;
   durationMinutes: number;
   heightPx: number;
+  animateIn?: boolean;
+  typewriterTitle?: boolean;
 }) {
-  const { item, tripTimezone, isActive, isNext, onTap, durationMinutes, heightPx } = props;
+  const {
+    item,
+    tripTimezone,
+    isActive,
+    isNext,
+    onTap,
+    durationMinutes,
+    heightPx,
+    animateIn,
+    typewriterTitle,
+  } = props;
   const category = resolveCategory(item);
   const accent = categoryAccent(category);
   const time = formatCompactStartTime(item.startTime, tripTimezone);
   const isShort = durationMinutes <= COMPACT_SHORT_THRESHOLD_MINUTES;
+  const title = useTypewriterText(item.title, Boolean(typewriterTitle));
 
   return (
     <button
@@ -64,6 +78,7 @@ export function CompactItineraryRow(props: {
         "flex w-full flex-col justify-center gap-0.5 overflow-hidden border-b border-zinc-200/70 px-3 py-2 text-left transition-colors last:border-b-0",
         blockTint(category, Boolean(isActive), Boolean(isNext) && !isActive),
         isActive ? "ring-2 ring-inset ring-red-200" : "",
+        animateIn ? "animate-block-in" : "",
       ].join(" ")}
     >
       <div className="flex min-w-0 items-center gap-2">
@@ -88,7 +103,10 @@ export function CompactItineraryRow(props: {
           isShort ? "line-clamp-2" : heightPx < 100 ? "line-clamp-2" : "line-clamp-3",
         ].join(" ")}
       >
-        {item.title}
+        {title}
+        {typewriterTitle && title.length < item.title.length ? (
+          <span className="ml-0.5 inline-block h-[1em] w-0.5 animate-pulse bg-zinc-400 align-middle" />
+        ) : null}
       </span>
     </button>
   );

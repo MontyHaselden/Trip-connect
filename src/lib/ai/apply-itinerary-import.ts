@@ -3,12 +3,94 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { itineraryItems, tripDays } from "@/lib/db/schema";
 import type { ItineraryImportResult } from "@/lib/ai/itinerary-import";
+import type { z } from "zod";
+
+import type { ImportDaySchema, ImportItemSchema } from "@/lib/ai/itinerary-import-schemas";
 import {
   nextDaySortOrder,
   nextItemSortOrder,
 } from "@/lib/host/itinerary-queries";
 import { syncTripDatesFromDays } from "@/lib/host/trip-dates";
 import { normalizeStoredTime } from "@/lib/utils/ai-time";
+
+type ImportDay = z.infer<typeof ImportDaySchema>;
+type ImportItem = z.infer<typeof ImportItemSchema>;
+
+export async function ensureTripDay(
+  tripId: string,
+  day: Pick<ImportDay, "date" | "cityLabel" | "summary">,
+) {
+  const existing = await db
+    .select()
+    .from(tripDays)
+    .where(and(eq(tripDays.tripId, tripId), eq(tripDays.date, day.date)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  if (existing) {
+    await db
+      .update(tripDays)
+      .set({
+        cityLabel: day.cityLabel,
+        summary: day.summary ?? null,
+      })
+      .where(eq(tripDays.id, existing.id));
+    return { dayId: existing.id, created: false, updated: true };
+  }
+
+  const sortOrder = await nextDaySortOrder(tripId);
+  const [created] = await db
+    .insert(tripDays)
+    .values({
+      tripId,
+      date: day.date,
+      cityLabel: day.cityLabel,
+      summary: day.summary ?? null,
+      sortOrder,
+    })
+    .returning();
+
+  if (!created) {
+    throw new Error(`Could not create day ${day.date}.`);
+  }
+
+  return { dayId: created.id, created: true, updated: false };
+}
+
+export async function applyItineraryItem(
+  tripId: string,
+  dayId: string,
+  item: ImportItem,
+) {
+  const sortOrder = await nextItemSortOrder(dayId);
+  const [created] = await db
+    .insert(itineraryItems)
+    .values({
+      tripId,
+      tripDayId: dayId,
+      startTime: normalizeStoredTime(item.startTime),
+      endTime: item.endTime ? normalizeStoredTime(item.endTime) : null,
+      title: item.title,
+      locationName: item.locationName ?? null,
+      address: item.address ?? null,
+      mapQuery: null,
+      leaveByTime: item.leaveByTime ? normalizeStoredTime(item.leaveByTime) : null,
+      transportNote: item.transportNote ?? null,
+      bringNote: item.bringNote ?? null,
+      hostNote: null,
+      audienceType: "everyone",
+      audienceId: null,
+      category: item.category ?? null,
+      sortOrder,
+    })
+    .returning({ id: itineraryItems.id });
+
+  if (!created) {
+    throw new Error("Could not create itinerary item.");
+  }
+
+  return created.id;
+}
 
 export async function applyItineraryImport(
   tripId: string,
@@ -19,61 +101,12 @@ export async function applyItineraryImport(
   let itemsCreated = 0;
 
   for (const day of data.days) {
-    const existing = await db
-      .select()
-      .from(tripDays)
-      .where(and(eq(tripDays.tripId, tripId), eq(tripDays.date, day.date)))
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
-
-    let dayId: string;
-    if (existing) {
-      await db
-        .update(tripDays)
-        .set({
-          cityLabel: day.cityLabel,
-          summary: day.summary ?? null,
-        })
-        .where(eq(tripDays.id, existing.id));
-      dayId = existing.id;
-      daysUpdated++;
-    } else {
-      const sortOrder = await nextDaySortOrder(tripId);
-      const [created] = await db
-        .insert(tripDays)
-        .values({
-          tripId,
-          date: day.date,
-          cityLabel: day.cityLabel,
-          summary: day.summary ?? null,
-          sortOrder,
-        })
-        .returning();
-      if (!created) continue;
-      dayId = created.id;
-      daysCreated++;
-    }
+    const ensured = await ensureTripDay(tripId, day);
+    if (ensured.created) daysCreated++;
+    if (ensured.updated) daysUpdated++;
 
     for (const item of day.items) {
-      const sortOrder = await nextItemSortOrder(dayId);
-      await db.insert(itineraryItems).values({
-        tripId,
-        tripDayId: dayId,
-        startTime: normalizeStoredTime(item.startTime),
-        endTime: item.endTime ? normalizeStoredTime(item.endTime) : null,
-        title: item.title,
-        locationName: item.locationName ?? null,
-        address: item.address ?? null,
-        mapQuery: null,
-        leaveByTime: item.leaveByTime ? normalizeStoredTime(item.leaveByTime) : null,
-        transportNote: item.transportNote ?? null,
-        bringNote: item.bringNote ?? null,
-        hostNote: null,
-        audienceType: "everyone",
-        audienceId: null,
-        category: item.category ?? null,
-        sortOrder,
-      });
+      await applyItineraryItem(tripId, ensured.dayId, item);
       itemsCreated++;
     }
   }

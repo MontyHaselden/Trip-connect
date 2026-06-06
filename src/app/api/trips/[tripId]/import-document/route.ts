@@ -6,9 +6,27 @@ import { normalizeImportInstructions } from "@/lib/documents/document-import-ins
 import { hostApiError } from "@/lib/host/api-errors";
 import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import { importTripFromDocumentText } from "@/lib/host/import-trip-from-document";
+import type { TripImportProgress } from "@/types/trip-import-progress";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+function importErrorResponse(err: unknown) {
+  const msg = err instanceof Error ? err.message : "Import failed.";
+  if (msg.includes("OPENAI_API_KEY")) {
+    return NextResponse.json({ error: msg }, { status: 503 });
+  }
+  if (
+    msg.includes("AI could not") ||
+    msg.includes("Could not parse") ||
+    msg.includes("OpenAI") ||
+    msg.includes("enough text") ||
+    msg.includes("Could not read")
+  ) {
+    return NextResponse.json({ error: msg }, { status: 400 });
+  }
+  return hostApiError(err);
+}
 
 export async function POST(
   req: Request,
@@ -46,24 +64,38 @@ export async function POST(
       return NextResponse.json({ error: msg }, { status: 400 });
     }
 
-    const result = await importTripFromDocumentText({
-      tripId: trip.id,
-      text: documentText,
-      defaultTimezone: trip.timezone,
-      instructions,
-      preserveTripName: trip.name,
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        const send = (event: TripImportProgress) => {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        };
+
+        try {
+          await importTripFromDocumentText({
+            tripId: trip.id,
+            text: documentText,
+            defaultTimezone: trip.timezone,
+            instructions,
+            preserveTripName: trip.name,
+            onProgress: send,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Import failed.";
+          send({ type: "error", error: msg });
+        } finally {
+          controller.close();
+        }
+      },
     });
 
-    return NextResponse.json({
-      ok: true,
-      stats: result.stats,
-      trip: result.trip,
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "Cache-Control": "no-cache",
+      },
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Import failed.";
-    if (msg.includes("OPENAI_API_KEY")) {
-      return NextResponse.json({ error: msg }, { status: 503 });
-    }
-    return hostApiError(err);
+    return importErrorResponse(err);
   }
 }

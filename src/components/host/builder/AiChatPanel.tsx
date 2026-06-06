@@ -2,6 +2,9 @@
 
 import { useRef, useState } from "react";
 
+import { runTripDocumentImport } from "@/lib/client/run-trip-document-import";
+import type { TripImportProgress } from "@/types/trip-import-progress";
+
 const EXAMPLE_PROMPTS = [
   "Create a Japan trip from 5 July to 21 July.",
   "This is last year's booklet — move all dates to this year and ignore the photos.",
@@ -21,8 +24,9 @@ export function AiChatPanel(props: {
     warnings: string[];
   }) => void;
   onDocumentImported?: () => void;
+  onImportProgress?: (event: TripImportProgress) => void;
 }) {
-  const { tripId, onClose, onProposal, onDocumentImported } = props;
+  const { tripId, onClose, onProposal, onDocumentImported, onImportProgress } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [messages, setMessages] = useState<
     Array<{ role: "user" | "assistant"; text: string }>
@@ -70,20 +74,16 @@ export function AiChatPanel(props: {
     setMessages((m) => [...m, { role: "user", text: userLine }]);
     setInput("");
     try {
-      const form = new FormData();
-      form.set("file", attachedFile);
-      if (instructions) form.set("instructions", instructions);
-
-      const res = await fetch(`/api/trips/${tripId}/import-document`, {
-        method: "POST",
-        body: form,
+      const result = await runTripDocumentImport({
+        tripId,
+        file: attachedFile,
+        fileName: attachedFile.name,
+        instructions: instructions || null,
+        onProgress: onImportProgress,
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Import failed");
+      if (!result.ok) throw new Error(result.error);
 
-      const stats = body.stats as
-        | { daysCreated: number; daysUpdated: number; itemsCreated: number }
-        | undefined;
+      const stats = result.stats;
       const reply = stats
         ? `Imported your document. Added ${stats.daysCreated} day(s), updated ${stats.daysUpdated}, created ${stats.itemsCreated} activity item(s). Check the preview.`
         : "Imported your document. Check the preview on the right.";
