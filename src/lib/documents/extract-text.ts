@@ -11,8 +11,9 @@ function capText(text: string): string {
 }
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  // pdf-parse v1 uses a Node-friendly API (no DOMMatrix / canvas required).
-  const pdfParse = (await import("pdf-parse")).default as (
+  // Import the parser directly — pdf-parse/index.js runs a debug read of
+  // ./test/data/05-versions-space.pdf when module.parent is unset (Next/Vercel).
+  const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default as (
     data: Buffer,
   ) => Promise<{ text: string }>;
   const parsed = await pdfParse(buffer);
