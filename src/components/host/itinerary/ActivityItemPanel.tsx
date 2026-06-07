@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useId, useRef } from "react";
 
 import { ItemForm } from "@/components/host/itinerary/ItemForm";
 import type { ItineraryItem, RosterSummary } from "@/components/host/itinerary/types";
@@ -35,13 +35,17 @@ export function ActivityItemPanel(props: {
   } = props;
 
   const panelRef = useRef<HTMLDivElement>(null);
+  const formId = useId();
 
   if (!open) return null;
+
+  const btnClass =
+    "inline-flex h-8 flex-1 items-center justify-center rounded-lg px-3 text-xs font-medium";
 
   return (
     <div
       ref={panelRef}
-      className="relative flex h-[21.5rem] w-[17rem] shrink-0 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-md"
+      className="relative flex h-[min(26rem,calc(100dvh-6rem))] w-[17rem] shrink-0 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-md"
     >
       <div className="flex shrink-0 items-center justify-between border-b border-zinc-100 px-3 py-2">
         <h2 className="text-xs font-semibold text-zinc-900">
@@ -55,9 +59,12 @@ export function ActivityItemPanel(props: {
           ✕
         </button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col px-3 py-2">
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-2">
         <ItemForm
           compact
+          formId={formId}
+          hideFooter
           inviteCode={inviteCode}
           dayId={dayId}
           roster={roster}
@@ -73,17 +80,34 @@ export function ActivityItemPanel(props: {
           onError={onError}
         />
       </div>
-      {mode === "edit" && item && onDelete ? (
-        <div className="shrink-0 border-t border-zinc-100 px-3 py-2">
+
+      <div className="shrink-0 space-y-2 border-t border-zinc-100 bg-white px-3 py-2">
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            form={formId}
+            className={`${btnClass} bg-zinc-900 text-white disabled:opacity-50`}
+          >
+            {mode === "edit" ? "Save" : "Add"}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className={`${btnClass} border border-zinc-200 text-zinc-700`}
+          >
+            Cancel
+          </button>
+        </div>
+        {mode === "edit" && item && onDelete ? (
           <button
             type="button"
             onClick={() => onDelete(item.id)}
-            className="text-[11px] font-medium text-red-600"
+            className="text-[11px] font-medium text-red-600 hover:text-red-700"
           >
             Delete activity
           </button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }

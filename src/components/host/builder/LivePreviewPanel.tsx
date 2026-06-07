@@ -24,14 +24,6 @@ import { TripGapsPanel } from "./TripGapsPanel";
 import { PublishSuccessModal } from "./PublishSuccessModal";
 import { StudentTodayPreviewShell } from "./StudentTodayPreviewShell";
 
-type ProposalState = {
-  proposalId: string;
-  assistantReply: string;
-  needsClarification: boolean;
-  proposedChanges: Array<{ summary: string }>;
-  warnings: string[];
-} | null;
-
 type ItineraryDay = {
   id: string;
   date: string;
@@ -103,11 +95,9 @@ export function LivePreviewPanel(props: {
   timezone: string;
   startDate: string;
   endDate?: string;
-  proposal: ProposalState;
   building?: boolean;
   buildProgress?: TripImportProgress | null;
   onBuildingDone?: () => void;
-  onApplied: () => void;
 }) {
   const {
     tripId,
@@ -116,11 +106,9 @@ export function LivePreviewPanel(props: {
     timezone,
     startDate,
     endDate,
-    proposal,
     building,
     buildProgress,
     onBuildingDone,
-    onApplied,
   } = props;
   const [days, setDays] = useState<ItineraryDay[]>([]);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
@@ -132,7 +120,6 @@ export function LivePreviewPanel(props: {
       studentInvite: { url: string; path: string };
     };
   } | null>(null);
-  const [applying, setApplying] = useState(false);
   const [buildTimedOut, setBuildTimedOut] = useState(false);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(() => new Set());
   const [typingId, setTypingId] = useState<string | null>(null);
@@ -337,23 +324,6 @@ export function LivePreviewPanel(props: {
       ? `${formatTripDate(startDate)} → ${formatTripDate(endDate)}`
       : null;
 
-  async function applyProposal() {
-    if (!proposal?.proposalId || proposal.needsClarification) return;
-    setApplying(true);
-    try {
-      const res = await fetch(`/api/trips/${tripId}/apply-change`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ proposalId: proposal.proposalId }),
-      });
-      if (!res.ok) throw new Error("Apply failed");
-      await reload();
-      onApplied();
-    } finally {
-      setApplying(false);
-    }
-  }
-
   async function publish() {
     setPublishing(true);
     try {
@@ -453,37 +423,6 @@ export function LivePreviewPanel(props: {
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           Import is taking longer than expected. Open the AI editor to retry or attach your
           document again.
-        </div>
-      ) : null}
-
-      {proposal ? (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm">
-          <p className="text-zinc-800">{proposal.assistantReply}</p>
-          {proposal.warnings.length ? (
-            <ul className="mt-2 text-xs text-amber-800">
-              {proposal.warnings.map((w) => (
-                <li key={w}>· {w}</li>
-              ))}
-            </ul>
-          ) : null}
-          {proposal.proposedChanges.length && !proposal.needsClarification ? (
-            <div className="mt-3">
-              <p className="text-xs font-semibold text-zinc-700">Proposed changes:</p>
-              <ul className="mt-1 text-xs text-zinc-700">
-                {proposal.proposedChanges.map((c, i) => (
-                  <li key={i}>· {c.summary}</li>
-                ))}
-              </ul>
-              <button
-                type="button"
-                onClick={applyProposal}
-                disabled={applying}
-                className="mt-2 h-8 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white"
-              >
-                {applying ? "Applying…" : "Apply changes"}
-              </button>
-            </div>
-          ) : null}
         </div>
       ) : null}
 

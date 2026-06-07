@@ -127,7 +127,7 @@ export function CompactActivityForm(props: {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <label className="block shrink-0">
         <span className="text-[11px] font-medium text-zinc-600">Name</span>
         <input
@@ -174,9 +174,10 @@ export function CompactActivityForm(props: {
         ))}
       </div>
 
-      <div className="mt-2 h-[8.25rem] shrink-0 overflow-hidden rounded-lg border border-zinc-100 bg-zinc-50/50 px-2 py-2">
+      <div className="mt-2 min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-100 bg-zinc-50/50">
+        <div className="h-full overflow-y-auto px-2 py-2">
         {!tab ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
+          <div className="flex min-h-[5.5rem] flex-col items-center justify-center gap-1 text-center">
             <p className="text-[11px] font-medium text-zinc-500">Optional extras</p>
             <p className="text-[10px] leading-snug text-zinc-400">
               Place search · travel time · notes
@@ -185,7 +186,7 @@ export function CompactActivityForm(props: {
         ) : null}
 
         {tab === "location" ? (
-          <div className="flex h-full flex-col justify-center gap-1">
+          <div className="flex min-h-[5.5rem] flex-col gap-1.5 py-0.5">
             <VenueNamePicker
               value={locationName}
               onChange={onLocationNameChange}
@@ -229,7 +230,7 @@ export function CompactActivityForm(props: {
         ) : null}
 
         {tab === "notes" ? (
-          <div className="flex h-full flex-col justify-center gap-2 overflow-y-auto">
+          <div className="flex min-h-[5.5rem] flex-col gap-2 py-0.5">
             <input
               value={bringNote}
               onChange={(e) => onBringNoteChange(e.target.value)}
@@ -288,6 +289,7 @@ export function CompactActivityForm(props: {
             ) : null}
           </div>
         ) : null}
+        </div>
       </div>
     </div>
   );

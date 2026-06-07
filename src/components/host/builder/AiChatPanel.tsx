@@ -31,6 +31,22 @@ function formatDayChip(iso: string) {
   return DateTime.fromISO(iso).toFormat("ccc d MMM");
 }
 
+type ProposalData = {
+  proposalId: string;
+  needsClarification: boolean;
+  proposedChanges: Array<{ summary: string }>;
+  warnings: string[];
+};
+
+type ChatMessage =
+  | { role: "user"; text: string }
+  | {
+      role: "assistant";
+      text: string;
+      proposal?: ProposalData;
+      applied?: boolean;
+    };
+
 function buildChangeScopeInput(
   mode: ChangeScopeMode,
   todayDate: string,
@@ -48,13 +64,7 @@ export function AiChatPanel(props: {
   startDate: string;
   endDate: string;
   onClose?: () => void;
-  onProposal: (data: {
-    proposalId: string;
-    assistantReply: string;
-    needsClarification: boolean;
-    proposedChanges: Array<{ summary: string }>;
-    warnings: string[];
-  }) => void;
+  onApplied?: () => void;
   onDocumentImported?: () => void;
   onImportProgress?: (event: TripImportProgress) => void;
 }) {
@@ -65,17 +75,17 @@ export function AiChatPanel(props: {
     startDate,
     endDate,
     onClose,
-    onProposal,
+    onApplied,
     onDocumentImported,
     onImportProgress,
   } = props;
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [messages, setMessages] = useState<
-    Array<{ role: "user" | "assistant"; text: string }>
-  >([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [applyingId, setApplyingId] = useState<string | null>(null);
   const [scopeMode, setScopeMode] = useState<ChangeScopeMode>("today");
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [tripDays, setTripDays] = useState<Array<{ date: string; label: string }>>([]);
@@ -118,6 +128,40 @@ export function AiChatPanel(props: {
     );
   }
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, busy]);
+
+  async function applyProposal(proposalId: string, messageIndex: number) {
+    setApplyingId(proposalId);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/apply-change`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ proposalId }),
+      });
+      if (!res.ok) throw new Error("Apply failed");
+      setMessages((prev) =>
+        prev.map((m, i) =>
+          i === messageIndex && m.role === "assistant"
+            ? { ...m, applied: true }
+            : m,
+        ),
+      );
+      onApplied?.();
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: err instanceof Error ? err.message : "Could not apply changes.",
+        },
+      ]);
+    } finally {
+      setApplyingId(null);
+    }
+  }
+
   async function sendChat(text: string) {
     const trimmed = text.trim();
     if (!trimmed || busy || !scopeReady) return;
@@ -132,8 +176,18 @@ export function AiChatPanel(props: {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error || "Chat failed");
-      setMessages((m) => [...m, { role: "assistant", text: body.assistantReply }]);
-      onProposal(body);
+      const proposal: ProposalData | undefined = body.proposalId
+        ? {
+            proposalId: body.proposalId,
+            needsClarification: body.needsClarification,
+            proposedChanges: body.proposedChanges ?? [],
+            warnings: body.warnings ?? [],
+          }
+        : undefined;
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", text: body.assistantReply, proposal },
+      ]);
     } catch (err) {
       setMessages((m) => [
         ...m,
@@ -235,17 +289,56 @@ export function AiChatPanel(props: {
             ))}
           </div>
         ) : (
-          messages.map((m, i) => (
-            <div
-              key={i}
-              className={[
-                "rounded-lg px-3 py-2 text-sm",
-                m.role === "user" ? "ml-8 bg-zinc-900 text-white" : "mr-8 bg-zinc-100 text-zinc-800",
-              ].join(" ")}
-            >
-              {m.text}
-            </div>
-          ))
+          <>
+            {messages.map((m, i) => (
+              <div
+                key={i}
+                className={[
+                  "rounded-lg px-3 py-2 text-sm",
+                  m.role === "user"
+                    ? "ml-8 bg-zinc-900 text-white"
+                    : "mr-8 bg-zinc-100 text-zinc-800",
+                ].join(" ")}
+              >
+                <p className="whitespace-pre-wrap">{m.text}</p>
+                {m.role === "assistant" && m.proposal?.warnings.length ? (
+                  <ul className="mt-2 text-xs text-amber-800">
+                    {m.proposal.warnings.map((w) => (
+                      <li key={w}>· {w}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {m.role === "assistant" &&
+                m.proposal &&
+                m.proposal.proposedChanges.length > 0 &&
+                !m.proposal.needsClarification ? (
+                  <div className="mt-3 border-t border-zinc-200 pt-3">
+                    <p className="text-xs font-semibold text-zinc-700">Proposed changes</p>
+                    <ul className="mt-1 space-y-0.5 text-xs text-zinc-700">
+                      {m.proposal.proposedChanges.map((c, j) => (
+                        <li key={j}>· {c.summary}</li>
+                      ))}
+                    </ul>
+                    {m.applied ? (
+                      <p className="mt-2 text-xs font-medium text-emerald-700">Applied ✓</p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void applyProposal(m.proposal!.proposalId, i)}
+                        disabled={applyingId === m.proposal.proposalId}
+                        className="mt-2 h-8 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white disabled:opacity-50"
+                      >
+                        {applyingId === m.proposal.proposalId
+                          ? "Applying…"
+                          : "Apply changes"}
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </>
         )}
       </div>
       <form

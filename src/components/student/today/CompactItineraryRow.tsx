@@ -8,16 +8,12 @@ import {
   type ItineraryRowItem,
 } from "@/lib/utils/itinerary-item-style";
 
-function titleSizeClass(spanMinutes: number, blockHeightPx: number, minBlockHeightPx: number) {
-  const isDominant = blockHeightPx >= minBlockHeightPx * 3;
-  if (spanMinutes >= 180 || isDominant) return "text-2xl font-bold leading-tight";
-  if (spanMinutes >= 90 || blockHeightPx >= minBlockHeightPx * 2) {
-    return "text-xl font-semibold leading-snug";
-  }
-  if (spanMinutes >= 60 || blockHeightPx >= minBlockHeightPx * 1.35) {
-    return "text-base font-semibold leading-snug";
-  }
-  return "text-sm font-medium leading-snug";
+function titleClass(heightPx: number, minBlockHeightPx: number) {
+  const isShort = heightPx <= minBlockHeightPx * 1.1;
+  return [
+    "text-sm font-semibold leading-snug text-zinc-900",
+    isShort ? "line-clamp-2" : heightPx < minBlockHeightPx * 1.35 ? "line-clamp-2" : "line-clamp-3",
+  ].join(" ");
 }
 
 function blockTint(category: ReturnType<typeof resolveCategory>, isActive: boolean, isNext: boolean) {
@@ -61,7 +57,6 @@ export function CompactItineraryRow(props: {
     isActive,
     isNext,
     onTap,
-    spanMinutes,
     heightPx,
     minBlockHeightPx,
     animateIn,
@@ -70,7 +65,6 @@ export function CompactItineraryRow(props: {
   const category = resolveCategory(item);
   const accent = categoryAccent(category);
   const time = formatCompactStartTime(item.startTime, tripTimezone);
-  const isShort = heightPx <= minBlockHeightPx * 1.1;
   const title = useTypewriterText(item.title, Boolean(typewriterTitle));
 
   return (
@@ -100,13 +94,7 @@ export function CompactItineraryRow(props: {
           {accent.label}
         </span>
       </div>
-      <span
-        className={[
-          "min-w-0 text-zinc-900",
-          titleSizeClass(spanMinutes, heightPx, minBlockHeightPx),
-          isShort ? "line-clamp-2" : heightPx < minBlockHeightPx * 1.35 ? "line-clamp-2" : "line-clamp-3",
-        ].join(" ")}
-      >
+      <span className={["min-w-0", titleClass(heightPx, minBlockHeightPx)].join(" ")}>
         {title}
         {typewriterTitle && title.length < item.title.length ? (
           <span className="ml-0.5 inline-block h-[1em] w-0.5 animate-pulse bg-zinc-400 align-middle" />

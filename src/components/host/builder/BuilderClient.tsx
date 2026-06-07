@@ -29,13 +29,6 @@ export function BuilderClient(props: { tripId: string }) {
     startDate: string;
     endDate: string;
   } | null>(null);
-  const [proposal, setProposal] = useState<{
-    proposalId: string;
-    assistantReply: string;
-    needsClarification: boolean;
-    proposedChanges: Array<{ summary: string }>;
-    warnings: string[];
-  } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [isBuilding, setIsBuilding] = useState(building);
   const [importError, setImportError] = useState<string | null>(importErrorParam);
@@ -152,17 +145,12 @@ export function BuilderClient(props: { tripId: string }) {
           timezone={trip.timezone}
           startDate={trip.startDate}
           endDate={trip.endDate}
-          proposal={proposal}
           building={isBuilding}
           buildProgress={buildProgress}
           onBuildingDone={() => {
             setIsBuilding(false);
             setBuildProgress(null);
             clearBuildingParam();
-          }}
-          onApplied={() => {
-            setProposal(null);
-            setReloadKey((k) => k + 1);
           }}
         />
 
@@ -192,10 +180,7 @@ export function BuilderClient(props: { tripId: string }) {
                 startDate={trip.startDate}
                 endDate={trip.endDate}
                 onClose={() => setEditorOpen(false)}
-                onProposal={(data) => {
-                  setProposal(data);
-                  setEditorOpen(false);
-                }}
+                onApplied={() => setReloadKey((k) => k + 1)}
                 onImportProgress={(event) => {
                   setIsBuilding(true);
                   setBuildProgress(event);

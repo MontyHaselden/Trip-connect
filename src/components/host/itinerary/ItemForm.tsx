@@ -46,6 +46,8 @@ export function ItemForm(props: {
   cityHint?: string;
   hideTimeFields?: boolean;
   compact?: boolean;
+  formId?: string;
+  hideFooter?: boolean;
   timePickerOverlayRef?: RefObject<HTMLElement | null>;
   onSaved: (item?: ItineraryItem) => void;
   onCancel?: () => void;
@@ -60,6 +62,8 @@ export function ItemForm(props: {
     cityHint,
     hideTimeFields,
     compact,
+    formId,
+    hideFooter,
     timePickerOverlayRef,
     onSaved,
     onCancel,
@@ -155,7 +159,11 @@ export function ItemForm(props: {
 
   if (compact) {
     return (
-      <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+      <form
+        id={formId}
+        onSubmit={submit}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      >
         <CompactActivityForm
           title={title}
           onTitleChange={setTitle}
@@ -183,24 +191,26 @@ export function ItemForm(props: {
           timePickerOverlayRef={timePickerOverlayRef}
           initialTab={initialTab}
         />
-        <div className="mt-3 flex shrink-0 gap-2">
-          <button
-            type="submit"
-            disabled={saving}
-            className={`${btnClass} bg-zinc-900 text-white disabled:opacity-50`}
-          >
-            {saving ? "…" : editing ? "Save" : "Add"}
-          </button>
-          {onCancel ? (
+        {hideFooter ? null : (
+          <div className="mt-3 flex shrink-0 gap-2 border-t border-zinc-100 bg-white pt-2">
             <button
-              type="button"
-              onClick={onCancel}
-              className={`${btnClass} border border-zinc-200 text-zinc-700`}
+              type="submit"
+              disabled={saving}
+              className={`${btnClass} bg-zinc-900 text-white disabled:opacity-50`}
             >
-              Cancel
+              {saving ? "…" : editing ? "Save" : "Add"}
             </button>
-          ) : null}
-        </div>
+            {onCancel ? (
+              <button
+                type="button"
+                onClick={onCancel}
+                className={`${btnClass} border border-zinc-200 text-zinc-700`}
+              >
+                Cancel
+              </button>
+            ) : null}
+          </div>
+        )}
       </form>
     );
   }

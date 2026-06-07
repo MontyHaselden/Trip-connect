@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getMeta, getPublishedTrip } from "@/lib/offline/trip-store";
 import { syncPublishedTrip } from "@/lib/offline/sync";
 import { useOnlineStatus } from "./useOnlineStatus";
+import { TRIP_CONNECTION_ERROR_MESSAGE } from "@/lib/student/trip-load-state";
 
 export type TripCacheState = {
   tripId: string | null;
@@ -88,8 +89,22 @@ export function useTripCache(expectedTripId?: string | null): TripCacheState {
       setState((s) => ({ ...s, status: "offline_no_cache", online }));
       return;
     }
+    if (res.status === "no_session") {
+      setState((s) => ({
+        ...s,
+        status: s.payload ? "ready" : "error",
+        online,
+        message: TRIP_CONNECTION_ERROR_MESSAGE,
+      }));
+      return;
+    }
     if (res.status === "error") {
-      setState((s) => ({ ...s, status: "error", online, message: res.message }));
+      setState((s) => ({
+        ...s,
+        status: "error",
+        online,
+        message: TRIP_CONNECTION_ERROR_MESSAGE,
+      }));
       return;
     }
     if (res.status === "updated" || res.status === "up_to_date") {
@@ -114,7 +129,11 @@ export function useTripCache(expectedTripId?: string | null): TripCacheState {
     let cancelled = false;
     async function loadCache() {
       if (!tripId) {
-        setState((s) => ({ ...s, status: "offline_no_cache" }));
+        setState((s) => ({
+          ...s,
+          status: "error",
+          message: TRIP_CONNECTION_ERROR_MESSAGE,
+        }));
         return;
       }
       setState((s) => ({ ...s, status: "loading_cache" }));
@@ -129,7 +148,15 @@ export function useTripCache(expectedTripId?: string | null): TripCacheState {
         publishedAt: meta?.publishedAt ?? null,
         cachedAt: meta?.cachedAt ?? null,
         payload,
-        status: payload ? "ready" : "offline_no_cache",
+        status: payload
+          ? "ready"
+          : s.status === "syncing" ||
+              s.status === "updated" ||
+              s.status === "up_to_date"
+            ? s.status
+            : online
+              ? "loading_cache"
+              : "offline_no_cache",
       }));
     }
     loadCache();
@@ -158,8 +185,23 @@ export function useTripCache(expectedTripId?: string | null): TripCacheState {
           return;
         }
 
+        if (res.status === "no_session") {
+          setState((s) => ({
+            ...s,
+            status: s.payload ? "ready" : "error",
+            online,
+            message: TRIP_CONNECTION_ERROR_MESSAGE,
+          }));
+          return;
+        }
+
         if (res.status === "error") {
-          setState((s) => ({ ...s, status: "error", online, message: res.message }));
+          setState((s) => ({
+            ...s,
+            status: "error",
+            online,
+            message: TRIP_CONNECTION_ERROR_MESSAGE,
+          }));
           return;
         }
 
@@ -185,7 +227,7 @@ export function useTripCache(expectedTripId?: string | null): TripCacheState {
           ...s,
           online,
           status: s.payload ? "ready" : "error",
-          message: e instanceof Error ? e.message : "Sync failed",
+          message: TRIP_CONNECTION_ERROR_MESSAGE,
         }));
       }
     }

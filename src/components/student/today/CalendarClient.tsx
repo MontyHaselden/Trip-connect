@@ -9,6 +9,11 @@ import {
   hasTodaySchedule,
   resolveStudentTripPayload,
 } from "@/lib/student/resolve-trip-payload";
+import {
+  isTripCacheLoading,
+  isTripConnectionError,
+  TRIP_CONNECTION_ERROR_MESSAGE,
+} from "@/lib/student/trip-load-state";
 import { TripNotReady } from "@/components/student/TripNotReady";
 import { MonthCalendar } from "@/components/student/today/MonthCalendar";
 
@@ -58,10 +63,16 @@ function CalendarContent() {
     return m;
   }, [trip, scheduledDays]);
 
-  if (cache.status === "offline_no_cache") {
+  if (isTripCacheLoading(cache)) {
     return (
-      <div className="py-6 text-center text-sm text-zinc-600">
-        Connect to the internet once to download the trip.
+      <div className="py-10 text-center text-sm text-zinc-600">Loading trip…</div>
+    );
+  }
+
+  if (isTripConnectionError(cache)) {
+    return (
+      <div className="py-10 text-center text-sm text-zinc-600">
+        {cache.message ?? TRIP_CONNECTION_ERROR_MESSAGE}
       </div>
     );
   }

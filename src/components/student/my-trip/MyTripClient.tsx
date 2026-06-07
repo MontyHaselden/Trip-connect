@@ -11,6 +11,11 @@ import {
   hasMyTripProfile,
   resolveStudentTripPayload,
 } from "@/lib/student/resolve-trip-payload";
+import {
+  isTripCacheLoading,
+  isTripConnectionError,
+  TRIP_CONNECTION_ERROR_MESSAGE,
+} from "@/lib/student/trip-load-state";
 import { MyDetails } from "@/components/student/my-trip/MyDetails";
 import { MyGroupsRooms } from "@/components/student/my-trip/MyGroupsRooms";
 import { KeyContacts } from "@/components/student/my-trip/KeyContacts";
@@ -55,7 +60,7 @@ function MyTripPageContent() {
     });
   }, [pathname, cache.status, cache.sessionReady, trip]);
 
-  if (!cache.sessionReady) {
+  if (isTripCacheLoading(cache)) {
     return (
       <MyTripScroll>
         <p className="text-sm text-zinc-700">Loading trip…</p>
@@ -63,11 +68,11 @@ function MyTripPageContent() {
     );
   }
 
-  if (cache.status === "offline_no_cache") {
+  if (isTripConnectionError(cache)) {
     return (
       <MyTripScroll>
         <p className="text-sm text-zinc-700">
-          Connect to the internet once to download the trip.
+          {cache.message ?? TRIP_CONNECTION_ERROR_MESSAGE}
         </p>
       </MyTripScroll>
     );
