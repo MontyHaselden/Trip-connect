@@ -18,6 +18,7 @@ export async function getTripByIdForHost(hostId: string, tripId: string) {
       destinationCountry: trips.destinationCountry,
       destinationLanguage: trips.destinationLanguage,
       publishedVersion: trips.publishedVersion,
+      setupMethod: trips.setupMethod,
       viewerGalleryEnabled: trips.viewerGalleryEnabled,
       viewerRoomDetailsEnabled: trips.viewerRoomDetailsEnabled,
       studentGalleryEnabled: trips.studentGalleryEnabled,

@@ -184,9 +184,13 @@ export function BuilderClient(props: { tripId: string }) {
               className="absolute inset-0 z-30 bg-black/30"
               onClick={() => setEditorOpen(false)}
             />
-            <div className="absolute inset-y-0 left-0 z-40 w-full max-w-md shadow-xl">
+            <div className="absolute inset-y-0 right-0 z-40 w-full max-w-md shadow-xl">
               <AiChatPanel
                 tripId={tripId}
+                inviteCode={trip.inviteCode}
+                timezone={trip.timezone}
+                startDate={trip.startDate}
+                endDate={trip.endDate}
                 onClose={() => setEditorOpen(false)}
                 onProposal={(data) => {
                   setProposal(data);

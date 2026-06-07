@@ -12,7 +12,7 @@ import {
   normalizeTime,
   validateAudience,
 } from "@/lib/host/itinerary-queries";
-import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
+import { scheduleAutoPublish } from "@/lib/publish/maybe-auto-publish";
 
 const PatchItemSchema = z.object({
   startTime: z.string().min(1).optional(),
@@ -88,7 +88,7 @@ export async function PATCH(
       .where(eq(itineraryItems.id, itemId))
       .returning();
 
-    await maybeAutoPublish(trip.id);
+    scheduleAutoPublish(trip.id);
     return NextResponse.json(updated);
   } catch (err) {
     return hostApiError(err);
@@ -106,7 +106,7 @@ export async function DELETE(
     if (!item) return NextResponse.json({ error: "Item not found." }, { status: 404 });
 
     await db.delete(itineraryItems).where(eq(itineraryItems.id, itemId));
-    await maybeAutoPublish(trip.id);
+    scheduleAutoPublish(trip.id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return hostApiError(err);

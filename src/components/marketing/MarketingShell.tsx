@@ -38,10 +38,10 @@ export function MarketingShell(props: {
               Log in
             </Link>
             <Link
-              href="/signup"
+              href="/signup?type=school"
               className="inline-flex h-9 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white"
             >
-              Create account
+              Start school account
             </Link>
           </div>
         </div>
@@ -52,7 +52,7 @@ export function MarketingShell(props: {
           <div>
             <p className="font-semibold">Trip Connect</p>
             <p className="mt-1 text-sm text-zinc-600">
-              The school trip booklet, rebuilt for phones.
+              School trip itineraries, rebuilt for phones. No GPS tracking. No per-student fees.
             </p>
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-zinc-600">

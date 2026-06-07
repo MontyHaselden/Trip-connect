@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useTripApp } from "@/components/layout/TripAppContext";
+import { stayColor } from "@/lib/host/locations/accommodation-colors";
 import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
 
 function PinIcon() {
@@ -37,8 +38,22 @@ function resolveStayForNight(
   );
 }
 
-export function DayLocationButton() {
+export function DayLocationButton(props: { placement?: "header" | "nav" }) {
+  const placement = props.placement ?? "nav";
   const { cache, todayNav } = useTripApp();
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: PointerEvent) {
+      if (anchorRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
   const trip = useMemo(
     () => resolveStudentTripPayload(cache.payload, cache.participantId),
     [cache.payload, cache.participantId],
@@ -76,31 +91,57 @@ export function DayLocationButton() {
   const hotelAddress =
     trip.room?.hotelAddress ?? stay?.address ?? hotelItem?.address ?? null;
 
+  const popupClass =
+    placement === "header"
+      ? "absolute top-full right-0 z-30 mt-2 w-64 rounded-xl border border-zinc-200 bg-white p-4 shadow-lg"
+      : "absolute bottom-full right-0 z-30 mb-2 w-64 rounded-xl border border-zinc-200 bg-white p-4 shadow-lg";
+
+  const summaryClass =
+    placement === "header"
+      ? "inline-flex cursor-pointer list-none items-center justify-center rounded-lg p-1 text-zinc-600 marker:content-none hover:bg-zinc-100 hover:text-zinc-900"
+      : "flex cursor-pointer list-none items-center justify-center rounded-lg px-2 py-2 text-zinc-700 marker:content-none hover:bg-zinc-100";
+
   return (
-    <details className="group relative">
-      <summary className="flex cursor-pointer list-none items-center justify-center rounded-lg px-2 py-2 text-zinc-700 marker:content-none hover:bg-zinc-100">
+    <div ref={anchorRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className={summaryClass}
+      >
         <PinIcon />
-        <span className="sr-only">Where am I staying?</span>
-      </summary>
-      <div className="absolute bottom-full right-0 z-30 mb-2 w-64 rounded-xl border border-zinc-200 bg-white p-4 shadow-lg">
-        <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-          {selected.date}
-        </p>
-        <p className="mt-1 text-sm font-semibold text-zinc-900">{locationLabel}</p>
-        <div className="mt-3 border-t border-zinc-100 pt-3">
-          <p className="text-xs font-medium text-zinc-500">Accommodation</p>
-          {hotelName ? (
-            <>
-              <p className="mt-1 text-sm text-zinc-800">{hotelName}</p>
-              {hotelAddress ? (
-                <p className="mt-0.5 text-xs text-zinc-600">{hotelAddress}</p>
-              ) : null}
-            </>
-          ) : (
-            <p className="mt-1 text-sm text-zinc-500">Not set yet</p>
-          )}
+        <span className="sr-only">Location and accommodation for this day</span>
+      </button>
+      {open ? (
+        <div className={popupClass}>
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            {selected.date}
+          </p>
+          <p className="mt-1 text-sm font-semibold text-zinc-900">{locationLabel}</p>
+          <div className="mt-3 border-t border-zinc-100 pt-3">
+            <p className="text-xs font-medium text-zinc-500">Accommodation</p>
+            {hotelName ? (
+              <>
+                <p className="mt-1 flex items-center gap-2 text-sm text-zinc-800">
+                  {stay ? (
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: stayColor(stay) }}
+                      aria-hidden
+                    />
+                  ) : null}
+                  {hotelName}
+                </p>
+                {hotelAddress ? (
+                  <p className="mt-0.5 text-xs text-zinc-600">{hotelAddress}</p>
+                ) : null}
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-zinc-500">Not set yet</p>
+            )}
+          </div>
         </div>
-      </div>
-    </details>
+      ) : null}
+    </div>
   );
 }

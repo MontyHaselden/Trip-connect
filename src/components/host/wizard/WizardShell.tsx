@@ -11,6 +11,9 @@ export function WizardShell({
   backDisabled,
   nextDisabled,
   saving,
+  savingMessage,
+  wide = false,
+  hideFooterNav = false,
 }: {
   currentStep: number;
   children: React.ReactNode;
@@ -20,9 +23,16 @@ export function WizardShell({
   backDisabled?: boolean;
   nextDisabled?: boolean;
   saving?: boolean;
+  savingMessage?: string | null;
+  wide?: boolean;
+  hideFooterNav?: boolean;
 }) {
   return (
-    <div className="mx-auto max-w-3xl px-5 py-8">
+    <div
+      className={
+        wide ? "mx-auto w-full max-w-[1680px] px-5 py-6 lg:px-10" : "mx-auto max-w-3xl px-5 py-8"
+      }
+    >
       <nav aria-label="Wizard progress" className="mb-8">
         <ol className="flex flex-wrap gap-1">
           {WIZARD_STEPS.map((s) => (
@@ -42,14 +52,22 @@ export function WizardShell({
           ))}
         </ol>
         {saving ? (
-          <p className="mt-2 text-xs text-zinc-500">Saving…</p>
+          <p className="mt-2 text-xs text-zinc-500">{savingMessage ?? "Saving…"}</p>
         ) : (
           <p className="mt-2 text-xs text-zinc-500">Changes save automatically</p>
         )}
       </nav>
 
-      <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">{children}</div>
+      <div
+        className={[
+          "rounded-2xl border border-zinc-200 bg-white shadow-sm",
+          wide ? "p-4 sm:p-5 lg:p-6" : "p-6",
+        ].join(" ")}
+      >
+        {children}
+      </div>
 
+      {hideFooterNav ? null : (
       <div className="mt-6 flex gap-3">
         {onBack ? (
           <button
@@ -68,10 +86,21 @@ export function WizardShell({
             onClick={onNext}
             className="h-11 flex-1 rounded-xl bg-zinc-900 text-sm font-medium text-white disabled:opacity-40"
           >
-            {nextLabel}
+            {saving ? (
+              <span className="inline-flex items-center justify-center gap-2">
+                <span
+                  className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                  aria-hidden
+                />
+                {savingMessage ?? "Saving…"}
+              </span>
+            ) : (
+              nextLabel
+            )}
           </button>
         ) : null}
       </div>
+      )}
     </div>
   );
 }

@@ -116,7 +116,11 @@ function MyTripPageContent() {
         }
       />
 
-      <DayPhotoGallery tripId={trip.trip.id} />
+      <DayPhotoGallery
+        tripId={trip.trip.id}
+        days={trip.days}
+        tripTimezone={trip.trip.timezone}
+      />
 
       <EmergencyCard
         tripName={trip.trip.name}

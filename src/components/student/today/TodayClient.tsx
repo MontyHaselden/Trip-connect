@@ -9,10 +9,13 @@ import {
   resolveStudentTripPayload,
 } from "@/lib/student/resolve-trip-payload";
 import { TripNotReady } from "@/components/student/TripNotReady";
+import {
+  stayColor,
+  stayForNight,
+} from "@/lib/host/locations/accommodation-colors";
 import { sortItemsByStartTime } from "@/lib/timeline/time-math";
 import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
 import { CompactDaySheet } from "@/components/student/today/CompactDaySheet";
-import { TodayPhotoPrompt } from "@/components/student/photos/TodayPhotoPrompt";
 
 function TodayContent() {
   const { cache } = useTripApp();
@@ -59,6 +62,16 @@ function TodayContent() {
     return trip.tomorrowPrepItems
       .filter((p) => p.tripDayId === selectedDay.id)
       .sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [trip, selectedDay]);
+
+  const nightStay = useMemo(() => {
+    if (!trip || !selectedDay) return null;
+    const stay = stayForNight(selectedDay.date, trip.accommodationStays ?? []);
+    if (!stay) return null;
+    return {
+      name: stay.name,
+      color: stayColor(stay),
+    };
   }, [trip, selectedDay]);
 
   if (cache.status === "offline_no_cache") {
@@ -113,8 +126,8 @@ function TodayContent() {
         tripStartDate={trip.trip.startDate}
         isViewingToday={isViewingToday}
         mapsOnline={cache.online}
+        nightStay={nightStay}
       />
-      <TodayPhotoPrompt tripId={trip.trip.id} tripTimezone={tripTz} />
     </div>
   );
 }

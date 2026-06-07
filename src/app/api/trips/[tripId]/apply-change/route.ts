@@ -3,7 +3,11 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/lib/db/client";
-import { aiChangeProposals, itineraryItems, tripDays, trips } from "@/lib/db/schema";
+import {
+  findItemsForUpdate,
+  itemValuesFromPayload,
+  resolveItemDayId,
+} from "@/lib/ai/apply-proposed-change";
 import type { ProposedChange } from "@/lib/ai/mock-chat";
 import { requireHostSessionHostId } from "@/lib/auth/host-session";
 import { hostApiError } from "@/lib/host/api-errors";
@@ -11,6 +15,7 @@ import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import { nextDaySortOrder, nextItemSortOrder } from "@/lib/host/itinerary-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
 import { syncTripDatesFromDays } from "@/lib/host/trip-dates";
+import { aiChangeProposals, itineraryItems, tripDays, trips } from "@/lib/db/schema";
 
 const BodySchema = z.object({
   proposalId: z.string().uuid(),
@@ -84,43 +89,21 @@ export async function POST(
         applied++;
       }
       if (change.type === "add_item") {
-        const day = await db
-          .select({ id: tripDays.id })
-          .from(tripDays)
-          .where(eq(tripDays.tripId, tripId))
-          .orderBy(tripDays.sortOrder)
-          .limit(1)
-          .then((rows) => rows[0]);
-        if (day) {
-          const sortOrder = await nextItemSortOrder(day.id);
-          await db.insert(itineraryItems).values({
-            tripId,
-            tripDayId: day.id,
-            startTime: String(change.payload.startTime ?? "09:00:00"),
-            endTime: null,
-            title: String(change.payload.title ?? "Activity"),
-            locationName: null,
-            address: null,
-            mapQuery: null,
-            leaveByTime: null,
-            transportNote: null,
-            bringNote: null,
-            hostNote: null,
-            audienceType: "everyone",
-            audienceId: null,
-            category: (change.payload.category as "meeting" | "activity" | null) ?? null,
-            sortOrder,
-          });
+        const dayId = await resolveItemDayId(tripId, change.payload);
+        if (dayId) {
+          const sortOrder = await nextItemSortOrder(dayId);
+          await db.insert(itineraryItems).values(
+            itemValuesFromPayload(tripId, dayId, sortOrder, change.payload),
+          );
           applied++;
         }
       }
       if (change.type === "update_item") {
         const titleMatch = String(change.payload.titleMatch ?? "").toLowerCase();
-        const items = await db
-          .select()
-          .from(itineraryItems)
-          .where(eq(itineraryItems.tripId, tripId));
-        const target = items.find((i) => i.title.toLowerCase().includes(titleMatch));
+        const date =
+          typeof change.payload.date === "string" ? change.payload.date : null;
+        const targets = await findItemsForUpdate(tripId, titleMatch, date);
+        const target = targets[0];
         if (target && change.payload.startTime) {
           await db
             .update(itineraryItems)

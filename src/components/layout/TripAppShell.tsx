@@ -4,12 +4,15 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { DateTime } from "luxon";
 
+import type { ParticipantPhoto } from "@/lib/student/participant-photos";
+
 import { OfflineBanner } from "./OfflineBanner";
 import { StudentBottomNav } from "./StudentBottomNav";
 import { TripAppContext, type TodayDayNav } from "./TripAppContext";
 import { TripDayNavBridge } from "./TripDayNavBridge";
 import { TripDebugPanel } from "@/components/debug/TripDebugPanel";
 import { DayCalendarSheet } from "@/components/student/today/DayCalendarSheet";
+import { DayLocationButton } from "@/components/student/today/DayLocationSheet";
 import { useTripCache } from "@/hooks/useTripCache";
 import { installTripDebugGlobal, tripDebug } from "@/lib/debug/trip-debug";
 import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
@@ -46,9 +49,26 @@ export function TripAppShell({
   const [refreshing, setRefreshing] = useState(false);
   const [todayNav, setTodayNavState] = useState<TodayDayNav | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [participantPhotos, setParticipantPhotos] = useState<ParticipantPhoto[]>([]);
   const setTodayNav = useCallback((nav: TodayDayNav | null) => {
     setTodayNavState(nav);
   }, []);
+
+  const refreshPhotos = useCallback(async () => {
+    if (!tripId) return;
+    const token = localStorage.getItem("tc_access_token");
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/trips/${tripId}/my-photos`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const body = await res.json();
+      setParticipantPhotos(body.photos ?? []);
+    } catch {
+      // ignore — gallery loads when back online
+    }
+  }, [tripId]);
 
   const trip = useMemo(
     () => resolveStudentTripPayload(cache.payload, cache.participantId),
@@ -63,13 +83,10 @@ export function TripAppShell({
     return todayNav.scheduledDays.find((d) => d.date === todayNav.selectedDateISO) ?? null;
   }, [todayNav]);
 
-  const centredHeader = useMemo(() => {
+  const centredHeaderDateLine = useMemo(() => {
     if (!showDayControls || !selectedDay || !trip) return null;
     const dt = DateTime.fromISO(selectedDay.date, { zone: trip.trip.timezone });
-    return {
-      dateLine: dt.toFormat("cccc d LLLL"),
-      cityLabel: selectedDay.cityLabel,
-    };
+    return dt.toFormat("cccc d LLLL");
   }, [showDayControls, selectedDay, trip]);
 
   const itemCountByDayId = useMemo(() => {
@@ -108,6 +125,11 @@ export function TripAppShell({
   }, [pathname, tripId]);
 
   useEffect(() => {
+    if (!cache.sessionReady || !tripId) return;
+    refreshPhotos();
+  }, [cache.sessionReady, tripId, refreshPhotos]);
+
+  useEffect(() => {
     const storedTripId = localStorage.getItem("tc_trip_id");
     const token = localStorage.getItem("tc_access_token");
     if (!token || !storedTripId) {
@@ -142,12 +164,14 @@ export function TripAppShell({
         tripId,
         calendarOpen,
         setCalendarOpen,
+        participantPhotos,
+        refreshPhotos,
       }}
     >
       <div className="h-dvh max-h-dvh overflow-hidden bg-zinc-50 text-zinc-900">
         <div className="mx-auto flex h-full w-full max-w-md flex-col gap-2 overflow-hidden px-4 py-3">
           <header className="shrink-0 border-b border-zinc-200/80 pb-2 pt-0.5">
-            {showDayControls && centredHeader ? (
+            {showDayControls && centredHeaderDateLine ? (
               <div className="text-center">
                 <div className="flex items-center justify-between">
                   <button
@@ -176,10 +200,12 @@ export function TripAppShell({
                     ›
                   </button>
                 </div>
-                <h1 className="mt-1 text-lg font-semibold tracking-tight">
-                  {centredHeader.dateLine}
-                </h1>
-                <p className="text-sm font-medium text-zinc-600">{centredHeader.cityLabel}</p>
+                <div className="mt-1 flex items-center justify-center gap-1.5">
+                  <h1 className="text-lg font-semibold tracking-tight">
+                    {centredHeaderDateLine}
+                  </h1>
+                  <DayLocationButton placement="header" />
+                </div>
               </div>
             ) : (
               <div className="flex items-center justify-between">

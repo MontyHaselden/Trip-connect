@@ -9,7 +9,9 @@ export default function FeaturesPage() {
       <div className="mx-auto max-w-6xl px-5 py-16">
         <h1 className="text-3xl font-semibold tracking-tight">Features</h1>
         <p className="mt-3 max-w-2xl text-zinc-600">
-          Everything schools need to replace paper booklets with a phone-friendly trip hub.
+          Everything schools need to replace paper booklets, email threads, and scattered updates
+          with one phone-friendly trip hub — built for teacher control, student clarity, and parent
+          reassurance.
         </p>
         <div className="mt-10 grid gap-6 sm:grid-cols-2">
           {FEATURES.map((f) => (
@@ -23,10 +25,10 @@ export default function FeaturesPage() {
           ))}
         </div>
         <Link
-          href="/signup"
+          href="/signup?type=school"
           className="mt-10 inline-flex h-11 items-center justify-center rounded-xl bg-zinc-900 px-6 text-sm font-medium text-white"
         >
-          Create host account
+          Start your school account
         </Link>
       </div>
     </MarketingShell>

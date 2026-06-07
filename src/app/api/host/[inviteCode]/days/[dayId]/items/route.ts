@@ -12,7 +12,7 @@ import {
   normalizeTime,
   validateAudience,
 } from "@/lib/host/itinerary-queries";
-import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
+import { scheduleAutoPublish } from "@/lib/publish/maybe-auto-publish";
 
 const CreateItemSchema = z.object({
   startTime: z.string().min(1),
@@ -78,7 +78,7 @@ export async function POST(
       })
       .returning();
 
-    await maybeAutoPublish(trip.id);
+    scheduleAutoPublish(trip.id);
     return NextResponse.json(created);
   } catch (err) {
     return hostApiError(err);

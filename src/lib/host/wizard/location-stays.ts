@@ -1,3 +1,4 @@
+import { enforceHomeLocks } from "./crossover-adjust";
 import type { DayPlaceDraft } from "./types";
 
 export type LocationStayDraft = {
@@ -8,8 +9,26 @@ export type LocationStayDraft = {
 
 export const DEFAULT_HALF_SHARE = 0.5;
 
+export type HalfSide = "left" | "right";
+
+/** Which half of the day is still free to paint a location. */
+export function getEmptyHalf(day: DayPlaceDraft): HalfSide | null {
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const share = day.primaryShare ?? 1;
+
+  if (primary && !secondary && share < 1) return "right";
+  if (!primary && secondary && share < 1) return "left";
+  return null;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function addDays(iso: string, delta: number): string {
-  const d = new Date(`${iso}T12:00:00Z`);
+  const trimmed = iso.trim();
+  if (!ISO_DATE.test(trimmed)) return trimmed;
+  const d = new Date(`${trimmed}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return trimmed;
   d.setUTCDate(d.getUTCDate() + delta);
   return d.toISOString().slice(0, 10);
 }
@@ -25,10 +44,203 @@ export function enumerateDates(start: string, end: string): string[] {
   return out;
 }
 
-function shareForDateInRange(date: string, start: string, end: string): number {
-  if (start === end) return DEFAULT_HALF_SHARE;
-  if (date === start || date === end) return DEFAULT_HALF_SHARE;
-  return 1;
+function isArrivalDay(
+  date: string,
+  stay: LocationStayDraft,
+  flightArrivalDates?: Set<string>,
+): boolean {
+  return (
+    date === stay.startDate &&
+    stay.startDate !== stay.endDate &&
+    Boolean(flightArrivalDates?.has(date))
+  );
+}
+
+function isDepartureDay(
+  date: string,
+  stay: LocationStayDraft,
+  flightDepartureDates?: Set<string>,
+): boolean {
+  return (
+    date === stay.endDate &&
+    stay.startDate !== stay.endDate &&
+    Boolean(flightDepartureDates?.has(date))
+  );
+}
+
+function cityOnDay(day: DayPlaceDraft, location: string): boolean {
+  const loc = location.trim().toLowerCase();
+  return (
+    day.primaryCity.trim().toLowerCase() === loc ||
+    (day.secondaryCity?.trim().toLowerCase() ?? "") === loc
+  );
+}
+
+function fillEmptyHalf(day: DayPlaceDraft, location: string, half: HalfSide): void {
+  const loc = location.trim();
+  if (half === "right") {
+    day.secondaryCity = loc;
+  } else {
+    day.primaryCity = loc;
+  }
+  day.primaryShare = DEFAULT_HALF_SHARE;
+  day.dayType = "travel";
+}
+
+function isMultiDayStayEnd(
+  date: string,
+  stay: LocationStayDraft,
+  flightDepartureDates?: Set<string>,
+): boolean {
+  if (stay.startDate === stay.endDate) return false;
+  if (date !== stay.endDate) return false;
+  return !isDepartureDay(date, stay, flightDepartureDates);
+}
+
+/** Previous day already carries the stay boundary — start on a full day (divider on prev day). */
+function prevDayRequiresFullStayStart(
+  prevDay: DayPlaceDraft | undefined,
+  location: string,
+): boolean {
+  if (!prevDay || prevDay.dayType === "buffer") return false;
+  const loc = location.trim().toLowerCase();
+  const primary = prevDay.primaryCity.trim();
+  const secondary = prevDay.secondaryCity?.trim() ?? "";
+  const share = prevDay.primaryShare ?? 1;
+  if (primary && !secondary && share < 1) return true;
+  if (primary.toLowerCase() === loc && !secondary && share >= 1) return true;
+  if (primary.toLowerCase() === loc && secondary && share < 1) return true;
+  if (secondary.toLowerCase() === loc && primary && share < 1) return true;
+  return false;
+}
+
+function isMultiDayStayStart(
+  date: string,
+  stay: LocationStayDraft,
+  prevDay: DayPlaceDraft | undefined,
+  flightArrivalDates?: Set<string>,
+): boolean {
+  if (stay.startDate === stay.endDate) return false;
+  if (date !== stay.startDate) return false;
+  if (isArrivalDay(date, stay, flightArrivalDates)) return false;
+  return !prevDayRequiresFullStayStart(prevDay, stay.location);
+}
+
+function applyStayToDay(
+  day: DayPlaceDraft,
+  date: string,
+  location: string,
+  stay: LocationStayDraft,
+  tripStart: string,
+  tripEnd: string,
+  travelPaintStart?: number,
+  flightDepartureDates?: Set<string>,
+  flightArrivalDates?: Set<string>,
+  prevDay?: DayPlaceDraft,
+): void {
+  const loc = location.trim();
+  const existingPrimary = day.primaryCity.trim();
+  const existingSecondary = day.secondaryCity?.trim() ?? "";
+
+  if (isArrivalDay(date, stay, flightArrivalDates) && !existingPrimary && !existingSecondary) {
+    const arrivalShare = travelPaintStart ?? DEFAULT_HALF_SHARE;
+    day.primaryCity = "";
+    day.secondaryCity = loc;
+    day.primaryShare = arrivalShare;
+    day.dayType = "travel";
+    return;
+  }
+
+  if (isDepartureDay(date, stay, flightDepartureDates) && !existingPrimary) {
+    day.primaryCity = loc;
+    day.secondaryCity = existingSecondary || null;
+    day.primaryShare = DEFAULT_HALF_SHARE;
+    day.dayType = existingSecondary ? "travel" : "trip";
+    return;
+  }
+
+  if (stay.startDate === stay.endDate && !existingPrimary && !existingSecondary) {
+    if (travelPaintStart && travelPaintStart > 0 && travelPaintStart < 1) {
+      day.primaryCity = "";
+      day.secondaryCity = loc;
+      day.primaryShare = travelPaintStart;
+      day.dayType = "travel";
+      return;
+    }
+    day.primaryCity = loc;
+    day.secondaryCity = null;
+    day.primaryShare = 1;
+    day.dayType = "trip";
+    return;
+  }
+
+  if (
+    isMultiDayStayEnd(date, stay, flightDepartureDates) &&
+    !existingPrimary &&
+    !existingSecondary
+  ) {
+    day.primaryCity = loc;
+    day.secondaryCity = null;
+    day.primaryShare = DEFAULT_HALF_SHARE;
+    day.dayType = date === tripEnd ? "return" : "trip";
+    return;
+  }
+
+  if (
+    isMultiDayStayStart(date, stay, prevDay, flightArrivalDates) &&
+    !existingPrimary &&
+    !existingSecondary
+  ) {
+    day.primaryCity = "";
+    day.secondaryCity = loc;
+    day.primaryShare = travelPaintStart ?? DEFAULT_HALF_SHARE;
+    day.dayType = "travel";
+    return;
+  }
+
+  if (!existingPrimary && !existingSecondary) {
+    day.primaryCity = loc;
+    day.secondaryCity = null;
+    day.primaryShare = 1;
+    day.dayType = "trip";
+    return;
+  }
+
+  if (existingPrimary.toLowerCase() === loc.toLowerCase()) {
+    if (isDepartureDay(date, stay, flightDepartureDates)) {
+      day.primaryShare = DEFAULT_HALF_SHARE;
+    } else if (isMultiDayStayEnd(date, stay, flightDepartureDates)) {
+      day.primaryShare = DEFAULT_HALF_SHARE;
+    } else if (!isArrivalDay(date, stay, flightArrivalDates)) {
+      day.primaryShare = 1;
+    }
+    return;
+  }
+
+  if (existingSecondary.toLowerCase() === loc.toLowerCase()) {
+    return;
+  }
+
+  const emptyHalf = getEmptyHalf(day);
+  if (emptyHalf && !cityOnDay(day, loc)) {
+    fillEmptyHalf(day, loc, emptyHalf);
+    if (date === tripEnd) day.dayType = "return";
+    return;
+  }
+
+  if (isArrivalDay(date, stay, flightArrivalDates) && !existingSecondary) {
+    day.secondaryCity = loc;
+    day.primaryShare = travelPaintStart ?? DEFAULT_HALF_SHARE;
+    day.dayType = "travel";
+    return;
+  }
+
+  day.secondaryCity = loc;
+  day.primaryShare = DEFAULT_HALF_SHARE;
+  day.dayType = "travel";
+
+  if (date === tripEnd) day.dayType = "return";
+  else if (date === tripStart) day.dayType = "travel";
 }
 
 function cloneDay(day: DayPlaceDraft): DayPlaceDraft {
@@ -39,42 +251,34 @@ function dayMap(days: DayPlaceDraft[]): Map<string, DayPlaceDraft> {
   return new Map(days.map((d) => [d.date, cloneDay(d)]));
 }
 
-function inferDayType(
-  date: string,
-  day: DayPlaceDraft,
-  tripStart: string,
-  tripEnd: string,
-): DayPlaceDraft["dayType"] {
-  if (day.dayType === "buffer") return "buffer";
-  if (date === tripEnd) return "return";
-  if (day.secondaryCity) return "travel";
-  if (day.primaryShare < 1 && !day.secondaryCity) {
-    if (date === tripStart || date === tripEnd) return date === tripEnd ? "return" : "trip";
-    return "travel";
-  }
-  return "trip";
-}
-
 export function applyLocationStays(
   days: DayPlaceDraft[],
   stays: LocationStayDraft[],
   trip: { startDate: string; endDate: string; departureCity: string; returnCity: string },
+  flightDepartureDates?: Set<string>,
+  travelPaintStartByDate?: Map<string, number>,
+  flightArrivalDates?: Set<string>,
+  skipEndHomeLock?: boolean,
 ): DayPlaceDraft[] {
   const map = dayMap(days);
   const bufferBefore = addDays(trip.startDate, -1);
-  const bufferAfter = addDays(trip.endDate, 1);
 
   for (const day of map.values()) {
     if (day.date === bufferBefore && trip.departureCity.trim()) {
       day.primaryCity = trip.departureCity.trim();
       day.secondaryCity = null;
-      day.primaryShare = DEFAULT_HALF_SHARE;
+      day.primaryShare = 1;
       day.dayType = "buffer";
-    } else if (day.date === bufferAfter && trip.returnCity.trim()) {
-      day.primaryCity = trip.returnCity.trim();
-      day.secondaryCity = null;
-      day.primaryShare = DEFAULT_HALF_SHARE;
-      day.dayType = "buffer";
+    } else if (day.date > trip.endDate && day.dayType === "buffer") {
+      if (flightArrivalDates?.has(day.date)) {
+        day.primaryCity = "";
+        day.secondaryCity = null;
+        day.primaryShare = 1;
+      } else if (trip.returnCity.trim()) {
+        day.primaryCity = trip.returnCity.trim();
+        day.secondaryCity = null;
+        day.primaryShare = 1;
+      }
     } else if (
       day.date >= trip.startDate &&
       day.date <= trip.endDate &&
@@ -95,125 +299,380 @@ export function applyLocationStays(
       const day = map.get(date);
       if (!day || day.dayType === "buffer") continue;
 
-      const share = shareForDateInRange(date, stay.startDate, stay.endDate);
-      const existingPrimary = day.primaryCity.trim();
-
-      if (!existingPrimary) {
-        day.primaryCity = location;
-        day.secondaryCity = null;
-        day.primaryShare = share;
-      } else if (existingPrimary.toLowerCase() === location.toLowerCase()) {
-        day.primaryShare = Math.max(day.primaryShare, share);
-      } else {
-        day.secondaryCity = location;
-        day.primaryShare = DEFAULT_HALF_SHARE;
-        day.dayType = "travel";
-      }
-
-      day.dayType = inferDayType(date, day, trip.startDate, trip.endDate);
+      applyStayToDay(
+        day,
+        date,
+        location,
+        stay,
+        trip.startDate,
+        trip.endDate,
+        travelPaintStartByDate?.get(date),
+        flightDepartureDates,
+        flightArrivalDates,
+        map.get(addDays(date, -1)),
+      );
     }
   }
 
-  applyDepartureReturnHalves(map, trip);
-
-  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+  return enforceHomeLocks(
+    sorted,
+    trip,
+    flightDepartureDates,
+    flightArrivalDates,
+    skipEndHomeLock,
+  );
 }
 
-function applyDepartureReturnHalves(
-  map: Map<string, DayPlaceDraft>,
-  trip: { startDate: string; endDate: string; departureCity: string; returnCity: string },
-) {
-  const startDay = map.get(trip.startDate);
-  const dep = trip.departureCity.trim();
-  if (startDay && dep) {
-    const existing = startDay.primaryCity.trim();
-    if (!existing) {
-      startDay.primaryCity = dep;
-      startDay.primaryShare = DEFAULT_HALF_SHARE;
-    } else if (existing.toLowerCase() !== dep.toLowerCase()) {
-      startDay.secondaryCity = existing;
-      startDay.primaryCity = dep;
-      startDay.primaryShare = DEFAULT_HALF_SHARE;
-      startDay.dayType = "travel";
-    }
-  }
+function pushStay(stays: LocationStayDraft[], stay: LocationStayDraft | null): LocationStayDraft | null {
+  if (stay) stays.push(stay);
+  return null;
+}
 
-  const endDay = map.get(trip.endDate);
-  const ret = trip.returnCity.trim();
-  if (endDay && ret) {
-    const existing = endDay.primaryCity.trim();
-    if (!existing) {
-      endDay.primaryCity = ret;
-      endDay.primaryShare = DEFAULT_HALF_SHARE;
-      endDay.dayType = "return";
-    } else if (existing.toLowerCase() !== ret.toLowerCase()) {
-      endDay.secondaryCity = ret;
-      endDay.primaryShare = DEFAULT_HALF_SHARE;
-      endDay.dayType = endDay.date === trip.endDate ? "return" : "travel";
-    }
+function extendOrStartStay(
+  stays: LocationStayDraft[],
+  current: LocationStayDraft | null,
+  city: string,
+  date: string,
+): LocationStayDraft {
+  if (current && current.location.toLowerCase() === city.toLowerCase()) {
+    current.endDate = date;
+    return current;
   }
+  current = pushStay(stays, current);
+  return { location: city, startDate: date, endDate: date };
+}
+
+function isHomeEdgeOnlyDay(
+  day: DayPlaceDraft,
+  tripStart: string,
+  tripEnd: string,
+  departureCity: string,
+  returnCity: string,
+): boolean {
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const dep = departureCity.trim().toLowerCase();
+  const ret = returnCity.trim().toLowerCase();
+
+  if (day.date === tripStart && dep && primary.toLowerCase() === dep && !secondary) {
+    return true;
+  }
+  if (day.date === tripEnd && ret && primary.toLowerCase() === ret && !secondary) {
+    return true;
+  }
+  if (day.date === tripEnd && ret && secondary.toLowerCase() === ret && !primary) {
+    return true;
+  }
+  return false;
 }
 
 export function inferStaysFromDayPlaces(
   days: DayPlaceDraft[],
   tripStart: string,
   tripEnd: string,
+  departureCity = "",
+  returnCity = "",
 ): LocationStayDraft[] {
   const tripDays = days
-    .filter((d) => d.date >= tripStart && d.date <= tripEnd && d.primaryCity.trim())
+    .filter(
+      (d) =>
+        d.date >= tripStart &&
+        d.date <= tripEnd &&
+        (d.primaryCity.trim() || d.secondaryCity?.trim()),
+    )
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const stays: LocationStayDraft[] = [];
   let current: LocationStayDraft | null = null;
 
   for (const day of tripDays) {
-    const city = day.primaryCity.trim();
-    if (!city) continue;
+    if (isHomeEdgeOnlyDay(day, tripStart, tripEnd, departureCity, returnCity)) {
+      current = pushStay(stays, current);
+      continue;
+    }
 
-    if (!current || current.location.toLowerCase() !== city.toLowerCase()) {
-      if (current) stays.push(current);
-      current = { location: city, startDate: day.date, endDate: day.date };
-    } else {
-      current.endDate = day.date;
+    const primary = day.primaryCity.trim();
+    const secondary = day.secondaryCity?.trim() ?? "";
+    const share = day.primaryShare ?? 1;
+    const isHalf = share < 1;
+
+    if (primary && secondary && isHalf) {
+      current = extendOrStartStay(stays, current, primary, day.date);
+      current = pushStay(stays, current);
+      current = extendOrStartStay(stays, null, secondary, day.date);
+      continue;
+    }
+
+    if (primary && !secondary && isHalf) {
+      current = extendOrStartStay(stays, current, primary, day.date);
+      current = pushStay(stays, current);
+      continue;
+    }
+
+    if (!primary && secondary && isHalf) {
+      current = extendOrStartStay(stays, current, secondary, day.date);
+      continue;
+    }
+
+    const city = primary || secondary;
+    if (!city) continue;
+    current = extendOrStartStay(stays, current, city, day.date);
+  }
+
+  pushStay(stays, current);
+  return coalesceAdjacentStays(stays);
+}
+
+/** Prefer starting on the first half-empty day in range (paint the empty half). */
+export function effectiveStayStart(
+  rangeStart: string,
+  rangeEnd: string,
+  dayPlaces: DayPlaceDraft[],
+): string {
+  for (const date of enumerateDates(rangeStart, rangeEnd)) {
+    const day = dayPlaces.find((d) => d.date === date);
+    if (day && getEmptyHalf(day) === "right") return date;
+  }
+  return rangeStart;
+}
+
+export function locationsMatch(a: string, b: string): boolean {
+  const left = a.trim().toLowerCase();
+  const right = b.trim().toLowerCase();
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const leftCity = left.split(",")[0]?.trim() ?? left;
+  const rightCity = right.split(",")[0]?.trim() ?? right;
+  return leftCity === rightCity;
+}
+
+/** When painting next to an existing stay for the same city, extend it instead of adding another. */
+export function findAdjacentStayToMerge(
+  stays: LocationStayDraft[],
+  location: string,
+  startDate: string,
+  endDate: string,
+): { index: number; stay: LocationStayDraft } | null {
+  for (let i = 0; i < stays.length; i++) {
+    const stay = stays[i]!;
+    if (!locationsMatch(stay.location, location)) continue;
+
+    const touchesAfter = addDays(stay.endDate, 1) === startDate;
+    const touchesBefore = addDays(endDate, 1) === stay.startDate;
+    const sharesBoundary = stay.endDate === startDate || stay.startDate === endDate;
+    const overlaps = startDate <= stay.endDate && endDate >= stay.startDate;
+
+    if (touchesAfter || touchesBefore || sharesBoundary || overlaps) {
+      return { index: i, stay };
     }
   }
-  if (current) stays.push(current);
+  return null;
+}
 
-  return stays;
+export function mergeStayRange(
+  stays: LocationStayDraft[],
+  index: number,
+  startDate: string,
+  endDate: string,
+): LocationStayDraft[] {
+  return stays.map((stay, i) => {
+    if (i !== index) return stay;
+    return {
+      ...stay,
+      startDate: startDate < stay.startDate ? startDate : stay.startDate,
+      endDate: endDate > stay.endDate ? endDate : stay.endDate,
+    };
+  });
+}
+
+/** Merge consecutive stays for the same city (e.g. Kyoto 4–5 + Kyoto 6–10 → Kyoto 4–10). */
+export function coalesceAdjacentStays(stays: LocationStayDraft[]): LocationStayDraft[] {
+  if (stays.length <= 1) return stays;
+  const sorted = [...stays].sort(
+    (a, b) => a.startDate.localeCompare(b.startDate) || a.endDate.localeCompare(b.endDate),
+  );
+  const out: LocationStayDraft[] = [];
+
+  for (const stay of sorted) {
+    const last = out[out.length - 1];
+    if (
+      last &&
+      locationsMatch(last.location, stay.location) &&
+      addDays(last.endDate, 1) >= stay.startDate
+    ) {
+      if (stay.startDate < last.startDate) last.startDate = stay.startDate;
+      if (stay.endDate > last.endDate) last.endDate = stay.endDate;
+    } else {
+      out.push({ ...stay });
+    }
+  }
+  return out;
+}
+
+/** All same-city stays touching or overlapping a new range — absorb into one on confirm. */
+export function findStaysToAbsorb(
+  stays: LocationStayDraft[],
+  location: string,
+  startDate: string,
+  endDate: string,
+): number[] {
+  const indices: number[] = [];
+  for (let i = 0; i < stays.length; i++) {
+    const stay = stays[i]!;
+    if (!locationsMatch(stay.location, location)) continue;
+    const touchesAfter = addDays(stay.endDate, 1) === startDate;
+    const touchesBefore = addDays(endDate, 1) === stay.startDate;
+    const sharesBoundary = stay.endDate === startDate || stay.startDate === endDate;
+    const overlaps = startDate <= stay.endDate && endDate >= stay.startDate;
+    if (touchesAfter || touchesBefore || sharesBoundary || overlaps) {
+      indices.push(i);
+    }
+  }
+  return indices;
+}
+
+export function mergeStaysWithNewRange(
+  stays: LocationStayDraft[],
+  location: string,
+  startDate: string,
+  endDate: string,
+): LocationStayDraft[] {
+  const absorbIndices = findStaysToAbsorb(stays, location, startDate, endDate);
+  if (!absorbIndices.length) {
+    return coalesceAdjacentStays([...stays, { location, startDate, endDate }]);
+  }
+
+  let mergedStart = startDate;
+  let mergedEnd = endDate;
+  for (const index of absorbIndices) {
+    const stay = stays[index]!;
+    if (stay.startDate < mergedStart) mergedStart = stay.startDate;
+    if (stay.endDate > mergedEnd) mergedEnd = stay.endDate;
+  }
+
+  const absorbSet = new Set(absorbIndices);
+  const rest = stays.filter((_, i) => !absorbSet.has(i));
+  return coalesceAdjacentStays([...rest, { location, startDate: mergedStart, endDate: mergedEnd }]);
+}
+
+/** Preview the merged stay shown when confirming a range adjacent to existing same-city stays. */
+export function previewStayMerge(
+  stays: LocationStayDraft[],
+  location: string,
+  startDate: string,
+  endDate: string,
+): LocationStayDraft | null {
+  const absorbIndices = findStaysToAbsorb(stays, location, startDate, endDate);
+  if (!absorbIndices.length) return null;
+
+  let mergedStart = startDate;
+  let mergedEnd = endDate;
+  for (const index of absorbIndices) {
+    const stay = stays[index]!;
+    if (stay.startDate < mergedStart) mergedStart = stay.startDate;
+    if (stay.endDate > mergedEnd) mergedEnd = stay.endDate;
+  }
+  return { location, startDate: mergedStart, endDate: mergedEnd };
+}
+
+/** End overlapping stays on the crossover day when a new stay starts inside them. */
+export function trimStaysForNewRange(
+  stays: LocationStayDraft[],
+  newLocation: string,
+  rangeStart: string,
+  dayPlaces: DayPlaceDraft[],
+): LocationStayDraft[] {
+  const loc = newLocation.trim().toLowerCase();
+  const startDay = dayPlaces.find((d) => d.date === rangeStart);
+  const paintEmptyRight = startDay && getEmptyHalf(startDay) === "right";
+
+  return stays.map((stay) => {
+    if (stay.location.trim().toLowerCase() === loc) return stay;
+    if (rangeStart <= stay.startDate || rangeStart > stay.endDate) return stay;
+
+    if (paintEmptyRight) {
+      return { ...stay, endDate: rangeStart };
+    }
+
+    const dayBefore = addDays(rangeStart, -1);
+    if (dayBefore < stay.startDate) return stay;
+    return { ...stay, endDate: dayBefore };
+  });
+}
+
+export type TripDayCoverageContext = {
+  flightDepartureDates?: Set<string>;
+  flightArrivalDates?: Set<string>;
+  /** When set, blank days with a paintable stay slot count as uncovered. */
+  hasPaintableStaySlot?: (date: string, day: DayPlaceDraft) => boolean;
+  /** When set, blank days fully consumed by travel (no paintable slot) count as covered. */
+  isTravelOnlyDay?: (date: string) => boolean;
+};
+
+function dayHasStayCoverage(
+  day: DayPlaceDraft,
+  date: string,
+  ctx: TripDayCoverageContext = {},
+): boolean {
+  const emptyHalf = getEmptyHalf(day);
+  if (emptyHalf && ctx.hasPaintableStaySlot?.(date, day)) return false;
+
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  if (primary || secondary) {
+    const share = day.primaryShare ?? 1;
+    if (primary && secondary) return true;
+    if (share >= 1) return true;
+    if (emptyHalf && !ctx.hasPaintableStaySlot?.(date, day)) return true;
+    return false;
+  }
+
+  if (ctx.hasPaintableStaySlot?.(date, day)) return false;
+  if (ctx.isTravelOnlyDay?.(date)) return true;
+  if (ctx.flightDepartureDates?.has(date)) return true;
+  if (ctx.flightArrivalDates?.has(date)) return true;
+  return false;
 }
 
 export function hasUncoveredTripDays(
   days: DayPlaceDraft[],
   tripStart: string,
   tripEnd: string,
+  ctx: TripDayCoverageContext = {},
 ): boolean {
   return enumerateDates(tripStart, tripEnd).some((date) => {
     const day = days.find((d) => d.date === date);
     if (!day) return true;
-    return !day.primaryCity.trim();
+    return !dayHasStayCoverage(day, date, ctx);
   });
 }
 
-export function assignmentLabel(index: number): string {
-  const ordinals = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth"];
-  const word = ordinals[index] ?? `${index + 1}th`;
-  return `${word} location`;
+const LOCATION_PALETTE = [
+  { fill: "#e8edf8", accent: "#4f6b9a", text: "#1e2f52" },
+  { fill: "#e4f2ec", accent: "#3d7a62", text: "#173d30" },
+  { fill: "#f3e8f8", accent: "#7a4f9a", text: "#3b1f52" },
+  { fill: "#f8f0e4", accent: "#9a7340", text: "#4a3618" },
+  { fill: "#e8f4f8", accent: "#3d7a8a", text: "#173d47" },
+  { fill: "#f8e8ec", accent: "#9a4f62", text: "#4a1f2a" },
+] as const;
+
+function paletteIndex(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash) % LOCATION_PALETTE.length;
 }
 
 export function locationColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue} 55% 88%)`;
+  return LOCATION_PALETTE[paletteIndex(name)].fill;
 }
 
 export function locationBorderColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue} 45% 55%)`;
+  return LOCATION_PALETTE[paletteIndex(name)].accent;
+}
+
+export function locationTextColor(name: string): string {
+  return LOCATION_PALETTE[paletteIndex(name)].text;
 }

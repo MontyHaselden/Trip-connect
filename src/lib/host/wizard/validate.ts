@@ -19,8 +19,12 @@ const DraftDateSchema = z.string();
 const TransportLegSchema = z.object({
   id: z.string().uuid(),
   transportType: z.enum(TRANSPORT_TYPES),
-  bookingStatus: z.enum(BOOKING_STATUSES),
+  bookingStatus: z.preprocess(
+    (val) => (val === "not_booked" ? "placeholder" : val),
+    z.enum(BOOKING_STATUSES),
+  ),
   travelDate: DraftDateSchema,
+  arrivalDate: DraftDateSchema.nullable().default(null),
   departureTime: z.string().nullable(),
   arrivalTime: z.string().nullable(),
   fromCity: z.string(),
@@ -80,6 +84,8 @@ export const TripWizardDraftSchema = z.object({
     TransportLegSchema.extend({
       intercityFromCity: z.string(),
       intercityToCity: z.string(),
+      legKind: z.enum(["city_change", "airport_arrival", "airport_departure"]).optional(),
+      anchorLegId: z.string().uuid().nullable().optional(),
     }),
   ),
   activities: z.array(
@@ -101,7 +107,10 @@ export const TripWizardDraftSchema = z.object({
       description: z.string().nullable(),
       audienceType: z.enum(AUDIENCE_TYPES),
       audienceId: z.string().uuid().nullable(),
-      bookingStatus: z.enum(BOOKING_STATUSES),
+      bookingStatus: z.preprocess(
+        (val) => (val === "not_booked" ? "placeholder" : val),
+        z.enum(BOOKING_STATUSES),
+      ),
     }),
   ),
   reminders: z.array(
@@ -130,15 +139,44 @@ export const TripWizardDraftSchema = z.object({
     }),
   ),
   shellCommitted: z.boolean(),
+  wizardFinished: z.boolean().default(false),
+  datesPlacesConfirmed: z.boolean().default(false),
 });
 
+function normalizeTransportLegs(legs: Array<Record<string, unknown>> | undefined): void {
+  if (!legs) return;
+  for (const leg of legs) {
+    if (!("arrivalDate" in leg)) {
+      leg.arrivalDate = null;
+    }
+  }
+}
+
 export function parseWizardDraft(json: unknown): TripWizardDraft {
-  const raw = json as { dayPlaces?: Array<Record<string, unknown>> } | null;
+  const raw = json as {
+    dayPlaces?: Array<Record<string, unknown>>;
+    outboundLegs?: Array<Record<string, unknown>>;
+    returnLegs?: Array<Record<string, unknown>>;
+    intercityLegs?: Array<Record<string, unknown>>;
+  } | null;
+  if (raw) {
+    normalizeTransportLegs(raw.outboundLegs);
+    normalizeTransportLegs(raw.returnLegs);
+    normalizeTransportLegs(raw.intercityLegs);
+  }
   if (raw?.dayPlaces) {
     for (const day of raw.dayPlaces) {
       if (typeof day.primaryShare !== "number") {
         day.primaryShare = day.secondaryCity ? 0.5 : 1;
       }
+    }
+  }
+  if (raw && typeof raw === "object") {
+    if (typeof (raw as { wizardFinished?: unknown }).wizardFinished !== "boolean") {
+      (raw as { wizardFinished: boolean }).wizardFinished = false;
+    }
+    if (typeof (raw as { datesPlacesConfirmed?: unknown }).datesPlacesConfirmed !== "boolean") {
+      (raw as { datesPlacesConfirmed: boolean }).datesPlacesConfirmed = false;
     }
   }
   return TripWizardDraftSchema.parse(json);
@@ -148,10 +186,12 @@ export function validateStep(step: WizardStep, draft: TripWizardDraft): string[]
   const errors: string[] = [];
   if (step >= 1) {
     if (draft.basics.name.trim().length < 2) errors.push("Trip name is required.");
-    if (!draft.basics.startDate) errors.push("Start date is required.");
-    if (!draft.basics.endDate) errors.push("End date is required.");
+  }
+  if (step >= 2) {
+    if (!draft.basics.startDate) errors.push("Add your outbound flight departure date.");
+    if (!draft.basics.endDate) errors.push("Add your return flight departure date.");
     if (draft.basics.startDate && draft.basics.endDate && draft.basics.startDate > draft.basics.endDate) {
-      errors.push("End date must be on or after start date.");
+      errors.push("Return flight must be on or after your outbound flight.");
     }
   }
   return errors;

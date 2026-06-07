@@ -1,12 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export type AutocompleteOption = {
   id: string;
   label: string;
   sublabel?: string;
+  /** Committed value when different from display label (e.g. airport short name). */
+  value?: string;
 };
+
+type MenuRect = { top: number; left: number; width: number };
 
 export function AutocompleteField({
   value,
@@ -19,6 +24,7 @@ export function AutocompleteField({
   inputClassName,
   disabled,
   onSelectOption,
+  onBlur,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -30,13 +36,33 @@ export function AutocompleteField({
   inputClassName?: string;
   disabled?: boolean;
   onSelectOption?: (option: AutocompleteOption) => void;
+  onBlur?: () => void;
 }) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<AutocompleteOption[]>([]);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [menuRect, setMenuRect] = useState<MenuRect | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const updateMenuPosition = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setMenuRect({
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, []);
 
   const runSearch = useCallback(
     async (query: string) => {
@@ -59,34 +85,95 @@ export function AutocompleteField({
   useEffect(() => {
     if (!open) return;
     const timer = window.setTimeout(() => {
+      if (value.trim().length < minChars) {
+        setOptions([]);
+        return;
+      }
       void runSearch(value);
     }, debounceMs);
     return () => window.clearTimeout(timer);
-  }, [value, open, debounceMs, runSearch]);
+  }, [value, open, debounceMs, runSearch, minChars]);
 
   useEffect(() => {
-    function onDocClick(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) {
-        setOpen(false);
+    if (!open) return;
+    updateMenuPosition();
+    window.addEventListener("scroll", updateMenuPosition, true);
+    window.addEventListener("resize", updateMenuPosition);
+    return () => {
+      window.removeEventListener("scroll", updateMenuPosition, true);
+      window.removeEventListener("resize", updateMenuPosition);
+    };
+  }, [open, updateMenuPosition, options.length, loading]);
+
+  useEffect(() => {
+    function onDocPointerDown(e: PointerEvent) {
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
       }
+      setOpen(false);
     }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
+    document.addEventListener("pointerdown", onDocPointerDown);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown);
   }, []);
 
   function selectOption(option: AutocompleteOption) {
+    const committed = option.value ?? option.label;
     if (onSelectOption) {
       onSelectOption(option);
     } else {
-      onChange(option.label);
+      onChange(committed);
     }
     setOpen(false);
     setOptions([]);
+    inputRef.current?.focus();
   }
+
+  const menu =
+    open && menuRect && (loading || options.length > 0) ? (
+      <ul
+        ref={menuRef}
+        id={listId}
+        role="listbox"
+        style={{
+          position: "fixed",
+          top: menuRect.top,
+          left: menuRect.left,
+          width: menuRect.width,
+        }}
+        className="z-[200] max-h-60 overflow-auto rounded-2xl border border-zinc-200/90 bg-white p-1.5 shadow-xl shadow-zinc-200/60"
+      >
+        {loading ? (
+          <li className="px-3 py-2.5 text-xs text-zinc-500">Searching…</li>
+        ) : (
+          options.map((opt, i) => (
+            <li key={opt.id} role="option" aria-selected={i === activeIndex}>
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectOption(opt);
+                }}
+                className={[
+                  "w-full rounded-xl px-3 py-2.5 text-left text-sm transition",
+                  i === activeIndex ? "bg-zinc-100" : "hover:bg-zinc-50",
+                ].join(" ")}
+              >
+                <span className="block font-medium text-zinc-900">{opt.label}</span>
+                {opt.sublabel ? (
+                  <span className="mt-0.5 block text-xs text-zinc-500">{opt.sublabel}</span>
+                ) : null}
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
+    ) : null;
 
   return (
     <div ref={rootRef} className={["relative", className].filter(Boolean).join(" ")}>
       <input
+        ref={inputRef}
         type="text"
         value={value}
         disabled={disabled}
@@ -95,10 +182,21 @@ export function AutocompleteField({
         aria-expanded={open}
         aria-controls={listId}
         aria-autocomplete="list"
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          updateMenuPosition();
+        }}
+        onBlur={() => {
+          window.setTimeout(() => {
+            if (menuRef.current?.contains(document.activeElement)) return;
+            setOpen(false);
+            onBlur?.();
+          }, 0);
+        }}
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
+          updateMenuPosition();
         }}
         onKeyDown={(e) => {
           if (!open || !options.length) return;
@@ -118,39 +216,10 @@ export function AutocompleteField({
         }}
         className={
           inputClassName ??
-          "h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm focus:border-zinc-400 focus:outline-none"
+          "h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm shadow-sm transition focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-200"
         }
       />
-      {open && (loading || options.length > 0) ? (
-        <ul
-          id={listId}
-          role="listbox"
-          className="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg"
-        >
-          {loading ? (
-            <li className="px-3 py-2 text-xs text-zinc-500">Searching…</li>
-          ) : (
-            options.map((opt, i) => (
-              <li key={opt.id} role="option" aria-selected={i === activeIndex}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => selectOption(opt)}
-                  className={[
-                    "w-full px-3 py-2 text-left text-sm",
-                    i === activeIndex ? "bg-zinc-100" : "hover:bg-zinc-50",
-                  ].join(" ")}
-                >
-                  <span className="block font-medium text-zinc-900">{opt.label}</span>
-                  {opt.sublabel ? (
-                    <span className="block text-xs text-zinc-500">{opt.sublabel}</span>
-                  ) : null}
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-      ) : null}
+      {mounted && menu ? createPortal(menu, document.body) : null}
     </div>
   );
 }

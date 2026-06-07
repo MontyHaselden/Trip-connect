@@ -1,17 +1,28 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DateTime } from "luxon";
 
 import { CompactDaySheet } from "@/components/student/today/CompactDaySheet";
+import { ActivityItemPanel } from "@/components/host/itinerary/ActivityItemPanel";
+import type { ItineraryItem, RosterSummary } from "@/components/host/itinerary/types";
+import { hostJson } from "@/components/host/shared/host-fetch";
+import { resolveDefaultTodayDate } from "@/lib/ai/change-scope";
 import { sortItemsByStartTime } from "@/lib/timeline/time-math";
 import type { ActivityCategory } from "@/types/activity-category";
 import type { TripImportProgress } from "@/types/trip-import-progress";
 
+import {
+  stayColor,
+  stayForNight,
+} from "@/lib/host/locations/accommodation-colors";
 import type { ImportGap } from "@/lib/host/wizard/analyze-import-gaps";
+import type { AccommodationStayDraft } from "@/lib/host/wizard/types";
 
 import { BuildingGhostRow } from "./BuildingGhostRow";
-import { ImportGapChecklist } from "./ImportGapChecklist";
+import { TripGapsPanel } from "./TripGapsPanel";
 import { PublishSuccessModal } from "./PublishSuccessModal";
+import { StudentTodayPreviewShell } from "./StudentTodayPreviewShell";
 
 type ProposalState = {
   proposalId: string;
@@ -36,15 +47,19 @@ type ItineraryDay = {
   } | null;
   items: Array<{
     id: string;
+    tripDayId: string;
     startTime: string;
     endTime: string | null;
     title: string;
     locationName: string | null;
     address: string | null;
     mapQuery: string | null;
+    leaveByTime: string | null;
     transportNote: string | null;
     bringNote: string | null;
     hostNote: string | null;
+    audienceType: ItineraryItem["audienceType"];
+    audienceId: string | null;
     category?: ActivityCategory | null;
     sortOrder: number;
   }>;
@@ -65,6 +80,8 @@ function buildStatusLine(progress: TripImportProgress | null) {
     case "phase":
       if (progress.phase === "reading") return "Reading your document…";
       if (progress.phase === "planning") return "Planning trip dates and day structure…";
+      if (progress.phase === "structure") return "Extracting flights, cities, and hotels…";
+      if (progress.phase === "structure_applied") return "Trip structure saved — adding activities…";
       return "Building your itinerary day by day…";
     case "trip_dates":
       return `Trip set: ${formatTripDate(progress.startDate)} → ${formatTripDate(progress.endDate)} (${progress.dayCount} days)`;
@@ -124,18 +141,61 @@ export function LivePreviewPanel(props: {
     category: string | null;
   } | null>(null);
   const [importGaps, setImportGaps] = useState<ImportGap[]>([]);
+  const [accommodationStays, setAccommodationStays] = useState<AccommodationStayDraft[]>([]);
+  const [destinationCountries, setDestinationCountries] = useState<string[]>([]);
+  const [roster, setRoster] = useState<RosterSummary>({
+    rooms: [],
+    groups: [],
+    participants: [],
+  });
+  const [activitySheet, setActivitySheet] = useState<
+    { mode: "add" | "edit"; item: ItineraryItem | null } | null
+  >(null);
+  const [activityError, setActivityError] = useState<string | null>(null);
   const knownIdsRef = useRef<Set<string>>(new Set());
   const revealTimersRef = useRef<number[]>([]);
+  const didPickInitialDayRef = useRef(false);
 
   const reload = useCallback(async () => {
-    const res = await fetch(`/api/host/${encodeURIComponent(inviteCode)}/itinerary`);
-    if (!res.ok) return 0;
-    const body = await res.json();
+    const [itineraryRes, gapsRes, locRes, rosterRes] = await Promise.all([
+      fetch(`/api/host/${encodeURIComponent(inviteCode)}/itinerary`),
+      fetch(`/api/trips/${tripId}/gaps`),
+      fetch(`/api/trips/${tripId}/locations`),
+      fetch(`/api/host/${encodeURIComponent(inviteCode)}/roster`),
+    ]);
+    if (gapsRes.ok) {
+      const gapsBody = await gapsRes.json();
+      setImportGaps(gapsBody.gaps ?? []);
+    }
+    if (locRes.ok) {
+      const locBody = await locRes.json();
+      setAccommodationStays(locBody.state?.accommodationStays ?? []);
+      setDestinationCountries(locBody.state?.basics?.destinationCountries ?? []);
+    }
+    if (rosterRes.ok) {
+      const rosterBody = await rosterRes.json();
+      setRoster({
+        rooms: rosterBody.rooms ?? [],
+        groups: rosterBody.groups ?? [],
+        participants: rosterBody.participants ?? [],
+      });
+    }
+    if (!itineraryRes.ok) return 0;
+    const body = await itineraryRes.json();
     const loaded = (body.days ?? []) as ItineraryDay[];
     setDays(loaded);
-    if (!selectedDayId && loaded[0]) setSelectedDayId(loaded[0].id);
+    if (!didPickInitialDayRef.current && loaded.length) {
+      didPickInitialDayRef.current = true;
+      const todayDate = resolveDefaultTodayDate(
+        timezone,
+        startDate,
+        endDate ?? startDate,
+      );
+      const todayDay = loaded.find((d) => d.date === todayDate);
+      setSelectedDayId((todayDay ?? loaded[0])!.id);
+    }
     return loaded.length;
-  }, [inviteCode, selectedDayId]);
+  }, [inviteCode, timezone, startDate, endDate, tripId]);
 
   useEffect(() => {
     reload();
@@ -237,6 +297,40 @@ export function LivePreviewPanel(props: {
     [days],
   );
 
+  const itemCountByDayId = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const day of days) m.set(day.id, day.items.length);
+    return m;
+  }, [days]);
+
+  const firstItemTitleByDayId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const day of days) {
+      const first = sortItemsByStartTime(day.items)[0];
+      if (first) m.set(day.id, first.title);
+    }
+    return m;
+  }, [days]);
+
+  const todayISO = useMemo(
+    () => DateTime.now().setZone(timezone).toISODate(),
+    [timezone],
+  );
+
+  const isViewingToday = Boolean(
+    selectedDay && todayISO && selectedDay.date === todayISO,
+  );
+
+  const previewNightStay = useMemo(() => {
+    if (!selectedDay) return null;
+    const stay = stayForNight(selectedDay.date, accommodationStays);
+    if (!stay) return null;
+    return {
+      name: stay.name,
+      color: stayColor(stay),
+    };
+  }, [selectedDay, accommodationStays]);
+
   const statusLine = buildStatusLine(buildProgress ?? null);
   const tripRange =
     endDate && startDate
@@ -274,24 +368,59 @@ export function LivePreviewPanel(props: {
     }
   }
 
+  function applySavedItem(dayId: string, saved: ItineraryItem, mode: "add" | "edit") {
+    setDays((prev) =>
+      prev.map((d) => {
+        if (d.id !== dayId) return d;
+        if (mode === "add") {
+          return { ...d, items: [...d.items, saved] };
+        }
+        return {
+          ...d,
+          items: d.items.map((i) => (i.id === saved.id ? { ...i, ...saved } : i)),
+        };
+      }),
+    );
+  }
+
+  async function deleteActivity(id: string) {
+    if (!confirm("Delete this activity?")) return;
+    const snapshot = days;
+    setDays((prev) =>
+      prev.map((d) => ({
+        ...d,
+        items: d.items.filter((i) => i.id !== id),
+      })),
+    );
+    setActivitySheet(null);
+    try {
+      await hostJson(`/api/host/${encodeURIComponent(inviteCode)}/items/${id}`, {
+        method: "DELETE",
+      });
+    } catch (err) {
+      setDays(snapshot);
+      setActivityError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
+  function openEditActivity(itemId: string) {
+    const day = selectedDay;
+    if (!day) return;
+    const item = day.items.find((i) => i.id === itemId);
+    if (!item) return;
+    setActivityError(null);
+    setActivitySheet({ mode: "edit", item });
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-zinc-50">
       <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold">Live preview</h2>
-          {days.length > 0 ? (
-            <select
-              value={selectedDay?.id ?? ""}
-              onChange={(e) => setSelectedDayId(e.target.value)}
-              className="mt-1 rounded border border-zinc-200 px-2 py-1 text-xs"
-            >
-              {days.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.date} — {d.cityLabel}
-                </option>
-              ))}
-            </select>
-          ) : tripRange ? (
+          <p className="mt-0.5 text-xs text-zinc-500">
+            Matches the student Today screen
+          </p>
+          {!days.length && tripRange ? (
             <p className="mt-1 text-xs text-zinc-600">{tripRange}</p>
           ) : null}
         </div>
@@ -299,8 +428,9 @@ export function LivePreviewPanel(props: {
           <button
             type="button"
             onClick={publish}
-            disabled={publishing || totalItems === 0}
+            disabled={publishing || totalItems === 0 || importGaps.length > 0}
             className="h-9 rounded-lg bg-sky-700 px-3 text-xs font-medium text-white disabled:opacity-50"
+            title={importGaps.length > 0 ? "Resolve gaps in Locations first" : undefined}
           >
             {publishing ? "Publishing…" : "Publish"}
           </button>
@@ -317,15 +447,6 @@ export function LivePreviewPanel(props: {
                 : "Deciding trip dates, then filling in each day.")}
           </p>
         </div>
-      ) : null}
-
-      {!building && importGaps.length > 0 ? (
-        <ImportGapChecklist
-          gaps={importGaps}
-          inviteCode={inviteCode}
-          days={days.map((d) => ({ id: d.id, date: d.date }))}
-          onResolved={() => reload()}
-        />
       ) : null}
 
       {buildTimedOut && totalItems === 0 ? (
@@ -366,53 +487,121 @@ export function LivePreviewPanel(props: {
         </div>
       ) : null}
 
-      <div className="mx-auto flex w-full max-w-md min-h-0 flex-1 flex-col overflow-hidden px-4 py-4">
-        {selectedDay ? (
-          <CompactDaySheet
-            items={dayItems}
-            prepItems={selectedDay.prep}
-            tripTimezone={timezone}
-            dateISO={selectedDay.date}
-            cityLabel={selectedDay.cityLabel}
-            weather={selectedDay.weather}
-            tripStartDate={startDate}
-            isViewingToday={false}
-            mapsOnline
-            animateItemIds={building ? revealedIds : undefined}
-            typewriterItemId={building ? typingId : null}
-            buildingEmptyLabel={
-              building ? "Building this day's activities…" : null
-            }
-            listFooter={
-              building && ghostItem ? (
-                <BuildingGhostRow
-                  title={ghostItem.title}
-                  category={ghostItem.category}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 items-start justify-center gap-3 overflow-hidden bg-zinc-100/80 px-3 py-4">
+          <div className="flex h-full min-h-0 max-h-full w-full max-w-md shrink-0 flex-col overflow-hidden">
+            <StudentTodayPreviewShell
+              timezone={timezone}
+              startDate={startDate}
+              endDate={endDate}
+              days={days}
+              selectedDayId={selectedDay?.id ?? null}
+              onSelectDayId={setSelectedDayId}
+              itemCountByDayId={itemCountByDayId}
+              firstItemTitleByDayId={firstItemTitleByDayId}
+              nightStay={previewNightStay}
+            >
+              {selectedDay ? (
+                <CompactDaySheet
+                  items={dayItems}
+                  prepItems={selectedDay.prep}
+                  tripTimezone={timezone}
+                  dateISO={selectedDay.date}
+                  cityLabel={selectedDay.cityLabel}
+                  weather={selectedDay.weather}
+                  tripStartDate={startDate}
+                  isViewingToday={isViewingToday}
+                  mapsOnline
+                  animateItemIds={building ? revealedIds : undefined}
+                  typewriterItemId={building ? typingId : null}
+                  buildingEmptyLabel={
+                    building ? "Building this day's activities…" : null
+                  }
+                  nightStay={previewNightStay}
+                  hostEditing={
+                    building
+                      ? undefined
+                      : {
+                          onEditItem: (item) => openEditActivity(item.id),
+                        }
+                  }
+                  listFooter={
+                    building && ghostItem ? (
+                      <BuildingGhostRow
+                        title={ghostItem.title}
+                        category={ghostItem.category}
+                      />
+                    ) : null
+                  }
                 />
-              ) : null
-            }
-          />
-        ) : building ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
-            <p className="text-sm font-medium text-zinc-800">
-              {buildProgress?.type === "trip_dates"
-                ? `Planning ${buildProgress.dayCount} days…`
-                : "Planning your trip…"}
-            </p>
-            <p className="max-w-xs text-xs text-zinc-500">
-              {tripRange
-                ? `${tripRange} — activities will appear day by day.`
-                : "Trip dates first, then each day fills in with colored activity blocks."}
-            </p>
+              ) : building ? (
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900" />
+                  <p className="text-sm font-medium text-zinc-800">
+                    {buildProgress?.type === "trip_dates"
+                      ? `Planning ${buildProgress.dayCount} days…`
+                      : "Planning your trip…"}
+                  </p>
+                  <p className="max-w-xs text-xs text-zinc-500">
+                    {tripRange
+                      ? `${tripRange} — activities will appear day by day.`
+                      : "Trip dates first, then each day fills in with colored activity blocks."}
+                  </p>
+                </div>
+              ) : (
+                <p className="py-10 text-center text-sm text-zinc-600">
+                  Pick a day in the preview.
+                </p>
+              )}
+            </StudentTodayPreviewShell>
           </div>
-        ) : (
-          <p className="text-sm text-zinc-600">
-            Tap <span className="font-medium">AI editor</span> to add your document or describe
-            changes.
-          </p>
-        )}
+
+          {!building && selectedDay ? (
+            <div className="flex shrink-0 flex-col items-start gap-3 self-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setActivityError(null);
+                  setActivitySheet({ mode: "add", item: null });
+                }}
+                aria-label="Add activity"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-zinc-900 text-2xl font-light leading-none text-white shadow-lg hover:bg-zinc-800"
+              >
+                +
+              </button>
+              <ActivityItemPanel
+                open={Boolean(activitySheet)}
+                mode={activitySheet?.mode ?? "add"}
+                item={activitySheet?.item ?? null}
+                inviteCode={inviteCode}
+                dayId={selectedDay.id}
+                roster={roster}
+                countryNames={destinationCountries}
+                cityHint={selectedDay.cityLabel.split(/[→,]/)[0]?.trim()}
+                onClose={() => setActivitySheet(null)}
+                onSaved={(item) => {
+                  if (item && selectedDay && activitySheet) {
+                    applySavedItem(selectedDay.id, item, activitySheet.mode);
+                  }
+                  setActivitySheet(null);
+                }}
+                onDelete={deleteActivity}
+                onError={setActivityError}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        {!building && importGaps.length > 0 ? (
+          <TripGapsPanel gaps={importGaps} tripId={tripId} />
+        ) : null}
       </div>
+
+      {activityError ? (
+        <div className="absolute bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-red-600 px-3 py-2 text-xs text-white shadow-lg">
+          {activityError}
+        </div>
+      ) : null}
 
       {publishResult ? (
         <PublishSuccessModal

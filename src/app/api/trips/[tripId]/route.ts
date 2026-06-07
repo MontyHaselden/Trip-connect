@@ -4,7 +4,8 @@ import { requireHostSessionHostId } from "@/lib/auth/host-session";
 import { deleteTripForHost } from "@/lib/host/delete-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
-import { getTripDeleteStatus } from "@/lib/host/trip-delete-eligibility";
+import { getTripDeleteStatus, loadItineraryBuildStats } from "@/lib/host/trip-delete-eligibility";
+import { getTripLifecycleForTrip, TRIP_STATUS_LABELS } from "@/lib/host/trip-lifecycle";
 
 export async function GET(
   _req: Request,
@@ -24,7 +25,26 @@ export async function GET(
       publishedVersion: trip.publishedVersion,
     });
 
-    return NextResponse.json({ trip, deleteStatus });
+    const stats = await loadItineraryBuildStats(trip.id);
+    const lifecycle = await getTripLifecycleForTrip(
+      {
+        id: trip.id,
+        setupMethod: trip.setupMethod,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        timezone: trip.timezone,
+      },
+      stats,
+    );
+
+    return NextResponse.json({
+      trip,
+      deleteStatus,
+      lifecycle: {
+        ...lifecycle,
+        statusLabel: TRIP_STATUS_LABELS[lifecycle.status],
+      },
+    });
   } catch (err) {
     return hostApiError(err);
   }

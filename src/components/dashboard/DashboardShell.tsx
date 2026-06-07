@@ -3,21 +3,42 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import type { TripLifecycleStatus } from "@/lib/host/trip-lifecycle";
+
 import { HostMobileLinkCard } from "./HostMobileLinkCard";
+import { TripStatusBadge } from "./TripStatusBadge";
 
 export function DashboardShell(props: {
   children: React.ReactNode;
   tripId?: string;
   tripName?: string;
+  tripStatus?: TripLifecycleStatus;
+  tripStatusLabel?: string;
+  continuePath?: string;
+  wizardInProgress?: boolean;
 }) {
-  const { children, tripId, tripName } = props;
+  const {
+    children,
+    tripId,
+    tripName,
+    tripStatus,
+    tripStatusLabel,
+    continuePath,
+    wizardInProgress,
+  } = props;
   const pathname = usePathname();
+
+  const builderHref =
+    continuePath ?? (tripId ? `/dashboard/trips/${tripId}/builder` : "/dashboard");
 
   const tripNav = tripId
     ? [
-        { href: `/dashboard/trips/${tripId}/builder`, label: "Builder" },
+        {
+          href: builderHref,
+          label: wizardInProgress ? "Continue setup" : "Builder",
+        },
         { href: `/dashboard/trips/${tripId}/participants`, label: "Participants" },
-        { href: `/dashboard/trips/${tripId}/accommodation`, label: "Accommodation" },
+        { href: `/dashboard/trips/${tripId}/locations`, label: "Locations" },
         { href: `/dashboard/trips/${tripId}/photos`, label: "Photos" },
         { href: `/dashboard/trips/${tripId}/viewers`, label: "Viewers" },
         { href: `/dashboard/trips/${tripId}/settings`, label: "Settings" },
@@ -49,24 +70,39 @@ export function DashboardShell(props: {
         </nav>
         {tripId ? (
           <div className="mt-8 border-t border-zinc-100 pt-4">
-            <p className="truncate px-3 text-xs font-semibold uppercase text-zinc-400">
-              {tripName ?? "Trip"}
-            </p>
+            <div className="px-3">
+              <p className="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                {tripName ?? "Trip"}
+              </p>
+              {tripStatus && tripStatusLabel ? (
+                <div className="mt-2">
+                  <TripStatusBadge status={tripStatus} label={tripStatusLabel} />
+                </div>
+              ) : null}
+            </div>
             <nav className="mt-2 space-y-1">
-              {tripNav.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={[
-                    "block rounded-lg px-3 py-2 text-sm",
-                    pathname.startsWith(item.href)
-                      ? "bg-zinc-900 font-medium text-white"
-                      : "text-zinc-600 hover:bg-zinc-50",
-                  ].join(" ")}
-                >
-                  {item.label}
-                </Link>
-              ))}
+              {tripNav.map((item) => {
+                const baseHref = item.href.split("?")[0]!;
+                const isActive =
+                  wizardInProgress && item.label === "Continue setup"
+                    ? pathname.includes(`${tripId}/wizard`)
+                    : pathname.startsWith(baseHref);
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={[
+                      "block rounded-lg px-3 py-2 text-sm",
+                      isActive
+                        ? "bg-zinc-900 font-medium text-white"
+                        : "text-zinc-600 hover:bg-zinc-50",
+                    ].join(" ")}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
             </nav>
           </div>
         ) : null}

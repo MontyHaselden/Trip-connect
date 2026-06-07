@@ -11,7 +11,7 @@ import {
 } from "@/lib/db/schema";
 
 import type { TripWizardDraft } from "./types";
-import { detectCityMoves } from "./detect-city-moves";
+import { intercityLegPrompt, syncIntercityFromDraft } from "./detect-city-moves";
 
 export type WizardWarning = {
   id: string;
@@ -38,31 +38,35 @@ export async function collectWizardWarnings(
     }
   }
 
-  const moves = detectCityMoves(draft.dayPlaces);
-  for (const move of moves) {
+  const expectedLegs = syncIntercityFromDraft(draft);
+  for (const expected of expectedLegs) {
     const hasLeg = draft.intercityLegs.some(
       (l) =>
-        l.intercityFromCity === move.fromCity &&
-        l.intercityToCity === move.toCity &&
-        l.travelDate === move.date,
+        (l.legKind ?? "city_change") === (expected.legKind ?? "city_change") &&
+        l.intercityFromCity === expected.intercityFromCity &&
+        l.intercityToCity === expected.intercityToCity &&
+        l.travelDate === expected.travelDate,
     );
     if (!hasLeg) {
+      const hint = intercityLegPrompt(expected);
       warnings.push({
-        id: `no-transport-${move.date}`,
+        id: `no-transport-${expected.travelDate}-${expected.intercityFromCity}`,
         severity: "warning",
-        message: `Travel day ${move.date}: no transport from ${move.fromCity} to ${move.toCity}`,
-        step: 5,
+        message:
+          hint ??
+          `Travel day ${expected.travelDate}: no transport from ${expected.intercityFromCity} to ${expected.intercityToCity}`,
+        step: 4,
       });
     }
   }
 
   for (const leg of [...draft.outboundLegs, ...draft.returnLegs, ...draft.intercityLegs]) {
-    if (leg.bookingStatus === "not_booked") {
+    if (leg.bookingStatus === "placeholder" || leg.bookingStatus === "not_booked") {
       warnings.push({
         id: `not-booked-transport-${leg.id}`,
         severity: "info",
         message: `Transport not booked: ${leg.fromCity} → ${leg.toCity} on ${leg.travelDate}`,
-        step: leg.id.startsWith("out") ? 2 : 5,
+        step: leg.id.startsWith("out") ? 2 : 4,
       });
     }
   }
@@ -84,7 +88,7 @@ export async function collectWizardWarnings(
         id: `no-accommodation-${night.date}`,
         severity: "warning",
         message: `No accommodation for ${night.primaryCity} on night of ${night.date}`,
-        step: 4,
+        step: 5,
       });
     }
   }
@@ -147,7 +151,7 @@ export async function collectWizardWarnings(
           id: "unassigned-accommodation",
           severity: "warning",
           message: "Multiple accommodations exist but no students are assigned yet",
-          step: 4,
+          step: 5,
         });
       }
     }

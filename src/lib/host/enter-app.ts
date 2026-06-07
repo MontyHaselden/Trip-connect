@@ -50,20 +50,25 @@ export async function ensureHostParticipantForTrip(params: {
     }
   }
 
-  const existing = await db
-    .select({
-      id: participants.id,
-      accessToken: participants.accessToken,
-    })
-    .from(participants)
-    .where(
-      and(
-        eq(participants.tripId, params.tripId),
-        eq(participants.phoneNumberE164, host.phoneNumberE164),
-      ),
-    )
-    .limit(1)
-    .then((rows) => rows[0] ?? null);
+  const participantPhone =
+    host.phoneNumberE164 ?? `+host${host.id.replaceAll("-", "").slice(0, 12)}`;
+
+  const existing = host.phoneNumberE164
+    ? await db
+        .select({
+          id: participants.id,
+          accessToken: participants.accessToken,
+        })
+        .from(participants)
+        .where(
+          and(
+            eq(participants.tripId, params.tripId),
+            eq(participants.phoneNumberE164, host.phoneNumberE164),
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+    : null;
 
   if (existing) {
     await db
@@ -79,7 +84,7 @@ export async function ensureHostParticipantForTrip(params: {
     .values({
       tripId: params.tripId,
       fullName: host.fullName,
-      phoneNumberE164: host.phoneNumberE164,
+      phoneNumberE164: participantPhone,
       role: mapHostRoleToParticipantRole(host.role),
       accessToken: token,
     })

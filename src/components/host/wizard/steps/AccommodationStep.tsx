@@ -1,24 +1,61 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { DateTime } from "luxon";
 
+import { TripTimezoneNote } from "@/components/geo/TripTimezoneNote";
 import { suggestAccommodationStays } from "@/lib/host/wizard/detect-city-moves";
+import { computeCalendarTransport } from "@/lib/host/wizard/transport-day-placement";
 import {
-  STAY_TYPES,
+  newId,
   type AccommodationStayDraft,
   type StayType,
   type TripWizardDraft,
-  newId,
 } from "@/lib/host/wizard/types";
+
+import { AccommodationStayForm } from "../shared/AccommodationStayForm";
+import { LocationStayCalendar } from "../shared/LocationStayCalendar";
+import {
+  WizardCalendarLayout,
+  WizardSidebarNav,
+} from "../shared/WizardCalendarLayout";
+
+function cityShort(name: string): string {
+  return name.split(",")[0]?.trim() || name;
+}
+
+function formatStayRange(checkIn: string, checkOut: string): string {
+  const inDt = DateTime.fromISO(checkIn);
+  const outDt = DateTime.fromISO(checkOut);
+  if (!inDt.isValid || !outDt.isValid) return `${checkIn} – ${checkOut}`;
+  if (checkIn === checkOut) return inDt.toFormat("d MMM yyyy");
+  return `${inDt.toFormat("d MMM")} → ${outDt.toFormat("d MMM yyyy")}`;
+}
+
+function sortAccommodationStays(stays: AccommodationStayDraft[]): AccommodationStayDraft[] {
+  return [...stays].sort(
+    (a, b) =>
+      a.checkInDate.localeCompare(b.checkInDate) ||
+      a.checkOutDate.localeCompare(b.checkOutDate) ||
+      a.cityLabel.localeCompare(b.cityLabel),
+  );
+}
 
 export function AccommodationStep({
   draft,
   onChange,
+  onBack,
+  onContinue,
+  saving,
 }: {
   draft: TripWizardDraft;
   onChange: (draft: TripWizardDraft) => void;
+  onBack?: () => void;
+  onContinue?: () => void;
+  saving?: boolean;
 }) {
-  const { accommodationStays, dayPlaces } = draft;
+  const { accommodationStays, dayPlaces, basics } = draft;
+  const [stayIndex, setStayIndex] = useState(0);
 
   useEffect(() => {
     if (accommodationStays.length > 0 || dayPlaces.length === 0) return;
@@ -42,133 +79,145 @@ export function AccommodationStep({
     });
   }, [dayPlaces.length, accommodationStays.length]);
 
-  function updateStay(i: number, patch: Partial<AccommodationStayDraft>) {
+  const sortedStays = useMemo(
+    () => sortAccommodationStays(accommodationStays),
+    [accommodationStays],
+  );
+
+  useEffect(() => {
+    if (stayIndex >= sortedStays.length && sortedStays.length > 0) {
+      setStayIndex(sortedStays.length - 1);
+    }
+  }, [sortedStays.length, stayIndex]);
+
+  const tripContext = useMemo(
+    () => ({
+      startDate: basics.startDate,
+      endDate: basics.endDate,
+      departureCity: basics.departureCity,
+      returnCity: basics.returnCity,
+    }),
+    [basics.startDate, basics.endDate, basics.departureCity, basics.returnCity],
+  );
+
+  const { travelLayouts: travelLayoutsByDate, transitOverlays: transitByDate } = useMemo(
+    () => computeCalendarTransport(draft, tripContext, { includeIntercity: true }),
+    [
+      draft.outboundLegs,
+      draft.returnLegs,
+      draft.intercityLegs,
+      draft.dayPlaces,
+      basics.startDate,
+      basics.endDate,
+      basics.departureCity,
+      basics.returnCity,
+    ],
+  );
+
+  const currentStay = sortedStays[stayIndex];
+  const isLastStay = stayIndex >= sortedStays.length - 1;
+
+  function handlePreviousStay() {
+    if (stayIndex > 0) setStayIndex((i) => i - 1);
+  }
+
+  function handleContinue() {
+    if (sortedStays.length === 0 || isLastStay) {
+      onContinue?.();
+    } else {
+      setStayIndex((i) => i + 1);
+    }
+  }
+
+  function updateStay(updated: AccommodationStayDraft) {
     onChange({
       ...draft,
-      accommodationStays: accommodationStays.map((s, j) =>
-        j === i ? { ...s, ...patch } : s,
+      accommodationStays: accommodationStays.map((s) =>
+        s.id === updated.id ? updated : s,
       ),
     });
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Accommodation</h2>
-      <p className="text-sm text-zinc-600">
-        Where is the group staying in each city? Dates are prefilled from your day plan.
-      </p>
-      {accommodationStays.length === 0 ? (
-        <p className="text-sm text-amber-700">Complete Dates & Places first.</p>
-      ) : (
+    <div className="space-y-5 lg:space-y-6">
+      <div className="mb-5 border-b border-zinc-100 pb-4">
+        <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Accommodation</h2>
+        <p className="mt-1 text-sm text-zinc-500">
+          {sortedStays.length
+            ? `Stay ${stayIndex + 1} of ${sortedStays.length} — where is the group sleeping?`
+            : "Where is the group staying in each city?"}
+        </p>
+      </div>
+
+      {!basics.startDate || !basics.endDate ? (
+        <p className="text-sm text-amber-700">Set trip dates in Basics first.</p>
+      ) : sortedStays.length === 0 ? (
         <div className="space-y-4">
-          {accommodationStays.map((stay, i) => (
-            <div key={stay.id} className="rounded-xl border border-zinc-200 p-4 space-y-3">
-              <h3 className="font-medium">Staying in {stay.cityLabel}</h3>
-              <p className="text-xs text-zinc-500">
-                {stay.checkInDate} – {stay.checkOutDate}
-              </p>
-              <label className="block text-sm">
-                <span className="font-medium">Type</span>
-                <select
-                  value={stay.stayType}
-                  onChange={(e) =>
-                    updateStay(i, { stayType: e.target.value as StayType })
-                  }
-                  className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2"
-                >
-                  {STAY_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t.replace(/_/g, " ")}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-sm">
-                <span className="font-medium">Name</span>
-                <input
-                  value={stay.name ?? ""}
-                  onChange={(e) => updateStay(i, { name: e.target.value || null })}
-                  className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2"
-                />
-              </label>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <label className="block text-sm">
-                  <span className="font-medium">Check-in</span>
-                  <input
-                    type="date"
-                    value={stay.checkInDate}
-                    onChange={(e) => updateStay(i, { checkInDate: e.target.value })}
-                    className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium">Check-out</span>
-                  <input
-                    type="date"
-                    value={stay.checkOutDate}
-                    onChange={(e) => updateStay(i, { checkOutDate: e.target.value })}
-                    className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2"
-                  />
-                </label>
-              </div>
-              <label className="block text-sm">
-                <span className="font-medium">Address</span>
-                <input
-                  value={stay.address ?? ""}
-                  onChange={(e) => updateStay(i, { address: e.target.value || null })}
-                  className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-2"
-                />
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={stay.multipleInCity}
-                  onChange={(e) => updateStay(i, { multipleInCity: e.target.checked })}
-                />
-                Staying in more than one place here
-              </label>
-              {stay.stayType === "homestay" ? (
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={stay.isHomestayGroup}
-                    onChange={(e) => updateStay(i, { isHomestayGroup: e.target.checked })}
-                  />
-                  Each student stays with a different host family
-                </label>
-              ) : null}
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => {
-              const city = dayPlaces.find((d) => d.primaryCity)?.primaryCity ?? "City";
-              onChange({
-                ...draft,
-                accommodationStays: [
-                  ...accommodationStays,
-                  {
-                    id: newId(),
-                    cityLabel: city,
-                    stayType: "hotel",
-                    name: null,
-                    url: null,
-                    address: null,
-                    phone: null,
-                    checkInDate: draft.basics.startDate,
-                    checkOutDate: draft.basics.endDate,
-                    notes: null,
-                    isHomestayGroup: false,
-                    multipleInCity: false,
-                  },
-                ],
-              });
-            }}
-            className="text-sm font-medium underline"
-          >
-            + Add another stay
-          </button>
+          <p className="rounded-xl border border-zinc-200 bg-zinc-50/80 px-4 py-3 text-sm text-amber-700">
+            Complete Dates &amp; Places first — we&apos;ll suggest stays from your day plan.
+          </p>
+          <WizardSidebarNav onBack={onBack} onContinue={onContinue} saving={saving} />
         </div>
+      ) : (
+        <WizardCalendarLayout
+          sidebar={
+            <>
+              <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-sm">
+                <h3 className="text-lg font-semibold tracking-tight text-zinc-900">
+                  {cityShort(currentStay!.cityLabel)}
+                </h3>
+                <p className="mt-1 text-xs font-medium text-zinc-500">
+                  {formatStayRange(currentStay!.checkInDate, currentStay!.checkOutDate)}
+                </p>
+              </div>
+
+              <AccommodationStayForm
+                embedded
+                stay={currentStay!}
+                onChange={updateStay}
+                countryNames={basics.destinationCountries}
+                cityHint={currentStay!.cityLabel}
+              />
+            </>
+          }
+          sidebarFooter={
+            <WizardSidebarNav
+              onPreviousLeg={handlePreviousStay}
+              previousLegLabel="Previous stay"
+              previousLegDisabled={stayIndex === 0}
+              onBack={onBack}
+              backLabel="Back to travel"
+              onContinue={handleContinue}
+              continueLabel={isLastStay ? "Open trip preview" : "Next stay"}
+              continueLoadingLabel={isLastStay ? "Opening preview…" : "Saving…"}
+              saving={saving}
+            />
+          }
+          calendar={
+            <>
+              <LocationStayCalendar
+                days={dayPlaces}
+                tripStart={basics.startDate}
+                tripEnd={basics.endDate}
+                departureCity={basics.departureCity}
+                returnCity={basics.returnCity}
+                travelLayoutsByDate={travelLayoutsByDate}
+                transitByDate={transitByDate}
+                highlightDate={currentStay?.checkInDate}
+              />
+
+              <TripTimezoneNote
+                countries={basics.destinationCountries}
+                cities={dayPlaces.map((d) => d.primaryCity).filter(Boolean)}
+                departureCity={basics.departureCity}
+                currentTimezone={basics.timezone}
+                onTimezoneResolved={(timezone) =>
+                  onChange({ ...draft, basics: { ...basics, timezone } })
+                }
+              />
+            </>
+          }
+        />
       )}
     </div>
   );

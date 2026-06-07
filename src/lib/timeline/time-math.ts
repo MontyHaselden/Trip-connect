@@ -82,6 +82,78 @@ export function computeDisplayDurationMinutes(
   return Math.max(MIN_DURATION_MINUTES, end - start);
 }
 
+export type ItemLayoutSpans = {
+  spanById: Map<string, number>;
+  /** Last item without end time — always minimum block height. */
+  lockedMinimumIds: Set<string>;
+  /** Sole item on the day without end time — fills the list. */
+  soloFillId: string | null;
+};
+
+function computeLayoutSpanMinutes(
+  item: { startTime: string; endTime: string | null },
+  nextStartMinutes: number | null,
+  isLast: boolean,
+): number | null {
+  const start = timeToMinutes(item.startTime);
+
+  if (isLast) {
+    if (!item.endTime) return null;
+    const end = timeToMinutes(item.endTime);
+    return Math.max(MIN_DURATION_MINUTES, end - start);
+  }
+
+  if (nextStartMinutes === null || nextStartMinutes <= start) {
+    return MIN_DURATION_MINUTES;
+  }
+
+  return Math.max(MIN_DURATION_MINUTES, nextStartMinutes - start);
+}
+
+/** Full time gaps for compact day-sheet block heights (no 1h display cap). */
+export function computeLayoutSpanMinutesById(
+  items: Array<{ id: string; startTime: string; endTime: string | null; sortOrder?: number }>,
+): ItemLayoutSpans {
+  const sorted = [...items].sort((a, b) => {
+    const cmp = a.startTime.localeCompare(b.startTime);
+    if (cmp !== 0) return cmp;
+    return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+  });
+
+  const spanById = new Map<string, number>();
+  const lockedMinimumIds = new Set<string>();
+  let soloFillId: string | null = null;
+
+  if (sorted.length === 1) {
+    const item = sorted[0]!;
+    if (!item.endTime) {
+      soloFillId = item.id;
+      spanById.set(item.id, MIN_DURATION_MINUTES);
+      return { spanById, lockedMinimumIds, soloFillId };
+    }
+    const span = computeLayoutSpanMinutes(item, null, true);
+    spanById.set(item.id, span ?? MIN_DURATION_MINUTES);
+    return { spanById, lockedMinimumIds, soloFillId };
+  }
+
+  for (let i = 0; i < sorted.length; i++) {
+    const item = sorted[i]!;
+    const next = sorted[i + 1];
+    const isLast = i === sorted.length - 1;
+    const nextStart = next ? timeToMinutes(next.startTime) : null;
+    const span = computeLayoutSpanMinutes(item, nextStart, isLast);
+
+    if (span === null) {
+      lockedMinimumIds.add(item.id);
+      spanById.set(item.id, MIN_DURATION_MINUTES);
+    } else {
+      spanById.set(item.id, span);
+    }
+  }
+
+  return { spanById, lockedMinimumIds, soloFillId };
+}
+
 /** Minutes per item for proportional day-sheet block heights. */
 export function computeDisplayDurationsById(
   items: Array<{ id: string; startTime: string; endTime: string | null; sortOrder?: number }>,

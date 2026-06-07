@@ -20,14 +20,47 @@ const files = readdirSync(dir)
   .filter((f) => f.endsWith(".sql"))
   .sort();
 
+/** Split SQL on semicolons outside of DO $$ ... $$ blocks. */
+function splitTopLevelStatements(content: string): string[] {
+  const out: string[] = [];
+  let buf = "";
+  let inDollarBlock = false;
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("DO $$")) inDollarBlock = true;
+
+    buf += `${line}\n`;
+
+    if (inDollarBlock && trimmed.endsWith("END $$;")) {
+      out.push(buf.trim());
+      buf = "";
+      inDollarBlock = false;
+      continue;
+    }
+
+    if (!inDollarBlock && trimmed.endsWith(";")) {
+      out.push(buf.trim());
+      buf = "";
+    }
+  }
+
+  if (buf.trim()) out.push(buf.trim());
+  return out.filter(Boolean);
+}
+
 async function main() {
   for (const file of files) {
     console.log(`\n--- ${file} ---`);
     const content = readFileSync(join(dir, file), "utf8");
-    const statements = content
+    let statements = content
       .split("--> statement-breakpoint")
       .map((s) => s.trim())
       .filter(Boolean);
+
+    if (statements.length === 1) {
+      statements = splitTopLevelStatements(statements[0]!);
+    }
 
     for (const stmt of statements) {
       const preview = stmt.replace(/\s+/g, " ").slice(0, 70);

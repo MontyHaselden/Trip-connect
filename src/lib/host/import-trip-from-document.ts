@@ -5,15 +5,33 @@ import {
   ensureTripDay,
 } from "@/lib/ai/apply-itinerary-import";
 import { parseDayItemsFromDocument } from "@/lib/ai/parse-day-items-from-document";
+import { parseTripStructureFromDocument } from "@/lib/ai/parse-trip-structure-from-document";
 import { parseTripOutlineFromDocument } from "@/lib/ai/parse-trip-outline";
 import { db } from "@/lib/db/client";
 import { trips } from "@/lib/db/schema";
+import { applyTripLocationState } from "@/lib/host/locations/apply-location-state";
+import { clearTripContent } from "@/lib/host/locations/clear-trip-content";
+import type { TripLocationState } from "@/lib/host/locations/types";
+import { buildDefaultDayPlaces, syncIntercityLegs } from "@/lib/host/wizard/detect-city-moves";
 import { analyzeImportGaps } from "@/lib/host/wizard/analyze-import-gaps";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
 import type { TripImportProgress } from "@/types/trip-import-progress";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function outlineDaysToPlaces(
+  days: Array<{ date: string; cityLabel: string }>,
+): TripLocationState["dayPlaces"] {
+  return days.map((d) => ({
+    date: d.date,
+    primaryCity: d.cityLabel,
+    secondaryCity: null,
+    primaryShare: 1,
+    dayType: "trip" as const,
+    includeBuffer: false,
+  }));
 }
 
 export async function importTripFromDocumentText(params: {
@@ -35,19 +53,87 @@ export async function importTripFromDocumentText(params: {
     instructions: params.instructions,
   });
 
-  await db
-    .update(trips)
-    .set({
-      ...(params.preserveTripName ? {} : { name: outline.name.trim() }),
+  await clearTripContent(params.tripId);
+
+  emit({ type: "phase", phase: "structure" });
+  const structure = await parseTripStructureFromDocument({
+    text: params.text,
+    startDate: outline.startDate,
+    endDate: outline.endDate,
+    defaultTimezone: outline.timezone,
+    instructions: params.instructions,
+  });
+
+  const departureCity =
+    structure.departureCity?.trim() || outline.days[0]?.cityLabel || "";
+  const returnCity =
+    structure.returnCity?.trim() ||
+    outline.days[outline.days.length - 1]?.cityLabel ||
+    "";
+
+  let dayPlaces = structure.dayPlaces.length
+    ? structure.dayPlaces
+    : outlineDaysToPlaces(outline.days);
+
+  if (!dayPlaces.length) {
+    dayPlaces = buildDefaultDayPlaces(
+      outline.startDate,
+      outline.endDate,
+      departureCity,
+      returnCity,
+    );
+  }
+
+  const intercityLegs = syncIntercityLegs(dayPlaces, structure.intercityLegs, {
+    outboundLegs: structure.outboundLegs,
+    returnLegs: structure.returnLegs,
+    trip: {
+      startDate: outline.startDate,
+      endDate: outline.endDate,
+      departureCity,
+      returnCity,
+    },
+  });
+
+  const locationState: TripLocationState = {
+    basics: {
+      name: params.preserveTripName?.trim() || outline.name.trim(),
       schoolName: outline.schoolName.trim(),
       startDate: outline.startDate,
       endDate: outline.endDate,
       timezone: outline.timezone.trim(),
+      departureCity,
+      returnCity,
+      destinationCountries: outline.destinationCountry
+        ? outline.destinationCountry.split(",").map((c) => c.trim()).filter(Boolean)
+        : [],
+    },
+    dayPlaces,
+    outboundLegs: structure.outboundLegs,
+    returnLegs: structure.returnLegs,
+    intercityLegs,
+    accommodationStays: structure.accommodationStays,
+  };
+
+  await db
+    .update(trips)
+    .set({
+      name: locationState.basics.name,
+      schoolName: locationState.basics.schoolName,
+      startDate: outline.startDate,
+      endDate: outline.endDate,
+      timezone: outline.timezone.trim(),
+      departureCity,
+      returnCity,
       destinationCountry: outline.destinationCountry,
       destinationLanguage: outline.destinationLanguage,
       updatedAt: new Date(),
     })
     .where(eq(trips.id, params.tripId));
+
+  await applyTripLocationState(params.tripId, locationState);
+
+  emit({ type: "phase", phase: "structure_applied" });
 
   emit({
     type: "trip_dates",
@@ -60,12 +146,6 @@ export async function importTripFromDocumentText(params: {
   let daysCreated = 0;
   let daysUpdated = 0;
   let itemsCreated = 0;
-
-  for (const day of outline.days) {
-    const ensured = await ensureTripDay(params.tripId, day);
-    if (ensured.created) daysCreated++;
-    if (ensured.updated) daysUpdated++;
-  }
 
   emit({ type: "phase", phase: "building" });
 
@@ -90,6 +170,8 @@ export async function importTripFromDocumentText(params: {
     });
 
     const ensured = await ensureTripDay(params.tripId, day);
+    if (ensured.created) daysCreated++;
+    if (ensured.updated) daysUpdated++;
 
     for (let j = 0; j < items.length; j++) {
       const item = items[j]!;

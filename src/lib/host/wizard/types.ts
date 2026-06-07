@@ -4,16 +4,16 @@ export const WIZARD_STEPS = [
   { step: 1, label: "Basics" },
   { step: 2, label: "There & Back" },
   { step: 3, label: "Dates & Places" },
-  { step: 4, label: "Accommodation" },
-  { step: 5, label: "Getting Around" },
-  { step: 6, label: "Activities" },
-  { step: 7, label: "Meetings" },
-  { step: 8, label: "Review" },
+  { step: 4, label: "Between Cities" },
+  { step: 5, label: "Accommodation" },
 ] as const;
 
 export type WizardStep = (typeof WIZARD_STEPS)[number]["step"];
 
+export const WIZARD_LAST_STEP: WizardStep = 5;
+
 export const TRANSPORT_TYPES = [
+  "unsure",
   "plane",
   "train",
   "bus",
@@ -27,7 +27,8 @@ export const TRANSPORT_TYPES = [
 
 export type TransportType = (typeof TRANSPORT_TYPES)[number];
 
-export const BOOKING_STATUSES = ["booked", "not_booked", "placeholder"] as const;
+/** Transport legs — placeholder = not booked yet; flexible = calendar placeholder block only. */
+export const BOOKING_STATUSES = ["booked", "placeholder", "flexible", "not_booked"] as const;
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 export const DAY_TYPES = [
@@ -67,7 +68,10 @@ export type TransportLegDraft = {
   id: string;
   transportType: TransportType;
   bookingStatus: BookingStatus;
+  /** Departure date (ISO). */
   travelDate: string;
+  /** Arrival date (ISO) when different from departure — e.g. overnight flights. */
+  arrivalDate: string | null;
   departureTime: string | null;
   arrivalTime: string | null;
   fromCity: string;
@@ -105,10 +109,19 @@ export type AccommodationStayDraft = {
   multipleInCity: boolean;
 };
 
+export const INTERCITY_LEG_KINDS = [
+  "city_change",
+  "airport_arrival",
+  "airport_departure",
+] as const;
+export type IntercityLegKind = (typeof INTERCITY_LEG_KINDS)[number];
+
 export type IntercityLegDraft = TransportLegDraft & {
   intercityFromCity: string;
   intercityToCity: string;
   travelDate: string;
+  legKind?: IntercityLegKind;
+  anchorLegId?: string | null;
 };
 
 export type ActivityDraft = {
@@ -181,6 +194,9 @@ export type TripWizardDraft = {
   reminders: ReminderDraft[];
   meetings: MeetingDraft[];
   shellCommitted: boolean;
+  wizardFinished: boolean;
+  /** Set when the host confirms the dates & places plan — unlocks Between Cities. */
+  datesPlacesConfirmed: boolean;
 };
 
 export function emptyWizardDraft(name: string): TripWizardDraft {
@@ -206,6 +222,8 @@ export function emptyWizardDraft(name: string): TripWizardDraft {
     reminders: [],
     meetings: [],
     shellCommitted: false,
+    wizardFinished: false,
+    datesPlacesConfirmed: false,
   };
 }
 

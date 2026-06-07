@@ -11,8 +11,8 @@ export default function DemoPage() {
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Demo trip</h1>
             <p className="mt-4 text-zinc-600 leading-relaxed">
-              Preview the compact student Today screen — a clean run sheet, not a pile of cards.
-              Weather, categories, and offline access are built in.
+              Preview the school trip hub students actually use on their phones — a compact daily
+              run sheet with weather, offline access, and no app download required.
             </p>
             <p className="mt-4 text-sm text-zinc-600">
               Run <code className="rounded bg-zinc-100 px-1">npm run seed:japan</code> to load a
@@ -20,10 +20,10 @@ export default function DemoPage() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href="/signup"
+                href="/signup?type=school"
                 className="inline-flex h-11 items-center justify-center rounded-xl bg-zinc-900 px-6 text-sm font-medium text-white"
               >
-                Create host account
+                Start school account
               </Link>
               <Link
                 href="/dashboard"

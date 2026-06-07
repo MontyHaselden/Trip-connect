@@ -3,6 +3,8 @@ import { desc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { publishedTripSnapshots, trips } from "@/lib/db/schema";
+import { enforceViewerLinks } from "@/lib/plans/enforce-plan";
+import { getTripOwnerAccountId } from "@/lib/plans/account-usage";
 import { filterSnapshotForViewer } from "@/lib/publish/filter-for-viewer";
 import type { PublishedTripSnapshotV1 } from "@/types/published-trip";
 
@@ -26,6 +28,14 @@ export async function POST(
 
     if (!trip || trip.publishedVersion < 1) {
       return NextResponse.json({ error: "Trip not available." }, { status: 404 });
+    }
+
+    const ownerId = await getTripOwnerAccountId(trip.id);
+    if (ownerId) {
+      const viewerCheck = await enforceViewerLinks(ownerId);
+      if (!viewerCheck.allowed) {
+        return NextResponse.json({ error: viewerCheck.hardBlock }, { status: 403 });
+      }
     }
 
     const snapshotRow = await db

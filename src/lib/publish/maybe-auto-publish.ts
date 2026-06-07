@@ -7,10 +7,13 @@ import {
   compareSnapshots,
   diffHasChanges,
 } from "@/lib/publish/compare-snapshots";
+import { analyzeImportGaps } from "@/lib/host/wizard/analyze-import-gaps";
 import { publishTrip } from "@/lib/publish/publish-trip";
 import type { PublishedTripSnapshotV1 } from "@/types/published-trip";
 
 export async function maybeAutoPublish(tripId: string) {
+  const gaps = await analyzeImportGaps(tripId);
+  if (gaps.length) return null;
   const trip = await db
     .select({ publishedVersion: trips.publishedVersion })
     .from(trips)
@@ -41,4 +44,9 @@ export async function maybeAutoPublish(tripId: string) {
   if (!diffHasChanges(diff)) return null;
 
   return publishTrip(tripId);
+}
+
+/** Run auto-publish in the background so edit APIs return immediately. */
+export function scheduleAutoPublish(tripId: string) {
+  void maybeAutoPublish(tripId).catch(() => null);
 }

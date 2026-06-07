@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { WizardClient } from "@/components/host/wizard/WizardClient";
 import { getHostSession } from "@/lib/auth/host-session";
 import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
+import { WIZARD_LAST_STEP } from "@/lib/host/wizard/types";
 
 export default async function TripWizardPage({
   params,
@@ -13,7 +14,7 @@ export default async function TripWizardPage({
 }) {
   const { tripId } = await params;
   const { step } = await searchParams;
-  const initialStep = Math.min(8, Math.max(1, Number(step) || 1));
+  const initialStep = Math.min(WIZARD_LAST_STEP, Math.max(1, Number(step) || 1));
 
   const session = await getHostSession();
   if (!session) redirect("/login");

@@ -6,8 +6,6 @@ import { CountryPicker } from "@/components/geo/CountryPicker";
 import { PlacePicker } from "@/components/geo/PlacePicker";
 import { TripTimezoneNote } from "@/components/geo/TripTimezoneNote";
 
-import { TripDateRangePicker } from "../shared/TripDateRangePicker";
-
 export function BasicsStep({
   draft,
   onChange,
@@ -25,7 +23,8 @@ export function BasicsStep({
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">Trip basics</h2>
       <p className="text-sm text-zinc-600">
-        Core details for your trip. Buffer days before and after can be added in the next steps.
+        Core details for your trip. Trip dates are set automatically from your outbound and return
+        flights in the next step.
       </p>
       <label className="block text-sm">
         <span className="font-medium">Trip name</span>
@@ -43,16 +42,6 @@ export function BasicsStep({
           className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
         />
       </label>
-      <div className="block text-sm">
-        <span className="font-medium">Trip dates</span>
-        <div className="mt-2">
-          <TripDateRangePicker
-            startDate={b.startDate}
-            endDate={b.endDate}
-            onChange={({ startDate, endDate }) => setBasics({ startDate, endDate })}
-          />
-        </div>
-      </div>
       <CountryPicker
         value={b.destinationCountries}
         onChange={(destinationCountries) => setBasics({ destinationCountries })}

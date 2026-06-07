@@ -31,8 +31,8 @@ export async function POST(
     await commitWizardShell(tripId, row.draft);
     await commitWizardActivities(tripId, row.draft);
 
-    const updated = { ...row.draft, shellCommitted: true };
-    await saveWizardDraft(tripId, 8, updated);
+    const updated = { ...row.draft, shellCommitted: true, wizardFinished: true };
+    await saveWizardDraft(tripId, 5, updated);
 
     return NextResponse.json({ ok: true, tripId });
   } catch (err) {

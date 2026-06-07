@@ -1,4 +1,7 @@
 import type { ItineraryTree } from "@/components/host/itinerary/types";
+import type { ChangeScopeInput } from "@/lib/ai/change-scope-schema";
+import { formatChangeScopePrompt, primaryScopeDate } from "@/lib/ai/change-scope";
+import { looksLikeDaySchedule } from "@/lib/ai/day-schedule-detect";
 
 export type ProposedChange = {
   type: "add_item" | "update_item" | "add_day" | "add_prep" | "update_trip_dates";
@@ -68,9 +71,22 @@ export type MockChatResult = {
 export function processMockChatMessage(params: {
   message: string;
   itinerary: ItineraryTree;
+  changeScope: ChangeScopeInput;
 }): MockChatResult {
   const msg = params.message.trim();
   const lower = msg.toLowerCase();
+  const scopeLine = formatChangeScopePrompt(params.changeScope);
+  const scopeDate = primaryScopeDate(params.changeScope);
+
+  function withScope(reply: string): string {
+    const label =
+      params.changeScope.mode === "whole_trip"
+        ? "Scope: whole trip."
+        : params.changeScope.mode === "today"
+          ? `Scope: ${params.changeScope.date}.`
+          : `Scope: ${params.changeScope.dates?.join(", ")}.`;
+    return `${reply}\n\n${label}`;
+  }
 
   if (/jack.*noah|noah.*jack/.test(lower) && /sumo|samurai/.test(lower)) {
     return {
@@ -107,19 +123,27 @@ export function processMockChatMessage(params: {
     };
   }
 
-  if (/move.*dinner|dinner.*\d|osaka dinner|doe dinner/.test(lower)) {
+  if (
+    /\bmove\b.*\bdinner\b|\bosaka dinner\b|\bdinner\b.*\b(?:to|from)\b/i.test(lower) &&
+    !looksLikeDaySchedule(msg)
+  ) {
     return {
-      assistantReply:
+      assistantReply: withScope(
         "Proposed change: move the Osaka dinner from 6:00pm to 7:00pm for everyone on that day.",
+      ),
       needsClarification: false,
       proposedChanges: [
         {
           type: "update_item",
           summary: "Move dinner to 7:00pm",
-          payload: { titleMatch: "dinner", startTime: "19:00:00" },
+          payload: {
+            titleMatch: "dinner",
+            startTime: "19:00:00",
+            ...(scopeDate ? { date: scopeDate } : {}),
+          },
         },
       ],
-      warnings: [],
+      warnings: scopeLine ? [] : ["No day scope provided"],
     };
   }
 

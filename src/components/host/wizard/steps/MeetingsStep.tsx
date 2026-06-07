@@ -1,6 +1,7 @@
 "use client";
 
 import { PlacePicker } from "@/components/geo/PlacePicker";
+import { TimeInput } from "@/components/ui/TimeInput";
 import { MEETING_TYPES, type MeetingDraft, type TripWizardDraft, newId } from "@/lib/host/wizard/types";
 
 export function MeetingsStep({
@@ -70,11 +71,10 @@ export function MeetingsStep({
                 onChange={(e) => updateMeeting(i, { date: e.target.value })}
                 className="h-10 rounded-lg border border-zinc-200 px-2 text-sm"
               />
-              <input
-                type="time"
-                value={mtg.time ?? ""}
-                onChange={(e) => updateMeeting(i, { time: e.target.value || null })}
-                className="h-10 rounded-lg border border-zinc-200 px-2 text-sm"
+              <TimeInput
+                value={mtg.time}
+                onChange={(time) => updateMeeting(i, { time })}
+                inputClassName="h-10 rounded-lg border border-zinc-200 px-2 text-sm shadow-none focus:ring-0"
               />
             </div>
             <PlacePicker

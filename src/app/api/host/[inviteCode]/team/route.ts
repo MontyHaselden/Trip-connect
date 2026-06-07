@@ -9,6 +9,8 @@ import {
 import { hostApiError } from "@/lib/host/api-errors";
 import { db } from "@/lib/db/client";
 import { hostAccounts, hostTripInvites, hostTripMembers } from "@/lib/db/schema";
+import { getStaffCountForAccount } from "@/lib/plans/account-usage";
+import { enforceStaffLimit } from "@/lib/plans/enforce-plan";
 
 export async function GET(
   _req: Request,
@@ -59,6 +61,16 @@ export async function POST(
   const { inviteCode } = await ctx.params;
   try {
     const membership = await requireHostTripEditAccess(inviteCode);
+
+    const staffCount = await getStaffCountForAccount(membership.hostId);
+    const staffCheck = await enforceStaffLimit({
+      accountId: membership.hostId,
+      staffCount: staffCount + 1,
+    });
+    if (!staffCheck.allowed) {
+      return NextResponse.json({ error: staffCheck.hardBlock ?? staffCheck.softWarning }, { status: 403 });
+    }
+
     const json = await req.json().catch(() => null);
     const parsed = InviteSchema.safeParse(json);
     if (!parsed.success) {

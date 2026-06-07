@@ -1,8 +1,5 @@
 "use client";
 
-import {
-  COMPACT_SHORT_THRESHOLD_MINUTES,
-} from "@/lib/timeline/compact-day-layout";
 import { useTypewriterText } from "@/hooks/useTypewriterText";
 import {
   categoryAccent,
@@ -11,10 +8,15 @@ import {
   type ItineraryRowItem,
 } from "@/lib/utils/itinerary-item-style";
 
-function titleSizeClass(durationMinutes: number, blockHeightPx: number) {
-  if (durationMinutes >= 180 || blockHeightPx >= 200) return "text-2xl font-bold leading-tight";
-  if (durationMinutes >= 90 || blockHeightPx >= 120) return "text-xl font-semibold leading-snug";
-  if (durationMinutes >= 60 || blockHeightPx >= 80) return "text-base font-semibold leading-snug";
+function titleSizeClass(spanMinutes: number, blockHeightPx: number, minBlockHeightPx: number) {
+  const isDominant = blockHeightPx >= minBlockHeightPx * 3;
+  if (spanMinutes >= 180 || isDominant) return "text-2xl font-bold leading-tight";
+  if (spanMinutes >= 90 || blockHeightPx >= minBlockHeightPx * 2) {
+    return "text-xl font-semibold leading-snug";
+  }
+  if (spanMinutes >= 60 || blockHeightPx >= minBlockHeightPx * 1.35) {
+    return "text-base font-semibold leading-snug";
+  }
   return "text-sm font-medium leading-snug";
 }
 
@@ -47,8 +49,9 @@ export function CompactItineraryRow(props: {
   isActive?: boolean;
   isNext?: boolean;
   onTap: () => void;
-  durationMinutes: number;
+  spanMinutes: number;
   heightPx: number;
+  minBlockHeightPx: number;
   animateIn?: boolean;
   typewriterTitle?: boolean;
 }) {
@@ -58,15 +61,16 @@ export function CompactItineraryRow(props: {
     isActive,
     isNext,
     onTap,
-    durationMinutes,
+    spanMinutes,
     heightPx,
+    minBlockHeightPx,
     animateIn,
     typewriterTitle,
   } = props;
   const category = resolveCategory(item);
   const accent = categoryAccent(category);
   const time = formatCompactStartTime(item.startTime, tripTimezone);
-  const isShort = durationMinutes <= COMPACT_SHORT_THRESHOLD_MINUTES;
+  const isShort = heightPx <= minBlockHeightPx * 1.1;
   const title = useTypewriterText(item.title, Boolean(typewriterTitle));
 
   return (
@@ -99,8 +103,8 @@ export function CompactItineraryRow(props: {
       <span
         className={[
           "min-w-0 text-zinc-900",
-          titleSizeClass(durationMinutes, heightPx),
-          isShort ? "line-clamp-2" : heightPx < 100 ? "line-clamp-2" : "line-clamp-3",
+          titleSizeClass(spanMinutes, heightPx, minBlockHeightPx),
+          isShort ? "line-clamp-2" : heightPx < minBlockHeightPx * 1.35 ? "line-clamp-2" : "line-clamp-3",
         ].join(" ")}
       >
         {title}

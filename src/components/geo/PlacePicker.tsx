@@ -9,6 +9,8 @@ import { AutocompleteField, type AutocompleteOption } from "./AutocompleteField"
 export function PlacePicker({
   value,
   onChange,
+  onSelectOption,
+  onBlur,
   placeholder = "Search city or region…",
   countryNames = [],
   inputClassName,
@@ -16,6 +18,8 @@ export function PlacePicker({
 }: {
   value: string;
   onChange: (value: string) => void;
+  onSelectOption?: (value: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   countryNames?: string[];
   inputClassName?: string;
@@ -42,7 +46,10 @@ export function PlacePicker({
       return suggestions.map((s) => ({
         id: s.id,
         label: useShortLabel ? s.shortLabel : s.label,
-        sublabel: useShortLabel ? s.label : [s.region, s.country].filter(Boolean).join(" · "),
+        sublabel:
+          s.region && s.country
+            ? `${s.region} · ${s.country}`
+            : s.region ?? s.country ?? undefined,
       }));
     },
     [countryNames, useShortLabel],
@@ -52,6 +59,12 @@ export function PlacePicker({
     <AutocompleteField
       value={value}
       onChange={onChange}
+      onSelectOption={
+        onSelectOption
+          ? (option) => onSelectOption(option.label)
+          : undefined
+      }
+      onBlur={onBlur}
       placeholder={placeholder}
       search={search}
       minChars={2}

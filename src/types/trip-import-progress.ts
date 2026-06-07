@@ -1,7 +1,10 @@
 import type { ImportGap } from "@/lib/host/wizard/analyze-import-gaps";
 
 export type TripImportProgress =
-  | { type: "phase"; phase: "reading" | "planning" | "building" }
+  | {
+      type: "phase";
+      phase: "reading" | "planning" | "structure" | "structure_applied" | "building";
+    }
   | {
       type: "trip_dates";
       startDate: string;

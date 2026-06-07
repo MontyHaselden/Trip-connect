@@ -3,6 +3,7 @@
 import { createContext, useContext } from "react";
 
 import type { TripCacheState } from "@/hooks/useTripCache";
+import type { ParticipantPhoto } from "@/lib/student/participant-photos";
 
 export type TodayDayNav = {
   scheduledDays: Array<{
@@ -31,6 +32,8 @@ export type TripAppContextValue = {
   tripId: string;
   calendarOpen: boolean;
   setCalendarOpen: (open: boolean) => void;
+  participantPhotos: ParticipantPhoto[];
+  refreshPhotos: () => Promise<void>;
 };
 
 export const TripAppContext = createContext<TripAppContextValue | null>(null);

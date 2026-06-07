@@ -7,7 +7,7 @@ import type { DayWeatherSnapshot } from "@/types/activity-category";
 import { computeCompactBlockLayouts } from "@/lib/timeline/compact-day-layout";
 import { daysUntilTrip } from "@/lib/utils/time";
 import {
-  computeDisplayDurationsById,
+  computeLayoutSpanMinutesById,
   getNowMinutes,
   isActiveAtNow,
   timeToMinutes,
@@ -16,7 +16,6 @@ import type { ItineraryRowItem } from "@/lib/utils/itinerary-item-style";
 
 import { ActivityDetailSheet } from "./ActivityDetailSheet";
 import { CompactItineraryRow } from "./CompactItineraryRow";
-import { DayDensityBadge } from "./DayDensityBadge";
 import { DayWeatherStrip } from "./DayWeatherStrip";
 
 export function CompactDaySheet(props: {
@@ -33,6 +32,10 @@ export function CompactDaySheet(props: {
   typewriterItemId?: string | null;
   buildingEmptyLabel?: string | null;
   listFooter?: ReactNode;
+  nightStay?: { name: string | null; color: string } | null;
+  hostEditing?: {
+    onEditItem: (item: ItineraryRowItem) => void;
+  };
 }) {
   const {
     items,
@@ -48,6 +51,8 @@ export function CompactDaySheet(props: {
     typewriterItemId,
     buildingEmptyLabel,
     listFooter,
+    nightStay,
+    hostEditing,
   } = props;
 
   const [selectedItem, setSelectedItem] = useState<ItineraryRowItem | null>(null);
@@ -100,7 +105,7 @@ export function CompactDaySheet(props: {
     return `Next meeting: ${next.title} at ${time}`;
   }, [isPreTrip, items, nowMinutes]);
 
-  const durationById = useMemo(() => computeDisplayDurationsById(items), [items]);
+  const layoutSpans = useMemo(() => computeLayoutSpanMinutesById(items), [items]);
   const listRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(0);
 
@@ -117,8 +122,8 @@ export function CompactDaySheet(props: {
   }, [items.length]);
 
   const blockLayout = useMemo(
-    () => computeCompactBlockLayouts(items, durationById, containerHeight),
-    [items, durationById, containerHeight],
+    () => computeCompactBlockLayouts(items, layoutSpans, containerHeight),
+    [items, layoutSpans, containerHeight],
   );
 
   const hasContent = items.length > 0 || prepItems.length > 0 || listFooter;
@@ -147,29 +152,38 @@ export function CompactDaySheet(props: {
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="shrink-0 space-y-0.5 pb-1">
-          <DayWeatherStrip cityLabel={cityLabel} weather={weather} />
-          {typeof daysUntil === "number" && daysUntil > 0 ? (
-            <p className="text-xs text-zinc-500">
-              {daysUntil} day{daysUntil === 1 ? "" : "s"} until trip
-            </p>
-          ) : null}
-          {nextMeetingLine ? (
-            <p className="text-xs font-medium text-sky-800">{nextMeetingLine}</p>
-          ) : null}
-          <DayDensityBadge itemCount={items.length} />
-        </div>
+        {weather || (typeof daysUntil === "number" && daysUntil > 0) || nextMeetingLine ? (
+          <div className="shrink-0 space-y-0.5 pb-1">
+            <DayWeatherStrip cityLabel={cityLabel} weather={weather} />
+            {typeof daysUntil === "number" && daysUntil > 0 ? (
+              <p className="text-xs text-zinc-500">
+                {daysUntil} day{daysUntil === 1 ? "" : "s"} until trip
+              </p>
+            ) : null}
+            {nextMeetingLine ? (
+              <p className="text-xs font-medium text-sky-800">{nextMeetingLine}</p>
+            ) : null}
+          </div>
+        ) : null}
 
         {items.length > 0 ? (
           <div
             ref={listRef}
             className={[
-              "flex min-h-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white shadow-sm",
+              "relative flex min-h-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white shadow-sm",
               blockLayout.needsScroll
                 ? "no-scrollbar overflow-y-auto overscroll-y-contain"
                 : "overflow-hidden",
             ].join(" ")}
           >
+            {nightStay ? (
+              <span
+                className="absolute top-2 right-2 z-10 h-3 w-3 rounded-full ring-2 ring-white"
+                style={{ backgroundColor: nightStay.color }}
+                title={nightStay.name ?? "Accommodation"}
+                aria-label={nightStay.name ? `Staying at ${nightStay.name}` : "Accommodation"}
+              />
+            ) : null}
             {items.map((item) => (
               <CompactItineraryRow
                 key={item.id}
@@ -177,9 +191,14 @@ export function CompactDaySheet(props: {
                 tripTimezone={tripTimezone}
                 isActive={item.id === activeId}
                 isNext={item.id === nextId && item.id !== activeId}
-                onTap={() => setSelectedItem(item)}
-                durationMinutes={durationById.get(item.id) ?? 60}
+                onTap={() =>
+                  hostEditing
+                    ? hostEditing.onEditItem(item)
+                    : setSelectedItem(item)
+                }
+                spanMinutes={layoutSpans.spanById.get(item.id) ?? 60}
                 heightPx={blockLayout.heightsById.get(item.id) ?? 48}
+                minBlockHeightPx={blockLayout.minBlockHeightPx}
                 animateIn={animateItemIds?.has(item.id)}
                 typewriterTitle={typewriterItemId === item.id}
               />
@@ -205,7 +224,7 @@ export function CompactDaySheet(props: {
       </div>
 
       <ActivityDetailSheet
-        item={selectedItem}
+        item={hostEditing ? null : selectedItem}
         tripTimezone={tripTimezone}
         mapsEnabled={mapsOnline}
         onClose={() => setSelectedItem(null)}

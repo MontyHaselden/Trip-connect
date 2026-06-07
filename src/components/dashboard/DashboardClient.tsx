@@ -5,7 +5,11 @@ import { useEffect, useState } from "react";
 
 import { formatTripDateRangeLabel } from "@/lib/host/trip-date-display";
 
+import type { TripLifecycleStatus } from "@/lib/host/trip-lifecycle";
+
+import { AccountPlanPanel } from "./AccountPlanPanel";
 import { DashboardShell } from "./DashboardShell";
+import { TripStatusBadge } from "./TripStatusBadge";
 
 type TripRow = {
   id: string;
@@ -17,6 +21,10 @@ type TripRow = {
   publishedVersion: number;
   canDelete: boolean;
   deleteBlockedReason: string | null;
+  status: TripLifecycleStatus;
+  statusLabel: string;
+  wizardStep: number | null;
+  continuePath: string;
 };
 
 export function DashboardClient() {
@@ -67,7 +75,9 @@ export function DashboardClient() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold">Your trips</h1>
-            <p className="mt-1 text-sm text-zinc-600">Manage school trip itineraries.</p>
+            <p className="mt-1 text-sm text-zinc-600">
+              Manage live school trip hubs — or personal group trips.
+            </p>
           </div>
           <Link
             href="/dashboard/trips/new"
@@ -76,6 +86,7 @@ export function DashboardClient() {
             New trip
           </Link>
         </div>
+        <AccountPlanPanel />
         {error ? (
           <p className="mt-4 text-sm text-red-700">{error}</p>
         ) : null}
@@ -86,15 +97,19 @@ export function DashboardClient() {
             {trips.map((t) => (
               <li key={t.id}>
                 <div className="flex items-stretch gap-2 rounded-xl border border-zinc-200 bg-white hover:border-zinc-300">
-                  <Link
-                    href={`/dashboard/trips/${t.id}/builder`}
-                    className="min-w-0 flex-1 p-4"
-                  >
-                    <p className="font-semibold">{t.name}</p>
+                  <Link href={t.continuePath} className="min-w-0 flex-1 p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold">{t.name}</p>
+                      <TripStatusBadge status={t.status} label={t.statusLabel} />
+                    </div>
                     <p className="mt-1 text-sm text-zinc-600">
                       {t.schoolName} · {formatTripDateRangeLabel(t.startDate, t.endDate)}
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">
+                      {t.status === "building" && t.wizardStep
+                        ? `Setup in progress · step ${t.wizardStep} of 8`
+                        : null}
+                      {t.status === "building" && t.wizardStep ? " · " : null}
                       Published v{t.publishedVersion} · invite {t.inviteCode}
                     </p>
                     {!t.canDelete && t.deleteBlockedReason ? (

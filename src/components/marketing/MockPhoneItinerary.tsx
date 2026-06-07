@@ -17,7 +17,7 @@ export function MockPhoneItinerary() {
         </div>
         <div className="space-y-1 px-3 py-2">
           <p className="text-[10px] leading-snug text-zinc-600">
-            28°C — Light rain. Bring umbrella.
+            28°C, light rain
           </p>
           <p className="text-[10px] text-zinc-500">6 activities · busy day</p>
         </div>

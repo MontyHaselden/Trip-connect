@@ -4,13 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:3001": "next dev -p 3001",
+    "dev:3002": "next dev -p 3002",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:apply": "tsx scripts/apply-sql-migrations.ts",
-    "seed:japan": "tsx scripts/seed-japan-trip.ts"
+    "seed:japan": "tsx scripts/seed-japan-trip.ts",
+    "bootstrap:admin": "tsx scripts/bootstrap-super-admin.ts",
+    "test": "tsx --test src/lib/timeline/compact-day-layout.test.ts src/lib/host/activity-transport.test.ts src/lib/host/wizard/analyze-import-gaps.test.ts src/lib/host/wizard/crossover-adjust.test.ts src/lib/host/wizard/db-enums.test.ts src/lib/host/wizard/detect-airport-transfers.test.ts src/lib/host/wizard/detect-city-moves.test.ts src/lib/host/wizard/derive-trip-dates.test.ts src/lib/host/wizard/location-stays.test.ts src/lib/ai/change-scope.test.ts src/lib/ai/day-schedule-detect.test.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

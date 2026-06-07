@@ -48,3 +48,31 @@ body {
 .animate-block-in {
   animation: block-in 0.35s ease-out both;
 }
+
+.time-picker-panel {
+  animation: time-picker-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.time-picker-backdrop {
+  animation: time-picker-backdrop-in 0.18s ease-out both;
+}
+
+@keyframes time-picker-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes time-picker-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

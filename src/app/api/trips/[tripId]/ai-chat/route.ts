@@ -3,15 +3,18 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/lib/db/client";
-import { processMockChatMessage } from "@/lib/ai/mock-chat";
+import { processChatMessage } from "@/lib/ai/process-chat-message";
+import { ChangeScopeSchema } from "@/lib/ai/change-scope-schema";
 import { requireHostSessionHostId } from "@/lib/auth/host-session";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import { loadItineraryTree } from "@/lib/host/itinerary-queries";
-import { aiChangeProposals } from "@/lib/db/schema";
+import { aiChangeProposals, aiUsageEvents } from "@/lib/db/schema";
+import { enforceAiBuilder } from "@/lib/plans/enforce-plan";
 
 const BodySchema = z.object({
   message: z.string().trim().min(1).max(4000),
+  changeScope: ChangeScopeSchema,
 });
 
 export async function POST(
@@ -24,6 +27,11 @@ export async function POST(
     const trip = await getTripByIdForHost(hostId, tripId);
     if (!trip) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
+    const aiCheck = await enforceAiBuilder(hostId);
+    if (!aiCheck.allowed) {
+      return NextResponse.json({ error: aiCheck.hardBlock }, { status: 403 });
+    }
+
     const json = await req.json().catch(() => null);
     const parsed = BodySchema.safeParse(json);
     if (!parsed.success) {
@@ -31,9 +39,18 @@ export async function POST(
     }
 
     const itinerary = await loadItineraryTree(tripId);
-    const result = processMockChatMessage({
+    const result = await processChatMessage({
       message: parsed.data.message,
       itinerary,
+      changeScope: parsed.data.changeScope,
+      trip: {
+        name: trip.name,
+        startDate: trip.startDate,
+        endDate: trip.endDate,
+        timezone: trip.timezone,
+        destinationCountry: trip.destinationCountry,
+        destinationLanguage: trip.destinationLanguage,
+      },
     });
 
     const [proposal] = await db
@@ -48,6 +65,14 @@ export async function POST(
         status: result.needsClarification ? "draft" : "draft",
       })
       .returning();
+
+    await db.insert(aiUsageEvents).values({
+      accountId: hostId,
+      tripId,
+      eventType: "chat",
+      callCount: 1,
+      estimatedCostCents: 5,
+    });
 
     return NextResponse.json({
       proposalId: proposal?.id,

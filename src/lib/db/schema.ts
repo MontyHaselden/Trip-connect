@@ -4,6 +4,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -65,6 +66,21 @@ export const hostAccountRole = pgEnum("host_account_role", [
   "helper",
   "host",
   "admin",
+]);
+
+export const accountType = pgEnum("account_type", [
+  "school",
+  "personal",
+  "organisation_interest",
+]);
+
+export const subscriptionPlan = pgEnum("subscription_plan", [
+  "school_starter",
+  "school_pro",
+  "school_pro_plus",
+  "personal_one_time",
+  "personal",
+  "personal_pro",
 ]);
 
 export const mobileTokenPurpose = pgEnum("mobile_token_purpose", [
@@ -132,11 +148,29 @@ export const hostAccounts = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     email: text("email").notNull(),
-    phoneNumberE164: text("phone_number_e164").notNull(),
+    phoneNumberE164: text("phone_number_e164"),
     passwordHash: text("password_hash").notNull(),
     fullName: text("full_name").notNull(),
     role: hostAccountRole("role").notNull(),
+    accountType: accountType("account_type").notNull().default("school"),
+    plan: subscriptionPlan("plan").notNull().default("school_starter"),
+    schoolName: text("school_name"),
+    jobTitle: text("job_title"),
+    planExpiresAt: timestamp("plan_expires_at", { withTimezone: true }),
     linkedParticipantId: uuid("linked_participant_id"),
+    billingContactName: text("billing_contact_name"),
+    billingEmail: text("billing_email"),
+    billingAddress: text("billing_address"),
+    xeroContactId: text("xero_contact_id"),
+    foundingSchool: boolean("founding_school").notNull().default(false),
+    pausedAt: timestamp("paused_at", { withTimezone: true }),
+    internalNotes: text("internal_notes"),
+    overrideAiBuilder: boolean("override_ai_builder"),
+    overrideViewerLinks: boolean("override_viewer_links"),
+    overridePhotoGallery: boolean("override_photo_gallery"),
+    overrideActiveTripLimit: integer("override_active_trip_limit"),
+    overrideStaffLimit: integer("override_staff_limit"),
+    subscriptionId: uuid("subscription_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -748,6 +782,314 @@ export const publishedTripSnapshots = pgTable(
       s.tripId,
       s.version,
     ),
+  }),
+);
+
+export const adminRole = pgEnum("admin_role", [
+  "super_admin",
+  "admin",
+  "support",
+]);
+
+export const billingStatus = pgEnum("billing_status", [
+  "trial",
+  "active",
+  "manual",
+  "past_due",
+  "cancelled",
+  "expired",
+  "comped",
+]);
+
+export const invoiceStatus = pgEnum("invoice_status", [
+  "draft",
+  "issued",
+  "sent",
+  "paid",
+  "overdue",
+  "void",
+  "cancelled",
+]);
+
+export const paymentProvider = pgEnum("payment_provider", [
+  "manual",
+  "stripe",
+  "payshare",
+  "none",
+]);
+
+export const enforcementMode = pgEnum("enforcement_mode", ["soft", "hard"]);
+
+export const gstDisplayMode = pgEnum("gst_display_mode", [
+  "plus_gst",
+  "inc_gst",
+]);
+
+export const payshareSessionStatus = pgEnum("payshare_session_status", [
+  "pending",
+  "completed",
+  "expired",
+  "cancelled",
+]);
+
+export const adminUsers = pgTable(
+  "admin_users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: text("email").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    fullName: text("full_name").notNull(),
+    role: adminRole("role").notNull().default("admin"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (a) => ({
+    emailUnique: uniqueIndex("admin_users_email_unique").on(a.email),
+  }),
+);
+
+export const plans = pgTable(
+  "plans",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    accountType: accountType("account_type").notNull(),
+    basePriceCents: integer("base_price_cents").notNull().default(0),
+    billingPeriod: text("billing_period").notNull().default("year"),
+    staffAccountLimit: integer("staff_account_limit").notNull().default(1),
+    activeTripLimit: integer("active_trip_limit").notNull().default(1),
+    groupSizeLimit: integer("group_size_limit"),
+    aiBuilderEnabled: boolean("ai_builder_enabled").notNull().default(false),
+    aiPhrasesEnabled: boolean("ai_phrases_enabled").notNull().default(false),
+    schoolToolsEnabled: boolean("school_tools_enabled").notNull().default(false),
+    viewerAccessEnabled: boolean("viewer_access_enabled").notNull().default(true),
+    photoGalleryEnabled: boolean("photo_gallery_enabled").notNull().default(true),
+    payshareEnabled: boolean("payshare_enabled").notNull().default(false),
+    visible: boolean("visible").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    badge: text("badge"),
+    publicDescription: text("public_description"),
+    featureList: jsonb("feature_list").notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (p) => ({
+    codeUnique: uniqueIndex("plans_code_unique").on(p.code),
+  }),
+);
+
+export const platformSettings = pgTable("platform_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedByAdminId: uuid("updated_by_admin_id").references(() => adminUsers.id, {
+    onDelete: "set null",
+  }),
+});
+
+export const priceOverrides = pgTable(
+  "price_overrides",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => hostAccounts.id, { onDelete: "cascade" }),
+    basePriceCents: integer("base_price_cents").notNull(),
+    gstBehaviour: text("gst_behaviour").notNull().default("standard"),
+    startsAt: timestamp("starts_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    reason: text("reason"),
+    internalNotes: text("internal_notes"),
+    lockedPrice: boolean("locked_price").notNull().default(false),
+    createdByAdminId: uuid("created_by_admin_id").references(() => adminUsers.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (o) => ({
+    accountIdx: index("price_overrides_account_id_idx").on(o.accountId),
+  }),
+);
+
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => hostAccounts.id, { onDelete: "cascade" }),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => plans.id),
+    billingStatus: billingStatus("billing_status").notNull().default("manual"),
+    paymentProvider: paymentProvider("payment_provider")
+      .notNull()
+      .default("manual"),
+    startsAt: timestamp("starts_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    renewsAt: timestamp("renews_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    basePriceCents: integer("base_price_cents").notNull(),
+    gstRate: numeric("gst_rate", { precision: 5, scale: 4 }).notNull().default("0.15"),
+    gstAmountCents: integer("gst_amount_cents").notNull().default(0),
+    totalCents: integer("total_cents").notNull().default(0),
+    priceOverrideId: uuid("price_override_id").references(() => priceOverrides.id, {
+      onDelete: "set null",
+    }),
+    foundingPriceLocked: boolean("founding_price_locked").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (s) => ({
+    accountIdx: index("subscriptions_account_id_idx").on(s.accountId),
+  }),
+);
+
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => hostAccounts.id, { onDelete: "cascade" }),
+    subscriptionId: uuid("subscription_id").references(() => subscriptions.id, {
+      onDelete: "set null",
+    }),
+    planId: uuid("plan_id").references(() => plans.id, { onDelete: "set null" }),
+    invoiceNumber: text("invoice_number").notNull(),
+    issueDate: date("issue_date").notNull().defaultNow(),
+    dueDate: date("due_date").notNull(),
+    currency: text("currency").notNull().default("NZD"),
+    subtotalCents: integer("subtotal_cents").notNull(),
+    gstRate: numeric("gst_rate", { precision: 5, scale: 4 }).notNull().default("0.15"),
+    gstAmountCents: integer("gst_amount_cents").notNull(),
+    totalCents: integer("total_cents").notNull(),
+    status: invoiceStatus("status").notNull().default("draft"),
+    paymentProvider: paymentProvider("payment_provider")
+      .notNull()
+      .default("manual"),
+    paymentReference: text("payment_reference"),
+    pdfUrl: text("pdf_url"),
+    internalNotes: text("internal_notes"),
+    xeroInvoiceId: text("xero_invoice_id"),
+    xeroContactId: text("xero_contact_id"),
+    xeroStatus: text("xero_status"),
+    xeroLastSyncedAt: timestamp("xero_last_synced_at", { withTimezone: true }),
+    xeroError: text("xero_error"),
+    createdByAdminId: uuid("created_by_admin_id").references(() => adminUsers.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (i) => ({
+    numberUnique: uniqueIndex("invoices_number_unique").on(i.invoiceNumber),
+    accountIdx: index("invoices_account_id_idx").on(i.accountId),
+    statusIdx: index("invoices_status_idx").on(i.status),
+  }),
+);
+
+export const payshareSessions = pgTable(
+  "payshare_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => hostAccounts.id, { onDelete: "cascade" }),
+    tripId: uuid("trip_id").references(() => trips.id, { onDelete: "set null" }),
+    planId: uuid("plan_id").references(() => plans.id, { onDelete: "set null" }),
+    sessionId: text("session_id").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    splitAmountCents: integer("split_amount_cents"),
+    groupSize: integer("group_size"),
+    status: payshareSessionStatus("status").notNull().default("pending"),
+    checkoutUrl: text("checkout_url"),
+    payshareExternalId: text("payshare_external_id"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (p) => ({
+    sessionIdUnique: uniqueIndex("payshare_sessions_session_id_unique").on(p.sessionId),
+  }),
+);
+
+export const adminAuditLog = pgTable(
+  "admin_audit_log",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    adminUserId: uuid("admin_user_id").references(() => adminUsers.id, {
+      onDelete: "set null",
+    }),
+    action: text("action").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id"),
+    beforeJson: jsonb("before_json"),
+    afterJson: jsonb("after_json"),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (a) => ({
+    createdAtIdx: index("admin_audit_log_created_at_idx").on(a.createdAt),
+    entityIdx: index("admin_audit_log_entity_idx").on(a.entityType, a.entityId),
+  }),
+);
+
+export const aiUsageEvents = pgTable(
+  "ai_usage_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => hostAccounts.id, { onDelete: "cascade" }),
+    tripId: uuid("trip_id").references(() => trips.id, { onDelete: "set null" }),
+    eventType: text("event_type").notNull().default("chat"),
+    callCount: integer("call_count").notNull().default(1),
+    estimatedCostCents: integer("estimated_cost_cents").notNull().default(0),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (e) => ({
+    accountIdx: index("ai_usage_events_account_id_idx").on(e.accountId),
   }),
 );
 

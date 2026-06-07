@@ -1,6 +1,7 @@
 "use client";
 
 import { PlacePicker } from "@/components/geo/PlacePicker";
+import { TimeInput } from "@/components/ui/TimeInput";
 import { ACTIVITY_CATEGORIES, type ActivityCategory } from "@/types/activity-category";
 import type { ActivityDraft, ReminderDraft, TripWizardDraft } from "@/lib/host/wizard/types";
 import { BOOKING_STATUSES, newId } from "@/lib/host/wizard/types";
@@ -115,11 +116,10 @@ export function ActivitiesStep({
                 Time TBC
               </label>
               {!act.isTimeTbc ? (
-                <input
-                  type="time"
-                  value={act.startTime ?? ""}
-                  onChange={(e) => updateActivity(i, { startTime: e.target.value || null })}
-                  className="h-10 w-full rounded-lg border border-zinc-200 px-2 text-sm"
+                <TimeInput
+                  value={act.startTime}
+                  onChange={(startTime) => updateActivity(i, { startTime })}
+                  inputClassName="h-10 rounded-lg border border-zinc-200 px-2 text-sm shadow-none focus:ring-0"
                 />
               ) : null}
               <label className="flex items-center gap-2 text-xs">

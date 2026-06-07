@@ -1,6 +1,6 @@
 # Trip Connect
 
-Mobile-first school trip booklet. Students use **Today** (daily schedule) and **My Trip** (contacts, emergency card, phrases) with offline caching after the first sync. Hosts manage trips from a desktop dashboard with an AI-assisted builder.
+**School trip itineraries, rebuilt for phones.** Trip Connect is a school trip management platform that replaces paper booklets, email threads, and scattered updates with one live/offline trip hub. No student GPS tracking. No per-student fees. Students join by invite link and save the trip to their phone like a PWA.
 
 ## Stack
 
@@ -34,8 +34,8 @@ npm run seed:japan   # sample Japan trip + host login
 
 | Audience | Routes |
 |----------|--------|
-| Public | `/`, `/features`, `/pricing`, `/demo`, `/login`, `/signup` |
-| Host | `/dashboard`, `/dashboard/trips/[tripId]/builder`, `.../participants`, `.../photos`, `.../viewers`, `.../settings` |
+| Public | `/`, `/features`, `/pricing`, `/demo`, `/payshare`, `/login`, `/signup` |
+| School / personal | `/dashboard` (school or personal account), `/dashboard/trips/[tripId]/builder`, wizard, participants, photos, viewers, settings |
 | Student | `/join/[inviteCode]` → `/trip/[tripId]/today`, `/trip/[tripId]/my-trip` |
 | Viewer | `/view/[viewerCode]` (read-only itinerary + gallery) |
 
