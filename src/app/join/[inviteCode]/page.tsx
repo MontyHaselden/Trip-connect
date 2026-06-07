@@ -3,6 +3,8 @@
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
+import { phoneInputProps } from "@/lib/mobile/phone-input-props";
+
 type JoinResponse = {
   tripId: string;
   participantId: string;
@@ -94,7 +96,12 @@ export default function JoinTripPage() {
             </p>
             <button
               type="button"
-              onClick={() => router.replace("/app/today")}
+              onClick={() => {
+                const tripId = storageGet("tc_trip_id");
+                router.replace(
+                  tripId ? `/trip/${tripId}/today` : "/app/today",
+                );
+              }}
               className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-50"
             >
               Open Trip
@@ -124,12 +131,11 @@ export default function JoinTripPage() {
                 Phone number
               </span>
               <input
+                {...phoneInputProps}
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-400"
                 placeholder="e.g. +64 21 123 456"
-                inputMode="tel"
-                autoComplete="tel"
                 required
               />
               <p className="mt-2 text-xs text-zinc-600">

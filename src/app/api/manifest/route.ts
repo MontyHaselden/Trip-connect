@@ -6,7 +6,7 @@ export async function GET(req: Request) {
   const shortName =
     url.searchParams.get("shortName")?.trim() ||
     (name.length > 12 ? `${name.slice(0, 12)}…` : name);
-  const startUrl = url.searchParams.get("startUrl")?.trim() || "/";
+  const startUrl = url.searchParams.get("startUrl")?.trim() || "/app/today";
 
   const manifest = {
     name,

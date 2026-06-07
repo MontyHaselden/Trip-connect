@@ -44,6 +44,22 @@ export function getStoredTripSession() {
   }
 }
 
+export const STUDENT_APP_LAUNCH_PATH = "/app/today";
+
+export function resolveStudentAppLaunchPath(
+  screen: "today" | "my-trip" = "today",
+): string {
+  const session = getStoredTripSession();
+  if (session) {
+    return screen === "my-trip"
+      ? `/trip/${session.tripId}/my-trip`
+      : `/trip/${session.tripId}/today`;
+  }
+  const inviteCode = getStoredInviteCode();
+  if (inviteCode) return `/join/${inviteCode}`;
+  return STUDENT_APP_LAUNCH_PATH;
+}
+
 export function clearTripSession() {
   for (const key of Object.values(TRIP_STORAGE_KEYS)) {
     try {

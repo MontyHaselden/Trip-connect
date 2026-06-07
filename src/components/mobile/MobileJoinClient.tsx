@@ -4,9 +4,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { InstallGate } from "@/components/mobile/InstallGate";
+import { phoneInputProps } from "@/lib/mobile/phone-input-props";
 import {
   getStoredTripSession,
   saveTripSession,
+  STUDENT_APP_LAUNCH_PATH,
 } from "@/lib/mobile/trip-storage";
 
 type JoinResponse = {
@@ -30,7 +32,7 @@ export function MobileJoinClient(props: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const manifestHref = `/api/manifest?name=${encodeURIComponent(tripName)}&startUrl=${encodeURIComponent(`/mobile/join/${inviteCode}`)}`;
+  const manifestHref = `/api/manifest?name=${encodeURIComponent(tripName)}&startUrl=${encodeURIComponent(STUDENT_APP_LAUNCH_PATH)}`;
 
   useEffect(() => {
     const session = getStoredTripSession();
@@ -147,6 +149,7 @@ export function MobileJoinClient(props: {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
+                autoComplete="name"
                 className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
               />
             </label>
@@ -154,8 +157,10 @@ export function MobileJoinClient(props: {
               <span className="font-medium">Phone number</span>
               <input
                 required
+                {...phoneInputProps}
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="e.g. +64 21 123 456"
                 className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
               />
             </label>
@@ -165,6 +170,7 @@ export function MobileJoinClient(props: {
                 required
                 type="password"
                 minLength={8}
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
@@ -187,8 +193,10 @@ export function MobileJoinClient(props: {
               <span className="font-medium">Phone number</span>
               <input
                 required
+                {...phoneInputProps}
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="e.g. +64 21 123 456"
                 className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
               />
             </label>
@@ -197,6 +205,7 @@ export function MobileJoinClient(props: {
               <input
                 required
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"

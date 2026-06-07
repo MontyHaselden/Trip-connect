@@ -2,7 +2,7 @@
   "name": "Trip Connect",
   "short_name": "Trip Connect",
   "description": "School trip booklet — Today and My Trip offline.",
-  "start_url": "/",
+  "start_url": "/app/today",
   "display": "standalone",
   "background_color": "#fafafa",
   "theme_color": "#18181b",
