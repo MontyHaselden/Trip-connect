@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { TripAppShell } from "@/components/layout/TripAppShell";
 import { StudentJoinForm } from "@/components/student/StudentJoinForm";
+import { useStudentViewportLock } from "@/hooks/useStudentViewportLock";
 import {
   buildTripManifestHref,
   wirePwaHead,
@@ -22,6 +23,8 @@ export function StudentAppRoot(props: {
 }) {
   const { inviteCode, tripId, tripName, children } = props;
   const [phase, setPhase] = useState<"loading" | "join" | "app">("loading");
+
+  useStudentViewportLock();
 
   useEffect(() => {
     const appPath = studentAppPath(inviteCode);
@@ -44,7 +47,7 @@ export function StudentAppRoot(props: {
 
   if (phase === "loading") {
     return (
-      <p className="flex min-h-dvh items-center justify-center text-sm text-zinc-600">
+      <p className="flex h-dvh items-center justify-center text-sm text-zinc-600">
         Loading…
       </p>
     );

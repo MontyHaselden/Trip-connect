@@ -15,7 +15,7 @@ import { generateAccessToken } from "@/lib/utils/tokens";
 const JoinBodySchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   phoneNumber: z.string().trim().min(3).max(40),
-  password: z.string().min(8).max(200).optional(),
+  password: z.string().min(8).max(200),
 });
 
 export async function POST(

@@ -100,7 +100,7 @@ function CalendarContent() {
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+    <div className="student-app-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-2">
       <MonthCalendar
         days={scheduledDays}
         selectedDateISO={selectedDay?.date ?? scheduledDays[0]!.date}

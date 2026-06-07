@@ -25,6 +25,34 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Student PWA: lock the page shell; scroll only inside .student-app-scroll regions. */
+html.student-app-viewport-lock,
+html.student-app-viewport-lock body {
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+@supports (-webkit-touch-callout: none) {
+  html.student-app-viewport-lock {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+  }
+
+  html.student-app-viewport-lock body {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+  }
+}
+
+.student-app-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

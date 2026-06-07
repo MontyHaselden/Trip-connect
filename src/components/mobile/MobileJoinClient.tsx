@@ -179,7 +179,7 @@ export function MobileJoinClient(props: {
               />
             </label>
             <p className="text-xs text-zinc-500">
-              Password is only needed if you sign out or reinstall the app.
+              You&apos;ll need this password if you sign out or reinstall the app.
             </p>
             <button
               type="submit"

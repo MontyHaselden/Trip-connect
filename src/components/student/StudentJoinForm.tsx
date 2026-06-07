@@ -47,7 +47,7 @@ export function StudentJoinForm(props: {
       const res = await fetch(`/api/join/${encodeURIComponent(inviteCode)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ fullName, phoneNumber, password: password || undefined }),
+        body: JSON.stringify({ fullName, phoneNumber, password }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Join failed");
@@ -83,7 +83,7 @@ export function StudentJoinForm(props: {
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-zinc-50 px-6 py-10">
+    <main className="student-app-scroll flex h-dvh flex-col items-center justify-center overflow-y-auto overscroll-y-contain bg-zinc-50 px-6 py-10">
       <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold text-zinc-900">{tripName}</h1>
         <p className="mt-1 text-sm text-zinc-600">
@@ -140,8 +140,9 @@ export function StudentJoinForm(props: {
               />
             </label>
             <label className="block text-sm">
-              <span className="font-medium">Password (optional)</span>
+              <span className="font-medium">Password</span>
               <input
+                required
                 type="password"
                 minLength={8}
                 autoComplete="new-password"
@@ -151,7 +152,7 @@ export function StudentJoinForm(props: {
               />
             </label>
             <p className="text-xs text-zinc-500">
-              Set a password if you may sign out or reinstall later.
+              You&apos;ll need this password if you sign out or reinstall the app.
             </p>
             <button
               type="submit"
@@ -179,6 +180,7 @@ export function StudentJoinForm(props: {
               <input
                 required
                 type="password"
+                minLength={8}
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

@@ -16,6 +16,7 @@ import { TripPwaHead } from "@/components/mobile/TripPwaHead";
 import { DayCalendarSheet } from "@/components/student/today/DayCalendarSheet";
 import { DayLocationButton } from "@/components/student/today/DayLocationSheet";
 import { useTripCache } from "@/hooks/useTripCache";
+import { useStudentViewportLock } from "@/hooks/useStudentViewportLock";
 import { installTripDebugGlobal, tripDebug } from "@/lib/debug/trip-debug";
 import { isStandaloneDisplayMode } from "@/lib/mobile/pwa-detect";
 import {
@@ -56,6 +57,7 @@ export function TripAppShell({
   const router = useRouter();
   const pathname = usePathname();
   const cache = useTripCache(tripId);
+  useStudentViewportLock();
   const [refreshing, setRefreshing] = useState(false);
   const [todayNav, setTodayNavState] = useState<TodayDayNav | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -222,7 +224,7 @@ export function TripAppShell({
           onDismiss={() => setShowInstallHint(false)}
         />
       ) : null}
-      <div className="h-dvh max-h-dvh overflow-hidden bg-zinc-50 text-zinc-900">
+      <div className="fixed inset-0 z-0 overflow-hidden bg-zinc-50 text-zinc-900">
         <div className="mx-auto flex h-full w-full max-w-md flex-col gap-2 overflow-hidden px-4 py-3">
           <header className="shrink-0 border-b border-zinc-200/80 pb-2 pt-0.5">
             {showDayControls && centredHeaderDateLine ? (
