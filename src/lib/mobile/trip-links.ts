@@ -43,7 +43,7 @@ export async function createPublishMobileLinks(params: {
   });
 
   const hostTripPath = `/mobile/trip/host/${hostTripToken}`;
-  const studentPath = `/mobile/join/${params.inviteCode}`;
+  const studentPath = `/s/${params.inviteCode}`;
 
   return {
     hostTrip: {

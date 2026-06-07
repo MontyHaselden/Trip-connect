@@ -1,36 +1,9 @@
-import type { Metadata } from "next";
-import { eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 
-import { db } from "@/lib/db/client";
-import { trips } from "@/lib/db/schema";
-import { studentMobileJoinPath } from "@/lib/mobile/trip-storage";
-
-export async function generateMetadata(props: {
+export default async function MobileJoinLayout(props: {
+  children: React.ReactNode;
   params: Promise<{ inviteCode: string }>;
-}): Promise<Metadata> {
+}) {
   const { inviteCode } = await props.params;
-  const trip = await db
-    .select({ name: trips.name })
-    .from(trips)
-    .where(eq(trips.inviteCode, inviteCode))
-    .limit(1)
-    .then((rows) => rows[0] ?? null);
-
-  const tripName = trip?.name ?? "Trip Connect";
-  const manifest = `/api/manifest?name=${encodeURIComponent(tripName)}&startUrl=${encodeURIComponent(studentMobileJoinPath(inviteCode))}`;
-
-  return {
-    title: tripName,
-    applicationName: tripName,
-    manifest,
-    appleWebApp: {
-      capable: true,
-      title: tripName,
-      statusBarStyle: "default",
-    },
-  };
-}
-
-export default function MobileJoinLayout(props: { children: React.ReactNode }) {
-  return props.children;
+  redirect(`/s/${encodeURIComponent(inviteCode)}`);
 }

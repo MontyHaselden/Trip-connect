@@ -1,5 +1,14 @@
-export function buildTripManifestHref(tripName: string, startUrl: string) {
-  return `/api/manifest?name=${encodeURIComponent(tripName)}&startUrl=${encodeURIComponent(startUrl)}`;
+export function buildTripManifestHref(
+  tripName: string,
+  startUrl: string,
+  manifestId?: string,
+) {
+  const params = new URLSearchParams({
+    name: tripName,
+    startUrl,
+  });
+  if (manifestId) params.set("id", manifestId);
+  return `/api/manifest?${params.toString()}`;
 }
 
 export function wirePwaHead(options: {

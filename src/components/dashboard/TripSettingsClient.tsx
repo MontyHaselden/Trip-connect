@@ -60,8 +60,8 @@ export function TripSettingsClient(props: { tripId: string }) {
 
   const joinUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/join/${trip.inviteCode}`
-      : `/join/${trip.inviteCode}`;
+      ? `${window.location.origin}/s/${trip.inviteCode}`
+      : `/s/${trip.inviteCode}`;
 
   return (
     <div className="max-w-xl">

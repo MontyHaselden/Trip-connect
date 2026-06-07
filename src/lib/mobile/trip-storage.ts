@@ -44,51 +44,6 @@ export function getStoredTripSession() {
   }
 }
 
-export const STUDENT_APP_LAUNCH_PATH = "/app/today";
-
-export function studentJoinPath(inviteCode: string) {
-  return `/join/${encodeURIComponent(inviteCode)}`;
-}
-
-export function studentMobileJoinPath(inviteCode: string) {
-  return `/mobile/join/${encodeURIComponent(inviteCode)}`;
-}
-
-export function studentTripTodayPath(tripId: string) {
-  return `/trip/${encodeURIComponent(tripId)}/today`;
-}
-
-export const INSTALL_HINT_SESSION_KEY = "tc_show_install_hint";
-
-/** Full-page navigation so iOS picks up PWA meta tags before Add to Home Screen. */
-export function redirectToStudentTrip(
-  tripId: string,
-  options?: { promptInstall?: boolean },
-) {
-  if (options?.promptInstall) {
-    try {
-      sessionStorage.setItem(INSTALL_HINT_SESSION_KEY, "1");
-    } catch {
-      // ignore
-    }
-  }
-  window.location.assign(studentTripTodayPath(tripId));
-}
-
-export function resolveStudentAppLaunchPath(
-  screen: "today" | "my-trip" = "today",
-): string {
-  const session = getStoredTripSession();
-  if (session) {
-    return screen === "my-trip"
-      ? `/trip/${session.tripId}/my-trip`
-      : `/trip/${session.tripId}/today`;
-  }
-  const inviteCode = getStoredInviteCode();
-  if (inviteCode) return `/join/${inviteCode}`;
-  return STUDENT_APP_LAUNCH_PATH;
-}
-
 export function clearTripSession() {
   for (const key of Object.values(TRIP_STORAGE_KEYS)) {
     try {
@@ -98,3 +53,18 @@ export function clearTripSession() {
     }
   }
 }
+
+export {
+  INSTALL_HINT_SESSION_KEY,
+  STUDENT_APP_LAUNCH_PATH,
+  redirectToStudentApp,
+  redirectToStudentTrip,
+  resolveStudentAppLaunchPath,
+  studentAppManifestId,
+  studentAppMyTripPath,
+  studentAppPath,
+  studentJoinPath,
+  studentMobileJoinPath,
+  studentTripMyTripPath,
+  studentTripTodayPath,
+} from "@/lib/mobile/student-app-paths";

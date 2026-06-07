@@ -20,7 +20,8 @@ import { installTripDebugGlobal, tripDebug } from "@/lib/debug/trip-debug";
 import { isStandaloneDisplayMode } from "@/lib/mobile/pwa-detect";
 import {
   INSTALL_HINT_SESSION_KEY,
-  studentTripTodayPath,
+  STUDENT_APP_LAUNCH_PATH,
+  studentAppPath,
 } from "@/lib/mobile/trip-storage";
 import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
 
@@ -46,9 +47,11 @@ function RefreshIcon({ spinning }: { spinning: boolean }) {
 export function TripAppShell({
   children,
   tripId,
+  inviteCode,
 }: {
   children: React.ReactNode;
   tripId: string;
+  inviteCode?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -83,7 +86,7 @@ export function TripAppShell({
     [cache.payload, cache.participantId],
   );
 
-  const onToday = pathname.includes("/today");
+  const onToday = pathname.includes("/today") || pathname.match(/^\/s\/[^/]+\/?$/) !== null;
   const showDayControls = onToday && todayNav !== null;
 
   const selectedDay = useMemo(() => {
@@ -152,15 +155,33 @@ export function TripAppShell({
   useEffect(() => {
     const storedTripId = localStorage.getItem("tc_trip_id");
     const token = localStorage.getItem("tc_access_token");
+    const storedInvite = localStorage.getItem("tc_invite_code");
+    const resolvedInvite = inviteCode ?? storedInvite;
+
     if (!token || !storedTripId) {
-      const invite = localStorage.getItem("tc_invite_code");
-      router.replace(invite ? `/join/${encodeURIComponent(invite)}` : "/");
+      if (resolvedInvite) {
+        router.replace(studentAppPath(resolvedInvite));
+      } else {
+        router.replace(STUDENT_APP_LAUNCH_PATH);
+      }
       return;
     }
-    if (storedTripId !== tripId) {
-      router.replace(`/trip/${storedTripId}/today`);
+
+    if (resolvedInvite && !pathname.startsWith(`/s/${resolvedInvite}`)) {
+      const suffix = pathname.includes("/my-trip") ? "/my-trip" : "";
+      const search = typeof window !== "undefined" ? window.location.search : "";
+      router.replace(`${studentAppPath(resolvedInvite)}${suffix}${search}`);
+      return;
     }
-  }, [router, tripId]);
+
+    if (storedTripId !== tripId && resolvedInvite) {
+      router.replace(studentAppPath(resolvedInvite));
+    }
+  }, [router, tripId, inviteCode, pathname]);
+
+  const pwaStartUrl = inviteCode
+    ? studentAppPath(inviteCode)
+    : undefined;
 
   const bannerStatus =
     cache.status === "updated" ||
@@ -188,10 +209,13 @@ export function TripAppShell({
         refreshPhotos,
       }}
     >
-      <TripPwaHead
-        tripName={trip?.trip.name ?? "Trip Connect"}
-        startUrl={studentTripTodayPath(tripId)}
-      />
+      {pwaStartUrl ? (
+        <TripPwaHead
+          tripName={trip?.trip.name ?? "Trip Connect"}
+          startUrl={pwaStartUrl}
+          manifestId={pwaStartUrl}
+        />
+      ) : null}
       {showInstallHint ? (
         <AddToHomeScreenHint
           tripName={trip?.trip.name ?? "Trip Connect"}
@@ -285,7 +309,7 @@ export function TripAppShell({
           <Suspense fallback={null}>
             <TripDebugPanel />
           </Suspense>
-          <StudentBottomNav />
+          <StudentBottomNav inviteCode={inviteCode} />
         </div>
       </div>
 

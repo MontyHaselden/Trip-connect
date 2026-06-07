@@ -7,9 +7,10 @@ export async function GET(req: Request) {
     url.searchParams.get("shortName")?.trim() ||
     (name.length > 12 ? `${name.slice(0, 12)}…` : name);
   const startUrl = url.searchParams.get("startUrl")?.trim() || "/app/today";
+  const manifestId = url.searchParams.get("id")?.trim() || startUrl;
 
   const manifest = {
-    id: "/",
+    id: manifestId,
     name,
     short_name: shortName,
     description: "School trip booklet and admin.",

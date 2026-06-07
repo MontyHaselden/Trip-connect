@@ -15,17 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Trip Connect",
   description:
-    "School trip booklet for students — Today schedule and My Trip offline.",
-  applicationName: "Trip Connect",
-  manifest: "/manifest.webmanifest",
-  appleWebApp: {
-    capable: true,
-    title: "Trip Connect",
-    statusBarStyle: "default",
-  },
+    "School trip planning for teachers and trip booklets for students.",
   icons: {
     icon: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
-    apple: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
   },
 };
 

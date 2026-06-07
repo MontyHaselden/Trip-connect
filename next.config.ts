@@ -8,6 +8,16 @@ const nextConfig: NextConfig = {
         destination: "/dashboard",
         permanent: false,
       },
+      {
+        source: "/join/:inviteCode",
+        destination: "/s/:inviteCode",
+        permanent: true,
+      },
+      {
+        source: "/mobile/join/:inviteCode",
+        destination: "/s/:inviteCode",
+        permanent: true,
+      },
     ];
   },
 };

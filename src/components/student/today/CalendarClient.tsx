@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { useTripApp } from "@/components/layout/TripAppContext";
 import { useSelectedTripDay } from "@/hooks/useSelectedTripDay";
 import {
+  getStoredInviteCode,
+  studentAppPath,
+} from "@/lib/mobile/trip-storage";
+import {
   hasTodaySchedule,
   resolveStudentTripPayload,
 } from "@/lib/student/resolve-trip-payload";
@@ -108,7 +112,9 @@ function CalendarContent() {
         itemCountByDayId={itemCountByDayId}
         firstItemTitleByDayId={firstItemTitleByDayId}
         onSelectDate={(dateISO) => {
-          router.push(`/app/today?date=${encodeURIComponent(dateISO)}`);
+          const invite = getStoredInviteCode();
+          const base = invite ? studentAppPath(invite) : "/app/today";
+          router.push(`${base}?date=${encodeURIComponent(dateISO)}`);
         }}
       />
     </div>

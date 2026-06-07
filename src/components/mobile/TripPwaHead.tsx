@@ -7,15 +7,19 @@ import {
   wirePwaHead,
 } from "@/lib/mobile/wire-pwa-head";
 
-export function TripPwaHead(props: { tripName: string; startUrl: string }) {
-  const { tripName, startUrl } = props;
+export function TripPwaHead(props: {
+  tripName: string;
+  startUrl: string;
+  manifestId?: string;
+}) {
+  const { tripName, startUrl, manifestId } = props;
 
   useEffect(() => {
     wirePwaHead({
-      manifestHref: buildTripManifestHref(tripName, startUrl),
+      manifestHref: buildTripManifestHref(tripName, startUrl, manifestId ?? startUrl),
       appTitle: tripName,
     });
-  }, [tripName, startUrl]);
+  }, [tripName, startUrl, manifestId]);
 
   return null;
 }

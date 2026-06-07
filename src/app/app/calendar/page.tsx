@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 
-export default function LegacyCalendarRedirect() {
-  const router = useRouter();
+import { resolveStudentAppLaunchPath } from "@/lib/mobile/trip-storage";
+
+export default function LegacyCalendarLauncherPage() {
   useEffect(() => {
-    const tripId = localStorage.getItem("tc_trip_id");
-    if (tripId) router.replace(`/trip/${tripId}/today`);
-    else router.replace("/");
-  }, [router]);
-  return null;
+    window.location.replace(resolveStudentAppLaunchPath("today"));
+  }, []);
+
+  return (
+    <p className="p-6 text-center text-sm text-zinc-600">Loading trip…</p>
+  );
 }

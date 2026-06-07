@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { getStoredTripSession, studentAppPath } from "@/lib/mobile/trip-storage";
+
 export function ContinueTripCta() {
   const [tripHref, setTripHref] = useState<string | null>(null);
 
   useEffect(() => {
-    const tripId = localStorage.getItem("tc_trip_id");
-    const token = localStorage.getItem("tc_access_token");
-    if (tripId && token) {
-      setTripHref(`/trip/${tripId}/today`);
+    const session = getStoredTripSession();
+    if (session) {
+      setTripHref(studentAppPath(session.inviteCode));
     }
   }, []);
 

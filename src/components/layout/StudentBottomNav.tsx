@@ -6,6 +6,12 @@ import { DateTime } from "luxon";
 
 import { useTripApp } from "@/components/layout/TripAppContext";
 import { tripDebug } from "@/lib/debug/trip-debug";
+import {
+  studentAppMyTripPath,
+  studentAppPath,
+  studentTripMyTripPath,
+  studentTripTodayPath,
+} from "@/lib/mobile/trip-storage";
 import { dayNeedsPhotoReminder } from "@/lib/student/participant-photos";
 import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
 
@@ -42,16 +48,40 @@ function NavItem(props: {
   );
 }
 
-function extractTripId(pathname: string): string | null {
-  const m = pathname.match(/^\/trip\/([^/]+)/);
-  return m?.[1] ?? null;
+function parseStudentRoute(pathname: string): {
+  inviteCode?: string;
+  tripId?: string;
+} {
+  const studentMatch = pathname.match(/^\/s\/([^/]+)/);
+  if (studentMatch) {
+    return { inviteCode: decodeURIComponent(studentMatch[1]) };
+  }
+  const tripMatch = pathname.match(/^\/trip\/([^/]+)/);
+  if (tripMatch) {
+    return { tripId: decodeURIComponent(tripMatch[1]) };
+  }
+  return {};
 }
 
-export function StudentBottomNav() {
+export function StudentBottomNav(props: { inviteCode?: string }) {
   const pathname = usePathname();
   const { cache, todayNav, participantPhotos } = useTripApp();
-  const tripId = extractTripId(pathname);
-  const [todayHref, setTodayHref] = useState(tripId ? `/trip/${tripId}/today` : "/");
+  const route = parseStudentRoute(pathname);
+  const inviteCode = props.inviteCode ?? route.inviteCode;
+  const tripId = route.tripId ?? cache.tripId;
+
+  const todayBase = inviteCode
+    ? studentAppPath(inviteCode)
+    : tripId
+      ? studentTripTodayPath(tripId)
+      : null;
+  const myTripHref = inviteCode
+    ? studentAppMyTripPath(inviteCode)
+    : tripId
+      ? studentTripMyTripPath(tripId)
+      : null;
+
+  const [todayHref, setTodayHref] = useState(todayBase ?? "/");
 
   const trip = useMemo(
     () => resolveStudentTripPayload(cache.payload, cache.participantId),
@@ -59,9 +89,17 @@ export function StudentBottomNav() {
   );
 
   const onToday =
-    Boolean(tripId) &&
-    (pathname === `/trip/${tripId}/today` || pathname.startsWith(`/trip/${tripId}/today`));
-  const onMyTrip = Boolean(tripId) && pathname === `/trip/${tripId}/my-trip`;
+    Boolean(todayBase) &&
+    (pathname === todayBase ||
+      pathname.startsWith(`${todayBase}?`) ||
+      (tripId !== null &&
+        (pathname === studentTripTodayPath(tripId) ||
+          pathname.startsWith(`${studentTripTodayPath(tripId)}?`))));
+
+  const onMyTrip =
+    Boolean(myTripHref) &&
+    (pathname === myTripHref ||
+      (tripId !== null && pathname === studentTripMyTripPath(tripId)));
 
   const myTripPhotoReminder = useMemo(() => {
     if (!todayNav || !trip) return false;
@@ -79,25 +117,29 @@ export function StudentBottomNav() {
   }, [todayNav, trip, participantPhotos]);
 
   useEffect(() => {
-    if (!tripId) return;
-    if (pathname.includes("/today") && typeof window !== "undefined") {
-      const search = window.location.search;
-      setTodayHref(search ? `/trip/${tripId}/today${search}` : `/trip/${tripId}/today`);
+    if (!todayBase) return;
+    if (
+      pathname.includes("/today") ||
+      pathname === todayBase ||
+      pathname.startsWith(`${todayBase}?`)
+    ) {
+      const search = typeof window !== "undefined" ? window.location.search : "";
+      setTodayHref(search ? `${todayBase}${search}` : todayBase);
       return;
     }
     try {
       const lastDate = sessionStorage.getItem("tc_last_date");
       if (lastDate) {
-        setTodayHref(`/trip/${tripId}/today?date=${encodeURIComponent(lastDate)}`);
+        setTodayHref(`${todayBase}?date=${encodeURIComponent(lastDate)}`);
         return;
       }
     } catch {
       // ignore
     }
-    setTodayHref(`/trip/${tripId}/today`);
-  }, [pathname, tripId]);
+    setTodayHref(todayBase);
+  }, [pathname, todayBase]);
 
-  if (!tripId) return null;
+  if (!todayBase || !myTripHref) return null;
 
   return (
     <nav className="relative z-20 mt-auto shrink-0 bg-zinc-50 pb-[max(env(safe-area-inset-bottom),0px)]">
@@ -105,7 +147,7 @@ export function StudentBottomNav() {
         <div className="flex items-center gap-1 p-1.5">
           <NavItem href={todayHref} label="Today" active={onToday} />
           <NavItem
-            href={`/trip/${tripId}/my-trip`}
+            href={myTripHref}
             label="My Trip"
             active={onMyTrip}
             reminder={myTripPhotoReminder && !onMyTrip}

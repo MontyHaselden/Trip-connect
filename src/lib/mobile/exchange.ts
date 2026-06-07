@@ -53,7 +53,9 @@ export async function exchangeMobileToken(raw: string) {
       inviteCode: trip?.inviteCode ?? "",
       participantId: participant.id,
       accessToken: participant.accessToken,
-      redirectTo: `/trip/${record.tripId}/today`,
+      redirectTo: trip?.inviteCode
+        ? `/s/${trip.inviteCode}`
+        : `/trip/${record.tripId}/today`,
     };
   }
 

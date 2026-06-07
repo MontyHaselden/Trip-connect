@@ -35,7 +35,7 @@ export function AppSettingsClient() {
 
   const joinUrl = useMemo(() => {
     if (typeof window === "undefined" || !inviteCode) return "";
-    return `${window.location.origin}/join/${encodeURIComponent(inviteCode)}`;
+    return `${window.location.origin}/s/${encodeURIComponent(inviteCode)}`;
   }, [inviteCode]);
 
   useEffect(() => {
