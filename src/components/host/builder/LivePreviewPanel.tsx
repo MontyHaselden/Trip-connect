@@ -9,7 +9,6 @@ import type { ItineraryItem, RosterSummary } from "@/components/host/itinerary/t
 import { hostJson } from "@/components/host/shared/host-fetch";
 import { resolveDefaultTodayDate } from "@/lib/ai/change-scope";
 import { sortItemsByStartTime } from "@/lib/timeline/time-math";
-import type { ActivityCategory } from "@/types/activity-category";
 import type { TripImportProgress } from "@/types/trip-import-progress";
 
 import {
@@ -37,24 +36,7 @@ type ItineraryDay = {
     status: "available" | "too_far" | "unavailable";
     fetchedAt: string;
   } | null;
-  items: Array<{
-    id: string;
-    tripDayId: string;
-    startTime: string;
-    endTime: string | null;
-    title: string;
-    locationName: string | null;
-    address: string | null;
-    mapQuery: string | null;
-    leaveByTime: string | null;
-    transportNote: string | null;
-    bringNote: string | null;
-    hostNote: string | null;
-    audienceType: ItineraryItem["audienceType"];
-    audienceId: string | null;
-    category?: ActivityCategory | null;
-    sortOrder: number;
-  }>;
+  items: ItineraryItem[];
   prep: Array<{ id: string; text: string }>;
 };
 

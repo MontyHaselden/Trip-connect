@@ -102,7 +102,7 @@ export async function searchGoogleAddresses(params: {
         id: placeId ?? `google-${keyLabel}`,
         label,
         sublabel: area,
-        name: name ?? null,
+        name,
         placeId,
         source: "google",
       });

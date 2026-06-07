@@ -50,7 +50,7 @@ type DayRow = {
   date: string;
   cityLabel: string;
   secondaryCityLabel: string | null;
-  dayType: string;
+  dayType: string | null;
 };
 
 type LegRow = {

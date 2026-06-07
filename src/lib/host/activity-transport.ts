@@ -72,11 +72,11 @@ function parseLegLine(line: string): { direction: "there" | "back"; leg: Activit
   const match = line.trim().match(LEG_LINE);
   if (!match) return null;
   const [, directionLabel, typeLabel, leaveByTime, duration, note] = match;
-  const transportType =
-    labelToType.get(typeLabel.trim().toLowerCase()) ??
-    (LOCAL_TRANSPORT_TYPES.includes(typeLabel.trim().toLowerCase() as TransportType)
-      ? (typeLabel.trim().toLowerCase() as TransportType)
-      : "other");
+  const rawType = typeLabel.trim().toLowerCase();
+  const localType = (LOCAL_TRANSPORT_TYPES as readonly string[]).includes(rawType)
+    ? (rawType as Exclude<TransportType, "plane">)
+    : null;
+  const transportType: TransportType = labelToType.get(rawType) ?? localType ?? "other";
   return {
     direction: directionLabel === "Getting back" ? "back" : "there",
     leg: {

@@ -9,6 +9,22 @@ type TripBounds = {
   returnCity: string;
 };
 
+type TransportCalendarInput = Pick<
+  TripWizardDraft,
+  "outboundLegs" | "returnLegs" | "intercityLegs"
+> & {
+  dayPlaces?: DayPlaceDraft[];
+};
+
+type TransportCalendarDraft = Pick<
+  TripWizardDraft,
+  "outboundLegs" | "returnLegs" | "intercityLegs" | "dayPlaces"
+>;
+
+function normalizeTransportCalendarDraft(draft: TransportCalendarInput): TransportCalendarDraft {
+  return { ...draft, dayPlaces: draft.dayPlaces ?? [] };
+}
+
 export type TransitOverlay = {
   fromShare: number;
   toShare: number;
@@ -529,9 +545,9 @@ export type CalendarTransportOptions = {
 };
 
 function calendarTransportDraft(
-  draft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs" | "dayPlaces">,
+  draft: TransportCalendarDraft,
   options?: CalendarTransportOptions,
-): Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs" | "dayPlaces"> {
+): TransportCalendarDraft {
   if (options?.includeIntercity !== false) return draft;
   return { ...draft, intercityLegs: [] };
 }
@@ -547,12 +563,12 @@ function intercityLegIds(
  * Arrival days: transit band then paintable remainder. Departure days: paintable then transit.
  */
 export function computeTravelDayLayouts(
-  draft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs" | "dayPlaces">,
+  draft: TransportCalendarInput,
   trip: TripBounds,
   options?: CalendarTransportOptions,
 ): Map<string, CalendarDaySegment[]> {
   const skipInFlightIds = intercityLegIds(draft);
-  draft = calendarTransportDraft(draft, options);
+  draft = calendarTransportDraft(normalizeTransportCalendarDraft(draft), options);
   const map = new Map<string, CalendarDaySegment[]>();
   const legs = allTransportLegs(draft);
   const Q = TRAVEL_SEGMENT_QUARTER;
@@ -745,11 +761,11 @@ function pushOverlay(
 
 /** Grey in-transit blocks on the calendar — does not paint destination cities. */
 export function computeTransitOverlays(
-  draft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs" | "dayPlaces">,
+  draft: TransportCalendarInput,
   trip: TripBounds,
   options?: CalendarTransportOptions,
 ): Map<string, TransitOverlay[]> {
-  draft = calendarTransportDraft(draft, options);
+  draft = calendarTransportDraft(normalizeTransportCalendarDraft(draft), options);
   const travelLayouts = computeTravelDayLayouts(draft, trip, options);
   const map = new Map<string, TransitOverlay[]>();
 
@@ -785,7 +801,7 @@ export function computeTransitOverlays(
 }
 
 export function computeCalendarTransport(
-  draft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs" | "dayPlaces">,
+  draft: TransportCalendarInput,
   trip: TripBounds,
   options?: CalendarTransportOptions,
 ): {

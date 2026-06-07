@@ -95,12 +95,13 @@ export function LocationsClient(props: {
   }
 
   const transportDraft = useMemo(
-    (): Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs"> => ({
+    (): Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs" | "dayPlaces"> => ({
       outboundLegs: state?.outboundLegs ?? [],
       returnLegs: state?.returnLegs ?? [],
       intercityLegs: state?.intercityLegs ?? [],
+      dayPlaces: state?.dayPlaces ?? [],
     }),
-    [state?.outboundLegs, state?.returnLegs, state?.intercityLegs],
+    [state?.outboundLegs, state?.returnLegs, state?.intercityLegs, state?.dayPlaces],
   );
 
   const { travelLayouts: travelLayoutsByDate, transitOverlays: transitByDate } = useMemo(
@@ -235,7 +236,7 @@ export function LocationsClient(props: {
   }
 
   function updateDayShare(date: string, primaryShare: number) {
-    if (!state) return;
+    if (!state || !basics?.startDate || !basics.endDate) return;
     const ctx = tripContext();
     const nextDays = applyCrossoverDrag(dayPlaces, date, primaryShare, ctx, {
       flightDepartureDates: flightDepartureDates(transportDraft, ctx),
