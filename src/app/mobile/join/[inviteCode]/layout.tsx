@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { trips } from "@/lib/db/schema";
-import { STUDENT_APP_LAUNCH_PATH } from "@/lib/mobile/trip-storage";
+import { studentMobileJoinPath } from "@/lib/mobile/trip-storage";
 
 export async function generateMetadata(props: {
   params: Promise<{ inviteCode: string }>;
@@ -17,7 +17,7 @@ export async function generateMetadata(props: {
     .then((rows) => rows[0] ?? null);
 
   const tripName = trip?.name ?? "Trip Connect";
-  const manifest = `/api/manifest?name=${encodeURIComponent(tripName)}&startUrl=${encodeURIComponent(STUDENT_APP_LAUNCH_PATH)}`;
+  const manifest = `/api/manifest?name=${encodeURIComponent(tripName)}&startUrl=${encodeURIComponent(studentMobileJoinPath(inviteCode))}`;
 
   return {
     title: tripName,

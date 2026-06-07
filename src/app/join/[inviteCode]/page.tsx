@@ -1,9 +1,13 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { phoneInputProps } from "@/lib/mobile/phone-input-props";
+import {
+  getStoredTripSession,
+  studentTripTodayPath,
+} from "@/lib/mobile/trip-storage";
 
 type JoinResponse = {
   tripId: string;
@@ -35,10 +39,18 @@ export default function JoinTripPage() {
   const inviteCode = String(params.inviteCode ?? "");
 
   const alreadyConnected = useMemo(() => {
-    const storedInvite = storageGet("tc_invite_code");
-    const token = storageGet("tc_access_token");
-    return Boolean(storedInvite && token && storedInvite === inviteCode);
+    const session = getStoredTripSession();
+    return Boolean(
+      session?.accessToken && session.inviteCode === inviteCode,
+    );
   }, [inviteCode]);
+
+  useEffect(() => {
+    const session = getStoredTripSession();
+    if (session?.accessToken && session.inviteCode === inviteCode) {
+      router.replace(studentTripTodayPath(session.tripId));
+    }
+  }, [inviteCode, router]);
 
   const [fullName, setFullName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -97,9 +109,11 @@ export default function JoinTripPage() {
             <button
               type="button"
               onClick={() => {
-                const tripId = storageGet("tc_trip_id");
+                const session = getStoredTripSession();
                 router.replace(
-                  tripId ? `/trip/${tripId}/today` : "/app/today",
+                  session?.tripId
+                    ? studentTripTodayPath(session.tripId)
+                    : "/app/today",
                 );
               }}
               className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-50"

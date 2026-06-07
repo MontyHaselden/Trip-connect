@@ -46,6 +46,18 @@ export function getStoredTripSession() {
 
 export const STUDENT_APP_LAUNCH_PATH = "/app/today";
 
+export function studentJoinPath(inviteCode: string) {
+  return `/join/${encodeURIComponent(inviteCode)}`;
+}
+
+export function studentMobileJoinPath(inviteCode: string) {
+  return `/mobile/join/${encodeURIComponent(inviteCode)}`;
+}
+
+export function studentTripTodayPath(tripId: string) {
+  return `/trip/${encodeURIComponent(tripId)}/today`;
+}
+
 export function resolveStudentAppLaunchPath(
   screen: "today" | "my-trip" = "today",
 ): string {
