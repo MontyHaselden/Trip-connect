@@ -6,7 +6,12 @@ import { useEffect, useState } from "react";
 import { phoneInputProps } from "@/lib/mobile/phone-input-props";
 import { isStandaloneDisplayMode } from "@/lib/mobile/pwa-detect";
 import {
+  buildTripManifestHref,
+  wirePwaHead,
+} from "@/lib/mobile/wire-pwa-head";
+import {
   getStoredTripSession,
+  redirectToStudentTrip,
   saveTripSession,
   studentMobileJoinPath,
   studentTripTodayPath,
@@ -18,16 +23,6 @@ type JoinResponse = {
   accessToken: string;
   tripName: string;
 };
-
-function wireTripManifest(manifestHref: string, tripName: string) {
-  const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
-  if (link) link.href = manifestHref;
-
-  const titleMeta = document.querySelector<HTMLMetaElement>(
-    'meta[name="apple-mobile-web-app-title"]',
-  );
-  if (titleMeta) titleMeta.content = tripName;
-}
 
 export function MobileJoinClient(props: {
   inviteCode: string;
@@ -41,19 +36,22 @@ export function MobileJoinClient(props: {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showInstallHint, setShowInstallHint] = useState(false);
-  const [joinedTripId, setJoinedTripId] = useState<string | null>(null);
 
-  const manifestHref = `/api/manifest?name=${encodeURIComponent(tripName)}&startUrl=${encodeURIComponent(studentMobileJoinPath(inviteCode))}`;
+  const joinStartUrl = studentMobileJoinPath(inviteCode);
+  const manifestHref = buildTripManifestHref(tripName, joinStartUrl);
 
   useEffect(() => {
-    wireTripManifest(manifestHref, tripName);
+    wirePwaHead({ manifestHref, appTitle: tripName });
   }, [manifestHref, tripName]);
 
   useEffect(() => {
     const session = getStoredTripSession();
     if (session && session.inviteCode === inviteCode) {
-      router.replace(studentTripTodayPath(session.tripId));
+      if (isStandaloneDisplayMode()) {
+        router.replace(studentTripTodayPath(session.tripId));
+      } else {
+        redirectToStudentTrip(session.tripId);
+      }
     }
   }, [inviteCode, router]);
 
@@ -68,8 +66,7 @@ export function MobileJoinClient(props: {
       router.replace(studentTripTodayPath(data.tripId));
       return;
     }
-    setJoinedTripId(data.tripId);
-    setShowInstallHint(true);
+    redirectToStudentTrip(data.tripId, { promptInstall: true });
   }
 
   async function onJoin(e: React.FormEvent) {
@@ -113,44 +110,6 @@ export function MobileJoinClient(props: {
     } finally {
       setBusy(false);
     }
-  }
-
-  if (showInstallHint && joinedTripId) {
-    return (
-      <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-10">
-        <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">
-            Add to home screen
-          </p>
-          <h1 className="mt-2 text-xl font-semibold text-zinc-900">{tripName}</h1>
-          <p className="mt-2 text-sm text-zinc-600">
-            You&apos;re joined. Add this page to your home screen so the app opens
-            straight to your trip next time.
-          </p>
-          <ol className="mt-5 space-y-3 text-sm text-zinc-800">
-            <li>
-              <span className="font-medium">1.</span> Tap <strong>Share</strong> in
-              Safari.
-            </li>
-            <li>
-              <span className="font-medium">2.</span> Tap{" "}
-              <strong>Add to Home Screen</strong>.
-            </li>
-            <li>
-              <span className="font-medium">3.</span> Open the new icon when you&apos;re
-              ready.
-            </li>
-          </ol>
-          <button
-            type="button"
-            onClick={() => router.replace(studentTripTodayPath(joinedTripId))}
-            className="mt-6 h-11 w-full rounded-xl bg-zinc-900 text-sm font-medium text-white"
-          >
-            Open trip now
-          </button>
-        </div>
-      </div>
-    );
   }
 
   return (

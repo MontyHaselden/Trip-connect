@@ -7,6 +7,10 @@ import {
   isPwaReady,
   markPwaReady,
 } from "@/lib/mobile/pwa-detect";
+import {
+  buildTripManifestHref,
+  wirePwaHead,
+} from "@/lib/mobile/wire-pwa-head";
 
 export function InstallGate(props: {
   tripName: string;
@@ -19,19 +23,7 @@ export function InstallGate(props: {
   const browser = detectMobileBrowser();
 
   useEffect(() => {
-    const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
-    if (link) link.href = manifestHref;
-
-    const titleMeta = document.querySelector<HTMLMetaElement>(
-      'meta[name="apple-mobile-web-app-title"]',
-    );
-    if (titleMeta) titleMeta.content = tripName;
-    else {
-      const meta = document.createElement("meta");
-      meta.name = "apple-mobile-web-app-title";
-      meta.content = tripName;
-      document.head.appendChild(meta);
-    }
+    wirePwaHead({ manifestHref, appTitle: tripName });
 
     if (isPwaReady()) {
       setReady(true);

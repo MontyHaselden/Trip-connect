@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { phoneInputProps } from "@/lib/mobile/phone-input-props";
 import {
   getStoredTripSession,
+  redirectToStudentTrip,
   studentTripTodayPath,
 } from "@/lib/mobile/trip-storage";
 
@@ -83,7 +84,7 @@ export default function JoinTripPage() {
       storageSet("tc_invite_code", inviteCode);
       storageSet("tc_joined_at", new Date().toISOString());
 
-      router.replace(`/trip/${data.tripId}/today`);
+      redirectToStudentTrip(data.tripId, { promptInstall: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Join failed");
     } finally {

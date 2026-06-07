@@ -58,6 +58,23 @@ export function studentTripTodayPath(tripId: string) {
   return `/trip/${encodeURIComponent(tripId)}/today`;
 }
 
+export const INSTALL_HINT_SESSION_KEY = "tc_show_install_hint";
+
+/** Full-page navigation so iOS picks up PWA meta tags before Add to Home Screen. */
+export function redirectToStudentTrip(
+  tripId: string,
+  options?: { promptInstall?: boolean },
+) {
+  if (options?.promptInstall) {
+    try {
+      sessionStorage.setItem(INSTALL_HINT_SESSION_KEY, "1");
+    } catch {
+      // ignore
+    }
+  }
+  window.location.assign(studentTripTodayPath(tripId));
+}
+
 export function resolveStudentAppLaunchPath(
   screen: "today" | "my-trip" = "today",
 ): string {

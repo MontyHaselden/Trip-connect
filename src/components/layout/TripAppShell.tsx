@@ -11,10 +11,17 @@ import { StudentBottomNav } from "./StudentBottomNav";
 import { TripAppContext, type TodayDayNav } from "./TripAppContext";
 import { TripDayNavBridge } from "./TripDayNavBridge";
 import { TripDebugPanel } from "@/components/debug/TripDebugPanel";
+import { AddToHomeScreenHint } from "@/components/mobile/AddToHomeScreenHint";
+import { TripPwaHead } from "@/components/mobile/TripPwaHead";
 import { DayCalendarSheet } from "@/components/student/today/DayCalendarSheet";
 import { DayLocationButton } from "@/components/student/today/DayLocationSheet";
 import { useTripCache } from "@/hooks/useTripCache";
 import { installTripDebugGlobal, tripDebug } from "@/lib/debug/trip-debug";
+import { isStandaloneDisplayMode } from "@/lib/mobile/pwa-detect";
+import {
+  INSTALL_HINT_SESSION_KEY,
+  studentTripTodayPath,
+} from "@/lib/mobile/trip-storage";
 import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
 
 function RefreshIcon({ spinning }: { spinning: boolean }) {
@@ -50,6 +57,7 @@ export function TripAppShell({
   const [todayNav, setTodayNavState] = useState<TodayDayNav | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [participantPhotos, setParticipantPhotos] = useState<ParticipantPhoto[]>([]);
+  const [showInstallHint, setShowInstallHint] = useState(false);
   const setTodayNav = useCallback((nav: TodayDayNav | null) => {
     setTodayNavState(nav);
   }, []);
@@ -120,6 +128,18 @@ export function TripAppShell({
   }
 
   useEffect(() => {
+    if (isStandaloneDisplayMode()) return;
+    try {
+      if (sessionStorage.getItem(INSTALL_HINT_SESSION_KEY) === "1") {
+        sessionStorage.removeItem(INSTALL_HINT_SESSION_KEY);
+        setShowInstallHint(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
     installTripDebugGlobal();
     tripDebug("shell.mount", { pathname, tripId });
   }, [pathname, tripId]);
@@ -168,6 +188,16 @@ export function TripAppShell({
         refreshPhotos,
       }}
     >
+      <TripPwaHead
+        tripName={trip?.trip.name ?? "Trip Connect"}
+        startUrl={studentTripTodayPath(tripId)}
+      />
+      {showInstallHint ? (
+        <AddToHomeScreenHint
+          tripName={trip?.trip.name ?? "Trip Connect"}
+          onDismiss={() => setShowInstallHint(false)}
+        />
+      ) : null}
       <div className="h-dvh max-h-dvh overflow-hidden bg-zinc-50 text-zinc-900">
         <div className="mx-auto flex h-full w-full max-w-md flex-col gap-2 overflow-hidden px-4 py-3">
           <header className="shrink-0 border-b border-zinc-200/80 pb-2 pt-0.5">
