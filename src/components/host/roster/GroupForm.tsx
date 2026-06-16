@@ -66,9 +66,10 @@ export function GroupForm(props: {
         onChange={(e) => setType(e.target.value as RosterGroup["type"])}
         className="h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm"
       >
-        <option value="activity">Activity</option>
-        <option value="bus">Bus</option>
-        <option value="week">Week</option>
+        <option value="split_travel">Split travel group</option>
+        <option value="activity">Activity group</option>
+        <option value="accommodation">Accommodation group</option>
+        <option value="staff_helper">Staff/helper group</option>
         <option value="other">Other</option>
       </select>
       <input

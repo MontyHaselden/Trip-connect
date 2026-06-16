@@ -4,33 +4,20 @@ import { useCallback, useEffect, useId, useRef, useState, type RefObject } from 
 import { createPortal } from "react-dom";
 
 import {
+  DEFAULT_TIME_OPTION,
   formatTimeDisplay,
-  from12HourParts,
-  HOUR12_OPTIONS,
-  MINUTE_OPTIONS,
-  parseTimeValue,
-  to12HourParts,
+  normalizeTimeValue,
+  TIME_OPTIONS,
 } from "@/lib/utils/time-input";
-
-type Period = "AM" | "PM";
 
 type MenuRect = { top: number; left: number; width: number; height?: number };
 
 const PANEL_W = 272;
-const PANEL_EST_HEIGHT = 340;
+const PANEL_EST_HEIGHT = 280;
 const WHEEL_ITEM_H = 36;
-const WHEEL_VISIBLE = 5;
+const WHEEL_VISIBLE = 7;
 const WHEEL_H = WHEEL_ITEM_H * WHEEL_VISIBLE;
-const WHEEL_PAD = ((WHEEL_H - WHEEL_ITEM_H) / 2);
-
-const QUICK_TIMES: Array<{ label: string; hour12: number; minute: number; period: Period }> = [
-  { label: "6 AM", hour12: 6, minute: 0, period: "AM" },
-  { label: "9 AM", hour12: 9, minute: 0, period: "AM" },
-  { label: "12 PM", hour12: 12, minute: 0, period: "PM" },
-  { label: "3 PM", hour12: 3, minute: 0, period: "PM" },
-  { label: "6 PM", hour12: 6, minute: 0, period: "PM" },
-  { label: "9 PM", hour12: 9, minute: 0, period: "PM" },
-];
+const WHEEL_PAD = (WHEEL_H - WHEEL_ITEM_H) / 2;
 
 const defaultTriggerClass =
   "group flex h-10 w-full items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-sm shadow-sm transition hover:border-zinc-300 focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-100 disabled:cursor-not-allowed disabled:bg-zinc-50 disabled:text-zinc-400";
@@ -64,17 +51,17 @@ function ChevronIcon({ className }: { className?: string }) {
   );
 }
 
-function TimeScrollWheel<T extends string | number>({
+function TimeScrollWheel({
   options,
   value,
   onChange,
   format,
   ariaLabel,
 }: {
-  options: readonly T[];
-  value: T;
-  onChange: (value: T) => void;
-  format: (value: T) => string;
+  options: readonly string[];
+  value: string;
+  onChange: (value: string) => void;
+  format: (value: string) => string;
   ariaLabel: string;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -109,9 +96,8 @@ function TimeScrollWheel<T extends string | number>({
     userScrolling.current = true;
     const idx = Math.round(el.scrollTop / WHEEL_ITEM_H);
     const clamped = Math.max(0, Math.min(options.length - 1, idx));
-    if (options[clamped] !== value) {
-      onChange(options[clamped]);
-    }
+    const next = options[clamped]!;
+    if (next !== value) onChange(next);
     if (scrollEndTimer.current) window.clearTimeout(scrollEndTimer.current);
     scrollEndTimer.current = window.setTimeout(snapToNearest, 32);
   }
@@ -124,7 +110,7 @@ function TimeScrollWheel<T extends string | number>({
   );
 
   return (
-    <div className="relative flex-1" style={{ height: WHEEL_H }}>
+    <div className="relative w-full" style={{ height: WHEEL_H }}>
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-1/2 z-10 -translate-y-1/2 border-y border-zinc-200/90 bg-zinc-100/40"
@@ -146,7 +132,7 @@ function TimeScrollWheel<T extends string | number>({
           const selected = opt === value;
           return (
             <button
-              key={String(opt)}
+              key={opt}
               type="button"
               role="option"
               aria-selected={selected}
@@ -196,33 +182,18 @@ export function TimeInput({
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [menuRect, setMenuRect] = useState<MenuRect | null>(null);
+  const [draftTime, setDraftTime] = useState(() =>
+    normalizeTimeValue(value, DEFAULT_TIME_OPTION),
+  );
 
-  const parsed = parseTimeValue(value);
-  const initial = parsed ?? { hour24: 9, minute: 0 };
-  const initial12 = to12HourParts(initial.hour24);
-
-  const [draftHour, setDraftHour] = useState(initial12.hour12);
-  const [draftMinute, setDraftMinute] = useState(initial.minute);
-  const [draftPeriod, setDraftPeriod] = useState<Period>(initial12.period);
-
-  const draftDisplay = formatTimeDisplay(from12HourParts(draftHour, draftMinute, draftPeriod));
+  const draftDisplay = formatTimeDisplay(draftTime);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   const syncDraftFromValue = useCallback(() => {
-    const next = parseTimeValue(value);
-    if (!next) {
-      setDraftHour(9);
-      setDraftMinute(0);
-      setDraftPeriod("AM");
-      return;
-    }
-    const parts = to12HourParts(next.hour24);
-    setDraftHour(parts.hour12);
-    setDraftMinute(next.minute);
-    setDraftPeriod(parts.period);
+    setDraftTime(normalizeTimeValue(value, DEFAULT_TIME_OPTION));
   }, [value]);
 
   const updateMenuPosition = useCallback(() => {
@@ -281,24 +252,14 @@ export function TimeInput({
     };
   }, [open]);
 
-  function setDraft(hour12: number, minute: number, period: Period) {
-    setDraftHour(hour12);
-    setDraftMinute(minute);
-    setDraftPeriod(period);
-  }
-
-  function commitDraft(hour12: number, minute: number, period: Period) {
-    setDraft(hour12, minute, period);
-    onChange(from12HourParts(hour12, minute, period));
+  function selectTime(next: string) {
+    setDraftTime(next);
+    onChange(next);
   }
 
   function applyDraft() {
-    commitDraft(draftHour, draftMinute, draftPeriod);
+    onChange(draftTime);
     setOpen(false);
-  }
-
-  function updateFromWheel(hour12: number, minute: number, period: Period) {
-    commitDraft(hour12, minute, period);
   }
 
   function clearTime() {
@@ -354,72 +315,17 @@ export function TimeInput({
 
           <div
             className={[
-              "flex min-h-0 flex-1 flex-col justify-center space-y-3 overflow-hidden",
+              "flex min-h-0 flex-1 flex-col justify-center overflow-hidden",
               overlayMode ? "px-2 py-2" : "px-3 py-3",
             ].join(" ")}
           >
-            <div>
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-400">
-                Quick pick
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {QUICK_TIMES.map((preset) => {
-                  const active =
-                    draftHour === preset.hour12 &&
-                    draftMinute === preset.minute &&
-                    draftPeriod === preset.period;
-                  return (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() => {
-                        commitDraft(preset.hour12, preset.minute, preset.period);
-                        setOpen(false);
-                      }}
-                      className={[
-                        "rounded-full px-2.5 py-1 text-[11px] font-medium transition",
-                        active
-                          ? "bg-zinc-900 text-white"
-                          : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200/80",
-                      ].join(" ")}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex items-stretch gap-0.5">
-              <TimeScrollWheel
-                ariaLabel="Hour"
-                options={HOUR12_OPTIONS}
-                value={draftHour}
-                onChange={(hour12) => updateFromWheel(hour12, draftMinute, draftPeriod)}
-                format={(h) => String(h)}
-              />
-              <span
-                aria-hidden
-                className="flex items-center justify-center pb-1 text-lg font-semibold text-zinc-300"
-                style={{ width: 12, height: WHEEL_H }}
-              >
-                :
-              </span>
-              <TimeScrollWheel
-                ariaLabel="Minute"
-                options={MINUTE_OPTIONS}
-                value={draftMinute}
-                onChange={(minute) => updateFromWheel(draftHour, minute, draftPeriod)}
-                format={(m) => String(m).padStart(2, "0")}
-              />
-              <TimeScrollWheel
-                ariaLabel="AM or PM"
-                options={["AM", "PM"] as const}
-                value={draftPeriod}
-                onChange={(period) => updateFromWheel(draftHour, draftMinute, period)}
-                format={(p) => p}
-              />
-            </div>
+            <TimeScrollWheel
+              ariaLabel="Time"
+              options={TIME_OPTIONS}
+              value={draftTime}
+              onChange={selectTime}
+              format={(t) => formatTimeDisplay(t)}
+            />
           </div>
 
           <div className="flex shrink-0 items-center gap-2 border-t border-zinc-100/90 bg-zinc-50/50 px-3 py-2">

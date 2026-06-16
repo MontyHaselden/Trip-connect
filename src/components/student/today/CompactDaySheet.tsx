@@ -4,23 +4,63 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { DayWeatherSnapshot } from "@/types/activity-category";
+import { computeDayWindowBlockLayouts } from "@/lib/timeline/day-window-layout";
 import { computeCompactBlockLayouts } from "@/lib/timeline/compact-day-layout";
-import { daysUntilTrip } from "@/lib/utils/time";
 import {
-  computeLayoutSpanMinutesById,
   getNowMinutes,
   isActiveAtNow,
+  computeLayoutSpanMinutesById,
   timeToMinutes,
 } from "@/lib/timeline/time-math";
 import type { ItineraryRowItem } from "@/lib/utils/itinerary-item-style";
 
 import { ActivityDetailSheet } from "./ActivityDetailSheet";
 import { CompactItineraryRow } from "./CompactItineraryRow";
-import { DayWeatherStrip } from "./DayWeatherStrip";
+import { RunSheetTimeline } from "./RunSheetTimeline";
+
+function DayRemindersFooter(props: {
+  reminders: Array<{
+    id: string;
+    title: string;
+    reminderTime: string | null;
+    note: string | null;
+  }>;
+}) {
+  if (!props.reminders.length) return null;
+
+  return (
+    <div className="shrink-0 border-t border-[var(--student-line)] px-3 py-2.5">
+      <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--student-text-muted)]">
+        Reminders
+      </p>
+      <ul className="mt-1.5 space-y-2">
+        {props.reminders.map((r) => (
+          <li key={r.id} className="text-xs leading-snug text-[var(--student-text)]">
+            {r.reminderTime ? (
+              <span className="mr-1.5 font-semibold tabular-nums text-[var(--student-text-muted)]">
+                {r.reminderTime.slice(0, 5)}
+              </span>
+            ) : null}
+            <span className="font-medium">{r.title}</span>
+            {r.note ? (
+              <span className="mt-0.5 block text-[var(--student-text-muted)]">{r.note}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function CompactDaySheet(props: {
   items: ItineraryRowItem[];
   prepItems: Array<{ id: string; text: string }>;
+  dayReminders?: Array<{
+    id: string;
+    title: string;
+    reminderTime: string | null;
+    note: string | null;
+  }>;
   tripTimezone: string;
   dateISO: string;
   cityLabel: string;
@@ -36,15 +76,13 @@ export function CompactDaySheet(props: {
   hostEditing?: {
     onEditItem: (item: ItineraryRowItem) => void;
   };
+  layout?: "run-sheet" | "legacy-blocks";
 }) {
   const {
     items,
     prepItems,
+    dayReminders = [],
     tripTimezone,
-    dateISO,
-    cityLabel,
-    weather,
-    tripStartDate,
     isViewingToday,
     mapsOnline,
     animateItemIds,
@@ -53,20 +91,12 @@ export function CompactDaySheet(props: {
     listFooter,
     nightStay,
     hostEditing,
+    layout = "run-sheet",
   } = props;
 
   const [selectedItem, setSelectedItem] = useState<ItineraryRowItem | null>(null);
 
-  const daysUntil =
-    dateISO < tripStartDate
-      ? daysUntilTrip({
-          startDate: tripStartDate,
-          dateISO,
-          tripTimezone,
-        })
-      : null;
-
-  const nowMinutes = isViewingToday ? getNowMinutes(tripTimezone, dateISO) : null;
+  const nowMinutes = isViewingToday ? getNowMinutes(tripTimezone, props.dateISO) : null;
 
   const { activeId, nextId } = useMemo(() => {
     if (nowMinutes === null) return { activeId: null as string | null, nextId: null as string | null };
@@ -89,27 +119,11 @@ export function CompactDaySheet(props: {
     return { activeId: active, nextId: next };
   }, [items, nowMinutes]);
 
-  const isPreTrip = dateISO < tripStartDate;
-
-  const nextMeetingLine = useMemo(() => {
-    if (!isPreTrip) return null;
-    const meetings = items
-      .filter((i) => i.category === "meeting")
-      .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
-    if (!meetings.length) return null;
-    const next =
-      nowMinutes !== null
-        ? meetings.find((m) => timeToMinutes(m.startTime) >= nowMinutes) ?? meetings[0]
-        : meetings[0];
-    const time = next.startTime.slice(0, 5);
-    return `Next meeting: ${next.title} at ${time}`;
-  }, [isPreTrip, items, nowMinutes]);
-
-  const layoutSpans = useMemo(() => computeLayoutSpanMinutesById(items), [items]);
   const listRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(0);
 
   useEffect(() => {
+    if (layout !== "run-sheet") return;
     const el = listRef.current;
     if (!el) return;
 
@@ -118,30 +132,54 @@ export function CompactDaySheet(props: {
 
     const observer = new ResizeObserver(measure);
     observer.observe(el);
-    return () => observer.disconnect();
-  }, [items.length]);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [items.length, layout, prepItems.length, dayReminders.length, listFooter]);
 
-  const blockLayout = useMemo(
-    () => computeCompactBlockLayouts(items, layoutSpans, containerHeight),
-    [items, layoutSpans, containerHeight],
+  const dayWindowLayout = useMemo(
+    () =>
+      layout === "run-sheet"
+        ? computeDayWindowBlockLayouts(items, containerHeight)
+        : null,
+    [items, containerHeight, layout],
   );
 
-  const hasContent = items.length > 0 || prepItems.length > 0 || listFooter;
+  const layoutSpans = useMemo(() => computeLayoutSpanMinutesById(items), [items]);
+  const legacyListRef = useRef<HTMLDivElement>(null);
+  const [legacyContainerHeight, setLegacyContainerHeight] = useState(0);
+
+  useEffect(() => {
+    if (layout !== "legacy-blocks") return;
+    const el = legacyListRef.current;
+    if (!el) return;
+
+    const measure = () => setLegacyContainerHeight(el.clientHeight);
+    measure();
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [items.length, layout]);
+
+  const blockLayout = useMemo(
+    () =>
+      layout === "legacy-blocks"
+        ? computeCompactBlockLayouts(items, layoutSpans, legacyContainerHeight)
+        : null,
+    [items, layoutSpans, legacyContainerHeight, layout],
+  );
+
+  const hasContent =
+    items.length > 0 || prepItems.length > 0 || dayReminders.length > 0 || listFooter;
 
   if (!hasContent) {
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-2">
-        <DayWeatherStrip cityLabel={cityLabel} weather={weather} />
-        {typeof daysUntil === "number" && daysUntil > 0 ? (
-          <p className="text-xs text-zinc-500">
-            {daysUntil} day{daysUntil === 1 ? "" : "s"} until trip
-          </p>
-        ) : null}
-        {nextMeetingLine ? (
-          <p className="text-xs font-medium text-sky-800">{nextMeetingLine}</p>
-        ) : null}
         <div className="flex flex-1 items-center justify-center text-center">
-          <p className="text-sm font-medium text-zinc-800">
+          <p className="text-sm font-medium text-[var(--student-text-muted)]">
             {buildingEmptyLabel ?? "No event today"}
           </p>
         </div>
@@ -149,41 +187,72 @@ export function CompactDaySheet(props: {
     );
   }
 
+  const prepFooter =
+    prepItems.length > 0 ? (
+      <div className="shrink-0 border-t border-[var(--student-line)] px-3 py-2.5">
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--student-text-muted)]">
+          Tomorrow prep
+        </p>
+        <ul className="mt-1 space-y-0.5">
+          {prepItems.map((p) => (
+            <li key={p.id} className="text-xs leading-snug text-[var(--student-text-muted)]">
+              · {p.text}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+
+  const remindersFooter = <DayRemindersFooter reminders={dayReminders} />;
+
+  const combinedFooter = (
+    <>
+      {remindersFooter}
+      {prepFooter}
+      {listFooter}
+    </>
+  );
+
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {weather || (typeof daysUntil === "number" && daysUntil > 0) || nextMeetingLine ? (
-          <div className="shrink-0 space-y-0.5 pb-1">
-            <DayWeatherStrip cityLabel={cityLabel} weather={weather} />
-            {typeof daysUntil === "number" && daysUntil > 0 ? (
-              <p className="text-xs text-zinc-500">
-                {daysUntil} day{daysUntil === 1 ? "" : "s"} until trip
-              </p>
-            ) : null}
-            {nextMeetingLine ? (
-              <p className="text-xs font-medium text-sky-800">{nextMeetingLine}</p>
-            ) : null}
+        {nightStay ? (
+          <div className="mb-2 flex shrink-0 items-center gap-2 text-xs text-[var(--student-text-muted)]">
+            <span
+              className="h-2.5 w-2.5 rounded-full ring-1 ring-[var(--student-line)]"
+              style={{ backgroundColor: nightStay.color }}
+              aria-hidden
+            />
+            <span>Staying at {nightStay.name ?? "accommodation"}</span>
           </div>
         ) : null}
 
-        {items.length > 0 ? (
+        {layout === "run-sheet" ? (
+          <RunSheetTimeline
+            listRef={listRef}
+            items={items}
+            tripTimezone={tripTimezone}
+            activeId={activeId}
+            nextId={nextId}
+            heightsById={dayWindowLayout?.heightsById ?? new Map()}
+            needsScroll={dayWindowLayout?.needsScroll ?? false}
+            onTapItem={(item) =>
+              hostEditing ? hostEditing.onEditItem(item) : setSelectedItem(item)
+            }
+            animateItemIds={animateItemIds}
+            typewriterItemId={typewriterItemId}
+            listFooter={combinedFooter}
+          />
+        ) : (
           <div
-            ref={listRef}
+            ref={legacyListRef}
             className={[
               "relative flex min-h-0 flex-1 flex-col rounded-xl border border-zinc-200 bg-white shadow-sm",
-              blockLayout.needsScroll
+              blockLayout?.needsScroll
                 ? "no-scrollbar overflow-y-auto overscroll-y-contain"
                 : "overflow-hidden",
             ].join(" ")}
           >
-            {nightStay ? (
-              <span
-                className="absolute top-2 right-2 z-10 h-3 w-3 rounded-full ring-2 ring-white"
-                style={{ backgroundColor: nightStay.color }}
-                title={nightStay.name ?? "Accommodation"}
-                aria-label={nightStay.name ? `Staying at ${nightStay.name}` : "Accommodation"}
-              />
-            ) : null}
             {items.map((item) => (
               <CompactItineraryRow
                 key={item.id}
@@ -197,30 +266,15 @@ export function CompactDaySheet(props: {
                     : setSelectedItem(item)
                 }
                 spanMinutes={layoutSpans.spanById.get(item.id) ?? 60}
-                heightPx={blockLayout.heightsById.get(item.id) ?? 48}
-                minBlockHeightPx={blockLayout.minBlockHeightPx}
+                heightPx={blockLayout?.heightsById.get(item.id) ?? 48}
+                minBlockHeightPx={blockLayout?.minBlockHeightPx ?? 48}
                 animateIn={animateItemIds?.has(item.id)}
                 typewriterTitle={typewriterItemId === item.id}
               />
             ))}
-            {listFooter}
+            {combinedFooter}
           </div>
-        ) : null}
-
-        {prepItems.length > 0 ? (
-          <div className="mt-2 shrink-0 border-t border-zinc-100 pt-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-              Tomorrow prep
-            </p>
-            <ul className="mt-1 space-y-0.5">
-              {prepItems.map((p) => (
-                <li key={p.id} className="text-xs leading-snug text-zinc-600">
-                  · {p.text}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        )}
       </div>
 
       <ActivityDetailSheet

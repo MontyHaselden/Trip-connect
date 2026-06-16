@@ -2,13 +2,18 @@
 
 import { useState } from "react";
 
-export function MyDetails(props: {
+import { StudentBottomSheet } from "@/components/student/StudentBottomSheet";
+import { formatParticipantRole } from "@/lib/student/my-trip-summary";
+
+export function MyDetailsSheet(props: {
+  open: boolean;
+  onClose: () => void;
   fullName: string;
   phoneNumberE164: string;
   role: string;
   participantId: string;
 }) {
-  const { fullName, phoneNumberE164, role, participantId } = props;
+  const { open, onClose, fullName, phoneNumberE164, role, participantId } = props;
   const [editing, setEditing] = useState(false);
   const [phone, setPhone] = useState(phoneNumberE164);
   const [saving, setSaving] = useState(false);
@@ -37,62 +42,72 @@ export function MyDetails(props: {
     }
   }
 
+  function handleClose() {
+    setPhone(phoneNumberE164);
+    setEditing(false);
+    setError(null);
+    onClose();
+  }
+
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-      <h2 className="text-base font-semibold">My details</h2>
-      <div className="mt-3 space-y-2 text-sm">
+    <StudentBottomSheet open={open} onClose={handleClose} title="My details">
+      <div className="space-y-4 pb-2 text-sm">
         <div>
-          <div className="text-xs text-zinc-500">Name</div>
-          <div className="font-medium text-zinc-900">{fullName}</div>
+          <div className="text-xs font-medium text-[var(--student-text-muted)]">Name</div>
+          <div className="mt-1 font-semibold text-[var(--student-text)]">{fullName}</div>
         </div>
         <div>
-          <div className="text-xs text-zinc-500">Phone</div>
+          <div className="text-xs font-medium text-[var(--student-text-muted)]">Phone</div>
           {editing ? (
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="mt-1 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm"
+              className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3 text-sm"
             />
           ) : (
-            <div className="font-medium text-zinc-900">{phone}</div>
+            <div className="mt-1 font-semibold text-[var(--student-text)]">{phone}</div>
           )}
         </div>
         <div>
-          <div className="text-xs text-zinc-500">Role</div>
-          <div className="font-medium text-zinc-900">{role}</div>
+          <div className="text-xs font-medium text-[var(--student-text-muted)]">Role</div>
+          <div className="mt-1 font-semibold text-[var(--student-text)]">
+            {formatParticipantRole(role)}
+          </div>
         </div>
+
+        {error ? <p className="text-xs text-red-600">{error}</p> : null}
+
+        {editing ? (
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={savePhone}
+              className="student-btn-primary inline-flex h-11 flex-1 items-center justify-center text-sm disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPhone(phoneNumberE164);
+                setEditing(false);
+              }}
+              className="student-btn-secondary inline-flex h-11 items-center justify-center px-4 text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="student-btn-secondary inline-flex h-11 w-full items-center justify-center text-sm"
+          >
+            Edit my phone number
+          </button>
+        )}
       </div>
-      {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
-      {editing ? (
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            disabled={saving}
-            onClick={savePhone}
-            className="inline-flex h-10 flex-1 items-center justify-center rounded-xl bg-zinc-900 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPhone(phoneNumberE164);
-              setEditing(false);
-            }}
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 px-4 text-sm"
-          >
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white text-sm font-medium text-zinc-900"
-        >
-          Edit my phone number
-        </button>
-      )}
-    </section>
+    </StudentBottomSheet>
   );
 }

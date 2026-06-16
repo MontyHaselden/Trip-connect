@@ -2,21 +2,21 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { DateTime } from "luxon";
 
 import type { ParticipantPhoto } from "@/lib/student/participant-photos";
 
-import { OfflineBanner } from "./OfflineBanner";
 import { StudentBottomNav } from "./StudentBottomNav";
-import { TripAppContext, type TodayDayNav } from "./TripAppContext";
+import { StudentUpdateToast } from "@/components/student/StudentUpdateToast";
+import { TripAppContext, type TodayDayMeta, type TodayDayNav } from "./TripAppContext";
 import { TripDayNavBridge } from "./TripDayNavBridge";
 import { TripDebugPanel } from "@/components/debug/TripDebugPanel";
 import { AddToHomeScreenHint } from "@/components/mobile/AddToHomeScreenHint";
 import { TripPwaHead } from "@/components/mobile/TripPwaHead";
+import { TravelPassHeader } from "@/components/student/TravelPassHeader";
 import { DayCalendarSheet } from "@/components/student/today/DayCalendarSheet";
-import { DayLocationButton } from "@/components/student/today/DayLocationSheet";
 import { useTripCache } from "@/hooks/useTripCache";
 import { useStudentViewportLock } from "@/hooks/useStudentViewportLock";
+import { plusJakartaSans } from "@/lib/fonts/student-font";
 import { installTripDebugGlobal, tripDebug } from "@/lib/debug/trip-debug";
 import { isStandaloneDisplayMode } from "@/lib/mobile/pwa-detect";
 import {
@@ -25,25 +25,6 @@ import {
   studentAppPath,
 } from "@/lib/mobile/trip-storage";
 import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
-
-function RefreshIcon({ spinning }: { spinning: boolean }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={["h-5 w-5", spinning ? "animate-spin" : ""].join(" ")}
-      aria-hidden
-    >
-      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-      <path d="M21 3v6h-6" />
-    </svg>
-  );
-}
 
 export function TripAppShell({
   children,
@@ -60,11 +41,15 @@ export function TripAppShell({
   useStudentViewportLock();
   const [refreshing, setRefreshing] = useState(false);
   const [todayNav, setTodayNavState] = useState<TodayDayNav | null>(null);
+  const [todayDayMeta, setTodayDayMeta] = useState<TodayDayMeta | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [participantPhotos, setParticipantPhotos] = useState<ParticipantPhoto[]>([]);
   const [showInstallHint, setShowInstallHint] = useState(false);
   const setTodayNav = useCallback((nav: TodayDayNav | null) => {
     setTodayNavState(nav);
+  }, []);
+  const setTodayDayMetaStable = useCallback((meta: TodayDayMeta | null) => {
+    setTodayDayMeta(meta);
   }, []);
 
   const refreshPhotos = useCallback(async () => {
@@ -79,7 +64,7 @@ export function TripAppShell({
       const body = await res.json();
       setParticipantPhotos(body.photos ?? []);
     } catch {
-      // ignore — gallery loads when back online
+      // ignore
     }
   }, [tripId]);
 
@@ -88,19 +73,10 @@ export function TripAppShell({
     [cache.payload, cache.participantId],
   );
 
-  const onToday = pathname.includes("/today") || pathname.match(/^\/s\/[^/]+\/?$/) !== null;
-  const showDayControls = onToday && todayNav !== null;
-
-  const selectedDay = useMemo(() => {
-    if (!todayNav) return null;
-    return todayNav.scheduledDays.find((d) => d.date === todayNav.selectedDateISO) ?? null;
-  }, [todayNav]);
-
-  const centredHeaderDateLine = useMemo(() => {
-    if (!showDayControls || !selectedDay || !trip) return null;
-    const dt = DateTime.fromISO(selectedDay.date, { zone: trip.trip.timezone });
-    return dt.toFormat("cccc d LLLL");
-  }, [showDayControls, selectedDay, trip]);
+  const onToday =
+    pathname.includes("/today") || pathname.match(/^\/s\/[^/]+\/?$/) !== null;
+  const onMyTrip = pathname.includes("/my-trip");
+  const showTravelHeader = onToday && todayNav !== null;
 
   const itemCountByDayId = useMemo(() => {
     const m = new Map<string, number>();
@@ -181,20 +157,7 @@ export function TripAppShell({
     }
   }, [router, tripId, inviteCode, pathname]);
 
-  const pwaStartUrl = inviteCode
-    ? studentAppPath(inviteCode)
-    : undefined;
-
-  const bannerStatus =
-    cache.status === "updated" ||
-    cache.status === "up_to_date" ||
-    cache.status === "offline_no_cache" ||
-    cache.status === "syncing" ||
-    cache.status === "ready" ||
-    cache.status === "unauthorized" ||
-    cache.status === "error"
-      ? cache.status
-      : "ready";
+  const pwaStartUrl = inviteCode ? studentAppPath(inviteCode) : undefined;
 
   return (
     <TripAppContext.Provider
@@ -204,6 +167,8 @@ export function TripAppShell({
         cache,
         todayNav,
         setTodayNav,
+        todayDayMeta,
+        setTodayDayMeta: setTodayDayMetaStable,
         tripId,
         calendarOpen,
         setCalendarOpen,
@@ -224,86 +189,22 @@ export function TripAppShell({
           onDismiss={() => setShowInstallHint(false)}
         />
       ) : null}
-      <div className="fixed inset-0 z-0 overflow-hidden bg-zinc-50 text-zinc-900">
+      <div
+        className={`${plusJakartaSans.variable} student-app fixed inset-0 z-0 overflow-hidden`}
+      >
         <div className="mx-auto flex h-full w-full max-w-md flex-col gap-2 overflow-hidden px-4 py-3">
-          <header className="shrink-0 border-b border-zinc-200/80 pb-2 pt-0.5">
-            {showDayControls && centredHeaderDateLine ? (
-              <div className="text-center">
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={todayNav!.goPrev}
-                    disabled={!todayNav!.canGoPrev}
-                    className="h-8 w-8 text-lg text-zinc-700 disabled:opacity-30"
-                    aria-label="Previous day"
-                  >
-                    ‹
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCalendarOpen(true)}
-                    className="rounded-lg border border-zinc-200 px-3 py-1 text-xs font-medium text-zinc-700"
-                  >
-                    Calendar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={todayNav!.goNext}
-                    disabled={!todayNav!.canGoNext}
-                    className="h-8 w-8 text-lg text-zinc-700 disabled:opacity-30"
-                    aria-label="Next day"
-                  >
-                    ›
-                  </button>
-                </div>
-                <div className="mt-1 flex items-center justify-center gap-1.5">
-                  <h1 className="text-lg font-semibold tracking-tight">
-                    {centredHeaderDateLine}
-                  </h1>
-                  <DayLocationButton placement="header" />
-                </div>
-              </div>
-            ) : (
+          {showTravelHeader ? (
+            <TravelPassHeader />
+          ) : onMyTrip ? null : (
+            <header className="shrink-0 border-b border-[var(--student-line)] pb-2 pt-0.5">
               <div className="flex items-center justify-between">
-                <h1 className="text-sm font-semibold">{trip?.trip.name ?? "Trip"}</h1>
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  disabled={!cache.online || refreshing || cache.status === "syncing"}
-                  className="inline-flex h-8 w-8 items-center justify-center text-zinc-600 disabled:opacity-40"
-                  aria-label="Refresh"
-                >
-                  <RefreshIcon spinning={refreshing || cache.status === "syncing"} />
-                </button>
+                <h1 className="text-lg font-bold text-[var(--student-text)]">
+                  {trip?.trip.name ?? "Trip"}
+                </h1>
               </div>
-            )}
-            {showDayControls ? (
-              <div className="mt-1 flex justify-end">
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  disabled={!cache.online || refreshing || cache.status === "syncing"}
-                  className="text-xs text-zinc-500 disabled:opacity-40"
-                >
-                  Refresh
-                </button>
-              </div>
-            ) : null}
-          </header>
+            </header>
+          )}
 
-          <OfflineBanner
-            online={cache.online}
-            cachedAt={cache.cachedAt}
-            version={cache.version}
-            status={bannerStatus}
-            message={
-              cache.status === "unauthorized"
-                ? "Could not refresh — your session may have expired. You can still view saved trip data."
-                : cache.status === "error"
-                  ? cache.message
-                  : undefined
-            }
-          />
           <TripDayNavBridge />
           <div key={pathname} className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {children}
@@ -315,7 +216,9 @@ export function TripAppShell({
         </div>
       </div>
 
-      {showDayControls && todayNav ? (
+      <StudentUpdateToast />
+
+      {showTravelHeader && todayNav ? (
         <DayCalendarSheet
           open={calendarOpen}
           onClose={() => setCalendarOpen(false)}

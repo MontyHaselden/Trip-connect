@@ -17,11 +17,13 @@ import {
 
 export function StudentAppRoot(props: {
   inviteCode: string;
+  /** Code in the URL — may be a group link; used for join API. */
+  joinInviteCode?: string;
   tripId: string;
   tripName: string;
   children: React.ReactNode;
 }) {
-  const { inviteCode, tripId, tripName, children } = props;
+  const { inviteCode, joinInviteCode = inviteCode, tripId, tripName, children } = props;
   const [phase, setPhase] = useState<"loading" | "join" | "app">("loading");
 
   useStudentViewportLock();
@@ -47,7 +49,7 @@ export function StudentAppRoot(props: {
 
   if (phase === "loading") {
     return (
-      <p className="flex h-dvh items-center justify-center text-sm text-zinc-600">
+      <p className="student-app flex h-dvh items-center justify-center bg-[var(--student-bg)] text-sm text-[var(--student-text-muted)]">
         Loading…
       </p>
     );
@@ -56,7 +58,8 @@ export function StudentAppRoot(props: {
   if (phase === "join") {
     return (
       <StudentJoinForm
-        inviteCode={inviteCode}
+        inviteCode={joinInviteCode}
+        tripInviteCode={inviteCode}
         tripName={tripName}
         onJoined={() => redirectToStudentApp(inviteCode, { promptInstall: true })}
       />

@@ -1,35 +1,32 @@
+import { tripHomeDefaultsFromAccount } from "@/lib/host/account-home";
+import { getHostAccountById } from "@/lib/host/auth";
 import { createTripForHost } from "@/lib/host/trip-create";
 
-/** Creates a bare trip shell — document import runs separately for live builder preview. */
-import { db } from "@/lib/db/client";
-import { tripWizardDrafts } from "@/lib/db/schema";
-import { emptyWizardDraft } from "@/lib/host/wizard/types";
-
+/** Creates a bare trip shell — Trip OS loads setup state from the trip graph, not wizard drafts. */
 export async function createTripShell(params: {
   hostId: string;
   name: string;
   timezone?: string;
-  setupMethod?: "ai" | "wizard";
 }) {
   const timezone = params.timezone?.trim() || "UTC";
-  const setupMethod = params.setupMethod ?? "ai";
-  const trip = await createTripForHost({
+  const host = await getHostAccountById(params.hostId);
+  const homeDefaults = host
+    ? tripHomeDefaultsFromAccount({
+        homeCity: host.homeCity ?? "",
+        defaultAirport: host.defaultAirport ?? "",
+        schoolName: host.schoolName,
+      })
+    : null;
+
+  return createTripForHost({
     hostId: params.hostId,
     name: params.name.trim(),
-    schoolName: "School trip",
+    schoolName: homeDefaults?.schoolName ?? "School trip",
     timezone,
     defaultCountryCallingCode: "NZ",
-    setupMethod,
+    setupMethod: "ai",
+    departureCity: homeDefaults?.departureCity,
+    returnCity: homeDefaults?.returnCity,
+    defaultDepartureAirport: homeDefaults?.defaultDepartureAirport,
   });
-
-  if (setupMethod === "wizard") {
-    const draft = emptyWizardDraft(params.name.trim());
-    await db.insert(tripWizardDrafts).values({
-      tripId: trip.id,
-      currentStep: 1,
-      draftJson: draft,
-    });
-  }
-
-  return trip;
 }

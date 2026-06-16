@@ -14,6 +14,12 @@ const PatchRoomSchema = z.object({
   hotelName: z.string().trim().max(200).nullable().optional(),
   hotelAddress: z.string().trim().max(500).nullable().optional(),
   nearestStation: z.string().trim().max(200).nullable().optional(),
+  hotelPhone: z.string().trim().max(50).nullable().optional(),
+  nearestStationNotes: z.string().trim().max(500).nullable().optional(),
+  nearestBusStopName: z.string().trim().max(200).nullable().optional(),
+  routeNotesToAccommodation: z.string().trim().max(1000).nullable().optional(),
+  staticMapUrl: z.string().trim().max(2000).nullable().optional(),
+  mapsUrl: z.string().trim().max(2000).nullable().optional(),
   notes: z.string().trim().max(500).nullable().optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
@@ -48,6 +54,26 @@ export async function PATCH(
           parsed.data.nearestStation !== undefined
             ? parsed.data.nearestStation
             : room.nearestStation,
+        hotelPhone:
+          parsed.data.hotelPhone !== undefined ? parsed.data.hotelPhone : room.hotelPhone,
+        nearestStationNotes:
+          parsed.data.nearestStationNotes !== undefined
+            ? parsed.data.nearestStationNotes
+            : room.nearestStationNotes,
+        nearestBusStopName:
+          parsed.data.nearestBusStopName !== undefined
+            ? parsed.data.nearestBusStopName
+            : room.nearestBusStopName,
+        routeNotesToAccommodation:
+          parsed.data.routeNotesToAccommodation !== undefined
+            ? parsed.data.routeNotesToAccommodation
+            : room.routeNotesToAccommodation,
+        staticMapUrl:
+          parsed.data.staticMapUrl !== undefined
+            ? parsed.data.staticMapUrl
+            : room.staticMapUrl,
+        mapsUrl:
+          parsed.data.mapsUrl !== undefined ? parsed.data.mapsUrl : room.mapsUrl,
         notes: parsed.data.notes !== undefined ? parsed.data.notes : room.notes,
         sortOrder: parsed.data.sortOrder ?? room.sortOrder,
       })

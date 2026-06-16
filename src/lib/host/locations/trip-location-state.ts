@@ -7,6 +7,10 @@ import {
   tripTransportLegs,
   trips,
 } from "@/lib/db/schema";
+import {
+  groupTargetsByEntity,
+  loadVisibilityTargetsForTrip,
+} from "@/lib/visibility/persistence";
 import type {
   AccommodationStayDraft,
   DayPlaceDraft,
@@ -36,7 +40,7 @@ function inferPrimaryShare(day: {
 function rowToTransportLeg(row: {
   id: string;
   transportType: TransportLegDraft["transportType"];
-  bookingStatus: TransportLegDraft["bookingStatus"] | "placeholder";
+  bookingStatus: TransportLegDraft["bookingStatus"] | "placeholder" | "cancelled";
   travelDate: string;
   departureTime: string | null;
   arrivalTime: string | null;
@@ -52,7 +56,12 @@ function rowToTransportLeg(row: {
   return {
     id: row.id,
     transportType: row.transportType,
-    bookingStatus: row.bookingStatus === "placeholder" ? "not_booked" : row.bookingStatus,
+    bookingStatus:
+      row.bookingStatus === "placeholder"
+        ? "not_booked"
+        : row.bookingStatus === "cancelled"
+          ? "not_booked"
+          : row.bookingStatus,
     travelDate: row.travelDate,
     arrivalDate: null,
     departureTime: timeFromDb(row.departureTime),
@@ -78,6 +87,7 @@ export async function loadTripLocationState(tripId: string): Promise<TripLocatio
       timezone: trips.timezone,
       departureCity: trips.departureCity,
       returnCity: trips.returnCity,
+      defaultDepartureAirport: trips.defaultDepartureAirport,
       destinationCountry: trips.destinationCountry,
     })
     .from(trips)
@@ -112,6 +122,20 @@ export async function loadTripLocationState(tripId: string): Promise<TripLocatio
     .where(eq(tripAccommodationStays.tripId, tripId))
     .orderBy(asc(tripAccommodationStays.sortOrder));
 
+  const visibilityRows = await loadVisibilityTargetsForTrip(tripId);
+  const targetMap = groupTargetsByEntity(visibilityRows);
+
+  function attachVisibility<T extends { id: string; visibilityMode?: string }>(
+    entityType: "transport_leg" | "accommodation_stay",
+    row: T,
+  ) {
+    return {
+      ...row,
+      visibilityMode: (row.visibilityMode ?? "everyone") as AccommodationStayDraft["visibilityMode"],
+      targets: targetMap.get(`${entityType}:${row.id}`) ?? [],
+    };
+  }
+
   const dayPlaces: DayPlaceDraft[] = dayRows.map((day) => ({
     date: day.date,
     primaryCity: day.cityLabel?.trim() || "",
@@ -127,13 +151,22 @@ export async function loadTripLocationState(tripId: string): Promise<TripLocatio
 
   for (const row of legRows) {
     const base = rowToTransportLeg(row);
+    const withVisibility = attachVisibility("transport_leg", {
+      ...base,
+      visibilityMode: row.visibilityMode,
+    });
+    const withLayer = {
+      ...withVisibility,
+      originGroupId: row.originGroupId,
+      sourceEntityId: row.sourceEntityId,
+    };
     if (row.legKind === "outbound") {
-      outboundLegs.push(base);
+      outboundLegs.push(withLayer);
     } else if (row.legKind === "return") {
-      returnLegs.push(base);
+      returnLegs.push(withLayer);
     } else {
       intercityLegs.push({
-        ...base,
+        ...withLayer,
         intercityFromCity: row.intercityFromCity ?? base.fromCity,
         intercityToCity: row.intercityToCity ?? base.toCity,
       });
@@ -146,20 +179,25 @@ export async function loadTripLocationState(tripId: string): Promise<TripLocatio
     cityStayCounts.set(key, (cityStayCounts.get(key) ?? 0) + 1);
   }
 
-  const accommodationStays: AccommodationStayDraft[] = stayRows.map((stay) => ({
-    id: stay.id,
-    cityLabel: stay.cityLabel,
-    stayType: stay.stayType,
-    name: stay.name,
-    url: stay.url,
-    address: stay.address,
-    phone: stay.phone,
-    checkInDate: stay.checkInDate,
-    checkOutDate: stay.checkOutDate,
-    notes: stay.notes,
-    isHomestayGroup: stay.isHomestayGroup,
-    multipleInCity: (cityStayCounts.get(stay.cityLabel.toLowerCase()) ?? 0) > 1,
-  }));
+  const accommodationStays: AccommodationStayDraft[] = stayRows.map((stay) =>
+    attachVisibility("accommodation_stay", {
+      id: stay.id,
+      cityLabel: stay.cityLabel,
+      stayType: stay.stayType,
+      name: stay.name,
+      url: stay.url,
+      address: stay.address,
+      phone: stay.phone,
+      checkInDate: stay.checkInDate,
+      checkOutDate: stay.checkOutDate,
+      notes: stay.notes,
+      isHomestayGroup: stay.isHomestayGroup,
+      multipleInCity: (cityStayCounts.get(stay.cityLabel.toLowerCase()) ?? 0) > 1,
+      visibilityMode: stay.visibilityMode,
+      originGroupId: stay.originGroupId,
+      sourceEntityId: stay.sourceEntityId,
+    }),
+  );
 
   const countries = trip.destinationCountry
     ? trip.destinationCountry.split(",").map((c) => c.trim()).filter(Boolean)
@@ -174,6 +212,7 @@ export async function loadTripLocationState(tripId: string): Promise<TripLocatio
       timezone: trip.timezone,
       departureCity: trip.departureCity ?? "",
       returnCity: trip.returnCity ?? "",
+      defaultDepartureAirport: trip.defaultDepartureAirport ?? "",
       destinationCountries: countries,
     },
     dayPlaces,

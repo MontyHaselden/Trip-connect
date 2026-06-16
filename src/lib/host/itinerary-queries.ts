@@ -9,6 +9,7 @@ import {
   tomorrowPrepItems,
   tripDays,
 } from "@/lib/db/schema";
+import { groupTargetsByEntity, loadVisibilityTargetsForTrip } from "@/lib/visibility/persistence";
 
 export function normalizeTime(input: string): string {
   const t = input.trim();
@@ -44,6 +45,11 @@ export async function loadItineraryTree(tripId: string) {
     .where(eq(tomorrowPrepItems.tripId, tripId))
     .orderBy(asc(tomorrowPrepItems.tripDayId), asc(tomorrowPrepItems.sortOrder));
 
+  const visibilityRows = await loadVisibilityTargetsForTrip(tripId);
+  const prepTargets = groupTargetsByEntity(
+    visibilityRows.filter((r) => r.entityType === "prep_item"),
+  );
+
   return {
     days: days.map((d) => ({
       id: d.id,
@@ -69,6 +75,7 @@ export async function loadItineraryTree(tripId: string) {
           hostNote: i.hostNote,
           audienceType: i.audienceType,
           audienceId: i.audienceId,
+          visibilityMode: i.visibilityMode,
           category: i.category,
           sortOrder: i.sortOrder,
         })),
@@ -79,6 +86,8 @@ export async function loadItineraryTree(tripId: string) {
           tripDayId: p.tripDayId,
           text: p.text,
           sortOrder: p.sortOrder,
+          visibilityMode: p.visibilityMode,
+          targets: prepTargets.get(`prep_item:${p.id}`) ?? [],
         })),
     })),
   };

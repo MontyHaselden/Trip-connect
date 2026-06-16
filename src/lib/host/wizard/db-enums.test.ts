@@ -4,8 +4,8 @@ import { describe, it } from "node:test";
 import { toDbBookingStatus, toDbTransportType } from "./db-enums.ts";
 
 describe("wizard db enum mapping", () => {
-  it("maps flexible booking to placeholder", () => {
-    assert.equal(toDbBookingStatus("flexible"), "placeholder");
+  it("preserves flexible booking status", () => {
+    assert.equal(toDbBookingStatus("flexible"), "flexible");
     assert.equal(toDbBookingStatus("booked"), "booked");
   });
 

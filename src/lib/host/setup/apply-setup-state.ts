@@ -1,0 +1,365 @@
+import { and, eq } from "drizzle-orm";
+
+import { db } from "@/lib/db/client";
+import {
+  groupDayPlaces,
+  groupOverlayOps,
+  tripAccommodationStays,
+  tripTransportLegs,
+} from "@/lib/db/schema";
+import {
+  inferDayPlacesFromIntercityLeg,
+  inferDayPlacesFromStay,
+  inferHideOpsForGroupStays,
+} from "@/lib/host/setup-inference";
+import {
+  applyTripLocationState,
+  syncTransportLegsTable,
+} from "@/lib/host/locations/apply-location-state";
+import { toDbBookingStatus, toDbTransportType } from "@/lib/host/wizard/db-enums";
+import { resolveItemVisibility, persistEntityVisibility } from "@/lib/visibility/item-visibility";
+import type {
+  AccommodationStayDraft,
+  DayPlaceDraft,
+  IntercityLegDraft,
+} from "@/lib/host/wizard/types";
+
+import { mainAccommodationStays, mainIntercityLegs, mainTransportLegs } from "./entity-scope";
+import type { GroupOverlayOpDraft, TripSetupState } from "./types";
+
+function travelCalendarLabel(day: DayPlaceDraft): string | null {
+  if (day.dayType === "travel" && day.secondaryCity?.trim()) {
+    return `${day.primaryCity} → ${day.secondaryCity}`;
+  }
+  if (day.secondaryCity?.trim()) {
+    return `${day.primaryCity} / ${day.secondaryCity}`;
+  }
+  return null;
+}
+
+function normalizeIsoDate(value: string | Date): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  const trimmed = String(value).trim();
+  return trimmed.length >= 10 ? trimmed.slice(0, 10) : trimmed;
+}
+
+function dedupeDaysByDate(days: DayPlaceDraft[]): DayPlaceDraft[] {
+  const byDate = new Map<string, DayPlaceDraft>();
+  for (const day of days) {
+    byDate.set(normalizeIsoDate(day.date), { ...day, date: normalizeIsoDate(day.date) });
+  }
+  return [...byDate.values()];
+}
+
+async function syncGroupDayPlaces(
+  tripId: string,
+  groupId: string,
+  days: DayPlaceDraft[],
+) {
+  const normalizedDays = dedupeDaysByDate(days);
+  const existing = await db
+    .select({ id: groupDayPlaces.id, date: groupDayPlaces.date })
+    .from(groupDayPlaces)
+    .where(and(eq(groupDayPlaces.tripId, tripId), eq(groupDayPlaces.groupId, groupId)));
+
+  const existingByDate = new Map(
+    existing.map((row) => [normalizeIsoDate(row.date), row.id] as const),
+  );
+
+  const incomingDates = new Set(normalizedDays.map((d) => d.date));
+  for (const row of existing) {
+    if (!incomingDates.has(normalizeIsoDate(row.date))) {
+      await db.delete(groupDayPlaces).where(eq(groupDayPlaces.id, row.id));
+    }
+  }
+
+  for (const day of normalizedDays) {
+    const values = {
+      tripId,
+      groupId,
+      date: day.date,
+      primaryCity: day.primaryCity,
+      secondaryCity: day.secondaryCity,
+      primaryShare: String(day.primaryShare ?? 1),
+      dayType: day.dayType,
+      calendarLabel: travelCalendarLabel(day),
+      weatherLocationQuery: day.primaryCity.trim() || null,
+      updatedAt: new Date(),
+    };
+
+    const existingId = existingByDate.get(day.date);
+    if (existingId) {
+      await db.update(groupDayPlaces).set(values).where(eq(groupDayPlaces.id, existingId));
+      continue;
+    }
+
+    const inserted = await db
+      .insert(groupDayPlaces)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [groupDayPlaces.tripId, groupDayPlaces.groupId, groupDayPlaces.date],
+        set: {
+          primaryCity: values.primaryCity,
+          secondaryCity: values.secondaryCity,
+          primaryShare: values.primaryShare,
+          dayType: values.dayType,
+          calendarLabel: values.calendarLabel,
+          weatherLocationQuery: values.weatherLocationQuery,
+          updatedAt: values.updatedAt,
+        },
+      })
+      .returning({ id: groupDayPlaces.id, date: groupDayPlaces.date });
+
+    for (const row of inserted) {
+      existingByDate.set(normalizeIsoDate(row.date), row.id);
+    }
+  }
+}
+
+async function syncOverlayOps(tripId: string, ops: GroupOverlayOpDraft[]) {
+  const existing = await db
+    .select({ id: groupOverlayOps.id })
+    .from(groupOverlayOps)
+    .where(eq(groupOverlayOps.tripId, tripId));
+
+  const incomingIds = new Set(ops.map((o) => o.id));
+  for (const row of existing) {
+    if (!incomingIds.has(row.id)) {
+      await db.delete(groupOverlayOps).where(eq(groupOverlayOps.id, row.id));
+    }
+  }
+
+  const existingIds = new Set(existing.map((r) => r.id));
+  for (const op of ops) {
+    const values = {
+      tripId,
+      groupId: op.groupId,
+      entityType: op.entityType,
+      baseEntityId: op.baseEntityId,
+      op: op.op,
+      replacementEntityId: op.replacementEntityId,
+      effectiveFrom: op.effectiveFrom,
+      effectiveTo: op.effectiveTo,
+      updatedAt: new Date(),
+    };
+    if (existingIds.has(op.id)) {
+      await db.update(groupOverlayOps).set(values).where(eq(groupOverlayOps.id, op.id));
+    } else {
+      await db.insert(groupOverlayOps).values({ id: op.id, ...values });
+    }
+  }
+}
+
+function intercityToRow(tripId: string, leg: IntercityLegDraft, sortOrder: number) {
+  const visibility = resolveItemVisibility(leg);
+  return {
+    id: leg.id,
+    tripId,
+    legKind: "intercity" as const,
+    transportType: toDbTransportType(leg.transportType),
+    bookingStatus: toDbBookingStatus(leg.bookingStatus),
+    travelDate: leg.travelDate,
+    departureTime: leg.departureTime,
+    arrivalTime: leg.arrivalTime,
+    fromCity: leg.fromCity || null,
+    toCity: leg.toCity || null,
+    fromStation: leg.fromStation,
+    toStation: leg.toStation,
+    operator: leg.operator,
+    referenceNumber: leg.referenceNumber,
+    flightNumber: leg.flightNumber,
+    notes: leg.notes,
+    intercityFromCity: leg.intercityFromCity,
+    intercityToCity: leg.intercityToCity,
+    sortOrder,
+    visibilityMode: visibility.visibilityMode,
+    originGroupId: leg.originGroupId ?? null,
+    sourceEntityId: leg.sourceEntityId ?? null,
+  };
+}
+
+async function syncGroupIntercityLegs(
+  tripId: string,
+  groupId: string,
+  legs: IntercityLegDraft[],
+) {
+  const incomingIds = new Set(legs.map((l) => l.id));
+  const existing = await db
+    .select({ id: tripTransportLegs.id })
+    .from(tripTransportLegs)
+    .where(
+      and(
+        eq(tripTransportLegs.tripId, tripId),
+        eq(tripTransportLegs.legKind, "intercity"),
+        eq(tripTransportLegs.originGroupId, groupId),
+      ),
+    );
+
+  for (const row of existing) {
+    if (!incomingIds.has(row.id)) {
+      await db.delete(tripTransportLegs).where(eq(tripTransportLegs.id, row.id));
+    }
+  }
+
+  const existingIds = new Set(existing.map((r) => r.id));
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i]!;
+    const row = intercityToRow(tripId, { ...leg, originGroupId: groupId }, i);
+    const visibility = resolveItemVisibility(leg);
+    if (existingIds.has(leg.id)) {
+      await db.update(tripTransportLegs).set(row).where(eq(tripTransportLegs.id, leg.id));
+    } else {
+      await db.insert(tripTransportLegs).values(row);
+    }
+    await persistEntityVisibility(
+      tripId,
+      "transport_leg",
+      leg.id,
+      visibility.visibilityMode,
+      visibility.targets,
+    );
+  }
+}
+
+async function syncGroupAccommodationStays(
+  tripId: string,
+  groupId: string,
+  stays: AccommodationStayDraft[],
+) {
+  const incomingIds = new Set(stays.map((s) => s.id));
+  const existing = await db
+    .select({ id: tripAccommodationStays.id })
+    .from(tripAccommodationStays)
+    .where(
+      and(
+        eq(tripAccommodationStays.tripId, tripId),
+        eq(tripAccommodationStays.originGroupId, groupId),
+      ),
+    );
+
+  for (const row of existing) {
+    if (!incomingIds.has(row.id)) {
+      await db.delete(tripAccommodationStays).where(eq(tripAccommodationStays.id, row.id));
+    }
+  }
+
+  const existingIds = new Set(existing.map((r) => r.id));
+  for (let i = 0; i < stays.length; i++) {
+    const s = stays[i]!;
+    const visibility = resolveItemVisibility(s);
+    const values = {
+      tripId,
+      cityLabel: s.cityLabel,
+      stayType: s.stayType,
+      name: s.name,
+      url: s.url,
+      address: s.address,
+      phone: s.phone,
+      checkInDate: s.checkInDate,
+      checkOutDate: s.checkOutDate,
+      notes: s.notes,
+      isHomestayGroup: s.isHomestayGroup,
+      sortOrder: i,
+      visibilityMode: visibility.visibilityMode,
+      originGroupId: groupId,
+      sourceEntityId: s.sourceEntityId ?? null,
+    };
+    if (existingIds.has(s.id)) {
+      await db
+        .update(tripAccommodationStays)
+        .set(values)
+        .where(eq(tripAccommodationStays.id, s.id));
+    } else {
+      await db.insert(tripAccommodationStays).values({ id: s.id, ...values });
+    }
+    await persistEntityVisibility(
+      tripId,
+      "accommodation_stay",
+      s.id,
+      visibility.visibilityMode,
+      visibility.targets,
+    );
+  }
+}
+
+function applyGroupInference(
+  state: TripSetupState,
+  activeGroupId: string,
+): TripSetupState {
+  if (activeGroupId === state.mainGroupId) return state;
+
+  let dayPlaces = state.dayPlacesByGroupId[activeGroupId] ?? [];
+  const groupStays = state.accommodationStays.filter((s) => s.originGroupId === activeGroupId);
+  const groupLegs = state.intercityLegs.filter((l) => l.originGroupId === activeGroupId);
+
+  for (const stay of groupStays) {
+    dayPlaces = inferDayPlacesFromStay(dayPlaces, stay, { replaceExisting: true });
+  }
+  for (const leg of groupLegs) {
+    dayPlaces = inferDayPlacesFromIntercityLeg(dayPlaces, leg);
+  }
+
+  const overlayOps = inferHideOpsForGroupStays(
+    activeGroupId,
+    mainAccommodationStays(state),
+    groupStays,
+    state.overlayOps,
+  );
+
+  return {
+    ...state,
+    dayPlacesByGroupId: {
+      ...state.dayPlacesByGroupId,
+      [activeGroupId]: dayPlaces,
+    },
+    overlayOps,
+  };
+}
+
+export async function applyTripSetupState(
+  tripId: string,
+  state: TripSetupState,
+  options?: { activeGroupId?: string; skipWizardItineraryItems?: boolean },
+): Promise<{ dayCount: number }> {
+  const activeGroupId = options?.activeGroupId ?? state.mainGroupId;
+  const inferred = applyGroupInference(state, activeGroupId);
+  const activeDays = inferred.dayPlacesByGroupId[activeGroupId] ?? [];
+  const main = mainTransportLegs(inferred);
+
+  // Always sync main transport so removed legs are purged from Neon even when
+  // saving from a subgroup context or before other group-scoped writes run.
+  await syncTransportLegsTable(
+    tripId,
+    state.mainGroupId,
+    main.outboundLegs,
+    main.returnLegs,
+    main.intercityLegs,
+  );
+
+  await syncGroupDayPlaces(tripId, activeGroupId, activeDays);
+  await syncOverlayOps(tripId, inferred.overlayOps);
+
+  if (activeGroupId === state.mainGroupId) {
+    return applyTripLocationState(
+      tripId,
+      {
+        basics: inferred.basics,
+        dayPlaces: activeDays,
+        outboundLegs: main.outboundLegs,
+        returnLegs: main.returnLegs,
+        intercityLegs: main.intercityLegs,
+        accommodationStays: main.accommodationStays,
+      },
+      {
+        syncTransportItems: options?.skipWizardItineraryItems ? false : undefined,
+      },
+    );
+  }
+
+  const groupLegs = inferred.intercityLegs.filter((l) => l.originGroupId === activeGroupId);
+  const groupStays = inferred.accommodationStays.filter((s) => s.originGroupId === activeGroupId);
+  await syncGroupIntercityLegs(tripId, activeGroupId, groupLegs);
+  await syncGroupAccommodationStays(tripId, activeGroupId, groupStays);
+
+  return { dayCount: activeDays.length };
+}

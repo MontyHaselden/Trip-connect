@@ -17,6 +17,8 @@ const BodySchema = z.discriminatedUnion("accountType", [
     jobTitle: z.string().trim().min(2).max(120),
     role: z.enum(["teacher", "helper", "host", "admin"]).default("teacher"),
     plan: z.enum(["school_starter", "school_pro", "school_pro_plus"]),
+    homeCity: z.string().trim().min(2).max(200),
+    defaultAirport: z.string().trim().min(2).max(200),
   }),
   z.object({
     accountType: z.literal("personal"),
@@ -24,6 +26,8 @@ const BodySchema = z.discriminatedUnion("accountType", [
     password: z.string().min(8).max(200),
     fullName: z.string().trim().min(2).max(120),
     plan: z.enum(["personal_one_time", "personal", "personal_pro"]),
+    homeCity: z.string().trim().min(2).max(200),
+    defaultAirport: z.string().trim().min(2).max(200),
   }),
 ]);
 
@@ -49,6 +53,8 @@ export async function POST(req: Request) {
             plan: data.plan,
             schoolName: data.schoolName,
             jobTitle: data.jobTitle,
+            homeCity: data.homeCity,
+            defaultAirport: data.defaultAirport,
           })
         : await createHostAccount({
             accountType: "personal",
@@ -56,6 +62,8 @@ export async function POST(req: Request) {
             password: data.password,
             fullName: data.fullName,
             plan: data.plan,
+            homeCity: data.homeCity,
+            defaultAirport: data.defaultAirport,
           });
 
     await setHostSessionCookie({ hostId: host.id, activeTripId: null });

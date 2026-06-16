@@ -32,6 +32,31 @@ export function formatTimeDisplay(value: string | null | undefined): string {
   return DateTime.fromObject({ hour: parsed.hour24, minute: parsed.minute }).toFormat("h:mm a");
 }
 
-export const HOUR12_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
-export const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, i) => i);
-export const PERIOD_OPTIONS = ["AM", "PM"] as const;
+export const MINUTE_STEP = 5;
+
+export function snapMinuteToStep(minute: number, step = MINUTE_STEP): number {
+  const snapped = Math.round(minute / step) * step;
+  return Math.min(60 - step, Math.max(0, snapped));
+}
+
+/** Every time slot in 5-minute steps (HH:mm, 00:00–23:55). */
+export const TIME_OPTIONS: string[] = (() => {
+  const out: string[] = [];
+  for (let hour = 0; hour < 24; hour++) {
+    for (let minute = 0; minute < 60; minute += MINUTE_STEP) {
+      out.push(toTimeValue(hour, minute));
+    }
+  }
+  return out;
+})();
+
+export const DEFAULT_TIME_OPTION = "09:00";
+
+export function normalizeTimeValue(
+  value: string | null | undefined,
+  fallback = DEFAULT_TIME_OPTION,
+): string {
+  const parsed = parseTimeValue(value);
+  if (!parsed) return fallback;
+  return toTimeValue(parsed.hour24, snapMinuteToStep(parsed.minute));
+}

@@ -38,7 +38,35 @@ export const groupType = pgEnum("group_type", [
   "activity",
   "bus",
   "week",
+  "route",
+  "split_travel",
+  "accommodation",
+  "staff_helper",
   "other",
+]);
+
+export const visibilityMode = pgEnum("visibility_mode", [
+  "everyone",
+  "staff_only",
+  "viewers_only",
+  "hidden_from_students",
+  "custom",
+]);
+
+export const visibilityEntityType = pgEnum("visibility_entity_type", [
+  "itinerary_item",
+  "transport_leg",
+  "accommodation_stay",
+  "day_reminder",
+  "prep_item",
+  "contact",
+  "room",
+]);
+
+export const visibilityTargetType = pgEnum("visibility_target_type", [
+  "group",
+  "participant",
+  "room",
 ]);
 
 export const phraseSource = pgEnum("phrase_source", ["default", "ai", "host"]);
@@ -104,6 +132,23 @@ export const bookingStatus = pgEnum("booking_status", [
   "booked",
   "not_booked",
   "placeholder",
+  "flexible",
+  "cancelled",
+]);
+
+export const overlayEntityType = pgEnum("overlay_entity_type", [
+  "itinerary_item",
+  "transport_leg",
+  "accommodation_stay",
+  "trip_day",
+]);
+
+export const overlayOp = pgEnum("overlay_op", ["hide", "replace"]);
+
+export const bookingEntityType = pgEnum("booking_entity_type", [
+  "itinerary_item",
+  "transport_leg",
+  "accommodation_stay",
 ]);
 
 export const wizardSource = pgEnum("wizard_source", [
@@ -156,6 +201,8 @@ export const hostAccounts = pgTable(
     plan: subscriptionPlan("plan").notNull().default("school_starter"),
     schoolName: text("school_name"),
     jobTitle: text("job_title"),
+    homeCity: text("home_city"),
+    defaultAirport: text("default_airport"),
     planExpiresAt: timestamp("plan_expires_at", { withTimezone: true }),
     linkedParticipantId: uuid("linked_participant_id"),
     billingContactName: text("billing_contact_name"),
@@ -206,9 +253,12 @@ export const trips = pgTable(
     timezone: text("timezone").notNull(),
     defaultCountryCallingCode: text("default_country_calling_code").notNull(),
     publishedVersion: integer("published_version").notNull().default(0),
+    localEmergencyNumber: text("local_emergency_number"),
+    schoolEmergencyPhone: text("school_emergency_phone"),
     setupMethod: tripSetupMethod("setup_method").default("ai"),
     departureCity: text("departure_city"),
     returnCity: text("return_city"),
+    defaultDepartureAirport: text("default_departure_airport"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -389,12 +439,17 @@ export const itineraryItems = pgTable(
     hostNote: text("host_note"),
     audienceType: itineraryAudienceType("audience_type").notNull(),
     audienceId: uuid("audience_id"),
+    visibilityMode: visibilityMode("visibility_mode").notNull().default("everyone"),
     category: activityCategory("category"),
     sortOrder: integer("sort_order").notNull(),
     bookingStatus: bookingStatus("booking_status"),
     wizardSource: wizardSource("wizard_source"),
     isTimeTbc: boolean("is_time_tbc").notNull().default(false),
     isLocationTbc: boolean("is_location_tbc").notNull().default(false),
+    originGroupId: uuid("origin_group_id").references(() => groups.id, {
+      onDelete: "set null",
+    }),
+    sourceEntityId: uuid("source_entity_id"),
   },
   (i) => ({
     daySortIndex: index("itinerary_items_trip_day_id_sort_order_idx").on(
@@ -439,6 +494,11 @@ export const tripTransportLegs = pgTable(
     intercityFromCity: text("intercity_from_city"),
     intercityToCity: text("intercity_to_city"),
     sortOrder: integer("sort_order").notNull().default(0),
+    visibilityMode: visibilityMode("visibility_mode").notNull().default("everyone"),
+    originGroupId: uuid("origin_group_id").references(() => groups.id, {
+      onDelete: "set null",
+    }),
+    sourceEntityId: uuid("source_entity_id"),
   },
   (l) => ({
     tripSortIndex: index("trip_transport_legs_trip_id_sort_order_idx").on(
@@ -466,6 +526,11 @@ export const tripAccommodationStays = pgTable(
     notes: text("notes"),
     isHomestayGroup: boolean("is_homestay_group").notNull().default(false),
     sortOrder: integer("sort_order").notNull().default(0),
+    visibilityMode: visibilityMode("visibility_mode").notNull().default("everyone"),
+    originGroupId: uuid("origin_group_id").references(() => groups.id, {
+      onDelete: "set null",
+    }),
+    sourceEntityId: uuid("source_entity_id"),
   },
   (s) => ({
     tripSortIndex: index("trip_accommodation_stays_trip_id_sort_order_idx").on(
@@ -510,6 +575,7 @@ export const tripDayReminders = pgTable(
     note: text("note"),
     audienceType: itineraryAudienceType("audience_type").notNull().default("everyone"),
     audienceId: uuid("audience_id"),
+    visibilityMode: visibilityMode("visibility_mode").notNull().default("everyone"),
     sortOrder: integer("sort_order").notNull().default(0),
   },
   (r) => ({
@@ -532,6 +598,7 @@ export const tomorrowPrepItems = pgTable(
       .references(() => tripDays.id, { onDelete: "cascade" }),
     text: text("text").notNull(),
     sortOrder: integer("sort_order").notNull(),
+    visibilityMode: visibilityMode("visibility_mode").notNull().default("everyone"),
   },
   (p) => ({
     daySortIndex: index("tomorrow_prep_items_trip_day_id_sort_order_idx").on(
@@ -553,6 +620,7 @@ export const participants = pgTable(
     role: participantRole("role").notNull(),
     accessToken: text("access_token").notNull(),
     passwordHash: text("password_hash"),
+    joinedViaGroupInviteLinkId: uuid("joined_via_group_invite_link_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -620,6 +688,7 @@ export const contacts = pgTable(
     visibility: contactVisibility("visibility").notNull(),
     sortOrder: integer("sort_order").notNull(),
     isEmergencyLead: boolean("is_emergency_lead").notNull().default(false),
+    visibilityMode: visibilityMode("visibility_mode").notNull().default("everyone"),
   },
   (c) => ({
     tripSortIndex: index("contacts_trip_id_sort_order_idx").on(
@@ -640,12 +709,127 @@ export const groups = pgTable(
     type: groupType("type").notNull(),
     description: text("description"),
     sortOrder: integer("sort_order").notNull().default(0),
+    isMain: boolean("is_main").notNull().default(false),
   },
   (g) => ({
     tripSortIndex: index("groups_trip_id_sort_order_idx").on(
       g.tripId,
       g.sortOrder,
     ),
+  }),
+);
+
+export const groupDayPlaces = pgTable(
+  "group_day_places",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    primaryCity: text("primary_city").notNull().default(""),
+    secondaryCity: text("secondary_city"),
+    primaryShare: numeric("primary_share", { precision: 4, scale: 3 })
+      .notNull()
+      .default("1"),
+    dayType: tripDayType("day_type").default("trip"),
+    calendarLabel: text("calendar_label"),
+    weatherLocationQuery: text("weather_location_query"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (gdp) => ({
+    tripGroupDateUnique: uniqueIndex("group_day_places_trip_group_date_unique").on(
+      gdp.tripId,
+      gdp.groupId,
+      gdp.date,
+    ),
+    tripGroupIdx: index("group_day_places_trip_group_idx").on(gdp.tripId, gdp.groupId),
+  }),
+);
+
+export const groupOverlayOps = pgTable(
+  "group_overlay_ops",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    entityType: overlayEntityType("entity_type").notNull(),
+    baseEntityId: uuid("base_entity_id").notNull(),
+    op: overlayOp("op").notNull(),
+    replacementEntityId: uuid("replacement_entity_id"),
+    effectiveFrom: date("effective_from"),
+    effectiveTo: date("effective_to"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (go) => ({
+    uniqueOp: uniqueIndex("group_overlay_ops_unique").on(
+      go.tripId,
+      go.groupId,
+      go.entityType,
+      go.baseEntityId,
+      go.op,
+    ),
+    tripGroupIdx: index("group_overlay_ops_trip_group_idx").on(go.tripId, go.groupId),
+  }),
+);
+
+export const entityBookingDetails = pgTable(
+  "entity_booking_details",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    entityType: bookingEntityType("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    bookingStatus: bookingStatus("booking_status").notNull().default("not_booked"),
+    supplier: text("supplier"),
+    bookingReference: text("booking_reference"),
+    invoiceNumber: text("invoice_number"),
+    invoiceFileUrl: text("invoice_file_url"),
+    confirmationFileUrl: text("confirmation_file_url"),
+    amountCents: integer("amount_cents"),
+    currency: text("currency").default("NZD"),
+    paymentStatus: text("payment_status"),
+    dueDate: date("due_date"),
+    contactName: text("contact_name"),
+    contactEmail: text("contact_email"),
+    contactPhone: text("contact_phone"),
+    internalNotes: text("internal_notes"),
+    externalRouteId: text("external_route_id"),
+    routeLastCheckedAt: timestamp("route_last_checked_at", { withTimezone: true }),
+    routeStatus: text("route_status"),
+    routeWarning: text("route_warning"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (ebd) => ({
+    entityUnique: uniqueIndex("entity_booking_details_entity_unique").on(
+      ebd.entityType,
+      ebd.entityId,
+    ),
+    tripIdx: index("entity_booking_details_trip_idx").on(ebd.tripId),
   }),
 );
 
@@ -658,6 +842,8 @@ export const participantGroups = pgTable(
     groupId: uuid("group_id")
       .notNull()
       .references(() => groups.id, { onDelete: "cascade" }),
+    effectiveFrom: date("effective_from"),
+    effectiveTo: date("effective_to"),
   },
   (pg) => ({
     pk: primaryKey({ columns: [pg.participantId, pg.groupId] }),
@@ -676,11 +862,68 @@ export const rooms = pgTable(
     hotelName: text("hotel_name"),
     hotelAddress: text("hotel_address"),
     nearestStation: text("nearest_station"),
+    hotelPhone: text("hotel_phone"),
+    nearestStationNotes: text("nearest_station_notes"),
+    nearestBusStopName: text("nearest_bus_stop_name"),
+    routeNotesToAccommodation: text("route_notes_to_accommodation"),
+    staticMapUrl: text("static_map_url"),
+    mapsUrl: text("maps_url"),
     notes: text("notes"),
     sortOrder: integer("sort_order").notNull().default(0),
+    visibilityMode: visibilityMode("visibility_mode").notNull().default("everyone"),
   },
   (r) => ({
     tripSortIndex: index("rooms_trip_id_sort_order_idx").on(r.tripId, r.sortOrder),
+  }),
+);
+
+export const visibilityTargets = pgTable(
+  "visibility_targets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    entityType: visibilityEntityType("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    targetType: visibilityTargetType("target_type").notNull(),
+    targetId: uuid("target_id").notNull(),
+  },
+  (vt) => ({
+    tripEntityIdx: index("visibility_targets_trip_entity_idx").on(
+      vt.tripId,
+      vt.entityType,
+      vt.entityId,
+    ),
+    entityTargetUnique: uniqueIndex("visibility_targets_entity_target_unique").on(
+      vt.entityType,
+      vt.entityId,
+      vt.targetType,
+      vt.targetId,
+    ),
+  }),
+);
+
+export const groupInviteLinks = pgTable(
+  "group_invite_links",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    inviteCode: text("invite_code").notNull(),
+    label: text("label").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (g) => ({
+    inviteCodeUnique: uniqueIndex("group_invite_links_invite_code_unique").on(g.inviteCode),
+    tripIdx: index("group_invite_links_trip_id_idx").on(g.tripId),
   }),
 );
 

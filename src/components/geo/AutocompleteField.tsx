@@ -25,6 +25,7 @@ export function AutocompleteField({
   disabled,
   onSelectOption,
   onBlur,
+  emptyMessage = "No matches found",
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -37,6 +38,7 @@ export function AutocompleteField({
   disabled?: boolean;
   onSelectOption?: (option: AutocompleteOption) => void;
   onBlur?: () => void;
+  emptyMessage?: string;
 }) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -129,8 +131,10 @@ export function AutocompleteField({
     inputRef.current?.focus();
   }
 
+  const showEmpty = !loading && options.length === 0 && value.trim().length >= minChars;
+
   const menu =
-    open && menuRect && (loading || options.length > 0) ? (
+    open && menuRect && (loading || options.length > 0 || showEmpty) ? (
       <ul
         ref={menuRef}
         id={listId}
@@ -145,6 +149,8 @@ export function AutocompleteField({
       >
         {loading ? (
           <li className="px-3 py-2.5 text-xs text-zinc-500">Searching…</li>
+        ) : showEmpty ? (
+          <li className="px-3 py-2.5 text-xs text-zinc-500">{emptyMessage}</li>
         ) : (
           options.map((opt, i) => (
             <li key={opt.id} role="option" aria-selected={i === activeIndex}>

@@ -3,7 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/lib/db/client";
-import { participants, trips } from "@/lib/db/schema";
+import { participants } from "@/lib/db/schema";
+import { resolveInviteCode, tripInviteCodeForTripId } from "@/lib/join/resolve-invite-code";
 import { verifyParticipantPassword } from "@/lib/participants/password";
 import { ensureTripPublishedIfReady } from "@/lib/publish/ensure-published";
 import { normalizeToE164 } from "@/lib/utils/phone";
@@ -25,24 +26,20 @@ export async function POST(
       return NextResponse.json({ error: "Invalid request." }, { status: 400 });
     }
 
-    const trip = await db
-      .select({
-        id: trips.id,
-        name: trips.name,
-        defaultCountryCallingCode: trips.defaultCountryCallingCode,
-      })
-      .from(trips)
-      .where(eq(trips.inviteCode, inviteCode))
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
-
-    if (!trip) {
+    const resolved = await resolveInviteCode(inviteCode);
+    if (!resolved) {
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
+    const trip = {
+      id: resolved.tripId,
+      name: resolved.tripName,
+      defaultCountryCallingCode: resolved.defaultCountryCallingCode,
+    };
+
     const phoneE164 = normalizeToE164(
       parsed.data.phoneNumber,
-      trip.defaultCountryCallingCode,
+      trip.defaultCountryCallingCode ?? "+64",
     );
 
     const participant = await db
@@ -81,6 +78,7 @@ export async function POST(
     }
 
     const publishedVersion = await ensureTripPublishedIfReady(trip.id);
+    const tripInviteCode = await tripInviteCodeForTripId(trip.id);
 
     return NextResponse.json({
       tripId: trip.id,
@@ -88,6 +86,7 @@ export async function POST(
       accessToken: participant.accessToken,
       tripName: trip.name,
       publishedVersion,
+      tripInviteCode,
     });
   } catch (err) {
     const message =

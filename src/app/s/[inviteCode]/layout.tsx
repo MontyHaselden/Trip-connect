@@ -1,29 +1,19 @@
 import type { Metadata } from "next";
-import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 
 import { StudentAppRoot } from "@/components/student/StudentAppRoot";
-import { db } from "@/lib/db/client";
-import { trips } from "@/lib/db/schema";
+import { loadTripByAnyInviteCode } from "@/lib/join/load-trip-by-invite";
+import { plusJakartaSans } from "@/lib/fonts/student-font";
 import { buildTripManifestHref } from "@/lib/mobile/wire-pwa-head";
 import { studentAppPath } from "@/lib/mobile/trip-storage";
-
-async function loadTrip(inviteCode: string) {
-  return db
-    .select({ id: trips.id, name: trips.name })
-    .from(trips)
-    .where(eq(trips.inviteCode, inviteCode))
-    .limit(1)
-    .then((rows) => rows[0] ?? null);
-}
 
 export async function generateMetadata(props: {
   params: Promise<{ inviteCode: string }>;
 }): Promise<Metadata> {
   const { inviteCode } = await props.params;
-  const trip = await loadTrip(inviteCode);
+  const trip = await loadTripByAnyInviteCode(inviteCode);
   const tripName = trip?.name ?? "Trip Connect";
-  const appPath = studentAppPath(inviteCode);
+  const appPath = studentAppPath(trip?.tripInviteCode ?? inviteCode);
   const manifest = buildTripManifestHref(tripName, appPath, appPath);
 
   return {
@@ -47,12 +37,19 @@ export default async function StudentAppLayout(props: {
   params: Promise<{ inviteCode: string }>;
 }) {
   const { inviteCode } = await props.params;
-  const trip = await loadTrip(inviteCode);
+  const trip = await loadTripByAnyInviteCode(inviteCode);
   if (!trip) notFound();
 
   return (
-    <StudentAppRoot inviteCode={inviteCode} tripId={trip.id} tripName={trip.name}>
-      {props.children}
-    </StudentAppRoot>
+    <div className={`${plusJakartaSans.variable} student-app min-h-dvh`}>
+      <StudentAppRoot
+        inviteCode={trip.tripInviteCode}
+        joinInviteCode={inviteCode}
+        tripId={trip.id}
+        tripName={trip.name}
+      >
+        {props.children}
+      </StudentAppRoot>
+    </div>
   );
 }

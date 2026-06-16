@@ -13,6 +13,9 @@ const CITY_IATA: Record<string, string> = {
   sydney: "SYD",
   melbourne: "MEL",
   brisbane: "BNE",
+  phuket: "HKT",
+  patong: "HKT",
+  bangkok: "BKK",
   singapore: "SIN",
   london: "LHR",
   "los angeles": "LAX",
@@ -66,6 +69,46 @@ export function flightRouteAirportLabel(legs: Array<{ fromCity: string; toCity: 
   return codes.join(" → ");
 }
 
+/** Airport codes for legs that depart or complete on a single calendar date. */
+export function flightRouteAirportCodesForDate(
+  legs: Array<{ fromCity: string; toCity: string; travelDate?: string | null }>,
+  date: string,
+  legArrivalDate: (leg: { travelDate?: string | null; arrivalDate?: string | null; departureTime?: string | null; arrivalTime?: string | null }) => string,
+): string[] {
+  const codes: string[] = [];
+
+  for (const leg of legs) {
+    const dep = leg.travelDate?.trim() ?? "";
+    const arr = legArrivalDate(leg);
+    const fromCode = airportCodeFromPlace(leg.fromCity);
+    const toCode = airportCodeFromPlace(leg.toCity);
+    const touchesDate = dep === date || arr === date;
+    if (!touchesDate) continue;
+
+    if (!codes.length) {
+      codes.push(dep === date ? fromCode : toCode);
+    } else if (dep === date && codes[codes.length - 1] !== fromCode) {
+      codes.push(fromCode);
+    }
+
+    if (toCode !== codes[codes.length - 1]) {
+      codes.push(toCode);
+    }
+  }
+
+  return codes;
+}
+
+export function flightRouteAirportLabelForDate(
+  legs: Array<{ fromCity: string; toCity: string; travelDate?: string | null }>,
+  date: string,
+  legArrivalDate: (leg: { travelDate?: string | null; arrivalDate?: string | null; departureTime?: string | null; arrivalTime?: string | null }) => string,
+): string {
+  const codes = flightRouteAirportCodesForDate(legs, date, legArrivalDate);
+  if (!codes.length) return "Flying";
+  return codes.join(" → ");
+}
+
 export function isAirportRouteLabel(label: string): boolean {
   return /^[A-Z]{3}( → [A-Z]{3})+$/.test(label.trim());
 }
@@ -89,6 +132,9 @@ const METRO_BY_CODE: Record<string, string> = {
   SYD: "sydney",
   MEL: "melbourne",
   BNE: "brisbane",
+  BKK: "bangkok",
+  DMK: "bangkok",
+  HKT: "phuket",
   SIN: "singapore",
   LHR: "london",
   LAX: "los angeles",
@@ -121,6 +167,13 @@ export function metroKeyForPlace(place: string): string {
   }
 
   return key;
+}
+
+/** Airport / aerodrome labels — never painted as stay locations on the calendar. */
+export function isAirportPlace(place: string): boolean {
+  const lower = place.trim().toLowerCase();
+  if (!lower) return false;
+  return lower.includes("airport") || lower.includes("aerodrome");
 }
 
 /** True when two places resolve to the same metro area (e.g. NRT and Tokyo). */

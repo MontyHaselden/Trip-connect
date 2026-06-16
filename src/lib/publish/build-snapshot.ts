@@ -2,10 +2,13 @@ import { asc, eq } from "drizzle-orm";
 
 import { db as defaultDb } from "@/lib/db/client";
 import {
+  accommodationAssignments,
   contacts,
   dayWeatherSnapshots,
   emergencyPhraseCategories,
   emergencyPhrases,
+  groupDayPlaces,
+  groupOverlayOps,
   groups,
   itineraryItems,
   participantGroups,
@@ -17,7 +20,9 @@ import {
   tripDayReminders,
   tripDays,
   tripPhotos,
+  tripTransportLegs,
   trips,
+  visibilityTargets,
 } from "@/lib/db/schema";
 import type { PublishedTripSnapshotV1 } from "@/types/published-trip";
 
@@ -40,6 +45,8 @@ export async function buildSnapshotV1(
       destinationLanguage: trips.destinationLanguage,
       timezone: trips.timezone,
       publishedVersion: trips.publishedVersion,
+      localEmergencyNumber: trips.localEmergencyNumber,
+      schoolEmergencyPhone: trips.schoolEmergencyPhone,
       viewerGalleryEnabled: trips.viewerGalleryEnabled,
       viewerRoomDetailsEnabled: trips.viewerRoomDetailsEnabled,
     })
@@ -67,6 +74,11 @@ export async function buildSnapshotV1(
     photoRows,
     stayRows,
     reminderRows,
+    assignmentRows,
+    transportRows,
+    visibilityTargetRows,
+    groupDayPlaceRows,
+    groupOverlayOpRows,
   ] = await Promise.all([
     db
       .select({
@@ -112,8 +124,12 @@ export async function buildSnapshotV1(
         hostNote: itineraryItems.hostNote,
         audienceType: itineraryItems.audienceType,
         audienceId: itineraryItems.audienceId,
+        visibilityMode: itineraryItems.visibilityMode,
         category: itineraryItems.category,
         sortOrder: itineraryItems.sortOrder,
+        bookingStatus: itineraryItems.bookingStatus,
+        originGroupId: itineraryItems.originGroupId,
+        sourceEntityId: itineraryItems.sourceEntityId,
       })
       .from(itineraryItems)
       .where(eq(itineraryItems.tripId, tripId))
@@ -124,6 +140,7 @@ export async function buildSnapshotV1(
         tripDayId: tomorrowPrepItems.tripDayId,
         text: tomorrowPrepItems.text,
         sortOrder: tomorrowPrepItems.sortOrder,
+        visibilityMode: tomorrowPrepItems.visibilityMode,
       })
       .from(tomorrowPrepItems)
       .where(eq(tomorrowPrepItems.tripId, tripId))
@@ -137,6 +154,7 @@ export async function buildSnapshotV1(
         visibility: contacts.visibility,
         sortOrder: contacts.sortOrder,
         isEmergencyLead: contacts.isEmergencyLead,
+        visibilityMode: contacts.visibilityMode,
       })
       .from(contacts)
       .where(eq(contacts.tripId, tripId))
@@ -158,6 +176,7 @@ export async function buildSnapshotV1(
         type: groups.type,
         description: groups.description,
         sortOrder: groups.sortOrder,
+        isMain: groups.isMain,
       })
       .from(groups)
       .where(eq(groups.tripId, tripId))
@@ -166,6 +185,8 @@ export async function buildSnapshotV1(
       .select({
         participantId: participantGroups.participantId,
         groupId: participantGroups.groupId,
+        effectiveFrom: participantGroups.effectiveFrom,
+        effectiveTo: participantGroups.effectiveTo,
       })
       .from(participantGroups),
     db
@@ -175,8 +196,15 @@ export async function buildSnapshotV1(
         hotelName: rooms.hotelName,
         hotelAddress: rooms.hotelAddress,
         nearestStation: rooms.nearestStation,
+        hotelPhone: rooms.hotelPhone,
+        nearestStationNotes: rooms.nearestStationNotes,
+        nearestBusStopName: rooms.nearestBusStopName,
+        routeNotesToAccommodation: rooms.routeNotesToAccommodation,
+        staticMapUrl: rooms.staticMapUrl,
+        mapsUrl: rooms.mapsUrl,
         notes: rooms.notes,
         sortOrder: rooms.sortOrder,
+        visibilityMode: rooms.visibilityMode,
       })
       .from(rooms)
       .where(eq(rooms.tripId, tripId))
@@ -231,8 +259,12 @@ export async function buildSnapshotV1(
         stayType: tripAccommodationStays.stayType,
         name: tripAccommodationStays.name,
         address: tripAccommodationStays.address,
+        phone: tripAccommodationStays.phone,
         checkInDate: tripAccommodationStays.checkInDate,
         checkOutDate: tripAccommodationStays.checkOutDate,
+        visibilityMode: tripAccommodationStays.visibilityMode,
+        originGroupId: tripAccommodationStays.originGroupId,
+        sourceEntityId: tripAccommodationStays.sourceEntityId,
       })
       .from(tripAccommodationStays)
       .where(eq(tripAccommodationStays.tripId, tripId))
@@ -245,10 +277,96 @@ export async function buildSnapshotV1(
         reminderTime: tripDayReminders.reminderTime,
         note: tripDayReminders.note,
         sortOrder: tripDayReminders.sortOrder,
+        audienceType: tripDayReminders.audienceType,
+        audienceId: tripDayReminders.audienceId,
+        visibilityMode: tripDayReminders.visibilityMode,
       })
       .from(tripDayReminders)
       .where(eq(tripDayReminders.tripId, tripId))
       .orderBy(asc(tripDayReminders.tripDayId), asc(tripDayReminders.sortOrder)),
+    db
+      .select({
+        id: accommodationAssignments.id,
+        stayId: accommodationAssignments.stayId,
+        participantId: accommodationAssignments.participantId,
+        groupId: accommodationAssignments.groupId,
+        roomId: accommodationAssignments.roomId,
+        startDate: accommodationAssignments.startDate,
+        endDate: accommodationAssignments.endDate,
+        stayName: tripAccommodationStays.name,
+        stayAddress: tripAccommodationStays.address,
+        stayPhone: tripAccommodationStays.phone,
+        stayType: tripAccommodationStays.stayType,
+        cityLabel: tripAccommodationStays.cityLabel,
+      })
+      .from(accommodationAssignments)
+      .innerJoin(
+        tripAccommodationStays,
+        eq(accommodationAssignments.stayId, tripAccommodationStays.id),
+      )
+      .where(eq(tripAccommodationStays.tripId, tripId)),
+    db
+      .select({
+        id: tripTransportLegs.id,
+        legKind: tripTransportLegs.legKind,
+        transportType: tripTransportLegs.transportType,
+        travelDate: tripTransportLegs.travelDate,
+        departureTime: tripTransportLegs.departureTime,
+        arrivalTime: tripTransportLegs.arrivalTime,
+        fromCity: tripTransportLegs.fromCity,
+        toCity: tripTransportLegs.toCity,
+        fromStation: tripTransportLegs.fromStation,
+        toStation: tripTransportLegs.toStation,
+        operator: tripTransportLegs.operator,
+        referenceNumber: tripTransportLegs.referenceNumber,
+        flightNumber: tripTransportLegs.flightNumber,
+        notes: tripTransportLegs.notes,
+        sortOrder: tripTransportLegs.sortOrder,
+        visibilityMode: tripTransportLegs.visibilityMode,
+        bookingStatus: tripTransportLegs.bookingStatus,
+        originGroupId: tripTransportLegs.originGroupId,
+        sourceEntityId: tripTransportLegs.sourceEntityId,
+      })
+      .from(tripTransportLegs)
+      .where(eq(tripTransportLegs.tripId, tripId))
+      .orderBy(asc(tripTransportLegs.sortOrder)),
+    db
+      .select({
+        entityType: visibilityTargets.entityType,
+        entityId: visibilityTargets.entityId,
+        targetType: visibilityTargets.targetType,
+        targetId: visibilityTargets.targetId,
+      })
+      .from(visibilityTargets)
+      .where(eq(visibilityTargets.tripId, tripId)),
+    db
+      .select({
+        id: groupDayPlaces.id,
+        groupId: groupDayPlaces.groupId,
+        date: groupDayPlaces.date,
+        primaryCity: groupDayPlaces.primaryCity,
+        secondaryCity: groupDayPlaces.secondaryCity,
+        primaryShare: groupDayPlaces.primaryShare,
+        dayType: groupDayPlaces.dayType,
+        calendarLabel: groupDayPlaces.calendarLabel,
+        weatherLocationQuery: groupDayPlaces.weatherLocationQuery,
+      })
+      .from(groupDayPlaces)
+      .where(eq(groupDayPlaces.tripId, tripId))
+      .orderBy(asc(groupDayPlaces.date)),
+    db
+      .select({
+        id: groupOverlayOps.id,
+        groupId: groupOverlayOps.groupId,
+        entityType: groupOverlayOps.entityType,
+        baseEntityId: groupOverlayOps.baseEntityId,
+        op: groupOverlayOps.op,
+        replacementEntityId: groupOverlayOps.replacementEntityId,
+        effectiveFrom: groupOverlayOps.effectiveFrom,
+        effectiveTo: groupOverlayOps.effectiveTo,
+      })
+      .from(groupOverlayOps)
+      .where(eq(groupOverlayOps.tripId, tripId)),
   ]);
 
   // Narrow assignment rows to trip participants only (cheap safety).
@@ -336,6 +454,74 @@ export async function buildSnapshotV1(
       }),
     );
 
+  const prepRowsWithAudience = prepRows.map(
+    (p: {
+      id: string;
+      tripDayId: string;
+      text: string;
+      sortOrder: number;
+      visibilityMode?: string;
+    }) => ({
+      ...p,
+      visibilityMode: p.visibilityMode ?? "everyone",
+      audienceType: "everyone" as const,
+      audienceId: null,
+    }),
+  );
+
+  const contactRowsWithAudience = contactRows.map(
+    (c: {
+      id: string;
+      name: string;
+      role: string;
+      phoneNumber: string;
+      visibility: "students" | "hosts_only";
+      sortOrder: number;
+      isEmergencyLead: boolean;
+      visibilityMode?: string;
+    }) => ({
+      ...c,
+      visibilityMode: c.visibilityMode ?? "everyone",
+      audienceType: "everyone" as const,
+      audienceId: null,
+    }),
+  );
+
+  const stayRowsWithAudience = stayRows.map(
+    (s: {
+      id: string;
+      cityLabel: string;
+      stayType: string;
+      name: string | null;
+      address: string | null;
+      phone?: string | null;
+      checkInDate: string;
+      checkOutDate: string;
+      visibilityMode?: string;
+    }) => ({
+      ...s,
+      visibilityMode: s.visibilityMode ?? "everyone",
+      audienceType: "everyone" as const,
+      audienceId: null,
+    }),
+  );
+
+  const roomRowsWithAudience = roomRows.map(
+    (r: { id: string; visibilityMode?: string }) => ({
+      ...r,
+      visibilityMode: r.visibilityMode ?? "everyone",
+      audienceType: "everyone" as const,
+      audienceId: null,
+    }),
+  );
+
+  const transportLegs = transportRows.map((leg: { visibilityMode?: string }) => ({
+    ...leg,
+    visibilityMode: leg.visibilityMode ?? "everyone",
+    audienceType: "everyone" as const,
+    audienceId: null,
+  }));
+
   return {
     version,
     publishedAt: new Date().toISOString(),
@@ -349,17 +535,34 @@ export async function buildSnapshotV1(
       destinationLanguage: trip.destinationLanguage,
       timezone: trip.timezone,
       publishedVersion: trip.publishedVersion,
+      localEmergencyNumber: trip.localEmergencyNumber ?? null,
+      schoolEmergencyPhone: trip.schoolEmergencyPhone ?? null,
     },
     days: daysWithWeather,
     itineraryItems: itemRows,
-    accommodationStays: stayRows,
+    accommodationStays: stayRowsWithAudience,
+    accommodationAssignments: assignmentRows,
+    transportLegs,
+    visibilityTargets: visibilityTargetRows,
     dayReminders: reminderRows,
-    tomorrowPrepItems: prepRows,
-    contacts: contactRows,
+    tomorrowPrepItems: prepRowsWithAudience,
+    contacts: contactRowsWithAudience,
     participants: participantRows,
-    groups: groupRows,
+    groups: groupRows.map(
+      (g: { isMain?: boolean }) => ({
+        ...g,
+        isMain: Boolean(g.isMain),
+      }),
+    ),
+    groupDayPlaces: groupDayPlaceRows.map(
+      (p: { primaryShare: string | number }) => ({
+        ...p,
+        primaryShare: Number(p.primaryShare),
+      }),
+    ),
+    groupOverlayOps: groupOverlayOpRows,
     participantGroups: tripParticipantGroups,
-    rooms: roomRows,
+    rooms: roomRowsWithAudience,
     participantRooms: tripParticipantRooms,
     phraseCategories: categoryRows,
     phrases: phraseRows,

@@ -1,6 +1,36 @@
-import { flightRouteAirportLabel } from "@/lib/geo/airport-codes";
+import {
+  flightRouteAirportLabel,
+  flightRouteAirportLabelForDate,
+  isAirportPlace,
+  placesShareMetro,
+} from "@/lib/geo/airport-codes";
+import {
+  buildConnectionChainFromLeg,
+  findInboundConnectionLeg,
+} from "@/lib/host/setup/flight-connection-chains";
+import {
+  MAJOR_TRAVEL_DEST_SLICE,
+  MAJOR_TRAVEL_DEST_START,
+  MAJOR_TRAVEL_ORIGIN_END,
+  MAJOR_TRAVEL_ORIGIN_MIN,
+  MAJOR_TRAVEL_TRANSIT_END,
+  MAJOR_TRAVEL_TRANSIT_START,
+  TRANSPORT_CORRIDOR_LEFT_SHARE,
+  TRANSPORT_CORRIDOR_RIGHT_START,
+  TRANSPORT_CORRIDOR_WIDTH,
+  TRANSPORT_STACK_WIDTH,
+} from "@/lib/host/setup/transport-corridor";
+import { metroDisplayLabel } from "@/lib/host/setup/infer-flight-calendar";
+import { resolveArrivalStayCity } from "@/lib/host/setup/resolve-arrival-stay-city";
 import { addDays, DEFAULT_HALF_SHARE, getEmptyHalf, type TripDayCoverageContext } from "./location-stays";
-import type { DayPlaceDraft, IntercityLegDraft, TransportLegDraft, TransportType, TripWizardDraft } from "./types";
+import type {
+  AccommodationStayDraft,
+  DayPlaceDraft,
+  IntercityLegDraft,
+  TransportLegDraft,
+  TransportType,
+  TripWizardDraft,
+} from "./types";
 
 type TripBounds = {
   startDate: string;
@@ -32,8 +62,8 @@ export type TransitOverlay = {
 };
 
 export type CalendarDaySegment =
-  | { kind: "city"; city: string; start: number; end: number }
-  | { kind: "transit"; label: string; start: number; end: number };
+  | { kind: "city"; city: string; start: number; end: number; colorOnly?: boolean }
+  | { kind: "transit"; label: string; start: number; end: number; tentative?: boolean };
 
 /** Same-day connection: ¼ origin | ¼ in transit | ½ destination (only when you land that day). */
 export const TRAVEL_SEGMENT_QUARTER = 0.25;
@@ -43,6 +73,12 @@ export const TRAVEL_SEGMENT_LATE_FLY = 0.75;
 /** Arrivals at or after 6pm use ¾ flying · ¼ landing on that day. */
 export const LATE_ARRIVAL_MINUTES = 18 * 60;
 
+/** Evening departures keep at least this much of the cell for the flight band. */
+export const MIN_EVENING_DEPARTURE_TRANSIT = 1 / 3;
+
+/** Departures from 8pm onward keep a wider flight band (6pm is still proportional). */
+export const EVENING_DEPARTURE_MINUTES = 20 * 60;
+
 function parseMinutes(time: string | null): number | null {
   if (!time) return null;
   const [h, m] = time.split(":").map(Number);
@@ -50,35 +86,68 @@ function parseMinutes(time: string | null): number | null {
   return h * 60 + m;
 }
 
-function timeToShare(time: string | null, fallback: number): number {
+/** Map HH:MM to a 0–1 position on the calendar day (midnight = 0, end of day = 1). */
+export function flightTimeShare(time: string | null, fallback: number): number {
   const mins = parseMinutes(time);
   if (mins === null) return fallback;
   return Math.min(1, Math.max(0, mins / (24 * 60)));
 }
 
-function isInternationalCityPair(fromCity: string, toCity: string): boolean {
-  const from = fromCity.trim();
-  const to = toCity.trim();
-  if (!from || !to || citiesMatch(from, to)) return false;
-  return from.includes(",") || to.includes(",");
+/** Cap how much of the day stays city paint so late flights stay visible on the calendar. */
+export function departureDayCityEndShare(
+  departureTime: string | null,
+  timeBasedShare: number,
+): number {
+  const mins = parseMinutes(departureTime);
+  if (mins !== null && mins >= EVENING_DEPARTURE_MINUTES) {
+    return Math.min(timeBasedShare, 1 - MIN_EVENING_DEPARTURE_TRANSIT);
+  }
+  return timeBasedShare;
 }
 
-export function arrivalDate(leg: TransportLegDraft): string {
+function timeToShare(time: string | null, fallback: number): number {
+  return flightTimeShare(time, fallback);
+}
+
+/** Secondary city matches an overnight flight's hub — a connection, not a stay. */
+export function isOvernightHubSecondaryOnDepartureDay(
+  date: string,
+  day: Pick<DayPlaceDraft, "primaryCity" | "secondaryCity">,
+  legs: TransportLegDraft[],
+): boolean {
+  const secondary = day.secondaryCity?.trim() ?? "";
+  if (!secondary || !day.primaryCity.trim()) return false;
+
+  for (const leg of legs) {
+    if (leg.transportType !== "plane") continue;
+    const dep = leg.travelDate.trim();
+    if (dep !== date) continue;
+    const arr = arrivalDate(leg);
+    if (arr <= dep) continue;
+    const hub = metroDisplayLabel(leg.toCity);
+    if (
+      hub &&
+      (placesShareMetro(secondary, hub) || citiesMatch(secondary, hub))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function arrivalDate(leg: {
+  travelDate?: string | null;
+  arrivalDate?: string | null;
+  departureTime?: string | null;
+  arrivalTime?: string | null;
+}): string {
   const travelDate = leg.travelDate?.trim() ?? "";
   if (leg.arrivalDate?.trim()) return leg.arrivalDate.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(travelDate)) return travelDate;
 
-  const dep = parseMinutes(leg.departureTime);
-  const arr = parseMinutes(leg.arrivalTime);
+  const dep = parseMinutes(leg.departureTime ?? null);
+  const arr = parseMinutes(leg.arrivalTime ?? null);
   if (dep !== null && arr !== null && arr < dep) {
-    return addDays(travelDate, 1);
-  }
-  if (
-    leg.transportType === "plane" &&
-    dep === null &&
-    arr === null &&
-    isInternationalCityPair(leg.fromCity, leg.toCity)
-  ) {
     return addDays(travelDate, 1);
   }
   return travelDate;
@@ -88,6 +157,25 @@ function legUsesTransitOverlay(leg: TransportLegDraft): boolean {
   if (leg.bookingStatus === "flexible" || leg.transportType === "unsure") return true;
   if (leg.transportType === "plane") return true;
   return Boolean(leg.departureTime);
+}
+
+function legIsTentative(leg: TransportLegDraft): boolean {
+  return leg.bookingStatus === "not_booked" || leg.bookingStatus === "flexible";
+}
+
+function transitSegment(
+  label: string,
+  start: number,
+  end: number,
+  leg?: TransportLegDraft,
+): CalendarDaySegment {
+  return {
+    kind: "transit",
+    label,
+    start,
+    end,
+    tentative: leg ? legIsTentative(leg) : false,
+  };
 }
 
 const MODE_TRANSIT_LABELS: Record<TransportType, string> = {
@@ -151,6 +239,10 @@ function citiesMatch(a: string, b: string): boolean {
   return Boolean(ka && kb && ka === kb);
 }
 
+function paintedCitiesMatch(a: string, b: string): boolean {
+  return citiesMatch(a, b) || placesShareMetro(a, b);
+}
+
 function intercityShowsCalendarTransit(leg: IntercityLegDraft): boolean {
   return leg.transportType === "plane" || leg.transportType === "train";
 }
@@ -165,8 +257,8 @@ function isIntercityCrossoverDay(
   if (!primary || !secondary) return false;
   if ((day.primaryShare ?? 1) >= 1) return false;
   return (
-    citiesMatch(primary, leg.intercityFromCity) &&
-    citiesMatch(secondary, leg.intercityToCity)
+    paintedCitiesMatch(primary, leg.intercityFromCity) &&
+    paintedCitiesMatch(secondary, leg.intercityToCity)
   );
 }
 
@@ -184,17 +276,196 @@ function intercityCrossoverTransitLabel(leg: IntercityLegDraft): string {
 }
 
 function buildIntercityCrossoverLayout(leg: IntercityLegDraft): CalendarDaySegment[] {
-  const Q = TRAVEL_SEGMENT_QUARTER;
+  const left = TRANSPORT_CORRIDOR_LEFT_SHARE;
+  const right = TRANSPORT_CORRIDOR_RIGHT_START;
   return [
-    { kind: "city", city: leg.intercityFromCity, start: 0, end: Q },
-    {
-      kind: "transit",
-      start: Q,
-      end: 1 - Q,
-      label: intercityCrossoverTransitLabel(leg),
-    },
-    { kind: "city", city: leg.intercityToCity, start: 1 - Q, end: 1 },
+    { kind: "city", city: leg.intercityFromCity, start: 0, end: left },
+    transitSegment(intercityCrossoverTransitLabel(leg), left, right, leg),
+    { kind: "city", city: leg.intercityToCity, start: right, end: 1 },
   ];
+}
+
+function isFlightCrossoverDay(
+  day: DayPlaceDraft | undefined,
+  plane: TransportLegDraft,
+  legs: TransportLegDraft[],
+): boolean {
+  if (!day) return false;
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  if (!primary || !secondary) return false;
+  if ((day.primaryShare ?? 1) >= 0.55) return false;
+
+  const onward = findOnwardLeg(legs, plane.travelDate, plane.toCity.trim(), plane.id);
+  const sameDayChain = onward && onward.travelDate === plane.travelDate;
+  if (!sameDayChain && plane.travelDate !== arrivalDate(plane)) return false;
+
+  const origin = metroDisplayLabel(plane.fromCity);
+  const dest = onward
+    ? metroDisplayLabel(onward.toCity)
+    : metroDisplayLabel(plane.toCity);
+
+  return paintedCitiesMatch(primary, origin) && paintedCitiesMatch(secondary, dest);
+}
+
+function planeLegsOnly(legs: TransportLegDraft[]): TransportLegDraft[] {
+  return legs.filter((leg) => leg.transportType === "plane");
+}
+
+function connectionChainFrom(
+  plane: TransportLegDraft,
+  legs: TransportLegDraft[],
+): TransportLegDraft[] {
+  const chain = buildConnectionChainFromLeg(plane, planeLegsOnly(legs));
+  return chain.length >= 2 ? chain : [plane];
+}
+
+type MajorTravelShares = {
+  originEnd: number;
+  transitStart: number;
+  transitEnd: number;
+  destStart: number;
+};
+
+/** Same-day plane connection chains or long same-day legs use ¼·½·¼ layout. */
+export function isMajorTravelDay(legs: TransportLegDraft[], date: string): boolean {
+  const departing = legs.filter(
+    (leg) => leg.transportType === "plane" && leg.travelDate.trim() === date,
+  );
+  for (const leg of departing) {
+    const chain = connectionChainFrom(leg, legs);
+    const last = chain[chain.length - 1]!;
+    if (chain.length >= 2 && arrivalDate(last) === date) return true;
+    if (
+      chain.length === 1 &&
+      arrivalDate(leg) === date &&
+      leg.departureTime &&
+      leg.arrivalTime
+    ) {
+      const dep = parseMinutes(leg.departureTime);
+      const arr = parseMinutes(leg.arrivalTime);
+      if (dep !== null && arr !== null) {
+        const span = arr >= dep ? arr - dep : 24 * 60 - dep + arr;
+        if (span >= 6 * 60) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function majorTravelDayShares(chain: TransportLegDraft[], date: string): MajorTravelShares {
+  const first = chain[0]!;
+  const last = chain[chain.length - 1]!;
+  let originEnd = MAJOR_TRAVEL_ORIGIN_END;
+  let destStart = MAJOR_TRAVEL_DEST_START;
+  let transitEnd = MAJOR_TRAVEL_TRANSIT_END;
+
+  if (first.departureTime) {
+    const timeBased = flightTimeShare(first.departureTime, MAJOR_TRAVEL_ORIGIN_END);
+    originEnd = Math.max(MAJOR_TRAVEL_ORIGIN_MIN, Math.min(MAJOR_TRAVEL_ORIGIN_END, timeBased));
+  }
+
+  if (isLateArrival(last) && arrivalDate(last) === date) {
+    destStart = 1 - MAJOR_TRAVEL_DEST_SLICE;
+    transitEnd = destStart;
+    return {
+      originEnd,
+      transitStart: originEnd,
+      transitEnd,
+      destStart,
+    };
+  }
+
+  return {
+    originEnd,
+    transitStart: Math.max(originEnd, MAJOR_TRAVEL_TRANSIT_START),
+    transitEnd,
+    destStart,
+  };
+}
+
+/** Major outbound/return crossovers use ¼·½·¼; short hops use 40%·20%·40%. */
+function flightCrossoverShares(
+  routeLegs: TransportLegDraft[],
+  date: string,
+  allLegs: TransportLegDraft[],
+): MajorTravelShares {
+  if (isMajorTravelDay(allLegs, date)) {
+    return majorTravelDayShares(routeLegs, date);
+  }
+  return {
+    originEnd: TRANSPORT_CORRIDOR_LEFT_SHARE,
+    transitStart: TRANSPORT_CORRIDOR_LEFT_SHARE,
+    transitEnd: TRANSPORT_CORRIDOR_RIGHT_START,
+    destStart: TRANSPORT_CORRIDOR_RIGHT_START,
+  };
+}
+
+function buildFlightCrossoverLayout(
+  plane: TransportLegDraft,
+  legs: TransportLegDraft[],
+  trip: TripBounds,
+  stays: AccommodationStayDraft[],
+  planeLegs: TransportLegDraft[],
+): CalendarDaySegment[] {
+  const routeLegs = connectionChainFrom(plane, legs);
+  const last = routeLegs[routeLegs.length - 1]!;
+  const date = plane.travelDate.trim();
+  const shares = flightCrossoverShares(routeLegs, date, legs);
+  const origin =
+    departureMorningCity(plane.fromCity, trip, date) || metroDisplayLabel(plane.fromCity);
+  const dest = resolveArrivalStayCity(
+    last.toCity,
+    stays,
+    planeLegs,
+    arrivalDate(last) || date,
+  );
+
+  return [
+    { kind: "city", city: origin, start: 0, end: shares.originEnd, colorOnly: true },
+    transitSegment(
+      flightRouteAirportLabel(routeLegs),
+      shares.transitStart,
+      shares.transitEnd,
+      plane,
+    ),
+    {
+      kind: "city",
+      city: dest,
+      start: shares.destStart,
+      end: 1,
+      colorOnly: true,
+    },
+  ];
+}
+
+/** One stacked airport route on departure day — no separate hub landing bands. */
+function buildMultiLegDepartureLayout(
+  chain: TransportLegDraft[],
+  trip: TripBounds,
+  stays: AccommodationStayDraft[],
+  planeLegs: TransportLegDraft[],
+): CalendarDaySegment[] {
+  const first = chain[0]!;
+  const last = chain[chain.length - 1]!;
+  const origin = metroDisplayLabel(first.fromCity);
+  const rawDepShare = timeToShare(first.departureTime, DEFAULT_HALF_SHARE);
+  const depShare = departureDayCityEndShare(first.departureTime, rawDepShare);
+  const landsSameDay = arrivalDate(last) === first.travelDate;
+
+  if (landsSameDay) {
+    return buildFlightCrossoverLayout(first, chain, trip, stays, planeLegs);
+  }
+
+  const stackEnd = Math.min(1, depShare + TRANSPORT_STACK_WIDTH);
+  const depDate = first.travelDate.trim();
+  const routeLabel = flightRouteAirportLabelForDate(chain, depDate, arrivalDate);
+  const segments: CalendarDaySegment[] = [];
+  if (depShare > 0.02 && origin) {
+    segments.push({ kind: "city", city: origin, start: 0, end: depShare, colorOnly: true });
+  }
+  segments.push(transitSegment(routeLabel, depShare, stackEnd, first));
+  return segments;
 }
 
 function inTripRange(date: string, trip: TripBounds): boolean {
@@ -250,7 +521,10 @@ function isHomeDeparture(fromCity: string, trip: TripBounds, date: string): bool
 }
 
 function isHomeReturnArrival(toCity: string, trip: TripBounds): boolean {
-  return citiesMatch(toCity, trip.returnCity);
+  const home = trip.returnCity.trim();
+  if (!home || !toCity.trim()) return false;
+  if (citiesMatch(toCity, home)) return true;
+  return isAirportPlace(toCity) && placesShareMetro(toCity, home);
 }
 
 export function isLateArrival(leg: TransportLegDraft): boolean {
@@ -260,24 +534,58 @@ export function isLateArrival(leg: TransportLegDraft): boolean {
 }
 
 export function isHomeReturnLeg(leg: TransportLegDraft, returnCity: string): boolean {
-  return Boolean(leg.toCity.trim() && citiesMatch(leg.toCity, returnCity));
+  const to = leg.toCity.trim();
+  const home = returnCity.trim();
+  if (!to || !home) return false;
+  if (citiesMatch(to, home)) return true;
+  return isAirportPlace(to) && placesShareMetro(to, home);
 }
 
 type ArrivalShares = { transitEnd: number; landingEnd: number };
 
 function arrivalDayShares(leg: TransportLegDraft, homeLanding: boolean): ArrivalShares {
+  const arrShare = flightTimeShare(leg.arrivalTime, TRAVEL_SEGMENT_QUARTER);
+
   if (isLateArrival(leg)) {
-    return { transitEnd: TRAVEL_SEGMENT_LATE_FLY, landingEnd: 1 };
+    const transitEnd = flightTimeShare(leg.arrivalTime, TRAVEL_SEGMENT_LATE_FLY);
+    return { transitEnd, landingEnd: 1 };
   }
+
   if (homeLanding) {
-    return { transitEnd: TRAVEL_SEGMENT_QUARTER, landingEnd: TRAVEL_SEGMENT_MID };
+    const landingEnd = Math.max(arrShare, TRAVEL_SEGMENT_MID);
+    return { transitEnd: arrShare, landingEnd };
   }
-  return { transitEnd: TRAVEL_SEGMENT_QUARTER, landingEnd: TRAVEL_SEGMENT_MID };
+
+  return { transitEnd: arrShare, landingEnd: arrShare };
 }
 
 function originCityLabel(fromCity: string, trip: TripBounds, date: string): string {
   if (isHomeDeparture(fromCity, trip, date)) return trip.departureCity.trim();
   return fromCity.trim();
+}
+
+/** Morning city before a flight — home metro when the leg departs from the default airport. */
+export function departureMorningCity(
+  fromCity: string,
+  trip: TripBounds,
+  date: string,
+): string {
+  const home = trip.departureCity.trim();
+  if (!fromCity.trim()) return "";
+  if (isHomeDeparture(fromCity, trip, date) && home) return home;
+  if (home && isAirportPlace(fromCity) && placesShareMetro(fromCity, home)) return home;
+  if (!isAirportPlace(fromCity)) return originCityLabel(fromCity, trip, date);
+  return "";
+}
+
+function withoutAirportCitySegments(
+  segments: CalendarDaySegment[] | undefined,
+): CalendarDaySegment[] | undefined {
+  if (!segments?.length) return segments;
+  const filtered = segments.filter(
+    (segment) => segment.kind !== "city" || !isAirportPlace(segment.city),
+  );
+  return filtered.length ? filtered : undefined;
 }
 
 /** Dates with a plane departing — home-edge locks should not override these. */
@@ -317,6 +625,37 @@ export function returnDepartsAfterTripEnd(
 ): boolean {
   const latest = latestReturnDepartureDate(draft);
   return Boolean(latest && latest > tripEnd);
+}
+
+/** True when a booked/planned leg travels home on or after the last trip day. */
+export function hasScheduledOutboundTransport(
+  draft: Pick<TripWizardDraft, "outboundLegs">,
+): boolean {
+  return draft.outboundLegs.some((leg) => leg.travelDate?.trim());
+}
+
+export function hasScheduledReturnTransport(
+  draft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs">,
+  trip: Pick<TripBounds, "endDate" | "returnCity">,
+): boolean {
+  const ret = trip.returnCity.trim();
+  if (!ret) return false;
+
+  const homeDay = addDays(trip.endDate, 1);
+
+  for (const leg of allTransportLegs(draft)) {
+    const dep = leg.travelDate?.trim() ?? "";
+    if (!dep) continue;
+
+    const intercity = leg as IntercityLegDraft;
+    const dest = intercity.intercityToCity?.trim() || leg.toCity.trim();
+    if (!paintedCitiesMatch(dest, ret)) continue;
+
+    if (dep >= trip.endDate) return true;
+    if (arrivalDate(leg) === homeDay) return true;
+  }
+
+  return false;
 }
 
 export function flightArrivalDates(
@@ -411,14 +750,49 @@ export function tripDayHasPaintableStaySlot(
 }
 
 /** Matches calendar cell selectability — clicking elsewhere should clear a pending range. */
+export function isCalendarDayInteractive(input: {
+  iso: string;
+  trip: TripBounds;
+  day: Pick<DayPlaceDraft, "dayType" | "primaryCity" | "secondaryCity" | "primaryShare"> | null;
+  travelSegments?: CalendarDaySegment[];
+  paintStart?: string;
+  paintEnd?: string;
+}): boolean {
+  const { iso, trip, day, travelSegments, paintStart, paintEnd } = input;
+  const rangeStart = paintStart ?? trip.startDate;
+  const rangeEnd = paintEnd ?? trip.endDate;
+  const homeBufferDay = addDays(trip.endDate, 1);
+
+  if (iso === homeBufferDay && day?.dayType === "buffer") {
+    return iso >= rangeStart;
+  }
+
+  if (iso < rangeStart || iso > rangeEnd) return false;
+  if (day?.dayType === "buffer") return false;
+
+  if (travelSegments?.length) return true;
+
+  const secondary = day?.secondaryCity?.trim() ?? "";
+  const share = day?.primaryShare ?? 1;
+  if (secondary || (day?.primaryCity.trim() && share < 1)) return true;
+
+  return isCalendarDaySelectable(input);
+}
+
+/** Matches calendar cell selectability — clicking elsewhere should clear a pending range. */
 export function isCalendarDaySelectable(input: {
   iso: string;
   trip: TripBounds;
   day: Pick<DayPlaceDraft, "dayType" | "primaryCity" | "secondaryCity" | "primaryShare"> | null;
   travelSegments?: CalendarDaySegment[];
+  /** Setup scroll calendar: paintable window (defaults to trip dates). */
+  paintStart?: string;
+  paintEnd?: string;
 }): boolean {
-  const { iso, trip, day, travelSegments } = input;
-  if (iso < trip.startDate || iso > trip.endDate) return false;
+  const { iso, trip, day, travelSegments, paintStart, paintEnd } = input;
+  const rangeStart = paintStart ?? trip.startDate;
+  const rangeEnd = paintEnd ?? trip.endDate;
+  if (iso < rangeStart || iso > rangeEnd) return false;
   if (day?.dayType === "buffer") return false;
   if (travelLayoutBlocksPainting(travelSegments)) return false;
   const isHomeEdge = iso === trip.startDate || iso === trip.endDate;
@@ -433,6 +807,23 @@ export function travelLayoutPaintStart(segments: CalendarDaySegment[] | undefine
   const sorted = [...segments].sort((a, b) => a.start - b.start);
   if (sorted[0]!.start > 0) return 0;
   return Math.max(...segments.map((segment) => segment.end));
+}
+
+/** Location + hotel bands on departure days — fill through to the flight slice. */
+export function stayCityPaintShareForDay(
+  day: Pick<DayPlaceDraft, "primaryCity" | "secondaryCity" | "primaryShare">,
+  segments: CalendarDaySegment[] | undefined,
+): number {
+  const share = day.primaryShare ?? 1;
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  if (!primary || secondary) return share;
+
+  const paintStart = travelLayoutPaintStart(segments);
+  if (paintStart > 0.02 && paintStart < 0.999 && paintStart > share) {
+    return paintStart;
+  }
+  return share;
 }
 
 /** When afternoon transit starts mid-day, morning share 0 → this value is paintable. */
@@ -483,6 +874,7 @@ export function mergeTravelWithPaintedStay(
   segments: CalendarDaySegment[] | undefined,
   day: DayPlaceDraft | null,
 ): { segments: CalendarDaySegment[] | undefined; hideMergedStayCity: boolean } {
+  segments = withoutAirportCitySegments(segments);
   if (!segments?.length || !day) {
     return { segments, hideMergedStayCity: false };
   }
@@ -496,7 +888,9 @@ export function mergeTravelWithPaintedStay(
   if (!painted) return { segments, hideMergedStayCity: false };
 
   const landingIdx = segments.findLastIndex(
-    (segment) => segment.kind === "city" && citiesMatch(segment.city, painted),
+    (segment) =>
+      segment.kind === "city" &&
+      (citiesMatch(segment.city, painted) || placesShareMetro(segment.city, painted)),
   );
 
   const merged = segments.map((segment) => ({ ...segment }));
@@ -504,10 +898,26 @@ export function mergeTravelWithPaintedStay(
   if (landingIdx >= 0) {
     const landing = merged[landingIdx]!;
     if (landing.kind !== "city") return { segments, hideMergedStayCity: false };
+    // Departure-day origin (e.g. Bangkok checkout + evening flight): keep the stay
+    // location band for the city label; drop the duplicate travel city slice.
+    if (landing.start < 0.01) {
+      merged.splice(landingIdx, 1);
+      return { segments: merged, hideMergedStayCity: false };
+    }
+    if (landing.colorOnly) {
+      return { segments: merged, hideMergedStayCity: true };
+    }
     landing.end = 1;
     return { segments: merged, hideMergedStayCity: true };
   }
 
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const share = day.primaryShare ?? 1;
+  if (primary && !secondary && share < 1) {
+    // Checkout departure day — stay band already paints the morning city.
+    return { segments: merged, hideMergedStayCity: false };
+  }
   merged.push({ kind: "city", city: painted, start: paintStart, end: 1 });
   return { segments: merged, hideMergedStayCity: true };
 }
@@ -530,8 +940,8 @@ function findOnwardLeg(
       leg.travelDate === date &&
       leg.fromCity.trim() &&
       leg.toCity.trim() &&
-      normCity(leg.fromCity) === normCity(fromCity) &&
-      normCity(leg.toCity) !== normCity(fromCity),
+      placesShareMetro(leg.fromCity, fromCity) &&
+      !placesShareMetro(leg.toCity, fromCity),
   );
 }
 
@@ -542,6 +952,7 @@ function preferPlaneLeg(legs: TransportLegDraft[]): TransportLegDraft | undefine
 export type CalendarTransportOptions = {
   /** Between-city legs belong on step 4 — hide them on the dates & places calendar. */
   includeIntercity?: boolean;
+  stays?: AccommodationStayDraft[];
 };
 
 function calendarTransportDraft(
@@ -569,9 +980,10 @@ export function computeTravelDayLayouts(
 ): Map<string, CalendarDaySegment[]> {
   const skipInFlightIds = intercityLegIds(draft);
   draft = calendarTransportDraft(normalizeTransportCalendarDraft(draft), options);
+  const stays = options?.stays ?? [];
   const map = new Map<string, CalendarDaySegment[]>();
   const legs = allTransportLegs(draft);
-  const Q = TRAVEL_SEGMENT_QUARTER;
+  const planeLegs = legs.filter((leg) => leg.transportType === "plane");
   const HALF = DEFAULT_HALF_SHARE;
 
   const candidateDates = new Set<string>();
@@ -586,72 +998,100 @@ export function computeTravelDayLayouts(
     connectionLeg: TransportLegDraft,
     homeLeg: TransportLegDraft,
   ): void {
-    const homeShares = arrivalDayShares(homeLeg, true);
-    const segments: CalendarDaySegment[] = [
-      {
-        kind: "transit",
-        start: 0,
-        end: homeShares.transitEnd,
-        label: flightRouteAirportLabel([connectionLeg, homeLeg]),
-      },
-    ];
+    if (arrivalDate(homeLeg) !== date) return;
 
-    if (homeShares.landingEnd > homeShares.transitEnd) {
-      segments.push({
+    const homeShares = arrivalDayShares(homeLeg, true);
+    const homeCity = trip.returnCity.trim() || metroDisplayLabel(homeLeg.toCity);
+    if (!homeCity) return;
+
+    const routeLabel = flightRouteAirportLabelForDate(
+      [connectionLeg, homeLeg],
+      date,
+      arrivalDate,
+    );
+
+    map.set(date, [
+      transitSegment(routeLabel, 0, homeShares.transitEnd, connectionLeg),
+      {
         kind: "city",
         start: homeShares.transitEnd,
-        end: homeShares.landingEnd,
-        city: trip.returnCity.trim() || homeLeg.toCity.trim(),
-      });
-    }
+        end: 1,
+        city: homeCity,
+      },
+    ]);
+  }
 
-    map.set(date, segments);
+  function isFinalHomeChainArrival(leg: TransportLegDraft): boolean {
+    if (!isHomeReturnLeg(leg, trip.returnCity)) return false;
+    if (findOnwardLeg(legs, leg.travelDate, leg.toCity.trim(), leg.id)) return false;
+    return Boolean(findInboundConnectionLeg(planeLegsOnly(legs), leg));
+  }
+
+  function setHomeLandingOnly(date: string, leg: TransportLegDraft): void {
+    const homeShares = arrivalDayShares(leg, true);
+    const homeCity = trip.returnCity.trim() || metroDisplayLabel(leg.toCity);
+    if (!homeCity) return;
+    map.set(date, [
+      {
+        kind: "city",
+        start: homeShares.transitEnd,
+        end: 1,
+        city: homeCity,
+      },
+    ]);
   }
 
   function setArrivalLayout(date: string, plane: TransportLegDraft): void {
+    if (isFinalHomeChainArrival(plane)) {
+      setHomeLandingOnly(date, plane);
+      return;
+    }
+
     const homeLanding = isHomeReturnArrival(plane.toCity, trip);
     const shares = arrivalDayShares(plane, homeLanding);
     const onward = findOnwardLeg(legs, date, plane.toCity.trim(), plane.id);
-    const onwardHomeSameDay =
-      onward &&
-      isHomeReturnLeg(onward, trip.returnCity) &&
-      arrivalDate(onward) === date;
+    const onwardHome =
+      onward && isHomeReturnLeg(onward, trip.returnCity);
 
-    if (onwardHomeSameDay && onward) {
-      setChainedReturnHomeArrivalLayout(date, plane, onward);
+    if (onwardHome && plane.travelDate.trim() !== date) {
+      if (arrivalDate(onward) === date) {
+        setChainedReturnHomeArrivalLayout(date, plane, onward);
+      }
       return;
     }
 
     const routeLegs = onward ? [plane, onward] : [plane];
     const segments: CalendarDaySegment[] = [
-      {
-        kind: "transit",
-        start: 0,
-        end: shares.transitEnd,
-        label: flightRouteAirportLabel(routeLegs),
-      },
+      transitSegment(
+        flightRouteAirportLabel(routeLegs),
+        0,
+        shares.transitEnd,
+        plane,
+      ),
     ];
 
     if (!onward && homeLanding && shares.landingEnd > shares.transitEnd) {
       segments.push({
         kind: "city",
         start: shares.transitEnd,
-        end: shares.landingEnd,
+        end: 1,
         city: trip.returnCity.trim() || plane.toCity.trim(),
       });
+    } else if (!onward && !homeLanding && shares.landingEnd > shares.transitEnd) {
+      const dest = resolveArrivalStayCity(plane.toCity, stays, planeLegs, date);
+      const metro = metroDisplayLabel(plane.toCity);
+      if (dest !== metro) {
+        segments.push({
+          kind: "city",
+          start: shares.transitEnd,
+          end: 1,
+          city: dest,
+          colorOnly: true,
+        });
+      }
     }
 
     map.set(date, segments);
-  }
-
-  function setChainedSameDayLayout(date: string, plane: TransportLegDraft, onward: TransportLegDraft): void {
-    const origin = originCityLabel(plane.fromCity, trip, date);
-    const routeLabel = flightRouteAirportLabel([plane, onward]);
-
-    map.set(date, [
-      { kind: "city", start: 0, end: Q, city: origin },
-      { kind: "transit", start: Q, end: 1, label: routeLabel },
-    ]);
   }
 
   for (const date of candidateDates) {
@@ -681,24 +1121,66 @@ export function computeTravelDayLayouts(
       departingLegs.filter((leg) => leg.transportType === "plane"),
     );
     if (departingPlane) {
+      const chain = connectionChainFrom(departingPlane, legs);
+      const chainEndsHome =
+        chain.length >= 2 && isHomeReturnLeg(chain[chain.length - 1]!, trip.returnCity);
+
+      if (chainEndsHome) {
+        map.set(date, buildMultiLegDepartureLayout(chain, trip, stays, planeLegs));
+        continue;
+      }
+
+      const crossoverDay = (draft.dayPlaces ?? []).find((d) => d.date === date);
+      if (isFlightCrossoverDay(crossoverDay, departingPlane, legs)) {
+        map.set(
+          date,
+          buildFlightCrossoverLayout(departingPlane, legs, trip, stays, planeLegs),
+        );
+        continue;
+      }
+
       const sameDayLanding =
         arrivalDate(departingPlane) === date && departingPlane.toCity.trim();
       const onward =
         sameDayLanding &&
         findOnwardLeg(legs, date, departingPlane.toCity.trim(), departingPlane.id);
       if (onward) {
-        setChainedSameDayLayout(date, departingPlane, onward);
+        const chain = connectionChainFrom(departingPlane, legs);
+        map.set(
+          date,
+          chain.length >= 2
+            ? buildMultiLegDepartureLayout(chain, trip, stays, planeLegs)
+            : buildFlightCrossoverLayout(
+                departingPlane,
+                [departingPlane, onward],
+                trip,
+                stays,
+                planeLegs,
+              ),
+        );
         continue;
       }
 
-      map.set(date, [
-        {
-          kind: "transit",
-          start: HALF,
-          end: 1,
-          label: flightRouteAirportLabel([departingPlane]),
-        },
-      ]);
+      const rawDepShare = timeToShare(departingPlane.departureTime, HALF);
+      const depShare = departureDayCityEndShare(
+        departingPlane.departureTime,
+        rawDepShare,
+      );
+      const morningCity = departureMorningCity(departingPlane.fromCity, trip, date);
+      const segments: CalendarDaySegment[] = [];
+      if (depShare > 0.02 && morningCity) {
+        segments.push({
+          kind: "city",
+          city: morningCity,
+          start: 0,
+          end: depShare,
+          colorOnly: isMajorTravelDay(legs, date),
+        });
+      }
+      segments.push(
+        transitSegment(flightRouteAirportLabel([departingPlane]), depShare, 1, departingPlane),
+      );
+      map.set(date, segments);
       continue;
     }
 
@@ -728,7 +1210,7 @@ export function computeTravelDayLayouts(
     while (cursor < arr) {
       if (inCalendarRange(cursor, trip, draft) && !map.has(cursor)) {
         map.set(cursor, [
-          { kind: "transit", start: 0, end: 1, label: flightRouteAirportLabel([leg]) },
+          transitSegment(flightRouteAirportLabel([leg]), 0, 1, leg),
         ]);
       }
       cursor = addDays(cursor, 1);
@@ -736,6 +1218,7 @@ export function computeTravelDayLayouts(
   }
 
   for (const leg of draft.intercityLegs) {
+    if (leg.surfaceOnly) continue;
     const date = leg.travelDate.trim();
     if (!date || !inCalendarRange(date, trip, draft) || map.has(date)) continue;
     if (!intercityShowsCalendarTransit(leg)) continue;

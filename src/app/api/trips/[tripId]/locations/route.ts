@@ -15,6 +15,34 @@ import {
   STAY_TYPES,
   TRANSPORT_TYPES,
 } from "@/lib/host/wizard/types";
+import { VisibilityFieldsSchema } from "@/lib/visibility/schemas";
+
+const TransportLegSchema = z
+  .object({
+    id: z.string().uuid(),
+    transportType: z.enum(TRANSPORT_TYPES),
+    bookingStatus: z.enum(BOOKING_STATUSES),
+    travelDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    arrivalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+    departureTime: z.string().nullable(),
+    arrivalTime: z.string().nullable(),
+    fromCity: z.string(),
+    toCity: z.string(),
+    fromStation: z.string().nullable(),
+    toStation: z.string().nullable(),
+    operator: z.string().nullable(),
+    referenceNumber: z.string().nullable(),
+    flightNumber: z.string().nullable(),
+    notes: z.string().nullable(),
+  })
+  .merge(VisibilityFieldsSchema);
+
+const IntercityLegSchema = TransportLegSchema.extend({
+  intercityFromCity: z.string(),
+  intercityToCity: z.string(),
+  legKind: z.enum(["city_change", "airport_arrival", "airport_departure"]).optional(),
+  anchorLegId: z.string().uuid().nullable().optional(),
+});
 
 const DayPlaceSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -25,45 +53,22 @@ const DayPlaceSchema = z.object({
   includeBuffer: z.boolean(),
 });
 
-const TransportLegSchema = z.object({
-  id: z.string().uuid(),
-  transportType: z.enum(TRANSPORT_TYPES),
-  bookingStatus: z.enum(BOOKING_STATUSES),
-  travelDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  arrivalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-  departureTime: z.string().nullable(),
-  arrivalTime: z.string().nullable(),
-  fromCity: z.string(),
-  toCity: z.string(),
-  fromStation: z.string().nullable(),
-  toStation: z.string().nullable(),
-  operator: z.string().nullable(),
-  referenceNumber: z.string().nullable(),
-  flightNumber: z.string().nullable(),
-  notes: z.string().nullable(),
-});
-
-const IntercityLegSchema = TransportLegSchema.extend({
-  intercityFromCity: z.string(),
-  intercityToCity: z.string(),
-  legKind: z.enum(["city_change", "airport_arrival", "airport_departure"]).optional(),
-  anchorLegId: z.string().uuid().nullable().optional(),
-});
-
-const StaySchema = z.object({
-  id: z.string().uuid(),
-  cityLabel: z.string().min(1),
-  stayType: z.enum(STAY_TYPES),
-  name: z.string().nullable(),
-  url: z.string().nullable(),
-  address: z.string().nullable(),
-  phone: z.string().nullable(),
-  checkInDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  checkOutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  notes: z.string().nullable(),
-  isHomestayGroup: z.boolean(),
-  multipleInCity: z.boolean(),
-});
+const StaySchema = z
+  .object({
+    id: z.string().uuid(),
+    cityLabel: z.string().min(1),
+    stayType: z.enum(STAY_TYPES),
+    name: z.string().nullable(),
+    url: z.string().nullable(),
+    address: z.string().nullable(),
+    phone: z.string().nullable(),
+    checkInDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    checkOutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    notes: z.string().nullable(),
+    isHomestayGroup: z.boolean(),
+    multipleInCity: z.boolean(),
+  })
+  .merge(VisibilityFieldsSchema);
 
 const LocationStateSchema = z.object({
   basics: z.object({

@@ -19,6 +19,7 @@ Create `.env.local`:
 | `OPENAI_API_KEY` | No | AI itinerary import and phrase translation |
 | `OPENAI_MODEL` | No | Defaults to `gpt-4o-mini` |
 | `WEATHER_MODE` | No | `live` (default) or `mock` for demos |
+| `AERODATABOX_API_KEY` | No | [AeroDataBox on API.market](https://api.market/store/aedbx/aerodatabox) — your `x-api-market-key` for flight lookup |
 
 ## Scripts
 

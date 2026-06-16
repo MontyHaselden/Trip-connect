@@ -1,5 +1,5 @@
-import { DashboardClient } from "@/components/dashboard/DashboardClient";
+import { TripOsClient } from "@/components/trip-os/TripOsClient";
 
 export default function DashboardPage() {
-  return <DashboardClient />;
+  return <TripOsClient />;
 }

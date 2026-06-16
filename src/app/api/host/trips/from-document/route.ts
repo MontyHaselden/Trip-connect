@@ -4,6 +4,8 @@ import { requireHostSessionHostId, setHostSessionCookie } from "@/lib/auth/host-
 import { normalizeImportInstructions } from "@/lib/documents/document-import-instructions";
 import { extractTextFromUpload } from "@/lib/documents/extract-text";
 import { extractTripMetadataQuick } from "@/lib/documents/extract-trip-metadata";
+import { tripHomeDefaultsFromAccount } from "@/lib/host/account-home";
+import { getHostAccountById } from "@/lib/host/auth";
 import { hostApiError } from "@/lib/host/api-errors";
 import { importTripFromDocumentText } from "@/lib/host/import-trip-from-document";
 import { createTripForHost } from "@/lib/host/trip-create";
@@ -54,14 +56,26 @@ export async function POST(req: Request) {
 
     const metadata = extractTripMetadataQuick(documentText, defaultTimezone);
 
+    const host = await getHostAccountById(hostId);
+    const homeDefaults = host
+      ? tripHomeDefaultsFromAccount({
+          homeCity: host.homeCity ?? "",
+          defaultAirport: host.defaultAirport ?? "",
+          schoolName: host.schoolName,
+        })
+      : null;
+
     const trip = await createTripForHost({
       hostId,
       name: metadata.name,
-      schoolName: metadata.schoolName,
+      schoolName: homeDefaults?.schoolName ?? metadata.schoolName,
       startDate: metadata.startDate,
       endDate: metadata.endDate,
       timezone: metadata.timezone,
       defaultCountryCallingCode,
+      departureCity: homeDefaults?.departureCity,
+      returnCity: homeDefaults?.returnCity,
+      defaultDepartureAirport: homeDefaults?.defaultDepartureAirport,
     });
 
     await setHostSessionCookie({ hostId, activeTripId: trip.id });

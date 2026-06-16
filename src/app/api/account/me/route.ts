@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { formatPublicPrice } from "@/lib/billing/gst";
 import { getGstSettings } from "@/lib/billing/settings";
 import { getSubscriptionForAccount } from "@/lib/billing/subscriptions";
-import { getHostSession } from "@/lib/auth/host-session";
+import { getValidHostSession } from "@/lib/auth/host-session";
 import { db } from "@/lib/db/client";
 import { hostAccounts, hostTripMembers, trips } from "@/lib/db/schema";
 import { getHostAccountById } from "@/lib/host/auth";
@@ -14,7 +14,7 @@ import { getPlanLimitsFromDb } from "@/lib/plans/plans-db";
 import type { SubscriptionPlan } from "@/lib/plans/plan-config";
 
 export async function GET() {
-  const session = await getHostSession();
+  const session = await getValidHostSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const account = await getHostAccountById(session.hostId);
@@ -67,6 +67,8 @@ export async function GET() {
       plan: account.plan,
       schoolName: account.schoolName,
       jobTitle: account.jobTitle,
+      homeCity: account.homeCity,
+      defaultAirport: account.defaultAirport,
       planExpiresAt: account.planExpiresAt?.toISOString() ?? null,
       foundingSchool: hostAccount?.foundingSchool ?? false,
       paused: !!hostAccount?.pausedAt,

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { hostTripMembers, trips } from "@/lib/db/schema";
+import { ensureMainGroupForTrip } from "@/lib/groups/main-group";
 import { unsetTripDateRange } from "@/lib/host/trip-dates";
 
 function randomInvite(len: number) {
@@ -36,6 +37,9 @@ export async function createTripForHost(params: {
   destinationCountry?: string | null;
   destinationLanguage?: string | null;
   setupMethod?: "ai" | "wizard";
+  departureCity?: string | null;
+  returnCity?: string | null;
+  defaultDepartureAirport?: string | null;
 }) {
   const inviteCode = await uniqueTripCode("inviteCode");
   const viewerCode = await uniqueTripCode("viewerCode");
@@ -61,6 +65,9 @@ export async function createTripForHost(params: {
       destinationCountry: params.destinationCountry ?? null,
       destinationLanguage: params.destinationLanguage ?? null,
       setupMethod: params.setupMethod ?? "ai",
+      departureCity: params.departureCity?.trim() || null,
+      returnCity: params.returnCity?.trim() || null,
+      defaultDepartureAirport: params.defaultDepartureAirport?.trim() || null,
       publishedVersion: 0,
     })
     .returning({
@@ -77,6 +84,8 @@ export async function createTripForHost(params: {
     canEdit: true,
     acceptedAt: new Date(),
   });
+
+  await ensureMainGroupForTrip(trip.id);
 
   return trip;
 }

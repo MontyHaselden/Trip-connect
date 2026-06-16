@@ -28,9 +28,11 @@ async function searchNominatimAddresses(params: {
   const cityPart = params.cityHint
     ? params.cityHint.split(",")[0]?.trim() ?? params.cityHint
     : "";
-  const searchQuery = params.lodgingOnly && cityPart
-    ? `${q} hotel, ${cityPart}`
-    : params.cityHint
+  const searchQuery = params.lodgingOnly
+    ? cityPart
+      ? `${q} hotel, ${cityPart}`
+      : `${q} hotel`
+    : cityPart
       ? `${q}, ${cityPart}`
       : q;
 

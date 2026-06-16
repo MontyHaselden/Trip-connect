@@ -250,6 +250,7 @@ export function ItineraryClient({ inviteCode }: { inviteCode: string }) {
           <PrepList
             inviteCode={inviteCode}
             day={selectedDay}
+            roster={roster}
             editingId={editingPrepId}
             onEdit={setEditingPrepId}
             onReload={reload}

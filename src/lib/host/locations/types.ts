@@ -15,6 +15,7 @@ export type TripLocationBasics = Pick<
   | "timezone"
   | "departureCity"
   | "returnCity"
+  | "defaultDepartureAirport"
   | "destinationCountries"
 >;
 

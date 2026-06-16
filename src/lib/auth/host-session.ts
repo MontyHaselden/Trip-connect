@@ -1,6 +1,8 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 
+import { getHostAccountById } from "@/lib/host/auth";
+
 const COOKIE_NAME = "tc_host_session";
 
 type HostSessionPayload = {
@@ -96,13 +98,22 @@ export async function clearHostSessionCookie() {
   });
 }
 
+/** Session cookie that still points at a deleted host account is cleared. */
+export async function getValidHostSession(): Promise<HostSessionPayload | null> {
+  const session = await getHostSession();
+  if (!session) return null;
+  const account = await getHostAccountById(session.hostId);
+  if (!account) {
+    await clearHostSessionCookie();
+    return null;
+  }
+  return session;
+}
+
 export async function requireHostSessionHostId(): Promise<string> {
-  const jar = await cookies();
-  const value = jar.get(COOKIE_NAME)?.value;
-  if (!value) throw new Error("Unauthorized");
-  const payload = verifyHostSessionCookie(value);
-  if (!payload) throw new Error("Unauthorized");
-  return payload.hostId;
+  const session = await getValidHostSession();
+  if (!session) throw new Error("Unauthorized");
+  return session.hostId;
 }
 
 export async function requireHostSessionActiveTripId(): Promise<string> {

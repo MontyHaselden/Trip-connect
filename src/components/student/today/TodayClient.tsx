@@ -16,11 +16,12 @@ import {
 import { TripNotReady } from "@/components/student/TripNotReady";
 import {
   stayColor,
-  stayForNight,
 } from "@/lib/host/locations/accommodation-colors";
+import { resolveAccommodationForDate } from "@/lib/student/resolve-accommodation-for-date";
 import { sortItemsByStartTime } from "@/lib/timeline/time-math";
 import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
 import { CompactDaySheet } from "@/components/student/today/CompactDaySheet";
+import { TodayDayMetaBridge } from "@/components/student/today/TodayDayMetaBridge";
 
 function TodayContent() {
   const { cache } = useTripApp();
@@ -69,43 +70,55 @@ function TodayContent() {
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [trip, selectedDay]);
 
-  const nightStay = useMemo(() => {
-    if (!trip || !selectedDay) return null;
-    const stay = stayForNight(selectedDay.date, trip.accommodationStays ?? []);
-    if (!stay) return null;
-    return {
-      name: stay.name,
-      color: stayColor(stay),
-    };
+  const dayReminders = useMemo(() => {
+    if (!trip || !selectedDay) return [];
+    return (trip.dayReminders ?? [])
+      .filter((r) => r.tripDayId === selectedDay.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [trip, selectedDay]);
+
+  const nightStay = useMemo(() => {
+    if (!trip || !selectedDay || !cache.participantId) return null;
+    const acc = resolveAccommodationForDate(trip, cache.participantId, selectedDay.date);
+    if (!acc?.name) return null;
+    return {
+      name: acc.name,
+      color: stayColor({
+        name: acc.name,
+        cityLabel: acc.cityLabel ?? selectedDay.cityLabel,
+      }),
+    };
+  }, [trip, selectedDay, cache.participantId]);
 
   if (isTripCacheLoading(cache)) {
     return (
-      <div className="py-10 text-center text-sm text-zinc-600">Loading trip…</div>
+      <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">Loading trip…</div>
     );
   }
 
   if (isTripConnectionError(cache)) {
     return (
-      <div className="py-10 text-center text-sm text-zinc-600">
+      <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">
         {cache.message ?? TRIP_CONNECTION_ERROR_MESSAGE}
       </div>
     );
   }
 
   if (tripNotPublished && !trip) {
-    return <TripNotReady title="Today" />;
+    return (
+      <TripNotReady title="Today" hasJoined={Boolean(cache.participantId)} />
+    );
   }
 
   if (!hasTodaySchedule(trip)) {
     return (
-      <div className="py-10 text-center text-sm text-zinc-600">Loading trip…</div>
+      <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">Loading trip…</div>
     );
   }
 
   if (!scheduledDays.length) {
     return (
-      <div className="py-10 text-center text-sm text-zinc-600">
+      <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">
         No scheduled days yet.
       </div>
     );
@@ -113,7 +126,7 @@ function TodayContent() {
 
   if (!selectedDay) {
     return (
-      <div className="py-10 text-center text-sm text-zinc-600">
+      <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">
         Select a day from the calendar.
       </div>
     );
@@ -121,6 +134,7 @@ function TodayContent() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <TodayDayMetaBridge />
       <div className="shrink-0">
         <Suspense>
           <TodayBuildingBanner />
@@ -130,6 +144,7 @@ function TodayContent() {
       <CompactDaySheet
         items={dayItems}
         prepItems={prepItems}
+        dayReminders={dayReminders}
         tripTimezone={tripTz}
         dateISO={selectedDay.date}
         cityLabel={selectedDay.cityLabel}

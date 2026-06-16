@@ -7,10 +7,17 @@ import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getTripDayForTrip, nextPrepSortOrder } from "@/lib/host/itinerary-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
+import { VisibilityFieldsSchema } from "@/lib/visibility/schemas";
+import {
+  persistEntityVisibility,
+  resolveItemVisibility,
+} from "@/lib/visibility/item-visibility";
 
-const CreatePrepSchema = z.object({
-  text: z.string().trim().min(1).max(500),
-});
+const CreatePrepSchema = z
+  .object({
+    text: z.string().trim().min(1).max(500),
+  })
+  .merge(VisibilityFieldsSchema);
 
 export async function POST(
   req: Request,
@@ -29,6 +36,7 @@ export async function POST(
     }
 
     const sortOrder = await nextPrepSortOrder(dayId);
+    const visibility = resolveItemVisibility(parsed.data);
     const [created] = await db
       .insert(tomorrowPrepItems)
       .values({
@@ -36,8 +44,17 @@ export async function POST(
         tripDayId: dayId,
         text: parsed.data.text,
         sortOrder,
+        visibilityMode: visibility.visibilityMode,
       })
       .returning();
+
+    await persistEntityVisibility(
+      trip.id,
+      "prep_item",
+      created!.id,
+      visibility.visibilityMode,
+      visibility.targets,
+    );
 
     await maybeAutoPublish(trip.id);
     return NextResponse.json(created);

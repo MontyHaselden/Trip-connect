@@ -1,9 +1,7 @@
 import { redirect } from "next/navigation";
 
-import { DashboardShell } from "@/components/dashboard/DashboardShell";
-import { getHostSession } from "@/lib/auth/host-session";
-import { getTripDashboardContext } from "@/lib/host/get-trip-dashboard-context";
-import { TRIP_STATUS_LABELS } from "@/lib/host/trip-lifecycle";
+import { getValidHostSession } from "@/lib/auth/host-session";
+import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 
 export default async function TripDashboardLayout({
   children,
@@ -13,24 +11,11 @@ export default async function TripDashboardLayout({
   params: Promise<{ tripId: string }>;
 }) {
   const { tripId } = await params;
-  const session = await getHostSession();
+  const session = await getValidHostSession();
   if (!session) redirect("/login");
 
-  const context = await getTripDashboardContext(session.hostId, tripId);
-  if (!context) redirect("/dashboard");
+  const trip = await getTripByIdForHost(session.hostId, tripId);
+  if (!trip) redirect("/dashboard");
 
-  const { trip, lifecycle } = context;
-
-  return (
-    <DashboardShell
-      tripId={tripId}
-      tripName={trip.name}
-      tripStatus={lifecycle.status}
-      tripStatusLabel={TRIP_STATUS_LABELS[lifecycle.status]}
-      continuePath={lifecycle.continuePath}
-      wizardInProgress={lifecycle.wizardInProgress}
-    >
-      {children}
-    </DashboardShell>
-  );
+  return <div className="h-dvh min-h-0 overflow-hidden bg-white">{children}</div>;
 }

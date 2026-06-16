@@ -3,17 +3,18 @@
 import { hostJson } from "@/components/host/shared/host-fetch";
 
 import { PrepForm } from "./PrepForm";
-import type { TripDay } from "./types";
+import type { RosterSummary, TripDay } from "./types";
 
 export function PrepList(props: {
   inviteCode: string;
   day: TripDay;
+  roster: RosterSummary;
   editingId: string | null;
   onEdit: (id: string | null) => void;
   onReload: () => void;
   onError: (msg: string) => void;
 }) {
-  const { inviteCode, day, editingId, onEdit, onReload, onError } = props;
+  const { inviteCode, day, roster, editingId, onEdit, onReload, onError } = props;
   const api = `/api/host/${encodeURIComponent(inviteCode)}`;
   const prep = [...day.prep].sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -64,6 +65,7 @@ export function PrepList(props: {
                 inviteCode={inviteCode}
                 dayId={day.id}
                 prep={row}
+                roster={roster}
                 onSaved={() => {
                   onEdit(null);
                   onReload();
@@ -116,6 +118,7 @@ export function PrepList(props: {
           <PrepForm
             inviteCode={inviteCode}
             dayId={day.id}
+            roster={roster}
             onSaved={onReload}
             onError={onError}
           />

@@ -53,6 +53,122 @@ html.student-app-viewport-lock body {
   overscroll-behavior: contain;
 }
 
+/* Premium student travel-pass theme */
+.student-app {
+  --student-bg: #f8f7f4;
+  --student-surface: #ffffff;
+  --student-text: #151515;
+  --student-text-muted: #656565;
+  --student-line: #e8e6e1;
+  --student-nav: #102a43;
+  --student-accent: #d97706;
+  --cat-travel: #2563eb;
+  --cat-meal: #d97706;
+  --cat-school: #7c3aed;
+  --cat-activity: #059669;
+  --cat-free_time: #737373;
+  --cat-hotel: #0f766e;
+  --cat-meeting: #db2777;
+  --cat-important: #dc2626;
+  --cat-other: #737373;
+  background-color: var(--student-bg);
+  color: var(--student-text);
+  font-family: var(--font-student), ui-sans-serif, system-ui, sans-serif;
+}
+
+@keyframes sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.student-card {
+  border-radius: 1rem;
+  border: 1px solid var(--student-line);
+  background: var(--student-surface);
+  padding: 1.25rem;
+}
+
+.student-btn-primary {
+  border-radius: 0.75rem;
+  background: var(--student-nav);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.student-btn-secondary {
+  border-radius: 0.75rem;
+  border: 1px solid var(--student-line);
+  background: var(--student-surface);
+  color: var(--student-text);
+  font-weight: 600;
+}
+
+.animate-sheet-up {
+  animation: sheet-up 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.student-menu-group {
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid var(--student-line);
+  background: var(--student-surface);
+}
+
+.student-menu-row {
+  display: flex;
+  min-height: 3.25rem;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--student-line);
+  padding: 0.75rem 1rem;
+  text-align: left;
+  transition: background-color 0.15s;
+}
+
+.student-menu-row:last-child {
+  border-bottom: none;
+}
+
+.student-menu-row:active {
+  background: color-mix(in srgb, var(--student-line) 35%, transparent);
+}
+
+.student-emergency-banner {
+  border: 1px solid #fecaca;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #fef2f2 85%, var(--student-bg)) 0%,
+    var(--student-surface) 100%
+  );
+}
+
+.student-upload-tile {
+  display: flex;
+  min-height: 7rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--student-line);
+  background: var(--student-surface);
+  padding: 0.75rem;
+  text-align: center;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.student-upload-tile:active {
+  border-color: var(--student-nav);
+  background: color-mix(in srgb, var(--student-line) 20%, var(--student-surface));
+}
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

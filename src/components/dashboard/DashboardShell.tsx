@@ -27,16 +27,22 @@ export function DashboardShell(props: {
     wizardInProgress,
   } = props;
   const pathname = usePathname();
+  const isSetupRoute = Boolean(tripId && pathname.includes(`/trips/${tripId}/setup`));
 
-  const builderHref =
-    continuePath ?? (tripId ? `/dashboard/trips/${tripId}/builder` : "/dashboard");
+  const setupHref = tripId ? `/dashboard/trips/${tripId}/setup` : "/dashboard";
+  const builderHref = tripId ? `/dashboard/trips/${tripId}/builder` : "/dashboard";
+  const isBuilding = tripStatus === "building" || wizardInProgress;
+  const primaryHref = isBuilding ? setupHref : builderHref;
 
   const tripNav = tripId
     ? [
         {
-          href: builderHref,
-          label: wizardInProgress ? "Continue setup" : "Builder",
+          href: continuePath ?? primaryHref,
+          label: isBuilding ? "Continue setup" : "Builder",
         },
+        ...(isBuilding
+          ? []
+          : [{ href: setupHref, label: "Setup" }]),
         { href: `/dashboard/trips/${tripId}/participants`, label: "Participants" },
         { href: `/dashboard/trips/${tripId}/locations`, label: "Locations" },
         { href: `/dashboard/trips/${tripId}/photos`, label: "Photos" },
@@ -46,10 +52,10 @@ export function DashboardShell(props: {
     : [];
 
   return (
-    <div className="flex min-h-dvh bg-zinc-50">
+    <div className="flex h-dvh min-h-0 bg-zinc-50">
       <aside className="hidden w-56 shrink-0 border-r border-zinc-200 bg-white p-4 lg:block">
         <Link href="/dashboard" className="text-lg font-semibold">
-          Trip Connect
+          Itinerary Live
         </Link>
         <nav className="mt-8 space-y-1">
           <Link
@@ -84,8 +90,8 @@ export function DashboardShell(props: {
               {tripNav.map((item) => {
                 const baseHref = item.href.split("?")[0]!;
                 const isActive =
-                  wizardInProgress && item.label === "Continue setup"
-                    ? pathname.includes(`${tripId}/wizard`)
+                  item.label === "Continue setup"
+                    ? pathname.includes(`${tripId}/setup`)
                     : pathname.startsWith(baseHref);
 
                 return (
@@ -119,15 +125,15 @@ export function DashboardShell(props: {
           </button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1">
-        {tripId ? (
-          <div className="border-b border-sky-100 bg-sky-50/40 px-5 py-4 lg:hidden">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {tripId && !isSetupRoute ? (
+          <div className="shrink-0 border-b border-sky-100 bg-sky-50/40 px-5 py-4 lg:hidden">
             <HostMobileLinkCard tripId={tripId} />
           </div>
         ) : null}
-        {children}
-        {tripId ? (
-          <div className="hidden border-t border-zinc-100 px-5 py-6 lg:block">
+        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        {tripId && !isSetupRoute ? (
+          <div className="hidden shrink-0 border-t border-zinc-100 px-5 py-6 lg:block">
             <div className="mx-auto max-w-5xl">
               <HostMobileLinkCard tripId={tripId} />
             </div>

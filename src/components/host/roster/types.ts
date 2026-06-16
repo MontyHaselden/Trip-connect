@@ -21,9 +21,18 @@ export type RosterRoom = {
 export type RosterGroup = {
   id: string;
   name: string;
-  type: "activity" | "bus" | "week" | "other";
+  type:
+    | "activity"
+    | "bus"
+    | "week"
+    | "route"
+    | "split_travel"
+    | "accommodation"
+    | "staff_helper"
+    | "other";
   description: string | null;
   sortOrder: number;
+  isMain?: boolean;
 };
 
 export type RosterPayload = {

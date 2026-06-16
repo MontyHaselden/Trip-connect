@@ -57,7 +57,7 @@ function PhotoThumb(props: {
     <button
       type="button"
       onClick={onView}
-      className="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 text-left"
+      className="overflow-hidden rounded-lg border border-[var(--student-line)] bg-[var(--student-bg)] text-left"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -65,7 +65,7 @@ function PhotoThumb(props: {
         alt={label}
         className="aspect-square w-full object-cover"
       />
-      <p className="px-2 py-1.5 text-[11px] font-medium text-zinc-600">{label}</p>
+      <p className="px-2 py-1.5 text-[11px] font-medium text-[var(--student-text-muted)]">{label}</p>
     </button>
   );
 }
@@ -128,9 +128,9 @@ export function DayPhotoGallery(props: {
   if (!selectedDay) return null;
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-5">
-      <h2 className="text-base font-semibold">Daily photos</h2>
-      <p className="mt-1 text-xs text-zinc-600">
+    <section className="student-card">
+      <h2 className="text-base font-bold text-[var(--student-text)]">Daily photos</h2>
+      <p className="mt-1 text-xs text-[var(--student-text-muted)]">
         {selectedDayLabel
           ? `Upload two photos from ${selectedDayLabel} — one of you and one from somewhere you visited.`
           : "Upload two photos from the selected day — one of you and one from somewhere you visited."}
@@ -174,9 +174,9 @@ export function DayPhotoGallery(props: {
       </div>
 
       {galleryByDay.length > 0 ? (
-        <div className="mt-5 border-t border-zinc-100 pt-4">
-          <h3 className="text-sm font-semibold text-zinc-900">Your gallery</h3>
-          <p className="mt-0.5 text-xs text-zinc-500">
+        <div className="mt-5 border-t border-[var(--student-line)] pt-4">
+          <h3 className="text-sm font-bold text-[var(--student-text)]">Your gallery</h3>
+          <p className="mt-0.5 text-xs text-[var(--student-text-muted)]">
             Tap a photo to view it full size.
           </p>
           <div className="mt-3 space-y-4">
@@ -184,7 +184,7 @@ export function DayPhotoGallery(props: {
               const dt = DateTime.fromISO(day.date, { zone: props.tripTimezone });
               return (
                 <div key={day.id}>
-                  <p className="text-xs font-medium text-zinc-600">
+                  <p className="text-xs font-medium text-[var(--student-text-muted)]">
                     {dt.toFormat("ccc d LLL")} · {day.cityLabel}
                   </p>
                   <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">

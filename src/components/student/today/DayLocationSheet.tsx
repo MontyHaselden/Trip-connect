@@ -93,13 +93,13 @@ export function DayLocationButton(props: { placement?: "header" | "nav" }) {
 
   const popupClass =
     placement === "header"
-      ? "absolute top-full right-0 z-30 mt-2 w-64 rounded-xl border border-zinc-200 bg-white p-4 shadow-lg"
-      : "absolute bottom-full right-0 z-30 mb-2 w-64 rounded-xl border border-zinc-200 bg-white p-4 shadow-lg";
+      ? "absolute top-full right-0 z-30 mt-2 w-64 rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] p-4 text-left shadow-lg"
+      : "absolute bottom-full right-0 z-30 mb-2 w-64 rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] p-4 text-left shadow-lg";
 
   const summaryClass =
     placement === "header"
-      ? "inline-flex cursor-pointer list-none items-center justify-center rounded-lg p-1 text-zinc-600 marker:content-none hover:bg-zinc-100 hover:text-zinc-900"
-      : "flex cursor-pointer list-none items-center justify-center rounded-lg px-2 py-2 text-zinc-700 marker:content-none hover:bg-zinc-100";
+      ? "inline-flex cursor-pointer list-none items-center justify-center rounded-lg p-1 text-[var(--student-text-muted)] marker:content-none hover:bg-[var(--student-line)]/40 hover:text-[var(--student-text)]"
+      : "flex cursor-pointer list-none items-center justify-center rounded-lg px-2 py-2 text-[var(--student-text-muted)] marker:content-none hover:bg-[var(--student-line)]/40";
 
   return (
     <div ref={anchorRef} className="relative">
@@ -114,15 +114,15 @@ export function DayLocationButton(props: { placement?: "header" | "nav" }) {
       </button>
       {open ? (
         <div className={popupClass}>
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--student-text-muted)]">
             {selected.date}
           </p>
-          <p className="mt-1 text-sm font-semibold text-zinc-900">{locationLabel}</p>
-          <div className="mt-3 border-t border-zinc-100 pt-3">
-            <p className="text-xs font-medium text-zinc-500">Accommodation</p>
+          <p className="mt-1 text-sm font-semibold text-[var(--student-text)]">{locationLabel}</p>
+          <div className="mt-3 border-t border-[var(--student-line)] pt-3">
+            <p className="text-xs font-medium text-[var(--student-text-muted)]">Accommodation</p>
             {hotelName ? (
               <>
-                <p className="mt-1 flex items-center gap-2 text-sm text-zinc-800">
+                <p className="mt-1 flex items-center gap-2 text-sm text-[var(--student-text)]">
                   {stay ? (
                     <span
                       className="h-2.5 w-2.5 shrink-0 rounded-full"

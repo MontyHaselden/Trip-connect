@@ -1,3 +1,6 @@
+import { isAirportPlace, placesShareMetro } from "@/lib/geo/airport-codes";
+import { metroDisplayLabel } from "@/lib/host/setup/metro-display";
+
 import { computeCalendarBounds } from "./calendar-bounds";
 import { buildDefaultDayPlaces } from "./detect-city-moves";
 import { syncChainedTransportLegs } from "./leg-chain";
@@ -30,12 +33,31 @@ export function deriveTripDatesFromTransport(
   return { startDate: outboundDate, endDate: returnDate };
 }
 
+function homeCityFromLegPlace(place: string): string {
+  const trimmed = place.trim();
+  if (!trimmed) return "";
+  return isAirportPlace(trimmed) ? metroDisplayLabel(trimmed) : trimmed;
+}
+
+function preferExistingHomeLabel(existing: string, derived: string): string {
+  const kept = existing.trim();
+  if (kept && derived && placesShareMetro(kept, derived)) return kept;
+  return derived;
+}
+
 export function deriveCitiesFromTransport(
-  draft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs">,
+  draft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs"> & {
+    basics?: Pick<TripWizardDraft["basics"], "departureCity" | "returnCity">;
+  },
 ): { departureCity: string; returnCity: string } {
-  const departureCity = draft.outboundLegs.find((leg) => leg.fromCity.trim())?.fromCity.trim() ?? "";
-  const returnCity = finalReturnLeg(draft.returnLegs)?.toCity.trim() ?? "";
-  return { departureCity, returnCity };
+  const rawDep = draft.outboundLegs.find((leg) => leg.fromCity.trim())?.fromCity.trim() ?? "";
+  const rawRet = finalReturnLeg(draft.returnLegs)?.toCity.trim() ?? "";
+  const depDerived = rawDep ? homeCityFromLegPlace(rawDep) : "";
+  const retDerived = rawRet ? homeCityFromLegPlace(rawRet) : "";
+  return {
+    departureCity: preferExistingHomeLabel(draft.basics?.departureCity ?? "", depDerived),
+    returnCity: preferExistingHomeLabel(draft.basics?.returnCity ?? "", retDerived),
+  };
 }
 
 export function resizeDayPlacesForTripRange(

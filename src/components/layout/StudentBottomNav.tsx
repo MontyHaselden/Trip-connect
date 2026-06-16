@@ -31,18 +31,18 @@ function NavItem(props: {
         tripDebug("nav.click", { from: pathname, to: href, active, mode: "hard" });
       }}
       className={[
-        "relative flex flex-1 items-center justify-center rounded-lg px-2 py-2 text-sm font-medium",
-        active ? "bg-zinc-900 text-white" : "text-zinc-700",
+        "relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold transition-colors",
+        active
+          ? "bg-[var(--student-nav)] text-white"
+          : "text-[var(--student-text-muted)]",
       ].join(" ")}
     >
       {label}
       {reminder ? (
         <span
-          className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold leading-none text-white"
+          className="absolute right-3 top-1.5 flex h-2 w-2 rounded-full bg-[var(--student-accent)] ring-2 ring-[var(--student-bg)]"
           aria-label="Photos needed for this day"
-        >
-          !
-        </span>
+        />
       ) : null}
     </a>
   );
@@ -63,7 +63,7 @@ function parseStudentRoute(pathname: string): {
   return {};
 }
 
-export function StudentBottomNav(props: { inviteCode?: string }) {
+export function StudentBottomNav(props: { inviteCode?: string; preview?: boolean }) {
   const pathname = usePathname();
   const { cache, todayNav, participantPhotos } = useTripApp();
   const route = parseStudentRoute(pathname);
@@ -141,18 +141,31 @@ export function StudentBottomNav(props: { inviteCode?: string }) {
 
   if (!todayBase || !myTripHref) return null;
 
-  return (
-    <nav className="relative z-20 mt-auto shrink-0 bg-zinc-50 pb-[max(env(safe-area-inset-bottom),0px)]">
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
-        <div className="flex items-center gap-1 p-1.5">
-          <NavItem href={todayHref} label="Today" active={onToday} />
-          <NavItem
-            href={myTripHref}
-            label="My Trip"
-            active={onMyTrip}
-            reminder={myTripPhotoReminder && !onMyTrip}
-          />
+  if (props.preview) {
+    return (
+      <nav className="relative z-20 mt-auto shrink-0 border-t border-[var(--student-line)] bg-[var(--student-bg)] pb-[max(env(safe-area-inset-bottom),0px)] pt-2">
+        <div className="flex items-center gap-1 rounded-full bg-[var(--student-surface)] p-1 shadow-sm ring-1 ring-[var(--student-line)]/80">
+          <span className="relative flex flex-1 items-center justify-center rounded-full bg-[var(--student-nav)] px-3 py-2.5 text-sm font-semibold text-white">
+            Today
+          </span>
+          <span className="relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold text-[var(--student-text-muted)]">
+            My Trip
+          </span>
         </div>
+      </nav>
+    );
+  }
+
+  return (
+    <nav className="relative z-20 mt-auto shrink-0 border-t border-[var(--student-line)] bg-[var(--student-bg)] pb-[max(env(safe-area-inset-bottom),0px)] pt-2">
+      <div className="flex items-center gap-1 rounded-full bg-[var(--student-surface)] p-1 shadow-sm ring-1 ring-[var(--student-line)]/80">
+        <NavItem href={todayHref} label="Today" active={onToday} />
+        <NavItem
+          href={myTripHref}
+          label="My Trip"
+          active={onMyTrip}
+          reminder={myTripPhotoReminder && !onMyTrip}
+        />
       </div>
     </nav>
   );

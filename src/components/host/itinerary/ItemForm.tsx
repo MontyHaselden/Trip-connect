@@ -15,6 +15,9 @@ import { ActivityTransportAddon } from "./ActivityTransportAddon";
 import { CompactActivityForm } from "./CompactActivityForm";
 import type { ItineraryItem, RosterSummary } from "./types";
 import { timeToInput } from "./types";
+import type { VisibilityPickerValue } from "@/components/host/shared/VisibilityPicker";
+import { VisibilityPicker } from "@/components/host/shared/VisibilityPicker";
+import type { VisibilityTarget } from "@/lib/visibility/types";
 
 function mapSavedItem(row: ItineraryItem): ItineraryItem {
   return {
@@ -32,6 +35,7 @@ function mapSavedItem(row: ItineraryItem): ItineraryItem {
     hostNote: row.hostNote,
     audienceType: row.audienceType,
     audienceId: row.audienceId,
+    visibilityMode: row.visibilityMode,
     category: row.category ?? null,
     sortOrder: row.sortOrder,
   };
@@ -87,16 +91,33 @@ export function ItemForm(props: {
   const [showMore, setShowMore] = useState(false);
   const [bringNote, setBringNote] = useState(item?.bringNote ?? "");
   const [hostNote, setHostNote] = useState(item?.hostNote ?? "");
-  const [audienceType, setAudienceType] = useState<ItineraryItem["audienceType"]>(
-    item?.audienceType ?? "everyone",
-  );
-  const [audienceId, setAudienceId] = useState(item?.audienceId ?? "");
+  const [visibility, setVisibility] = useState<VisibilityPickerValue>(() => {
+    if (item?.visibilityMode && item.visibilityMode !== "everyone") {
+      return {
+        visibilityMode: item.visibilityMode,
+        targets: [],
+      };
+    }
+    if (item?.audienceType && item.audienceType !== "everyone" && item.audienceId) {
+      const targetType =
+        item.audienceType === "group"
+          ? "group"
+          : item.audienceType === "participant"
+            ? "participant"
+            : "room";
+      return {
+        visibilityMode: "custom",
+        targets: [{ targetType, targetId: item.audienceId }],
+      };
+    }
+    return { visibilityMode: "everyone", targets: [] };
+  });
   const [saving, setSaving] = useState(false);
 
   const initialTab = useMemo(() => {
     if (locationName.trim() || address.trim()) return "location" as const;
     if (formatActivityTransport(transport)) return "transport" as const;
-    if (bringNote.trim() || hostNote.trim() || audienceType !== "everyone") {
+    if (bringNote.trim() || hostNote.trim() || visibility.visibilityMode !== "everyone") {
       return "notes" as const;
     }
     return null;
@@ -122,8 +143,8 @@ export function ItemForm(props: {
       transportNote: formatActivityTransport(transport),
       bringNote: bringNote.trim() || null,
       hostNote: hostNote.trim() || null,
-      audienceType,
-      audienceId: audienceType === "everyone" ? null : audienceId || null,
+      visibilityMode: visibility.visibilityMode,
+      targets: visibility.targets as VisibilityTarget[],
       category: null,
     };
     try {
@@ -181,10 +202,8 @@ export function ItemForm(props: {
           onBringNoteChange={setBringNote}
           hostNote={hostNote}
           onHostNoteChange={setHostNote}
-          audienceType={audienceType}
-          onAudienceTypeChange={setAudienceType}
-          audienceId={audienceId}
-          onAudienceIdChange={setAudienceId}
+          visibility={visibility}
+          onVisibilityChange={setVisibility}
           roster={roster}
           countryNames={countryNames}
           cityHint={cityHint}
@@ -288,56 +307,13 @@ export function ItemForm(props: {
             <span className="text-xs font-medium text-zinc-600">Host note</span>
             <input value={hostNote} onChange={(e) => setHostNote(e.target.value)} className={inputClass} />
           </label>
-          <label className="block">
-            <span className="text-xs font-medium text-zinc-600">Audience</span>
-            <select
-              value={audienceType}
-              onChange={(e) => {
-                setAudienceType(e.target.value as ItineraryItem["audienceType"]);
-                setAudienceId("");
-              }}
-              className={inputClass}
-            >
-              <option value="everyone">Everyone</option>
-              <option value="group">Group</option>
-              <option value="room">Room</option>
-              <option value="participant">Participant</option>
-            </select>
-          </label>
-          {audienceType !== "everyone" ? (
-            <label className="block">
-              <span className="text-xs font-medium text-zinc-600">Target</span>
-              <select
-                required
-                value={audienceId}
-                onChange={(e) => setAudienceId(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">Select…</option>
-                {audienceType === "group"
-                  ? roster.groups.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))
-                  : null}
-                {audienceType === "room"
-                  ? roster.rooms.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.roomName}
-                      </option>
-                    ))
-                  : null}
-                {audienceType === "participant"
-                  ? roster.participants.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.fullName}
-                      </option>
-                    ))
-                  : null}
-              </select>
-            </label>
-          ) : null}
+          <VisibilityPicker
+            value={visibility}
+            onChange={setVisibility}
+            groups={roster.groups}
+            participants={roster.participants}
+            rooms={roster.rooms}
+          />
         </div>
       ) : null}
 

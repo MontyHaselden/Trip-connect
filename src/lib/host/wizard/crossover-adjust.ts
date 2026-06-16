@@ -10,6 +10,9 @@ function addDays(iso: string, delta: number): string {
 const SLIDE_FORWARD_THRESHOLD = 0.65;
 const SLIDE_BACKWARD_THRESHOLD = 0.35;
 
+export const DIVIDER_SLIDE_FORWARD_SHARE = 0.9;
+export const DIVIDER_SLIDE_BACKWARD_SHARE = 0.1;
+
 function emptyHalf(day: DayPlaceDraft): "left" | "right" | null {
   const primary = day.primaryCity.trim();
   const secondary = day.secondaryCity?.trim() ?? "";
@@ -21,6 +24,39 @@ function emptyHalf(day: DayPlaceDraft): "left" | "right" | null {
 
 function dayIsEmpty(day: DayPlaceDraft): boolean {
   return !day.primaryCity.trim() && !day.secondaryCity?.trim();
+}
+
+function blankDay(date: string): DayPlaceDraft {
+  return {
+    date,
+    primaryCity: "",
+    secondaryCity: null,
+    primaryShare: 1,
+    dayType: "trip",
+    includeBuffer: false,
+  };
+}
+
+function dayAt(days: DayPlaceDraft[], date: string): DayPlaceDraft {
+  return days.find((d) => d.date === date) ?? blankDay(date);
+}
+
+function dayIsEmptyOrMissing(days: DayPlaceDraft[], date: string): boolean {
+  const row = days.find((d) => d.date === date);
+  return !row || dayIsEmpty(row);
+}
+
+/** Apply patches and insert rows for dates not yet in the list. */
+function mergeDayUpdates(
+  days: DayPlaceDraft[],
+  updates: Record<string, Partial<DayPlaceDraft>>,
+): DayPlaceDraft[] {
+  const byDate = new Map(days.map((d) => [d.date, d]));
+  for (const [date, patch] of Object.entries(updates)) {
+    const existing = byDate.get(date) ?? blankDay(date);
+    byDate.set(date, { ...existing, ...patch, date });
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function isFullSingleCityDay(day: DayPlaceDraft): string | null {
@@ -83,14 +119,66 @@ export function isStayArrivalEdge(day: DayPlaceDraft, trip: TripPlaceContext): b
   return emptyHalf(day) === "left" && Boolean(day.secondaryCity?.trim());
 }
 
+/** Full stay day whose next day carries the same city's departure half — edge slid forward. */
+export function isStayEndExtendedDay(
+  day: DayPlaceDraft,
+  days: DayPlaceDraft[],
+  trip: TripPlaceContext,
+): boolean {
+  if (day.dayType === "buffer" || isHomeLockedDay(day, trip)) return false;
+  const city = isFullSingleCityDay(day);
+  if (!city) return false;
+  const nextDate = addDays(day.date, 1);
+  if (nextDate > trip.endDate) return false;
+  const next = dayAt(days, nextDate);
+  if (!isStayDepartureEdge(next, trip)) return false;
+  return !citiesDiffer(city, next.primaryCity);
+}
+
+/** Full destination day after a crossover slid onto the previous day — drag back to restore. */
+export function isCrossoverDestinationDay(
+  day: DayPlaceDraft,
+  days: DayPlaceDraft[],
+  trip: TripPlaceContext,
+): boolean {
+  if (day.dayType === "buffer" || isHomeLockedDay(day, trip)) return false;
+  const city = isFullSingleCityDay(day);
+  if (!city) return false;
+  const prevDate = addDays(day.date, -1);
+  if (prevDate < trip.startDate) return false;
+  const prev = days.find((d) => d.date === prevDate);
+  if (!prev || !isLocationCrossover(prev, trip)) return false;
+  return !citiesDiffer(prev.secondaryCity ?? "", city);
+}
+
+/** Grip position for divider drag — may differ from primaryShare after sliding an edge. */
+export function dividerDragAnchorShare(
+  day: DayPlaceDraft,
+  days: DayPlaceDraft[],
+  trip: TripPlaceContext,
+): number {
+  if (isStayEndExtendedDay(day, days, trip)) return 0.95;
+  if (isCrossoverDestinationDay(day, days, trip)) return 0.05;
+  return day.primaryShare ?? 1;
+}
+
 export function isDividerDraggable(
   day: DayPlaceDraft,
   trip: TripPlaceContext,
-  options?: { blockFlightEdges?: boolean },
+  options?: { blockFlightEdges?: boolean; days?: DayPlaceDraft[] },
 ): boolean {
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  if (primary && secondary && !citiesDiffer(primary, secondary)) return false;
   if (isLocationCrossover(day, trip)) return true;
   if (options?.blockFlightEdges) return false;
-  return isStayDepartureEdge(day, trip) || isStayArrivalEdge(day, trip);
+  if (isStayDepartureEdge(day, trip) || isStayArrivalEdge(day, trip)) return true;
+  const allDays = options?.days;
+  if (!allDays) return false;
+  return (
+    isStayEndExtendedDay(day, allDays, trip) ||
+    isCrossoverDestinationDay(day, allDays, trip)
+  );
 }
 
 export function isHomeLockedDay(day: DayPlaceDraft, trip: TripPlaceContext): boolean {
@@ -113,16 +201,23 @@ export function applyCrossoverDrag(
   const crossover = isLocationCrossover(day, trip);
   const departureEdge = isStayDepartureEdge(day, trip);
   const arrivalEdge = isStayArrivalEdge(day, trip);
-  if (!crossover && !departureEdge && !arrivalEdge) return days;
+  const extendedEnd = isStayEndExtendedDay(day, days, trip);
+  const crossoverDest = isCrossoverDestinationDay(day, days, trip);
+  if (!crossover && !departureEdge && !arrivalEdge && !extendedEnd && !crossoverDest) {
+    return days;
+  }
 
   let next = days;
   if (requestedShare >= SLIDE_FORWARD_THRESHOLD) {
     if (crossover) next = slideCrossoverForward(next, date, trip);
     else if (departureEdge) next = slideStayEndForward(next, date, trip);
+    else if (extendedEnd) next = slideStayEndForward(next, addDays(date, 1), trip);
     else if (arrivalEdge) next = slideStayStartForward(next, date, trip);
   } else if (requestedShare <= SLIDE_BACKWARD_THRESHOLD) {
     if (crossover) next = slideCrossoverBackward(next, date, trip);
     else if (departureEdge) next = slideStayEndBackward(next, date, trip);
+    else if (extendedEnd) next = slideStayEndRetract(next, date, trip);
+    else if (crossoverDest) next = slideCrossoverRestoreForward(next, date, trip);
     else if (arrivalEdge) next = slideStayStartBackward(next, date, trip);
   }
 
@@ -153,25 +248,18 @@ function slideCrossoverForward(
 
   if (next && nextCity && citiesDiffer(nextCity, toCity)) return days;
 
-  return days.map((d) => {
-    if (d.date === date) {
-      return {
-        ...d,
-        secondaryCity: null,
-        primaryShare: 1,
-        dayType: date === trip.endDate ? ("return" as const) : ("trip" as const),
-      };
-    }
-    if (d.date === nextDate) {
-      return {
-        ...d,
-        primaryCity: fromCity,
-        secondaryCity: toCity,
-        primaryShare: DEFAULT_HALF_SHARE,
-        dayType: "travel" as const,
-      };
-    }
-    return d;
+  return mergeDayUpdates(days, {
+    [date]: {
+      secondaryCity: null,
+      primaryShare: 1,
+      dayType: date === trip.endDate ? "return" : "trip",
+    },
+    [nextDate]: {
+      primaryCity: fromCity,
+      secondaryCity: toCity,
+      primaryShare: DEFAULT_HALF_SHARE,
+      dayType: "travel",
+    },
   });
 }
 
@@ -199,26 +287,19 @@ function slideCrossoverBackward(
     if (prevCity && citiesDiffer(prevCity, fromCity)) return days;
   }
 
-  return days.map((d) => {
-    if (d.date === date) {
-      return {
-        ...d,
-        primaryCity: toCity,
-        secondaryCity: null,
-        primaryShare: 1,
-        dayType: date === trip.endDate ? ("return" as const) : ("trip" as const),
-      };
-    }
-    if (d.date === prevDate) {
-      return {
-        ...d,
-        primaryCity: fromCity,
-        secondaryCity: toCity,
-        primaryShare: DEFAULT_HALF_SHARE,
-        dayType: "travel" as const,
-      };
-    }
-    return d;
+  return mergeDayUpdates(days, {
+    [date]: {
+      primaryCity: toCity,
+      secondaryCity: null,
+      primaryShare: 1,
+      dayType: date === trip.endDate ? "return" : "trip",
+    },
+    [prevDate]: {
+      primaryCity: fromCity,
+      secondaryCity: toCity,
+      primaryShare: DEFAULT_HALF_SHARE,
+      dayType: "travel",
+    },
   });
 }
 
@@ -234,54 +315,39 @@ function slideStayEndForward(
 
   const nextDate = addDays(date, 1);
   if (nextDate > trip.endDate) return days;
-  const next = days.find((d) => d.date === nextDate);
-  if (!next) return days;
+  const next = dayAt(days, nextDate);
 
   const nextCity = isFullSingleCityDay(next);
   if (nextCity && citiesDiffer(nextCity, city)) {
-    return days.map((d) => {
-      if (d.date === date) {
-        return {
-          ...d,
-          primaryShare: 1,
-          secondaryCity: null,
-          dayType: date === trip.endDate ? ("return" as const) : ("trip" as const),
-        };
-      }
-      if (d.date === nextDate) {
-        return {
-          ...d,
-          primaryCity: city,
-          secondaryCity: nextCity,
-          primaryShare: DEFAULT_HALF_SHARE,
-          dayType: "travel" as const,
-        };
-      }
-      return d;
+    return mergeDayUpdates(days, {
+      [date]: {
+        primaryShare: 1,
+        secondaryCity: null,
+        dayType: date === trip.endDate ? "return" : "trip",
+      },
+      [nextDate]: {
+        primaryCity: city,
+        secondaryCity: nextCity,
+        primaryShare: DEFAULT_HALF_SHARE,
+        dayType: "travel",
+      },
     });
   }
 
   if (!dayIsEmpty(next)) return days;
 
-  return days.map((d) => {
-    if (d.date === date) {
-      return {
-        ...d,
-        primaryShare: 1,
-        secondaryCity: null,
-        dayType: date === trip.endDate ? ("return" as const) : ("trip" as const),
-      };
-    }
-    if (d.date === nextDate) {
-      return {
-        ...d,
-        primaryCity: city,
-        secondaryCity: null,
-        primaryShare: DEFAULT_HALF_SHARE,
-        dayType: nextDate === trip.endDate ? ("return" as const) : ("trip" as const),
-      };
-    }
-    return d;
+  return mergeDayUpdates(days, {
+    [date]: {
+      primaryShare: 1,
+      secondaryCity: null,
+      dayType: date === trip.endDate ? "return" : "trip",
+    },
+    [nextDate]: {
+      primaryCity: city,
+      secondaryCity: null,
+      primaryShare: DEFAULT_HALF_SHARE,
+      dayType: nextDate === trip.endDate ? "return" : "trip",
+    },
   });
 }
 
@@ -298,21 +364,63 @@ function slideStayEndBackward(
   const prevDate = addDays(date, -1);
   if (prevDate < trip.startDate) return days;
 
-  return days.map((d) => {
-    if (d.date === date) {
-      return { ...d, primaryCity: "", secondaryCity: null, primaryShare: 1, dayType: "trip" as const };
-    }
-    if (d.date === prevDate) {
-      return {
-        ...d,
-        primaryCity: city,
-        secondaryCity: null,
-        primaryShare: DEFAULT_HALF_SHARE,
-        dayType: prevDate === trip.endDate ? ("return" as const) : ("trip" as const),
-      };
-    }
-    return d;
+  return mergeDayUpdates(days, {
+    [date]: {
+      primaryCity: "",
+      secondaryCity: null,
+      primaryShare: 1,
+      dayType: "trip",
+    },
+    [prevDate]: {
+      primaryCity: city,
+      secondaryCity: null,
+      primaryShare: DEFAULT_HALF_SHARE,
+      dayType: prevDate === trip.endDate ? "return" : "trip",
+    },
   });
+}
+
+function slideStayEndRetract(
+  days: DayPlaceDraft[],
+  date: string,
+  trip: TripPlaceContext,
+): DayPlaceDraft[] {
+  const current = days.find((d) => d.date === date);
+  if (!current) return days;
+  const city = isFullSingleCityDay(current);
+  if (!city) return days;
+
+  const nextDate = addDays(date, 1);
+  if (nextDate > trip.endDate) return days;
+  const next = dayAt(days, nextDate);
+  if (!isStayDepartureEdge(next, trip) || citiesDiffer(city, next.primaryCity)) return days;
+
+  return mergeDayUpdates(days, {
+    [date]: {
+      primaryCity: city,
+      secondaryCity: null,
+      primaryShare: DEFAULT_HALF_SHARE,
+      dayType: date === trip.endDate ? "return" : "trip",
+    },
+    [nextDate]: {
+      primaryCity: "",
+      secondaryCity: null,
+      primaryShare: 1,
+      dayType: nextDate === trip.endDate ? "return" : "trip",
+    },
+  });
+}
+
+function slideCrossoverRestoreForward(
+  days: DayPlaceDraft[],
+  date: string,
+  trip: TripPlaceContext,
+): DayPlaceDraft[] {
+  const prevDate = addDays(date, -1);
+  if (prevDate < trip.startDate) return days;
+  const prev = days.find((d) => d.date === prevDate);
+  if (!prev || !isLocationCrossover(prev, trip)) return days;
+  return slideCrossoverForward(days, prevDate, trip);
 }
 
 function slideStayStartBackward(
@@ -327,29 +435,21 @@ function slideStayStartBackward(
 
   const prevDate = addDays(date, -1);
   if (prevDate < trip.startDate) return days;
-  const prev = days.find((d) => d.date === prevDate);
-  if (!prev || !dayIsEmpty(prev)) return days;
+  if (!dayIsEmptyOrMissing(days, prevDate)) return days;
 
-  return days.map((d) => {
-    if (d.date === date) {
-      return {
-        ...d,
-        primaryCity: city,
-        secondaryCity: null,
-        primaryShare: 1,
-        dayType: date === trip.endDate ? ("return" as const) : ("trip" as const),
-      };
-    }
-    if (d.date === prevDate) {
-      return {
-        ...d,
-        primaryCity: "",
-        secondaryCity: city,
-        primaryShare: DEFAULT_HALF_SHARE,
-        dayType: "travel" as const,
-      };
-    }
-    return d;
+  return mergeDayUpdates(days, {
+    [date]: {
+      primaryCity: city,
+      secondaryCity: null,
+      primaryShare: 1,
+      dayType: date === trip.endDate ? "return" : "trip",
+    },
+    [prevDate]: {
+      primaryCity: "",
+      secondaryCity: city,
+      primaryShare: DEFAULT_HALF_SHARE,
+      dayType: "travel",
+    },
   });
 }
 
@@ -366,20 +466,19 @@ function slideStayStartForward(
   const nextDate = addDays(date, 1);
   if (nextDate > trip.endDate) return days;
 
-  return days.map((d) => {
-    if (d.date === date) {
-      return { ...d, primaryCity: "", secondaryCity: null, primaryShare: 1, dayType: "trip" as const };
-    }
-    if (d.date === nextDate) {
-      return {
-        ...d,
-        primaryCity: "",
-        secondaryCity: city,
-        primaryShare: DEFAULT_HALF_SHARE,
-        dayType: "travel" as const,
-      };
-    }
-    return d;
+  return mergeDayUpdates(days, {
+    [date]: {
+      primaryCity: "",
+      secondaryCity: null,
+      primaryShare: 1,
+      dayType: "trip",
+    },
+    [nextDate]: {
+      primaryCity: "",
+      secondaryCity: city,
+      primaryShare: DEFAULT_HALF_SHARE,
+      dayType: "travel",
+    },
   });
 }
 
@@ -478,4 +577,78 @@ export function enforceHomeLocks(
     }
     return d;
   });
+}
+
+function findDraggableDividerDate(
+  days: DayPlaceDraft[],
+  trip: TripPlaceContext,
+  aroundDate: string,
+  forward: boolean,
+  blockFlightEdgesAt?: (date: string) => boolean,
+): string | null {
+  const offsets = forward ? [1, 0, 2, -1] : [-1, 0, -2, 1];
+  for (const delta of offsets) {
+    const date = addDays(aroundDate, delta);
+    const day = days.find((d) => d.date === date);
+    if (!day) continue;
+    if (
+      isDividerDraggable(day, trip, {
+        days,
+        blockFlightEdges: blockFlightEdgesAt?.(date),
+      })
+    ) {
+      return date;
+    }
+  }
+  return null;
+}
+
+/** Slide a divider toward the hovered day — one or more day steps in a single update. */
+export function slideDividerTowardHoverDate(
+  days: DayPlaceDraft[],
+  dragDate: string,
+  hoverDate: string,
+  trip: TripPlaceContext,
+  options?: CrossoverDragOptions & {
+    blockFlightEdgesAt?: (date: string) => boolean;
+  },
+): { days: DayPlaceDraft[]; dragDate: string } {
+  if (!hoverDate || hoverDate === dragDate) return { days, dragDate };
+
+  let current = days;
+  let cursor = dragDate;
+  const forward = hoverDate > dragDate;
+  let steps = 0;
+
+  while (forward ? cursor < hoverDate : cursor > hoverDate) {
+    if (steps++ > 62) break;
+
+    const day = current.find((d) => d.date === cursor);
+    if (
+      !day ||
+      !isDividerDraggable(day, trip, {
+        days: current,
+        blockFlightEdges: options?.blockFlightEdgesAt?.(cursor),
+      })
+    ) {
+      break;
+    }
+
+    const share = forward ? DIVIDER_SLIDE_FORWARD_SHARE : DIVIDER_SLIDE_BACKWARD_SHARE;
+    const next = applyCrossoverDrag(current, cursor, share, trip, options);
+    if (next === current) break;
+
+    current = next;
+    const nextCursor = findDraggableDividerDate(
+      current,
+      trip,
+      cursor,
+      forward,
+      options?.blockFlightEdgesAt,
+    );
+    if (!nextCursor) break;
+    cursor = nextCursor;
+  }
+
+  return { days: current, dragDate: cursor };
 }

@@ -279,7 +279,7 @@ export function buildDefaultDayPlaces(
 
   days.push({
     date: bufferBefore,
-    primaryCity: departureCity,
+    primaryCity: "",
     secondaryCity: null,
     primaryShare: 1,
     dayType: "buffer",

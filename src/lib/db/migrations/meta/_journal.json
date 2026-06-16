@@ -57,6 +57,34 @@
       "when": 1780010000000,
       "tag": "0008_admin_billing",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780020000000,
+      "tag": "0009_emergency_accommodation_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1780030000000,
+      "tag": "0010_visibility_system",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1780040000000,
+      "tag": "0011_group_layers",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1780050000000,
+      "tag": "0012_account_home_airport",
+      "breakpoints": true
     }
   ]
 }

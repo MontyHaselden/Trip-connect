@@ -26,15 +26,20 @@ export function DayCalendarSheet(props: {
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
       <div role="presentation" onClick={onClose} className="absolute inset-0 bg-black/30" />
-      <div className="relative mx-auto max-h-[85dvh] w-full max-w-md overflow-hidden rounded-t-2xl bg-zinc-50 shadow-xl sm:rounded-2xl">
-        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
-          <h2 className="text-sm font-semibold">Calendar</h2>
-          <button type="button" onClick={onClose} className="text-sm font-medium text-zinc-600">
+      <div className="relative mx-auto flex max-h-[min(68dvh,520px)] w-full max-w-sm flex-col overflow-hidden rounded-t-2xl bg-[var(--student-surface)] shadow-xl ring-1 ring-[var(--student-line)] sm:rounded-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--student-line)] px-4 py-2.5">
+          <h2 className="text-sm font-semibold text-[var(--student-text)]">Calendar</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm font-medium text-[var(--student-text-muted)]"
+          >
             Done
           </button>
         </div>
-        <div className="overflow-y-auto px-3 py-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
           <MonthCalendar
+            compact
             days={days}
             selectedDateISO={selectedDateISO}
             tripDates={tripDates}

@@ -1,4 +1,102 @@
 import type { ActivityCategory, DayWeatherSnapshot } from "./activity-category";
+import type { VisibilityMode } from "@/lib/visibility/types";
+
+export type PublishedVisibilityMode = VisibilityMode;
+
+export type PublishedVisibilityTarget = {
+  entityType:
+    | "itinerary_item"
+    | "transport_leg"
+    | "accommodation_stay"
+    | "day_reminder"
+    | "prep_item"
+    | "contact"
+    | "room";
+  entityId: string;
+  targetType: "group" | "participant" | "room";
+  targetId: string;
+};
+
+export type PublishedAccommodationAssignment = {
+  id: string;
+  stayId: string;
+  participantId: string | null;
+  groupId: string | null;
+  roomId: string | null;
+  startDate: string;
+  endDate: string;
+  stayName: string | null;
+  stayAddress: string | null;
+  stayPhone: string | null;
+  stayType: string;
+  cityLabel: string;
+};
+
+export type PublishedGroupType =
+  | "activity"
+  | "bus"
+  | "week"
+  | "route"
+  | "split_travel"
+  | "accommodation"
+  | "staff_helper"
+  | "other";
+
+export type PublishedGroupDayPlace = {
+  id: string;
+  groupId: string;
+  date: string;
+  primaryCity: string;
+  secondaryCity: string | null;
+  primaryShare: number;
+  dayType: string | null;
+  calendarLabel: string | null;
+  weatherLocationQuery: string | null;
+};
+
+export type PublishedGroupOverlayOp = {
+  id: string;
+  groupId: string;
+  entityType: "itinerary_item" | "transport_leg" | "accommodation_stay" | "trip_day";
+  baseEntityId: string;
+  op: "hide" | "replace";
+  replacementEntityId: string | null;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+};
+
+export type LayerFields = {
+  originGroupId: string | null;
+  sourceEntityId: string | null;
+};
+
+export type PublishedTransportLeg = LayerFields & {
+  id: string;
+  legKind: string;
+  transportType: string;
+  travelDate: string;
+  departureTime: string | null;
+  arrivalTime: string | null;
+  fromCity: string | null;
+  toCity: string | null;
+  fromStation: string | null;
+  toStation: string | null;
+  operator: string | null;
+  referenceNumber: string | null;
+  flightNumber: string | null;
+  notes: string | null;
+  sortOrder: number;
+  bookingStatus?: string | null;
+  visibilityMode: PublishedVisibilityMode;
+  audienceType: "everyone" | "group" | "room" | "participant";
+  audienceId: string | null;
+};
+
+export type VisibilityFields = {
+  visibilityMode: PublishedVisibilityMode;
+  audienceType: "everyone" | "group" | "room" | "participant";
+  audienceId: string | null;
+};
 
 export type PublishedTripSnapshotV1 = {
   version: number;
@@ -13,6 +111,8 @@ export type PublishedTripSnapshotV1 = {
     destinationLanguage: string | null;
     timezone: string;
     publishedVersion: number;
+    localEmergencyNumber?: string | null;
+    schoolEmergencyPhone?: string | null;
   };
   days: Array<{
     id: string;
@@ -26,15 +126,26 @@ export type PublishedTripSnapshotV1 = {
     isBufferDay?: boolean;
     weather?: DayWeatherSnapshot | null;
   }>;
-  accommodationStays?: Array<{
-    id: string;
-    cityLabel: string;
-    stayType: string;
-    name: string | null;
-    address: string | null;
-    checkInDate: string;
-    checkOutDate: string;
-  }>;
+  accommodationStays?: Array<
+    LayerFields & {
+      id: string;
+      cityLabel: string;
+      stayType: string;
+      name: string | null;
+      address: string | null;
+      phone?: string | null;
+      checkInDate: string;
+      checkOutDate: string;
+      visibilityMode: PublishedVisibilityMode;
+      audienceType: "everyone" | "group" | "room" | "participant";
+      audienceId: string | null;
+    }
+  >;
+  groupDayPlaces?: PublishedGroupDayPlace[];
+  groupOverlayOps?: PublishedGroupOverlayOp[];
+  accommodationAssignments?: PublishedAccommodationAssignment[];
+  transportLegs?: PublishedTransportLeg[];
+  visibilityTargets?: PublishedVisibilityTarget[];
   dayReminders?: Array<{
     id: string;
     tripDayId: string;
@@ -42,30 +153,40 @@ export type PublishedTripSnapshotV1 = {
     reminderTime: string | null;
     note: string | null;
     sortOrder: number;
-  }>;
-  itineraryItems: Array<{
-    id: string;
-    tripDayId: string;
-    startTime: string; // HH:MM:SS
-    endTime: string | null;
-    title: string;
-    locationName: string | null;
-    address: string | null;
-    mapQuery: string | null;
-    leaveByTime: string | null;
-    transportNote: string | null;
-    bringNote: string | null;
-    hostNote: string | null;
+    visibilityMode: PublishedVisibilityMode;
     audienceType: "everyone" | "group" | "room" | "participant";
     audienceId: string | null;
-    category: ActivityCategory | null;
-    sortOrder: number;
   }>;
+  itineraryItems: Array<
+    LayerFields & {
+      id: string;
+      tripDayId: string;
+      startTime: string; // HH:MM:SS
+      endTime: string | null;
+      title: string;
+      locationName: string | null;
+      address: string | null;
+      mapQuery: string | null;
+      leaveByTime: string | null;
+      transportNote: string | null;
+      bringNote: string | null;
+      hostNote: string | null;
+      audienceType: "everyone" | "group" | "room" | "participant";
+      audienceId: string | null;
+      visibilityMode: PublishedVisibilityMode;
+      category: ActivityCategory | null;
+      sortOrder: number;
+      bookingStatus?: string | null;
+    }
+  >;
   tomorrowPrepItems: Array<{
     id: string;
     tripDayId: string;
     text: string;
     sortOrder: number;
+    visibilityMode: PublishedVisibilityMode;
+    audienceType: "everyone" | "group" | "room" | "participant";
+    audienceId: string | null;
   }>;
   contacts: Array<{
     id: string;
@@ -75,6 +196,9 @@ export type PublishedTripSnapshotV1 = {
     visibility: "students" | "hosts_only";
     sortOrder: number;
     isEmergencyLead: boolean;
+    visibilityMode: PublishedVisibilityMode;
+    audienceType: "everyone" | "group" | "room" | "participant";
+    audienceId: string | null;
   }>;
   participants: Array<{
     id: string;
@@ -85,19 +209,34 @@ export type PublishedTripSnapshotV1 = {
   groups: Array<{
     id: string;
     name: string;
-    type: "activity" | "bus" | "week" | "other";
+    type: PublishedGroupType;
     description: string | null;
     sortOrder: number;
+    isMain: boolean;
   }>;
-  participantGroups: Array<{ participantId: string; groupId: string }>;
+  participantGroups: Array<{
+    participantId: string;
+    groupId: string;
+    effectiveFrom?: string | null;
+    effectiveTo?: string | null;
+  }>;
   rooms: Array<{
     id: string;
     roomName: string;
     hotelName: string | null;
     hotelAddress: string | null;
     nearestStation: string | null;
+    hotelPhone?: string | null;
+    nearestStationNotes?: string | null;
+    nearestBusStopName?: string | null;
+    routeNotesToAccommodation?: string | null;
+    staticMapUrl?: string | null;
+    mapsUrl?: string | null;
     notes: string | null;
     sortOrder: number;
+    visibilityMode: PublishedVisibilityMode;
+    audienceType: "everyone" | "group" | "room" | "participant";
+    audienceId: string | null;
   }>;
   participantRooms: Array<{ participantId: string; roomId: string }>;
   phraseCategories: Array<{ id: string; name: string; sortOrder: number }>;
@@ -127,3 +266,18 @@ export type PublishedTripSnapshotV1 = {
   };
 };
 
+export type ResolvedAccommodation = {
+  source: "assignment" | "everyone_stay" | "room";
+  name: string | null;
+  address: string | null;
+  phone: string | null;
+  stayType: string | null;
+  cityLabel: string | null;
+  hotelPhone?: string | null;
+  nearestStation?: string | null;
+  nearestStationNotes?: string | null;
+  nearestBusStopName?: string | null;
+  routeNotesToAccommodation?: string | null;
+  staticMapUrl?: string | null;
+  mapsUrl?: string | null;
+};

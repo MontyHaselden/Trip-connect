@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { AirportPicker } from "@/components/geo/AirportPicker";
+import { PlacePicker } from "@/components/geo/PlacePicker";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import {
   PERSONAL_PLANS,
@@ -36,6 +38,8 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [schoolName, setSchoolName] = useState("");
   const [jobTitle, setJobTitle] = useState("");
+  const [homeCity, setHomeCity] = useState("");
+  const [defaultAirport, setDefaultAirport] = useState("");
   const [organisationName, setOrganisationName] = useState("");
   const [interestMessage, setInterestMessage] = useState("");
   const [role, setRole] = useState<"teacher" | "helper" | "host">("teacher");
@@ -116,6 +120,8 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
               role,
               schoolName,
               jobTitle,
+              homeCity,
+              defaultAirport,
               plan: plan as "school_starter" | "school_pro" | "school_pro_plus",
             }
           : {
@@ -123,6 +129,8 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
               email,
               password,
               fullName,
+              homeCity,
+              defaultAirport,
               plan: plan as "personal_one_time" | "personal" | "personal_pro",
             };
 
@@ -231,6 +239,35 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
             </label>
           ) : null}
 
+          {mode === "signup" && signupKind !== "organisation" ? (
+            <>
+              <label className="block">
+                <span className="text-sm font-medium">Home city or town</span>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Where your group starts and ends trips — e.g. Christchurch for a Darfield school.
+                </p>
+                <PlacePicker
+                  value={homeCity}
+                  onChange={setHomeCity}
+                  countryNames={["New Zealand"]}
+                  inputClassName="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium">Default airport</span>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Usual departure airport — flights from here keep the home city for the rest of that day.
+                </p>
+                <AirportPicker
+                  value={defaultAirport}
+                  onChange={setDefaultAirport}
+                  countryNames={["New Zealand"]}
+                  inputClassName="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                />
+              </label>
+            </>
+          ) : null}
+
           {mode === "signup" && signupKind === "school" ? (
             <>
               <label className="block">
@@ -337,7 +374,12 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
 
           <button
             type="submit"
-            disabled={busy}
+            disabled={
+              busy ||
+              (mode === "signup" &&
+                signupKind !== "organisation" &&
+                (!homeCity.trim() || !defaultAirport.trim()))
+            }
             className="h-11 w-full rounded-xl bg-zinc-900 text-sm font-medium text-white disabled:opacity-50"
           >
             {busy

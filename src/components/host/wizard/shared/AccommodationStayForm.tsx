@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 import { HotelNamePicker } from "@/components/geo/HotelNamePicker";
+import { PlacePicker } from "@/components/geo/PlacePicker";
+import {
+  accommodationSearchMode,
+  inferCityLabelFromAddress,
+  sanitizeCityHint,
+  usesGoogleMapsSearch,
+} from "@/lib/geo/accommodation-search";
 import {
   STAY_TYPES,
   type AccommodationStayDraft,
@@ -25,15 +30,13 @@ export function AccommodationStayForm({
   countryNames?: string[];
   cityHint?: string;
 }) {
-  const [manualAddress, setManualAddress] = useState(false);
-
-  useEffect(() => {
-    setManualAddress(false);
-  }, [stay.id]);
-
   function patch(p: Partial<AccommodationStayDraft>) {
     onChange({ ...stay, ...p });
   }
+
+  const searchMode = accommodationSearchMode(stay.stayType);
+  const mapSearch = usesGoogleMapsSearch(stay.stayType);
+  const effectiveCity = sanitizeCityHint(cityHint ?? stay.cityLabel);
 
   const fields = (
     <div className="space-y-3">
@@ -44,58 +47,81 @@ export function AccommodationStayForm({
           onChange={(e) => patch({ stayType: e.target.value as StayType })}
           className={`mt-1.5 ${inputClass}`}
         >
-          {STAY_TYPES.map((t) => (
+          {STAY_TYPES.filter((t) => t !== "not_booked").map((t) => (
             <option key={t} value={t}>
               {t.replace(/_/g, " ")}
             </option>
           ))}
         </select>
       </label>
-      <label className="block text-sm">
-        <span className="font-medium text-zinc-700">Hotel or property</span>
-        <div className="mt-1.5">
-          <HotelNamePicker
-            value={stay.name ?? ""}
-            onChange={(name) => patch({ name: name || null })}
-            onSelectHotel={({ name, address }) => {
-              setManualAddress(false);
-              patch({ name, address });
-            }}
-            placeholder="Search hotel on Google Maps…"
-            countryNames={countryNames}
-            cityHint={cityHint ?? stay.cityLabel}
-            inputClassName={inputClass}
-          />
-        </div>
-        <p className="mt-1 text-xs text-zinc-500">
-          Search by name — the address fills in when you pick a result. Or type a custom name.
-        </p>
-      </label>
-      {stay.address && !manualAddress ? (
-        <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2.5">
-          <p className="text-xs font-medium text-zinc-500">Address</p>
-          <p className="mt-0.5 text-sm leading-relaxed text-zinc-700">{stay.address}</p>
-          <button
-            type="button"
-            onClick={() => setManualAddress(true)}
-            className="mt-2 text-xs font-medium text-zinc-500 underline hover:text-zinc-700"
-          >
-            Edit address manually
-          </button>
-        </div>
-      ) : (
+
+      {mapSearch ? (
         <label className="block text-sm">
-          <span className="font-medium text-zinc-700">
-            Address {!stay.name?.trim() ? null : <span className="font-normal text-zinc-400">(optional)</span>}
-          </span>
+          <span className="font-medium text-zinc-700">{searchMode.fieldLabel}</span>
+          <div className="mt-1.5">
+            <HotelNamePicker
+              value={stay.name ?? ""}
+              onChange={(name) => patch({ name: name || null })}
+              onSelectHotel={({ name, address, cityLabel: pickedCity }) => {
+                const cityLabel =
+                  pickedCity?.trim() ||
+                  inferCityLabelFromAddress(address) ||
+                  stay.cityLabel;
+                patch({ name, address, cityLabel });
+              }}
+              stayType={stay.stayType}
+              countryNames={countryNames}
+              cityHint={effectiveCity}
+              inputClassName={inputClass}
+            />
+          </div>
+          <p className="mt-1 text-xs text-zinc-500">
+            Search on Google Maps — pick a result to save the place.
+          </p>
+        </label>
+      ) : null}
+
+      {mapSearch && stay.name?.trim() ? (
+        <label className="block text-sm">
+          <span className="font-medium text-zinc-700">Region name</span>
           <input
-            value={stay.address ?? ""}
-            onChange={(e) => patch({ address: e.target.value || null })}
-            placeholder="Custom address if not on Google Maps"
+            value={stay.cityLabel === "TBC" ? "" : stay.cityLabel}
+            onChange={(e) => patch({ cityLabel: e.target.value.trim() || "TBC" })}
+            placeholder="e.g. Patong, Phuket"
             className={`mt-1.5 ${inputClass}`}
           />
+          <p className="mt-1 text-xs text-zinc-500">
+            Shown on the calendar — override if Google picked the wrong district.
+          </p>
         </label>
-      )}
+      ) : null}
+
+      {!mapSearch ? (
+        <>
+          <label className="block text-sm">
+            <span className="font-medium text-zinc-700">City</span>
+            <div className="mt-1.5">
+              <PlacePicker
+                value={stay.cityLabel === "TBC" ? "" : stay.cityLabel}
+                onChange={(cityLabel) => patch({ cityLabel: cityLabel || "TBC" })}
+                countryNames={countryNames}
+                inputClassName={inputClass}
+                placeholder="Which city is this stay in?"
+              />
+            </div>
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-zinc-700">Property name</span>
+            <input
+              value={stay.name ?? ""}
+              onChange={(e) => patch({ name: e.target.value || null })}
+              placeholder="Name of stay"
+              className={`mt-1.5 ${inputClass}`}
+            />
+          </label>
+        </>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
           <span className="font-medium text-zinc-700">Check-in</span>
@@ -116,15 +142,7 @@ export function AccommodationStayForm({
           />
         </label>
       </div>
-      <label className="flex items-center gap-2 text-sm text-zinc-700">
-        <input
-          type="checkbox"
-          checked={stay.multipleInCity}
-          onChange={(e) => patch({ multipleInCity: e.target.checked })}
-          className="rounded border-zinc-300"
-        />
-        Staying in more than one place here
-      </label>
+
       {stay.stayType === "homestay" ? (
         <label className="flex items-center gap-2 text-sm text-zinc-700">
           <input

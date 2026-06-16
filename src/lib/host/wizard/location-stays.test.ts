@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { applyLocationStays, DEFAULT_HALF_SHARE, hasUncoveredTripDays, coalesceAdjacentStays, mergeStaysWithNewRange } from "@/lib/host/wizard/location-stays";
+import {
+  applyLocationStays,
+  coalesceAdjacentStays,
+  DEFAULT_HALF_SHARE,
+  hasUncoveredTripDays,
+  locationColor,
+  locationPaletteKey,
+  mergeStaysWithNewRange,
+} from "@/lib/host/wizard/location-stays";
 import { buildTripDayCoverageContext } from "@/lib/host/wizard/transport-day-placement";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
@@ -208,7 +216,8 @@ describe("hasUncoveredTripDays", () => {
       },
       trip,
     );
-    assert.equal(hasUncoveredTripDays(days, trip.startDate, trip.endDate, ctx), false);
+    // First stay is Jun 16 — start date has no outbound flight and should not require home paint.
+    assert.equal(hasUncoveredTripDays(days, "2026-06-16", trip.endDate, ctx), false);
   });
 });
 
@@ -221,6 +230,17 @@ describe("coalesceAdjacentStays", () => {
     assert.equal(merged.length, 1);
     assert.equal(merged[0]!.startDate, "2026-06-04");
     assert.equal(merged[0]!.endDate, "2026-06-10");
+  });
+});
+
+describe("locationColor", () => {
+  it("uses the same palette for city label variants", () => {
+    assert.equal(locationPaletteKey("Bangkok"), locationPaletteKey("Bangkok, Thailand"));
+    assert.equal(locationColor("Bangkok"), locationColor("Bangkok, Thailand"));
+    assert.equal(
+      locationColor("Christchurch, New Zealand"),
+      locationColor("Christchurch"),
+    );
   });
 });
 

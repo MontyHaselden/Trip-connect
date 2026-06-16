@@ -106,10 +106,6 @@ export function DashboardClient() {
                       {t.schoolName} · {formatTripDateRangeLabel(t.startDate, t.endDate)}
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">
-                      {t.status === "building" && t.wizardStep
-                        ? `Setup in progress · step ${t.wizardStep} of 8`
-                        : null}
-                      {t.status === "building" && t.wizardStep ? " · " : null}
                       Published v{t.publishedVersion} · invite {t.inviteCode}
                     </p>
                     {!t.canDelete && t.deleteBlockedReason ? (
@@ -133,9 +129,9 @@ export function DashboardClient() {
               <li className="rounded-xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-600">
                 No trips yet.{" "}
                 <Link href="/dashboard/trips/new" className="font-medium text-zinc-900">
-                  Create one
+                  Create your first trip
                 </Link>{" "}
-                or run <code className="rounded bg-zinc-100 px-1">npm run seed:japan</code>.
+                to get started.
               </li>
             ) : null}
           </ul>

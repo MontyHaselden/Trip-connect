@@ -24,7 +24,6 @@ export const runtime = "nodejs";
 
 const CreateJsonSchema = z.object({
   name: z.string().trim().min(2).max(200),
-  setupMethod: z.enum(["ai", "wizard"]).optional(),
 });
 
 function parseCreateName(value: FormDataEntryValue | null): string | null {
@@ -88,7 +87,6 @@ export async function POST(req: Request) {
     const contentType = req.headers.get("content-type") ?? "";
 
     let name: string;
-    let setupMethod: "ai" | "wizard" = "ai";
 
     if (contentType.includes("multipart/form-data")) {
       const form = await req.formData().catch(() => null);
@@ -100,7 +98,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Enter a trip name (at least 2 characters)." }, { status: 400 });
       }
       name = parsedName;
-      if (form.get("setupMethod") === "wizard") setupMethod = "wizard";
     } else {
       const json = await req.json().catch(() => null);
       const parsed = CreateJsonSchema.safeParse(json);
@@ -108,7 +105,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Enter a trip name (at least 2 characters)." }, { status: 400 });
       }
       name = parsed.data.name;
-      if (parsed.data.setupMethod) setupMethod = parsed.data.setupMethod;
     }
 
     const account = await getHostAccountById(hostId);
@@ -132,7 +128,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: planCheck.hardBlock ?? planCheck.softWarning }, { status: 403 });
     }
 
-    const trip = await createTripShell({ hostId, name, setupMethod });
+    const trip = await createTripShell({ hostId, name });
     await setHostSessionCookie({ hostId, activeTripId: trip.id });
 
     return NextResponse.json({

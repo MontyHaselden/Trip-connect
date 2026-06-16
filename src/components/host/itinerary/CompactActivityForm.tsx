@@ -10,7 +10,11 @@ import {
 } from "@/lib/host/activity-transport";
 
 import { ActivityTransportPanel } from "./ActivityTransportPanel";
-import type { ItineraryItem, RosterSummary } from "./types";
+import type { RosterSummary } from "./types";
+import {
+  VisibilityPicker,
+  type VisibilityPickerValue,
+} from "@/components/host/shared/VisibilityPicker";
 
 type ExtraTab = "location" | "transport" | "notes";
 
@@ -66,10 +70,8 @@ export function CompactActivityForm(props: {
   onBringNoteChange: (v: string) => void;
   hostNote: string;
   onHostNoteChange: (v: string) => void;
-  audienceType: ItineraryItem["audienceType"];
-  onAudienceTypeChange: (v: ItineraryItem["audienceType"]) => void;
-  audienceId: string;
-  onAudienceIdChange: (v: string) => void;
+  visibility: VisibilityPickerValue;
+  onVisibilityChange: (v: VisibilityPickerValue) => void;
   roster: RosterSummary;
   countryNames: string[];
   cityHint?: string;
@@ -93,10 +95,8 @@ export function CompactActivityForm(props: {
     onBringNoteChange,
     hostNote,
     onHostNoteChange,
-    audienceType,
-    onAudienceTypeChange,
-    audienceId,
-    onAudienceIdChange,
+    visibility,
+    onVisibilityChange,
     roster,
     countryNames,
     cityHint,
@@ -109,7 +109,7 @@ export function CompactActivityForm(props: {
   const hasLocation = Boolean(locationName.trim() || address.trim());
   const hasTransport = Boolean(formatActivityTransport(transport));
   const hasNotes = Boolean(
-    bringNote.trim() || hostNote.trim() || audienceType !== "everyone",
+    bringNote.trim() || hostNote.trim() || visibility.visibilityMode !== "everyone",
   );
 
   const tabs = useMemo(
@@ -243,50 +243,14 @@ export function CompactActivityForm(props: {
               placeholder="Host note…"
               className={inputClass}
             />
-            <select
-              value={audienceType}
-              onChange={(e) => {
-                onAudienceTypeChange(e.target.value as ItineraryItem["audienceType"]);
-                onAudienceIdChange("");
-              }}
-              className={inputClass}
-            >
-              <option value="everyone">Everyone</option>
-              <option value="group">Group</option>
-              <option value="room">Room</option>
-              <option value="participant">Participant</option>
-            </select>
-            {audienceType !== "everyone" ? (
-              <select
-                required
-                value={audienceId}
-                onChange={(e) => onAudienceIdChange(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">Who…</option>
-                {audienceType === "group"
-                  ? roster.groups.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))
-                  : null}
-                {audienceType === "room"
-                  ? roster.rooms.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.roomName}
-                      </option>
-                    ))
-                  : null}
-                {audienceType === "participant"
-                  ? roster.participants.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.fullName}
-                      </option>
-                    ))
-                  : null}
-              </select>
-            ) : null}
+            <VisibilityPicker
+              compact
+              value={visibility}
+              onChange={onVisibilityChange}
+              groups={roster.groups}
+              participants={roster.participants}
+              rooms={roster.rooms}
+            />
           </div>
         ) : null}
         </div>

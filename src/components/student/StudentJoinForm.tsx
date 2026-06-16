@@ -10,14 +10,16 @@ type JoinResponse = {
   participantId: string;
   accessToken: string;
   tripName: string;
+  tripInviteCode?: string;
 };
 
 export function StudentJoinForm(props: {
   inviteCode: string;
+  tripInviteCode?: string;
   tripName: string;
   onJoined?: () => void;
 }) {
-  const { inviteCode, tripName, onJoined } = props;
+  const { inviteCode, tripInviteCode = inviteCode, tripName, onJoined } = props;
   const [tab, setTab] = useState<"join" | "signin">("join");
   const [fullName, setFullName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -30,7 +32,7 @@ export function StudentJoinForm(props: {
       tripId: data.tripId,
       participantId: data.participantId,
       accessToken: data.accessToken,
-      inviteCode,
+      inviteCode: data.tripInviteCode ?? tripInviteCode,
     });
     if (onJoined) {
       onJoined();
@@ -83,10 +85,10 @@ export function StudentJoinForm(props: {
   }
 
   return (
-    <main className="student-app-scroll flex h-dvh flex-col items-center justify-center overflow-y-auto overscroll-y-contain bg-zinc-50 px-6 py-10">
-      <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold text-zinc-900">{tripName}</h1>
-        <p className="mt-1 text-sm text-zinc-600">
+    <main className="student-app-scroll flex h-dvh flex-col items-center justify-center overflow-y-auto overscroll-y-contain bg-[var(--student-bg)] px-6 py-10">
+      <div className="student-card w-full max-w-md shadow-sm">
+        <h1 className="text-xl font-bold text-[var(--student-text)]">{tripName}</h1>
+        <p className="mt-1 text-sm text-[var(--student-text-muted)]">
           Join your school trip. This link is your app — add it to your home screen
           when you&apos;re ready.
         </p>
@@ -97,7 +99,9 @@ export function StudentJoinForm(props: {
             onClick={() => setTab("join")}
             className={[
               "flex-1 rounded-lg py-2 text-sm font-medium",
-              tab === "join" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700",
+              tab === "join"
+                ? "bg-[var(--student-nav)] text-white"
+                : "bg-[var(--student-line)]/50 text-[var(--student-text-muted)]",
             ].join(" ")}
           >
             Join
@@ -107,7 +111,9 @@ export function StudentJoinForm(props: {
             onClick={() => setTab("signin")}
             className={[
               "flex-1 rounded-lg py-2 text-sm font-medium",
-              tab === "signin" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700",
+              tab === "signin"
+                ? "bg-[var(--student-nav)] text-white"
+                : "bg-[var(--student-line)]/50 text-[var(--student-text-muted)]",
             ].join(" ")}
           >
             Sign in
@@ -125,7 +131,7 @@ export function StudentJoinForm(props: {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 autoComplete="name"
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
+                className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3"
               />
             </label>
             <label className="block text-sm">
@@ -136,7 +142,7 @@ export function StudentJoinForm(props: {
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 placeholder="e.g. +64 21 123 456"
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
+                className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3"
               />
             </label>
             <label className="block text-sm">
@@ -148,16 +154,16 @@ export function StudentJoinForm(props: {
                 autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
+                className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3"
               />
             </label>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-[var(--student-text-muted)]">
               You&apos;ll need this password if you sign out or reinstall the app.
             </p>
             <button
               type="submit"
               disabled={busy}
-              className="h-11 w-full rounded-xl bg-zinc-900 text-sm font-medium text-white disabled:opacity-50"
+              className="student-btn-primary h-11 w-full text-sm disabled:opacity-50"
             >
               {busy ? "Joining…" : "Join trip"}
             </button>
@@ -172,7 +178,7 @@ export function StudentJoinForm(props: {
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 placeholder="e.g. +64 21 123 456"
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
+                className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3"
               />
             </label>
             <label className="block text-sm">
@@ -184,13 +190,13 @@ export function StudentJoinForm(props: {
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3"
+                className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3"
               />
             </label>
             <button
               type="submit"
               disabled={busy}
-              className="h-11 w-full rounded-xl bg-zinc-900 text-sm font-medium text-white disabled:opacity-50"
+              className="student-btn-primary h-11 w-full text-sm disabled:opacity-50"
             >
               {busy ? "Signing in…" : "Sign in"}
             </button>

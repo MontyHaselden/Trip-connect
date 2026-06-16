@@ -64,7 +64,19 @@ export type MeetingType = (typeof MEETING_TYPES)[number];
 export const AUDIENCE_TYPES = ["everyone", "group", "room", "participant"] as const;
 export type AudienceType = (typeof AUDIENCE_TYPES)[number];
 
-export type TransportLegDraft = {
+import type { VisibilityMode, VisibilityTarget } from "@/lib/visibility/types";
+
+export type EntityVisibilityDraft = {
+  visibilityMode?: VisibilityMode;
+  targets?: VisibilityTarget[];
+};
+
+export type LayerEntityDraft = {
+  originGroupId?: string | null;
+  sourceEntityId?: string | null;
+};
+
+export type TransportLegDraft = EntityVisibilityDraft & LayerEntityDraft & {
   id: string;
   transportType: TransportType;
   bookingStatus: BookingStatus;
@@ -94,7 +106,7 @@ export type DayPlaceDraft = {
   includeBuffer: boolean;
 };
 
-export type AccommodationStayDraft = {
+export type AccommodationStayDraft = EntityVisibilityDraft & LayerEntityDraft & {
   id: string;
   cityLabel: string;
   stayType: StayType;
@@ -113,6 +125,7 @@ export const INTERCITY_LEG_KINDS = [
   "city_change",
   "airport_arrival",
   "airport_departure",
+  "connection",
 ] as const;
 export type IntercityLegKind = (typeof INTERCITY_LEG_KINDS)[number];
 
@@ -122,6 +135,8 @@ export type IntercityLegDraft = TransportLegDraft & {
   travelDate: string;
   legKind?: IntercityLegKind;
   anchorLegId?: string | null;
+  /** Airport-to-hotel gaps: todo in transport UI only — no calendar corridor. */
+  surfaceOnly?: boolean;
 };
 
 export type ActivityDraft = {
@@ -145,7 +160,7 @@ export type ActivityDraft = {
   bookingStatus: BookingStatus;
 };
 
-export type ReminderDraft = {
+export type ReminderDraft = EntityVisibilityDraft & {
   id: string;
   date: string;
   title: string;
@@ -180,6 +195,8 @@ export type WizardBasics = {
   timezone: string;
   departureCity: string;
   returnCity: string;
+  /** Home airport — outbound legs default to this instead of the city label. */
+  defaultDepartureAirport?: string;
 };
 
 export type TripWizardDraft = {

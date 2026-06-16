@@ -1,4 +1,6 @@
-import { enforceHomeLocks } from "./crossover-adjust";
+import { isAirportPlace } from "@/lib/geo/airport-codes";
+import { metroDisplayLabel } from "@/lib/host/setup/metro-display";
+import { enforceHomeLocks } from "@/lib/host/setup/home-locks";
 import type { DayPlaceDraft } from "./types";
 
 export type LocationStayDraft = {
@@ -12,7 +14,9 @@ export const DEFAULT_HALF_SHARE = 0.5;
 export type HalfSide = "left" | "right";
 
 /** Which half of the day is still free to paint a location. */
-export function getEmptyHalf(day: DayPlaceDraft): HalfSide | null {
+export function getEmptyHalf(
+  day: Pick<DayPlaceDraft, "primaryCity" | "secondaryCity" | "primaryShare">,
+): HalfSide | null {
   const primary = day.primaryCity.trim();
   const secondary = day.secondaryCity?.trim() ?? "";
   const share = day.primaryShare ?? 1;
@@ -20,6 +24,39 @@ export function getEmptyHalf(day: DayPlaceDraft): HalfSide | null {
   if (primary && !secondary && share < 1) return "right";
   if (!primary && secondary && share < 1) return "left";
   return null;
+}
+
+export function isSplitDay(day: DayPlaceDraft | null | undefined): boolean {
+  if (!day) return false;
+  const share = day.primaryShare ?? 1;
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  return share < 1 || Boolean(primary && secondary);
+}
+
+export function halfFromClickX(
+  clientX: number,
+  rect: Pick<DOMRect, "left" | "width">,
+  day: DayPlaceDraft,
+): HalfSide {
+  const ratio = (clientX - rect.left) / rect.width;
+  const share = day.primaryShare ?? 1;
+  const divider = share < 1 || Boolean(day.secondaryCity?.trim()) ? share : 0.5;
+  return ratio < divider ? "left" : "right";
+}
+
+export function isHalfEmpty(day: DayPlaceDraft, half: HalfSide): boolean {
+  return getEmptyHalf(day) === half;
+}
+
+export function cityOnHalf(day: DayPlaceDraft, half: HalfSide): string {
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const share = day.primaryShare ?? 1;
+  if (half === "left") return primary;
+  if (secondary) return secondary;
+  if (primary && share < 1) return "";
+  return primary;
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -379,6 +416,7 @@ export function inferStaysFromDayPlaces(
       (d) =>
         d.date >= tripStart &&
         d.date <= tripEnd &&
+        d.dayType !== "buffer" &&
         (d.primaryCity.trim() || d.secondaryCity?.trim()),
     )
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -398,25 +436,33 @@ export function inferStaysFromDayPlaces(
     const isHalf = share < 1;
 
     if (primary && secondary && isHalf) {
-      current = extendOrStartStay(stays, current, primary, day.date);
+      if (!isAirportPlace(primary)) {
+        current = extendOrStartStay(stays, current, primary, day.date);
+      }
       current = pushStay(stays, current);
-      current = extendOrStartStay(stays, null, secondary, day.date);
+      if (!isAirportPlace(secondary)) {
+        current = extendOrStartStay(stays, null, secondary, day.date);
+      }
       continue;
     }
 
     if (primary && !secondary && isHalf) {
-      current = extendOrStartStay(stays, current, primary, day.date);
+      if (!isAirportPlace(primary)) {
+        current = extendOrStartStay(stays, current, primary, day.date);
+      }
       current = pushStay(stays, current);
       continue;
     }
 
     if (!primary && secondary && isHalf) {
-      current = extendOrStartStay(stays, current, secondary, day.date);
+      if (!isAirportPlace(secondary)) {
+        current = extendOrStartStay(stays, current, secondary, day.date);
+      }
       continue;
     }
 
     const city = primary || secondary;
-    if (!city) continue;
+    if (!city || isAirportPlace(city)) continue;
     current = extendOrStartStay(stays, current, city, day.date);
   }
 
@@ -657,10 +703,21 @@ const LOCATION_PALETTE = [
   { fill: "#f8e8ec", accent: "#9a4f62", text: "#4a1f2a" },
 ] as const;
 
+/** Stable palette bucket — "Bangkok" and "Bangkok, Thailand" share one color. */
+export function locationPaletteKey(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "";
+  if (isAirportPlace(trimmed)) {
+    return metroDisplayLabel(trimmed).toLowerCase();
+  }
+  return (trimmed.split(",")[0]?.trim() || trimmed).toLowerCase();
+}
+
 function paletteIndex(name: string): number {
+  const key = locationPaletteKey(name);
   let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  for (let i = 0; i < key.length; i++) {
+    hash = key.charCodeAt(i) + ((hash << 5) - hash);
   }
   return Math.abs(hash) % LOCATION_PALETTE.length;
 }

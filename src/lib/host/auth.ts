@@ -28,6 +28,8 @@ export async function createHostAccount(params: {
   plan: SubscriptionPlan;
   schoolName?: string | null;
   jobTitle?: string | null;
+  homeCity?: string | null;
+  defaultAirport?: string | null;
 }) {
   const email = params.email.trim().toLowerCase();
 
@@ -79,6 +81,8 @@ export async function createHostAccount(params: {
       plan: params.plan,
       schoolName: params.schoolName?.trim() || null,
       jobTitle: params.jobTitle?.trim() || null,
+      homeCity: params.homeCity?.trim() || null,
+      defaultAirport: params.defaultAirport?.trim() || null,
       planExpiresAt: planExpiryDate(params.plan),
     })
     .returning({
@@ -146,6 +150,8 @@ export async function getHostAccountById(hostId: string) {
       plan: hostAccounts.plan,
       schoolName: hostAccounts.schoolName,
       jobTitle: hostAccounts.jobTitle,
+      homeCity: hostAccounts.homeCity,
+      defaultAirport: hostAccounts.defaultAirport,
       planExpiresAt: hostAccounts.planExpiresAt,
     })
     .from(hostAccounts)

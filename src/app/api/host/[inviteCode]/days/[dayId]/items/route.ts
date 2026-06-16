@@ -13,6 +13,11 @@ import {
   validateAudience,
 } from "@/lib/host/itinerary-queries";
 import { scheduleAutoPublish } from "@/lib/publish/maybe-auto-publish";
+import { VisibilityFieldsSchema } from "@/lib/visibility/schemas";
+import {
+  persistItemVisibility,
+  resolveItemVisibility,
+} from "@/lib/visibility/item-visibility";
 
 const CreateItemSchema = z.object({
   startTime: z.string().min(1),
@@ -25,11 +30,11 @@ const CreateItemSchema = z.object({
   transportNote: z.string().trim().max(500).nullable().optional(),
   bringNote: z.string().trim().max(500).nullable().optional(),
   hostNote: z.string().trim().max(500).nullable().optional(),
-  audienceType: z.enum(["everyone", "group", "room", "participant"]),
+  audienceType: z.enum(["everyone", "group", "room", "participant"]).optional(),
   audienceId: z.string().uuid().nullable().optional(),
   category: z.enum(ACTIVITY_CATEGORIES).nullable().optional(),
   bookingStatus: z.enum(["booked", "not_booked", "placeholder"]).nullable().optional(),
-});
+}).merge(VisibilityFieldsSchema);
 
 export async function POST(
   req: Request,
@@ -48,10 +53,11 @@ export async function POST(
     }
 
     const data = parsed.data;
+    const visibility = resolveItemVisibility(data);
     const audienceId = await validateAudience(
       trip.id,
-      data.audienceType,
-      data.audienceId,
+      visibility.audienceType,
+      visibility.audienceId,
     );
 
     const sortOrder = await nextItemSortOrder(dayId);
@@ -70,13 +76,23 @@ export async function POST(
         transportNote: data.transportNote ?? null,
         bringNote: data.bringNote ?? null,
         hostNote: data.hostNote ?? null,
-        audienceType: data.audienceType,
+        audienceType: visibility.audienceType,
         audienceId,
+        visibilityMode: visibility.visibilityMode,
         category: data.category ?? null,
         bookingStatus: data.bookingStatus ?? null,
         sortOrder,
       })
       .returning();
+
+    if (created) {
+      await persistItemVisibility(
+        trip.id,
+        created.id,
+        visibility.visibilityMode,
+        visibility.targets,
+      );
+    }
 
     scheduleAutoPublish(trip.id);
     return NextResponse.json(created);

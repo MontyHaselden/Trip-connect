@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
 
-export default async function TripAccommodationPage({
+import { tripOsSetupPath } from "@/lib/trip-os/paths";
+
+/** Legacy accommodation URL — use Trip OS. */
+export default async function DashboardAccommodationPage({
   params,
 }: {
   params: Promise<{ tripId: string }>;
 }) {
   const { tripId } = await params;
-  redirect(`/dashboard/trips/${tripId}/locations`);
+  redirect(tripOsSetupPath(tripId));
 }

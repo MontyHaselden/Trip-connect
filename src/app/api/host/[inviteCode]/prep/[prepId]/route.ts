@@ -8,11 +8,18 @@ import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getPrepForTrip } from "@/lib/host/itinerary-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
+import { VisibilityFieldsSchema } from "@/lib/visibility/schemas";
+import {
+  persistEntityVisibility,
+  resolveItemVisibility,
+} from "@/lib/visibility/item-visibility";
 
-const PatchPrepSchema = z.object({
-  text: z.string().trim().min(1).max(500).optional(),
-  sortOrder: z.number().int().min(0).optional(),
-});
+const PatchPrepSchema = z
+  .object({
+    text: z.string().trim().min(1).max(500).optional(),
+    sortOrder: z.number().int().min(0).optional(),
+  })
+  .merge(VisibilityFieldsSchema);
 
 export async function PATCH(
   req: Request,
@@ -30,14 +37,29 @@ export async function PATCH(
       return NextResponse.json({ error: "Invalid request." }, { status: 400 });
     }
 
+    const data = parsed.data;
+    const visibility = resolveItemVisibility({
+      visibilityMode: data.visibilityMode ?? prep.visibilityMode,
+      targets: data.targets,
+    });
+
     const [updated] = await db
       .update(tomorrowPrepItems)
       .set({
-        text: parsed.data.text ?? prep.text,
-        sortOrder: parsed.data.sortOrder ?? prep.sortOrder,
+        text: data.text ?? prep.text,
+        sortOrder: data.sortOrder ?? prep.sortOrder,
+        visibilityMode: visibility.visibilityMode,
       })
       .where(eq(tomorrowPrepItems.id, prepId))
       .returning();
+
+    await persistEntityVisibility(
+      trip.id,
+      "prep_item",
+      prepId,
+      visibility.visibilityMode,
+      visibility.targets,
+    );
 
     await maybeAutoPublish(trip.id);
     return NextResponse.json(updated);

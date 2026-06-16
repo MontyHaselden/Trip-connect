@@ -1,14 +1,13 @@
-import { TripViewersClient } from "@/components/dashboard/TripViewersClient";
+import { redirect } from "next/navigation";
 
+import { tripOsSetupPath } from "@/lib/trip-os/paths";
+
+/** Legacy viewers URL — use Trip OS. */
 export default async function DashboardViewersPage({
   params,
 }: {
   params: Promise<{ tripId: string }>;
 }) {
   const { tripId } = await params;
-  return (
-    <div className="mx-auto max-w-5xl px-5 py-8">
-      <TripViewersClient tripId={tripId} />
-    </div>
-  );
+  redirect(tripOsSetupPath(tripId));
 }

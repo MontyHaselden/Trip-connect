@@ -5,6 +5,7 @@ import { useState } from "react";
 import { hostJson } from "@/components/host/shared/host-fetch";
 
 import { GroupForm } from "./GroupForm";
+import { GroupInviteLinks } from "./GroupInviteLinks";
 import type { RosterGroup } from "./types";
 
 export function GroupList(props: {
@@ -50,9 +51,10 @@ export function GroupList(props: {
               key={g.id}
               className="flex items-start justify-between gap-2 rounded-xl border border-zinc-200 px-4 py-3 text-sm"
             >
-              <div>
+              <div className="flex-1">
                 <p className="font-medium">{g.name}</p>
                 <p className="text-xs capitalize text-zinc-500">{g.type}</p>
+                <GroupInviteLinks inviteCode={inviteCode} groupId={g.id} groupName={g.name} />
               </div>
               <div className="flex gap-2">
                 <button

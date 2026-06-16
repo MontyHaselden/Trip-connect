@@ -13,6 +13,11 @@ import {
   validateAudience,
 } from "@/lib/host/itinerary-queries";
 import { scheduleAutoPublish } from "@/lib/publish/maybe-auto-publish";
+import { VisibilityFieldsSchema } from "@/lib/visibility/schemas";
+import {
+  persistItemVisibility,
+  resolveItemVisibility,
+} from "@/lib/visibility/item-visibility";
 
 const PatchItemSchema = z.object({
   startTime: z.string().min(1).optional(),
@@ -29,7 +34,7 @@ const PatchItemSchema = z.object({
   audienceId: z.string().uuid().nullable().optional(),
   category: z.enum(ACTIVITY_CATEGORIES).nullable().optional(),
   sortOrder: z.number().int().min(0).optional(),
-});
+}).merge(VisibilityFieldsSchema);
 
 export async function PATCH(
   req: Request,
@@ -48,11 +53,17 @@ export async function PATCH(
     }
 
     const data = parsed.data;
-    const audienceType = data.audienceType ?? item.audienceType;
+    const visibility = resolveItemVisibility({
+      visibilityMode: data.visibilityMode ?? item.visibilityMode,
+      targets: data.targets,
+      audienceType: data.audienceType ?? item.audienceType,
+      audienceId:
+        data.audienceId !== undefined ? data.audienceId : item.audienceId,
+    });
     const audienceId = await validateAudience(
       trip.id,
-      audienceType,
-      data.audienceId !== undefined ? data.audienceId : item.audienceId,
+      visibility.audienceType,
+      visibility.audienceId,
     );
 
     const [updated] = await db
@@ -80,13 +91,21 @@ export async function PATCH(
           data.transportNote !== undefined ? data.transportNote : item.transportNote,
         bringNote: data.bringNote !== undefined ? data.bringNote : item.bringNote,
         hostNote: data.hostNote !== undefined ? data.hostNote : item.hostNote,
-        audienceType,
+        audienceType: visibility.audienceType,
         audienceId,
+        visibilityMode: visibility.visibilityMode,
         category: data.category !== undefined ? data.category : item.category,
         sortOrder: data.sortOrder ?? item.sortOrder,
       })
       .where(eq(itineraryItems.id, itemId))
       .returning();
+
+    await persistItemVisibility(
+      trip.id,
+      itemId,
+      visibility.visibilityMode,
+      visibility.targets,
+    );
 
     scheduleAutoPublish(trip.id);
     return NextResponse.json(updated);

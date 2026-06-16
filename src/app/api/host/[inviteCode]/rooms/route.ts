@@ -13,6 +13,12 @@ const CreateRoomSchema = z.object({
   hotelName: z.string().trim().max(200).nullable().optional(),
   hotelAddress: z.string().trim().max(500).nullable().optional(),
   nearestStation: z.string().trim().max(200).nullable().optional(),
+  hotelPhone: z.string().trim().max(50).nullable().optional(),
+  nearestStationNotes: z.string().trim().max(500).nullable().optional(),
+  nearestBusStopName: z.string().trim().max(200).nullable().optional(),
+  routeNotesToAccommodation: z.string().trim().max(1000).nullable().optional(),
+  staticMapUrl: z.string().trim().max(2000).nullable().optional(),
+  mapsUrl: z.string().trim().max(2000).nullable().optional(),
   notes: z.string().trim().max(500).nullable().optional(),
 });
 
@@ -38,6 +44,12 @@ export async function POST(
         hotelName: parsed.data.hotelName ?? null,
         hotelAddress: parsed.data.hotelAddress ?? null,
         nearestStation: parsed.data.nearestStation ?? null,
+        hotelPhone: parsed.data.hotelPhone ?? null,
+        nearestStationNotes: parsed.data.nearestStationNotes ?? null,
+        nearestBusStopName: parsed.data.nearestBusStopName ?? null,
+        routeNotesToAccommodation: parsed.data.routeNotesToAccommodation ?? null,
+        staticMapUrl: parsed.data.staticMapUrl ?? null,
+        mapsUrl: parsed.data.mapsUrl ?? null,
         notes: parsed.data.notes ?? null,
         sortOrder,
       })

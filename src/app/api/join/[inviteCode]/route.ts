@@ -3,7 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/lib/db/client";
-import { participants, trips } from "@/lib/db/schema";
+import { participantGroups, participants } from "@/lib/db/schema";
+import { resolveInviteCode, tripInviteCodeForTripId } from "@/lib/join/resolve-invite-code";
 import {
   hashParticipantPassword,
   verifyParticipantPassword,
@@ -17,6 +18,27 @@ const JoinBodySchema = z.object({
   phoneNumber: z.string().trim().min(3).max(40),
   password: z.string().min(8).max(200),
 });
+
+async function ensureGroupMembership(
+  participantId: string,
+  groupId: string,
+): Promise<void> {
+  const existing = await db
+    .select({ participantId: participantGroups.participantId })
+    .from(participantGroups)
+    .where(
+      and(
+        eq(participantGroups.participantId, participantId),
+        eq(participantGroups.groupId, groupId),
+      ),
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  if (!existing) {
+    await db.insert(participantGroups).values({ participantId, groupId });
+  }
+}
 
 export async function POST(
   req: Request,
@@ -36,23 +58,22 @@ export async function POST(
 
     const { fullName, phoneNumber, password } = parsed.data;
 
-    const trip = await db
-      .select({
-        id: trips.id,
-        name: trips.name,
-        publishedVersion: trips.publishedVersion,
-        defaultCountryCallingCode: trips.defaultCountryCallingCode,
-      })
-      .from(trips)
-      .where(eq(trips.inviteCode, inviteCode))
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
-
-    if (!trip) {
+    const resolved = await resolveInviteCode(inviteCode);
+    if (!resolved) {
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
     }
 
-    const phoneE164 = normalizeToE164(phoneNumber, trip.defaultCountryCallingCode);
+    const trip = {
+      id: resolved.tripId,
+      name: resolved.tripName,
+      publishedVersion: resolved.publishedVersion,
+      defaultCountryCallingCode: resolved.defaultCountryCallingCode,
+    };
+
+    const phoneE164 = normalizeToE164(
+      phoneNumber,
+      trip.defaultCountryCallingCode ?? "+64",
+    );
 
     const existing = await db
       .select({
@@ -92,13 +113,24 @@ export async function POST(
           .where(eq(participants.id, existing.id));
       }
 
+      if (resolved.kind === "group") {
+        await ensureGroupMembership(existing.id, resolved.groupId);
+        await db
+          .update(participants)
+          .set({ joinedViaGroupInviteLinkId: resolved.groupInviteLinkId })
+          .where(eq(participants.id, existing.id));
+      }
+
       const publishedVersion = await ensureTripPublishedIfReady(trip.id);
+      const tripInviteCode = await tripInviteCodeForTripId(trip.id);
       return NextResponse.json({
         tripId: trip.id,
         participantId: existing.id,
         accessToken: existing.accessToken,
         tripName: trip.name,
         publishedVersion,
+        tripInviteCode,
+        joinedGroupId: resolved.kind === "group" ? resolved.groupId : null,
       });
     }
 
@@ -116,6 +148,8 @@ export async function POST(
         role: "student",
         accessToken: token,
         passwordHash,
+        joinedViaGroupInviteLinkId:
+          resolved.kind === "group" ? resolved.groupInviteLinkId : null,
       })
       .returning({ id: participants.id, accessToken: participants.accessToken })
       .then((rows) => rows[0] ?? null);
@@ -124,7 +158,12 @@ export async function POST(
       return NextResponse.json({ error: "Join failed." }, { status: 500 });
     }
 
+    if (resolved.kind === "group") {
+      await ensureGroupMembership(created.id, resolved.groupId);
+    }
+
     const publishedVersion = await ensureTripPublishedIfReady(trip.id);
+    const tripInviteCode = await tripInviteCodeForTripId(trip.id);
 
     return NextResponse.json({
       tripId: trip.id,
@@ -132,6 +171,8 @@ export async function POST(
       accessToken: created.accessToken,
       tripName: trip.name,
       publishedVersion,
+      tripInviteCode,
+      joinedGroupId: resolved.kind === "group" ? resolved.groupId : null,
     });
   } catch (err) {
     const message =

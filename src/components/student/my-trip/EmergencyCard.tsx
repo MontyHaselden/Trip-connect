@@ -10,40 +10,40 @@ export function EmergencyCard(props: {
   const { tripName, schoolName, studentName, leadContact, hotel } = props;
 
   return (
-    <section className="rounded-2xl border border-red-200 bg-white p-5">
-      <h2 className="text-base font-semibold text-red-900">Emergency card</h2>
-      <div className="mt-3 space-y-3 text-sm text-zinc-800">
+    <section className="student-card border-red-200">
+      <h2 className="text-base font-bold text-red-900">Emergency card</h2>
+      <div className="mt-3 space-y-3 text-sm text-[var(--student-text)]">
         <div>
-          <div className="text-xs text-zinc-500">Trip</div>
+          <div className="text-xs text-[var(--student-text-muted)]">Trip</div>
           <div className="font-medium">{tripName}</div>
         </div>
         <div>
-          <div className="text-xs text-zinc-500">School</div>
+          <div className="text-xs text-[var(--student-text-muted)]">School</div>
           <div className="font-medium">{schoolName}</div>
         </div>
         <div>
-          <div className="text-xs text-zinc-500">Student</div>
+          <div className="text-xs text-[var(--student-text-muted)]">Student</div>
           <div className="font-medium">{studentName}</div>
         </div>
 
         {leadContact ? (
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-            <div className="text-xs text-zinc-500">Lead contact</div>
-            <div className="mt-1 font-medium text-zinc-900">{leadContact.name}</div>
-            <div className="text-xs text-zinc-500">{leadContact.role}</div>
+          <div className="rounded-xl border border-[var(--student-line)] bg-[var(--student-bg)] p-4">
+            <div className="text-xs text-[var(--student-text-muted)]">Lead contact</div>
+            <div className="mt-1 font-medium text-[var(--student-text)]">{leadContact.name}</div>
+            <div className="text-xs text-[var(--student-text-muted)]">{leadContact.role}</div>
             <div className="mt-1 text-sm">{leadContact.phoneNumber}</div>
           </div>
         ) : null}
 
         {hotel ? (
-          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-            <div className="text-xs text-zinc-500">Tonight’s hotel</div>
-            <div className="mt-1 font-medium text-zinc-900">
+          <div className="rounded-xl border border-[var(--student-line)] bg-[var(--student-bg)] p-4">
+            <div className="text-xs text-[var(--student-text-muted)]">Tonight&apos;s hotel</div>
+            <div className="mt-1 font-medium text-[var(--student-text)]">
               {hotel.name ?? "—"}
             </div>
             {hotel.address ? <div className="mt-1">{hotel.address}</div> : null}
             {hotel.nearestStation ? (
-              <div className="mt-1 text-xs text-zinc-600">
+              <div className="mt-1 text-xs text-[var(--student-text-muted)]">
                 Nearest station: {hotel.nearestStation}
               </div>
             ) : null}
@@ -67,4 +67,3 @@ export function EmergencyCard(props: {
     </section>
   );
 }
-

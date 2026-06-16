@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AccommodationAssignmentsPanel } from "@/components/host/locations/AccommodationAssignmentsPanel";
 import { AccommodationClient } from "@/components/host/accommodation/AccommodationClient";
 import { AccommodationStayForm } from "@/components/host/wizard/shared/AccommodationStayForm";
 import { TransportLegForm } from "@/components/host/wizard/shared/TransportLegForm";
@@ -67,6 +68,11 @@ export function LocationsClient(props: {
   const [rangeStartHalf, setRangeStartHalf] = useState<HalfSide | "full">("full");
   const [rangeEndHalf, setRangeEndHalf] = useState<HalfSide | "full">("full");
   const [staysInitialized, setStaysInitialized] = useState(false);
+  const [roster, setRoster] = useState<{
+    groups: Array<{ id: string; name: string }>;
+    participants: Array<{ id: string; fullName: string }>;
+    rooms: Array<{ id: string; roomName: string }>;
+  }>({ groups: [], participants: [], rooms: [] });
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/trips/${tripId}/locations`);
@@ -75,6 +81,19 @@ export function LocationsClient(props: {
     setState(body.state);
     setStaysInitialized(false);
   }, [tripId]);
+
+  useEffect(() => {
+    fetch(`/api/host/${encodeURIComponent(inviteCode)}/roster`)
+      .then((res) => res.json())
+      .then((body) => {
+        setRoster({
+          groups: body.groups ?? [],
+          participants: body.participants ?? [],
+          rooms: body.rooms ?? [],
+        });
+      })
+      .catch(() => setRoster({ groups: [], participants: [], rooms: [] }));
+  }, [inviteCode]);
 
   useEffect(() => {
     load()
@@ -105,8 +124,18 @@ export function LocationsClient(props: {
   );
 
   const { travelLayouts: travelLayoutsByDate, transitOverlays: transitByDate } = useMemo(
-    () => computeCalendarTransport(transportDraft, tripContext()),
-    [transportDraft, basics?.startDate, basics?.endDate, basics?.departureCity, basics?.returnCity],
+    () =>
+      computeCalendarTransport(transportDraft, tripContext(), {
+        stays: state?.accommodationStays ?? [],
+      }),
+    [
+      transportDraft,
+      basics?.startDate,
+      basics?.endDate,
+      basics?.departureCity,
+      basics?.returnCity,
+      state?.accommodationStays,
+    ],
   );
 
   function finalizeDays(nextStays: LocationStayDraft[]): DayPlaceDraft[] {
@@ -490,6 +519,7 @@ export function LocationsClient(props: {
               leg={leg}
               legTitle={i === 0 ? "Outbound flight" : `Connection ${i}`}
               countryNames={basics.destinationCountries}
+              roster={roster}
               onChange={(next) => updateOutboundLeg(i, next)}
             />
           ))
@@ -531,6 +561,7 @@ export function LocationsClient(props: {
               leg={leg}
               legTitle={i === 0 ? "Return flight" : `Return connection ${i}`}
               countryNames={basics.destinationCountries}
+              roster={roster}
               onChange={(next) => updateReturnLeg(i, next)}
             />
           ))
@@ -550,6 +581,7 @@ export function LocationsClient(props: {
                 leg={leg}
                 legTitle={`${leg.intercityFromCity} → ${leg.intercityToCity}`}
                 countryNames={basics.destinationCountries}
+                roster={roster}
                 onChange={(next) =>
                   updateIntercityLeg(i, {
                     ...next,
@@ -594,6 +626,13 @@ export function LocationsClient(props: {
           </div>
         )}
       </section>
+
+      <AccommodationAssignmentsPanel
+        tripId={tripId}
+        stays={state.accommodationStays}
+        groups={roster.groups}
+        participants={roster.participants}
+      />
 
       <section className="space-y-4 border-t border-zinc-200 pt-8">
         <h2 className="text-lg font-semibold">Rooms &amp; groups</h2>

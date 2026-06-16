@@ -1,14 +1,13 @@
-import { TripSettingsClient } from "@/components/dashboard/TripSettingsClient";
+import { redirect } from "next/navigation";
 
+import { tripOsSetupPath } from "@/lib/trip-os/paths";
+
+/** Legacy settings URL — use Trip OS. */
 export default async function DashboardSettingsPage({
   params,
 }: {
   params: Promise<{ tripId: string }>;
 }) {
   const { tripId } = await params;
-  return (
-    <div className="mx-auto max-w-5xl px-5 py-8">
-      <TripSettingsClient tripId={tripId} />
-    </div>
-  );
+  redirect(tripOsSetupPath(tripId));
 }

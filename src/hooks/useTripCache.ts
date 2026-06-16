@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getMeta, getPublishedTrip } from "@/lib/offline/trip-store";
 import { syncPublishedTrip } from "@/lib/offline/sync";
 import { useOnlineStatus } from "./useOnlineStatus";
@@ -30,6 +30,9 @@ export type TripCacheState = {
   refresh: () => Promise<void>;
 };
 
+const BACKGROUND_SYNC_MS = 45 * 60 * 1000;
+const FOCUS_DEBOUNCE_MS = 2000;
+
 function storageGet(key: string): string | null {
   try {
     return localStorage.getItem(key);
@@ -44,6 +47,8 @@ export function useTripCache(expectedTripId?: string | null): TripCacheState {
   const [tripId, setTripId] = useState<string | null>(null);
   const [participantId, setParticipantId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const lastFocusSyncRef = useRef(0);
+  const stateRef = useRef<Omit<TripCacheState, "refresh"> | null>(null);
 
   const [state, setState] = useState<Omit<TripCacheState, "refresh">>({
     tripId: null,
@@ -56,6 +61,8 @@ export function useTripCache(expectedTripId?: string | null): TripCacheState {
     sessionReady: false,
     status: "idle",
   });
+
+  stateRef.current = state;
 
   useEffect(() => {
     const storedTripId = storageGet("tc_trip_id");
@@ -77,52 +84,86 @@ export function useTripCache(expectedTripId?: string | null): TripCacheState {
     setState((s) => ({ ...s, tripId, participantId, sessionReady, online }));
   }, [tripId, participantId, sessionReady, online]);
 
+  const performSync = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent ?? false;
+      if (!tripId || !accessToken) return;
+
+      if (!silent) {
+        setState((s) => ({ ...s, status: "syncing", online }));
+      }
+
+      try {
+        const res = await syncPublishedTrip({ tripId, accessToken, online });
+
+        if (res.status === "unauthorized") {
+          setState((s) => ({ ...s, status: "unauthorized", online }));
+          return;
+        }
+
+        if (res.status === "offline_no_cache") {
+          setState((s) => ({ ...s, status: "offline_no_cache", online }));
+          return;
+        }
+
+        if (res.status === "no_session") {
+          setState((s) => ({
+            ...s,
+            status: s.payload ? "ready" : "error",
+            online,
+            message: TRIP_CONNECTION_ERROR_MESSAGE,
+          }));
+          return;
+        }
+
+        if (res.status === "error") {
+          setState((s) => ({
+            ...s,
+            status: s.payload ? "ready" : "error",
+            online,
+            message: TRIP_CONNECTION_ERROR_MESSAGE,
+          }));
+          return;
+        }
+
+        if (res.status === "updated" || res.status === "up_to_date") {
+          const [meta, payload] = await Promise.all([
+            getMeta(tripId),
+            getPublishedTrip(tripId),
+          ]);
+          const isUpdated = res.status === "updated";
+          setState((s) => ({
+            ...s,
+            version: meta?.version ?? null,
+            publishedAt: meta?.publishedAt ?? null,
+            cachedAt: meta?.cachedAt ?? null,
+            payload,
+            online,
+            status: isUpdated ? "updated" : silent ? "ready" : "up_to_date",
+          }));
+          if (isUpdated) {
+            window.setTimeout(() => {
+              setState((s) =>
+                s.status === "updated" ? { ...s, status: "ready" } : s,
+              );
+            }, 3500);
+          }
+        }
+      } catch {
+        setState((s) => ({
+          ...s,
+          online,
+          status: s.payload ? "ready" : "error",
+          message: TRIP_CONNECTION_ERROR_MESSAGE,
+        }));
+      }
+    },
+    [tripId, accessToken, online],
+  );
+
   const refresh = useCallback(async () => {
-    if (!tripId || !accessToken) return;
-    setState((s) => ({ ...s, status: "syncing", online }));
-    const res = await syncPublishedTrip({ tripId, accessToken, online: true });
-    if (res.status === "unauthorized") {
-      setState((s) => ({ ...s, status: "unauthorized", online }));
-      return;
-    }
-    if (res.status === "offline_no_cache") {
-      setState((s) => ({ ...s, status: "offline_no_cache", online }));
-      return;
-    }
-    if (res.status === "no_session") {
-      setState((s) => ({
-        ...s,
-        status: s.payload ? "ready" : "error",
-        online,
-        message: TRIP_CONNECTION_ERROR_MESSAGE,
-      }));
-      return;
-    }
-    if (res.status === "error") {
-      setState((s) => ({
-        ...s,
-        status: "error",
-        online,
-        message: TRIP_CONNECTION_ERROR_MESSAGE,
-      }));
-      return;
-    }
-    if (res.status === "updated" || res.status === "up_to_date") {
-      const [meta, payload] = await Promise.all([
-        getMeta(tripId),
-        getPublishedTrip(tripId),
-      ]);
-      setState((s) => ({
-        ...s,
-        version: meta?.version ?? null,
-        publishedAt: meta?.publishedAt ?? null,
-        cachedAt: meta?.cachedAt ?? null,
-        payload,
-        online,
-        status: res.status === "updated" ? "updated" : "up_to_date",
-      }));
-    }
-  }, [tripId, accessToken, online]);
+    await performSync({ silent: false });
+  }, [performSync]);
 
   useEffect(() => {
     if (!sessionReady) return;
@@ -148,15 +189,7 @@ export function useTripCache(expectedTripId?: string | null): TripCacheState {
         publishedAt: meta?.publishedAt ?? null,
         cachedAt: meta?.cachedAt ?? null,
         payload,
-        status: payload
-          ? "ready"
-          : s.status === "syncing" ||
-              s.status === "updated" ||
-              s.status === "up_to_date"
-            ? s.status
-            : online
-              ? "loading_cache"
-              : "offline_no_cache",
+        status: payload ? "ready" : "loading_cache",
       }));
     }
     loadCache();
@@ -166,77 +199,38 @@ export function useTripCache(expectedTripId?: string | null): TripCacheState {
   }, [sessionReady, tripId]);
 
   useEffect(() => {
-    if (!sessionReady) return;
-    let cancelled = false;
-    async function sync() {
-      if (!tripId || !accessToken) return;
-      setState((s) => ({ ...s, online, status: "syncing" }));
-      try {
-        const res = await syncPublishedTrip({ tripId, accessToken, online });
-        if (cancelled) return;
+    if (!sessionReady || !tripId || !accessToken) return;
+    void performSync({ silent: !stateRef.current?.payload });
+  }, [sessionReady, tripId, accessToken, online, performSync]);
 
-        if (res.status === "unauthorized") {
-          setState((s) => ({ ...s, status: "unauthorized", online }));
-          return;
-        }
+  useEffect(() => {
+    if (!sessionReady || !tripId || !accessToken) return;
 
-        if (res.status === "offline_no_cache") {
-          setState((s) => ({ ...s, status: "offline_no_cache", online }));
-          return;
-        }
-
-        if (res.status === "no_session") {
-          setState((s) => ({
-            ...s,
-            status: s.payload ? "ready" : "error",
-            online,
-            message: TRIP_CONNECTION_ERROR_MESSAGE,
-          }));
-          return;
-        }
-
-        if (res.status === "error") {
-          setState((s) => ({
-            ...s,
-            status: "error",
-            online,
-            message: TRIP_CONNECTION_ERROR_MESSAGE,
-          }));
-          return;
-        }
-
-        if (res.status === "updated" || res.status === "up_to_date") {
-          const [meta, payload] = await Promise.all([
-            getMeta(tripId),
-            getPublishedTrip(tripId),
-          ]);
-          if (cancelled) return;
-          setState((s) => ({
-            ...s,
-            version: meta?.version ?? null,
-            publishedAt: meta?.publishedAt ?? null,
-            cachedAt: meta?.cachedAt ?? null,
-            payload,
-            online,
-            status: res.status === "updated" ? "updated" : "up_to_date",
-          }));
-        }
-      } catch (e) {
-        if (cancelled) return;
-        setState((s) => ({
-          ...s,
-          online,
-          status: s.payload ? "ready" : "error",
-          message: TRIP_CONNECTION_ERROR_MESSAGE,
-        }));
-      }
+    function maybeSync() {
+      if (!online) return;
+      const now = Date.now();
+      if (now - lastFocusSyncRef.current < FOCUS_DEBOUNCE_MS) return;
+      lastFocusSyncRef.current = now;
+      void performSync({ silent: true });
     }
 
-    sync();
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") maybeSync();
+    }
+
+    window.addEventListener("focus", maybeSync);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    const interval = window.setInterval(() => {
+      if (online) void performSync({ silent: true });
+    }, BACKGROUND_SYNC_MS);
+
     return () => {
-      cancelled = true;
+      window.removeEventListener("focus", maybeSync);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.clearInterval(interval);
     };
-  }, [sessionReady, tripId, accessToken, online]);
+  }, [sessionReady, tripId, accessToken, online, performSync]);
 
   return { ...state, refresh };
 }

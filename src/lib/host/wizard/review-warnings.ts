@@ -61,7 +61,14 @@ export async function collectWizardWarnings(
   }
 
   for (const leg of [...draft.outboundLegs, ...draft.returnLegs, ...draft.intercityLegs]) {
-    if (leg.bookingStatus === "placeholder" || leg.bookingStatus === "not_booked") {
+    if (leg.bookingStatus === "flexible") {
+      warnings.push({
+        id: `flexible-transport-${leg.id}`,
+        severity: "info",
+        message: `Transport flexible: ${leg.fromCity} → ${leg.toCity} on ${leg.travelDate}`,
+        step: leg.id.startsWith("out") ? 2 : 4,
+      });
+    } else if (leg.bookingStatus === "placeholder" || leg.bookingStatus === "not_booked") {
       warnings.push({
         id: `not-booked-transport-${leg.id}`,
         severity: "info",

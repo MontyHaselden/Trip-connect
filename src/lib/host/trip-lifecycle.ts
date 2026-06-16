@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
+import { tripOsSetupPath } from "@/lib/trip-os/paths";
 import { tripWizardDrafts } from "@/lib/db/schema";
 import { tripDatesAreUnset } from "@/lib/host/trip-date-display";
 import type { ItineraryBuildStats } from "@/lib/host/trip-delete-eligibility";
@@ -38,12 +39,12 @@ export const TRIP_STATUS_LABELS: Record<TripLifecycleStatus, string> = {
   completed: "Completed",
 };
 
+/** Legacy wizard drafts no longer gate navigation — Trip OS is the only host workspace. */
 export function isWizardDraftInProgress(
-  setupMethod: TripLifecycleInput["setupMethod"],
-  wizard: WizardMeta | null | undefined,
+  _setupMethod: TripLifecycleInput["setupMethod"],
+  _wizard: WizardMeta | null | undefined,
 ): boolean {
-  if (setupMethod !== "wizard" || !wizard) return false;
-  return !wizard.wizardFinished;
+  return false;
 }
 
 export function isTripActiveNow(
@@ -57,11 +58,9 @@ export function isTripActiveNow(
 
 export function resolveTripLifecycleStatus(
   trip: TripLifecycleInput,
-  wizard: WizardMeta | null | undefined,
+  _wizard: WizardMeta | null | undefined,
   stats: Pick<ItineraryBuildStats, "dayCount" | "itemCount">,
 ): TripLifecycleStatus {
-  if (isWizardDraftInProgress(trip.setupMethod, wizard)) return "building";
-
   const hasItinerary = stats.dayCount > 0 || stats.itemCount > 0;
   if (!hasItinerary && tripDatesAreUnset(trip.startDate, trip.endDate)) {
     return "building";
@@ -72,31 +71,22 @@ export function resolveTripLifecycleStatus(
   return "built";
 }
 
-export function tripContinuePath(
-  tripId: string,
-  status: TripLifecycleStatus,
-  wizardStep: number | null,
-): string {
-  if (status === "building" && wizardStep) {
-    return `/dashboard/trips/${tripId}/wizard?step=${wizardStep}`;
-  }
-  return `/dashboard/trips/${tripId}/builder`;
+export function tripContinuePath(tripId: string): string {
+  return tripOsSetupPath(tripId);
 }
 
 export function resolveTripLifecycle(
   trip: TripLifecycleInput,
-  wizard: WizardMeta | null | undefined,
+  _wizard: WizardMeta | null | undefined,
   stats: Pick<ItineraryBuildStats, "dayCount" | "itemCount">,
 ): TripLifecycle {
-  const wizardInProgress = isWizardDraftInProgress(trip.setupMethod, wizard);
-  const status = resolveTripLifecycleStatus(trip, wizard, stats);
-  const wizardStep = wizardInProgress ? (wizard?.currentStep ?? 1) : null;
+  const status = resolveTripLifecycleStatus(trip, _wizard, stats);
 
   return {
     status,
-    wizardInProgress,
-    wizardStep,
-    continuePath: tripContinuePath(trip.id, status, wizardStep),
+    wizardInProgress: false,
+    wizardStep: null,
+    continuePath: tripContinuePath(trip.id),
   };
 }
 
@@ -137,6 +127,5 @@ export async function getTripLifecycleForTrip(
   trip: TripLifecycleInput,
   stats: Pick<ItineraryBuildStats, "dayCount" | "itemCount">,
 ): Promise<TripLifecycle> {
-  const wizardRows = await loadWizardMetaForTrips([trip.id]);
-  return resolveTripLifecycle(trip, wizardRows.get(trip.id), stats);
+  return resolveTripLifecycle(trip, null, stats);
 }

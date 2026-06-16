@@ -50,9 +50,8 @@ export async function searchGoogleAddresses(params: {
   const q = params.query.trim();
   if (!key || q.length < 2) return [];
 
-  const input = params.cityHint
-    ? `${q}, ${params.cityHint.split(",")[0]?.trim() ?? params.cityHint}`
-    : q;
+  const cityPart = params.cityHint?.split(",")[0]?.trim() ?? params.cityHint?.trim();
+  const input = cityPart ? `${q}, ${cityPart}` : q;
 
   const body: Record<string, unknown> = {
     input,
@@ -114,9 +113,34 @@ export async function searchGoogleAddresses(params: {
   }
 }
 
+type AddressComponent = {
+  longText?: string;
+  shortText?: string;
+  types?: string[];
+};
+
+export function cityLabelFromAddressComponents(
+  components: AddressComponent[],
+): string | null {
+  const text = (type: string) =>
+    components.find((c) => c.types?.includes(type))?.longText?.trim();
+
+  const locality =
+    text("locality") ??
+    text("postal_town") ??
+    text("sublocality_level_1") ??
+    text("sublocality");
+  const region = text("administrative_area_level_1") ?? text("administrative_area_level_2");
+
+  if (locality && region && locality.toLowerCase() !== region.toLowerCase()) {
+    return `${locality}, ${region}`;
+  }
+  return locality ?? region ?? null;
+}
+
 export async function getGooglePlaceDetails(
   placeId: string,
-): Promise<{ address: string; name: string | null } | null> {
+): Promise<{ address: string; name: string | null; cityLabel: string | null } | null> {
   const key = apiKey();
   if (!key || !placeId.trim()) return null;
 
@@ -126,7 +150,7 @@ export async function getGooglePlaceDetails(
       {
         headers: {
           "X-Goog-Api-Key": key,
-          "X-Goog-FieldMask": "formattedAddress,displayName",
+          "X-Goog-FieldMask": "formattedAddress,displayName,addressComponents",
         },
         next: { revalidate: 86400 },
       },
@@ -137,14 +161,18 @@ export async function getGooglePlaceDetails(
     const data = (await res.json()) as {
       formattedAddress?: string;
       displayName?: { text?: string };
+      addressComponents?: AddressComponent[];
     };
 
     const address = data.formattedAddress?.trim();
     if (!address) return null;
 
+    const cityLabel = cityLabelFromAddressComponents(data.addressComponents ?? []);
+
     return {
       address,
       name: data.displayName?.text?.trim() ?? null,
+      cityLabel,
     };
   } catch {
     return null;

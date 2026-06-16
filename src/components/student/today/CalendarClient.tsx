@@ -82,7 +82,9 @@ function CalendarContent() {
   }
 
   if (tripNotPublished && !trip) {
-    return <TripNotReady title="Calendar" />;
+    return (
+      <TripNotReady title="Calendar" hasJoined={Boolean(cache.participantId)} />
+    );
   }
 
   if (!hasTodaySchedule(trip)) {

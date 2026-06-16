@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@/lib/db/client";
 import { groups } from "@/lib/db/schema";
 import { requireHostTripEditAccess } from "@/lib/auth/require-host-trip";
+import { DeleteTripGroupError, deleteTripGroup } from "@/lib/groups/delete-trip-group";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getGroupForTrip } from "@/lib/host/roster-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
@@ -63,10 +64,13 @@ export async function DELETE(
     const group = await getGroupForTrip(trip.id, groupId);
     if (!group) return NextResponse.json({ error: "Group not found." }, { status: 404 });
 
-    await db.delete(groups).where(eq(groups.id, groupId));
+    await deleteTripGroup(trip.id, groupId);
     await maybeAutoPublish(trip.id);
     return NextResponse.json({ ok: true });
   } catch (err) {
+    if (err instanceof DeleteTripGroupError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     return hostApiError(err);
   }
 }

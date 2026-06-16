@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { placesShareMetro } from "@/lib/geo/airport-codes";
+import { parseAirportRouteLabel, placesShareMetro } from "@/lib/geo/airport-codes";
+import { inferDayPlacesFromFlightLegs } from "@/lib/host/setup/infer-flight-calendar";
 import { computeCalendarBounds } from "@/lib/host/wizard/calendar-bounds";
 import { detectAirportTransfers } from "@/lib/host/wizard/detect-airport-transfers";
 import { buildDefaultDayPlaces, syncIntercityLegs } from "@/lib/host/wizard/detect-city-moves";
@@ -88,6 +89,33 @@ describe("placesShareMetro", () => {
 });
 
 describe("computeTravelDayLayouts", () => {
+  it("places origin city before a timed afternoon departure", () => {
+    const draft = {
+      ...japanDraft(),
+      intercityLegs: [
+        {
+          ...planeLeg({
+            fromCity: "Bangkok, Thailand",
+            toCity: "Phuket, Thailand",
+            travelDate: "2026-06-10",
+            departureTime: "18:00",
+            arrivalTime: "19:30",
+          }),
+          intercityFromCity: "Bangkok, Thailand",
+          intercityToCity: "Phuket, Thailand",
+        },
+      ],
+    };
+    const layouts = computeTravelDayLayouts(draft, trip);
+    const jun10 = layouts.get("2026-06-10");
+    const city = jun10?.find((s) => s.kind === "city");
+    const transit = jun10?.find((s) => s.kind === "transit");
+    assert.equal(city?.start, 0);
+    assert.equal(city?.end, 0.75);
+    assert.equal(transit?.start, 0.75);
+    assert.equal(transit?.end, 1);
+  });
+
   it("leaves arrival and departure days paintable without auto city blocks", () => {
     const draft = japanDraft();
     const layouts = computeTravelDayLayouts(draft, trip);
@@ -95,18 +123,15 @@ describe("computeTravelDayLayouts", () => {
     const jun4 = layouts.get("2026-06-04");
     assert.ok(jun4);
     assert.equal(jun4!.some((s) => s.kind === "city"), false);
-    assert.equal(travelLayoutPaintStart(jun4), 0.25);
+    assert.ok(Math.abs(travelLayoutPaintStart(jun4) - 9 / 24 - 40 / 1440) < 0.02);
 
     const jun20 = layouts.get("2026-06-20");
     assert.ok(jun20);
-    assert.equal(jun20!.some((s) => s.kind === "city"), false);
-    assert.equal(travelLayoutPaintStart(jun20), 0);
-    assert.equal(
-      computeTravelDayLayouts(draft, trip)
-        .get("2026-06-20")!
-        .find((s) => s.kind === "transit")?.start,
-      0.5,
-    );
+    const jun20City = jun20!.find((s) => s.kind === "city");
+    const jun20Transit = jun20!.find((s) => s.kind === "transit");
+    assert.ok(jun20City);
+    assert.equal(jun20Transit?.start, 14 * 60 / (24 * 60));
+    assert.equal(travelLayoutPaintStart(jun20), 1);
   });
 
   it("shows home city band on return arrival day", () => {
@@ -183,7 +208,99 @@ describe("computeTravelDayLayouts", () => {
     const layouts = computeTravelDayLayouts(draft, trip);
     const jun21 = layouts.get("2026-06-21");
     assert.equal(jun21?.some((s) => s.kind === "city"), false);
-    assert.equal(jun21?.find((s) => s.kind === "transit")?.end, 0.75);
+    assert.ok(Math.abs((jun21?.find((s) => s.kind === "transit")?.end ?? 0) - 20 / 24) < 0.02);
+  });
+
+  it("places afternoon departure and next-morning arrival at scheduled times", () => {
+    const draft = {
+      outboundLegs: [
+        planeLeg({
+          fromCity: "Christchurch Airport (CHC), New Zealand",
+          toCity: "Melbourne Airport (MEL), Australia",
+          travelDate: "2026-08-23",
+          arrivalDate: "2026-08-24",
+          departureTime: "15:00",
+          arrivalTime: "10:00",
+          flightNumber: "JQ172",
+        }),
+      ],
+      returnLegs: [],
+      intercityLegs: [],
+      dayPlaces: [],
+    };
+    const layouts = computeTravelDayLayouts(draft, {
+      startDate: "2026-08-20",
+      endDate: "2026-09-10",
+      departureCity: "Christchurch, New Zealand",
+      returnCity: "Christchurch, New Zealand",
+    });
+
+    const dep = layouts.get("2026-08-23");
+    const arr = layouts.get("2026-08-24");
+    const depTransit = dep?.find((s) => s.kind === "transit");
+    const arrTransit = arr?.find((s) => s.kind === "transit");
+
+    assert.equal(depTransit?.start, 15 / 24);
+    assert.equal(depTransit?.end, 1);
+    assert.equal(arrTransit?.start, 0);
+    assert.ok(Math.abs((arrTransit?.end ?? 0) - 10 / 24) < 0.02);
+  });
+
+  it("shows one combined outbound route without a hub city band on same-day connections", () => {
+    const draft = {
+      outboundLegs: [
+        planeLeg({
+          fromCity: "Christchurch Airport (CHC), New Zealand",
+          toCity: "Melbourne Airport (MEL), Australia",
+          travelDate: "2026-08-23",
+          arrivalDate: "2026-08-23",
+          departureTime: "06:20",
+          arrivalTime: "10:05",
+          flightNumber: "JQ172",
+        }),
+        planeLeg({
+          fromCity: "Melbourne Airport (MEL), Australia",
+          toCity: "Phuket International Airport (HKT), Thailand",
+          travelDate: "2026-08-23",
+          arrivalDate: "2026-08-23",
+          departureTime: "14:50",
+          arrivalTime: "20:40",
+          flightNumber: "JQ17",
+        }),
+      ],
+      returnLegs: [],
+      intercityLegs: [],
+      dayPlaces: inferDayPlacesFromFlightLegs([], [
+        planeLeg({
+          fromCity: "Christchurch Airport (CHC), New Zealand",
+          toCity: "Melbourne Airport (MEL), Australia",
+          travelDate: "2026-08-23",
+          arrivalDate: "2026-08-23",
+          departureTime: "06:20",
+          arrivalTime: "10:05",
+        }),
+        planeLeg({
+          fromCity: "Melbourne Airport (MEL), Australia",
+          toCity: "Phuket International Airport (HKT), Thailand",
+          travelDate: "2026-08-23",
+          arrivalDate: "2026-08-23",
+          departureTime: "14:50",
+          arrivalTime: "20:40",
+        }),
+      ]),
+    };
+    const layouts = computeTravelDayLayouts(draft, {
+      startDate: "2026-08-20",
+      endDate: "2026-08-30",
+      departureCity: "Christchurch, New Zealand",
+      returnCity: "Christchurch, New Zealand",
+    });
+    const aug23 = layouts.get("2026-08-23");
+    assert.equal(aug23?.some((s) => s.kind === "city" && s.city.includes("Melbourne")), false);
+    assert.equal(aug23?.find((s) => s.kind === "transit")?.label, "CHC → MEL → HKT");
+    const painted = draft.dayPlaces.find((d) => d.date === "2026-08-23");
+    assert.equal(painted?.primaryCity, "Christchurch");
+    assert.equal(painted?.secondaryCity, "Phuket");
   });
 
   it("shows one combined return route plus home landing on same-day connection return", () => {
@@ -210,11 +327,13 @@ describe("computeTravelDayLayouts", () => {
     };
     const layouts = computeTravelDayLayouts(draft, trip);
     const jun21 = layouts.get("2026-06-21");
-    assert.equal(jun21?.some((s) => s.kind === "city" && s.city.includes("Auckland")), false);
-    assert.equal(jun21?.find((s) => s.kind === "transit")?.label, "NRT → AKL → CHC");
     const chc = jun21?.find((s) => s.kind === "city" && s.city.includes("Christchurch"));
+    assert.deepEqual(parseAirportRouteLabel(jun21?.find((s) => s.kind === "transit")?.label ?? ""), [
+      "AKL",
+      "CHC",
+    ]);
     assert.ok(chc);
-    assert.equal(chc?.start, 0.75);
+    assert.ok(Math.abs((chc?.start ?? 0) - 20 / 24) < 0.02);
     assert.equal(chc?.end, 1);
   });
 
@@ -242,8 +361,88 @@ describe("computeTravelDayLayouts", () => {
     };
     const layouts = computeTravelDayLayouts(draft, trip);
     const jun21 = layouts.get("2026-06-21");
-    assert.equal(jun21?.some((s) => s.kind === "city"), false);
-    assert.equal(jun21?.find((s) => s.kind === "transit")?.label, "NRT → AKL → CHC");
+    const jun22 = layouts.get("2026-06-22");
+    assert.ok(!jun21?.some((s) => s.kind === "transit"));
+    assert.ok(!jun22?.some((s) => s.kind === "transit"));
+    assert.ok(jun22?.some((s) => s.kind === "city" && s.city.includes("Christchurch")));
+  });
+
+  it("paints melbourne layover then christchurch on overnight return connection day", () => {
+    const draft = {
+      outboundLegs: [],
+      returnLegs: [],
+      intercityLegs: [
+        planeLeg({
+          fromCity: "Suvarnabhumi Airport (BKK), Thailand",
+          toCity: "Melbourne Airport (MEL), Australia",
+          travelDate: "2026-09-04",
+          arrivalDate: "2026-09-05",
+          departureTime: "21:40",
+          arrivalTime: "09:25",
+          flightNumber: "JQ30",
+        }),
+        planeLeg({
+          fromCity: "Melbourne Airport (MEL), Australia",
+          toCity: "Christchurch Airport (CHC), New Zealand",
+          travelDate: "2026-09-05",
+          arrivalDate: "2026-09-05",
+          departureTime: "11:05",
+          arrivalTime: "16:25",
+          flightNumber: "JQ171",
+        }),
+      ],
+      dayPlaces: [],
+    };
+    const layouts = computeTravelDayLayouts(draft, {
+      startDate: "2026-08-23",
+      endDate: "2026-09-05",
+      departureCity: "Christchurch, New Zealand",
+      returnCity: "Christchurch, New Zealand",
+    });
+    const painted = inferDayPlacesFromFlightLegs([], [
+      ...draft.intercityLegs,
+    ]);
+    const sep4 = layouts.get("2026-09-04");
+    const sep5 = layouts.get("2026-09-05");
+    const sep5Paint = painted.find((d) => d.date === "2026-09-05");
+
+    assert.deepEqual(parseAirportRouteLabel(sep4?.find((s) => s.kind === "transit")?.label ?? ""), [
+      "BKK",
+      "MEL",
+    ]);
+    assert.deepEqual(parseAirportRouteLabel(sep5?.find((s) => s.kind === "transit")?.label ?? ""), [
+      "MEL",
+      "CHC",
+    ]);
+    assert.ok(sep5?.some((s) => s.kind === "city" && s.city.includes("Christchurch")));
+    assert.equal(sep5Paint?.primaryCity.includes("Christchurch"), true);
+    assert.equal(sep5Paint?.secondaryCity, null);
+  });
+
+  it("does not paint airport names as stay locations on departure day", () => {
+    const draft = {
+      ...japanDraft(),
+      returnLegs: [
+        planeLeg({
+          fromCity: "Suvarnabhumi Airport, Thailand",
+          toCity: "Melbourne Airport, Australia",
+          travelDate: "2026-09-04",
+          arrivalDate: "2026-09-05",
+          departureTime: null,
+          arrivalTime: null,
+        }),
+      ],
+    };
+    const layouts = computeTravelDayLayouts(draft, {
+      startDate: "2026-08-24",
+      endDate: "2026-09-04",
+      departureCity: trip.departureCity,
+      returnCity: trip.returnCity,
+    });
+    const sep4 = layouts.get("2026-09-04");
+    assert.ok(sep4?.length);
+    assert.equal(sep4!.some((segment) => segment.kind === "city"), false);
+    assert.ok(sep4!.some((segment) => segment.kind === "transit"));
   });
 
   it("leaves the morning paintable on return departure day", () => {
@@ -263,8 +462,12 @@ describe("computeTravelDayLayouts", () => {
     const layouts = computeTravelDayLayouts(draft, trip);
     const jun20 = layouts.get("2026-06-20");
     assert.ok(hasAfternoonDepartureTravel(jun20));
-    assert.ok(tripDayHasPaintableStaySlot("2026-06-20", trip, jun20, null));
+    assert.equal(
+      tripDayHasPaintableStaySlot("2026-06-20", trip, jun20, null),
+      true,
+    );
     assert.equal(travelLayoutPaintStart(jun20), 0);
+    assert.equal(jun20!.some((segment) => segment.kind === "city"), false);
     assert.equal(
       tripDayHasPaintableStaySlot("2026-06-20", trip, jun20, {
         primaryCity: "Osaka, Japan",
@@ -416,7 +619,7 @@ describe("syncIntercityLegs", () => {
 });
 
 describe("intercity crossover calendar layout", () => {
-  it("uses quarter-city · half-transit · quarter-city for train city changes", () => {
+  it("uses 40/20/40 city-transit-city for train city changes", () => {
     const draft = {
       ...japanDraft(),
       dayPlaces: [
@@ -453,13 +656,13 @@ describe("intercity crossover calendar layout", () => {
     const jun11 = layouts.get("2026-06-11");
     assert.equal(jun11?.length, 3);
     assert.equal(jun11?.[0]?.kind, "city");
-    assert.equal(jun11?.[0]?.end, 0.25);
+    assert.equal(jun11?.[0]?.end, 0.4);
     assert.equal(jun11?.[1]?.kind, "transit");
     assert.equal(jun11?.[1]?.label, "Train");
-    assert.equal(jun11?.[1]?.start, 0.25);
-    assert.equal(jun11?.[1]?.end, 0.75);
+    assert.equal(jun11?.[1]?.start, 0.4);
+    assert.equal(jun11?.[1]?.end, 0.6);
     assert.equal(jun11?.[2]?.kind, "city");
-    assert.equal(jun11?.[2]?.start, 0.75);
+    assert.equal(jun11?.[2]?.start, 0.6);
   });
 
   it("skips grey transit for unsure intercity legs", () => {
@@ -496,6 +699,46 @@ describe("intercity crossover calendar layout", () => {
 });
 
 describe("mergeTravelWithPaintedStay", () => {
+  it("keeps stay city labels on checkout departure days with evening flights", () => {
+    const draft = {
+      outboundLegs: [],
+      returnLegs: [
+        planeLeg({
+          fromCity: "Suvarnabhumi Airport (BKK), Thailand",
+          toCity: "Melbourne Airport (MEL), Australia",
+          travelDate: "2026-09-04",
+          arrivalDate: "2026-09-05",
+          departureTime: "21:40",
+          arrivalTime: "09:25",
+          flightNumber: "JQ30",
+        }),
+      ],
+      intercityLegs: [],
+      dayPlaces: [],
+    };
+    const layouts = computeTravelDayLayouts(draft, {
+      startDate: "2026-08-23",
+      endDate: "2026-09-04",
+      departureCity: "Christchurch, New Zealand",
+      returnCity: "Christchurch, New Zealand",
+    });
+    const segments = layouts.get("2026-09-04");
+    assert.ok(segments?.some((s) => s.kind === "transit"));
+
+    const day: DayPlaceDraft = {
+      date: "2026-09-04",
+      primaryCity: "Bangkok",
+      secondaryCity: null,
+      primaryShare: 0.67,
+      dayType: "trip",
+      includeBuffer: false,
+    };
+
+    const { segments: merged, hideMergedStayCity } = mergeTravelWithPaintedStay(segments, day);
+    assert.equal(hideMergedStayCity, false);
+    assert.ok(merged?.some((s) => s.kind === "transit"));
+  });
+
   it("extends transit-only arrival days when the stay fills the landing slot", () => {
     const layouts = computeTravelDayLayouts(japanDraft(), {
       startDate: "2026-06-02",

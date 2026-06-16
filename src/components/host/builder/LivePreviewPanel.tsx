@@ -15,6 +15,12 @@ import {
   stayColor,
   stayForNight,
 } from "@/lib/host/locations/accommodation-colors";
+import {
+  filterItineraryForPreview,
+  type PreviewMode,
+} from "@/lib/visibility/preview-filter";
+import type { PublishedVisibilityTarget } from "@/lib/visibility/types";
+import type { TripWarning } from "@/lib/host/trip-warnings";
 import type { ImportGap } from "@/lib/host/wizard/analyze-import-gaps";
 import type { AccommodationStayDraft } from "@/lib/host/wizard/types";
 
@@ -117,6 +123,9 @@ export function LivePreviewPanel(props: {
     groups: [],
     participants: [],
   });
+  const [visibilityTargets, setVisibilityTargets] = useState<PublishedVisibilityTarget[]>([]);
+  const [previewMode, setPreviewMode] = useState<PreviewMode>({ kind: "everyone" });
+  const [tripWarnings, setTripWarnings] = useState<TripWarning[]>([]);
   const [activitySheet, setActivitySheet] = useState<
     { mode: "add" | "edit"; item: ItineraryItem | null } | null
   >(null);
@@ -126,11 +135,12 @@ export function LivePreviewPanel(props: {
   const didPickInitialDayRef = useRef(false);
 
   const reload = useCallback(async () => {
-    const [itineraryRes, gapsRes, locRes, rosterRes] = await Promise.all([
+    const [itineraryRes, gapsRes, locRes, rosterRes, warningsRes] = await Promise.all([
       fetch(`/api/host/${encodeURIComponent(inviteCode)}/itinerary`),
       fetch(`/api/trips/${tripId}/gaps`),
       fetch(`/api/trips/${tripId}/locations`),
       fetch(`/api/host/${encodeURIComponent(inviteCode)}/roster`),
+      fetch(`/api/trips/${tripId}/warnings`),
     ]);
     if (gapsRes.ok) {
       const gapsBody = await gapsRes.json();
@@ -140,6 +150,10 @@ export function LivePreviewPanel(props: {
       const locBody = await locRes.json();
       setAccommodationStays(locBody.state?.accommodationStays ?? []);
       setDestinationCountries(locBody.state?.basics?.destinationCountries ?? []);
+    }
+    if (warningsRes.ok) {
+      const warningsBody = await warningsRes.json();
+      setTripWarnings(warningsBody.warnings ?? []);
     }
     if (rosterRes.ok) {
       const rosterBody = await rosterRes.json();
@@ -152,6 +166,7 @@ export function LivePreviewPanel(props: {
     if (!itineraryRes.ok) return 0;
     const body = await itineraryRes.json();
     const loaded = (body.days ?? []) as ItineraryDay[];
+    setVisibilityTargets(body.visibilityTargets ?? []);
     setDays(loaded);
     if (!didPickInitialDayRef.current && loaded.length) {
       didPickInitialDayRef.current = true;
@@ -257,9 +272,10 @@ export function LivePreviewPanel(props: {
   const dayItems = useMemo(() => {
     if (!selectedDay) return [];
     const sorted = sortItemsByStartTime(selectedDay.items);
-    if (!building) return sorted;
-    return sorted.filter((item) => revealedIds.has(item.id));
-  }, [selectedDay, building, revealedIds]);
+    const filtered = filterItineraryForPreview(sorted, previewMode, visibilityTargets);
+    if (!building) return filtered;
+    return filtered.filter((item) => revealedIds.has(item.id));
+  }, [selectedDay, building, revealedIds, previewMode, visibilityTargets]);
 
   const totalItems = useMemo(
     () => days.reduce((n, d) => n + d.items.length, 0),
@@ -389,6 +405,67 @@ export function LivePreviewPanel(props: {
         </div>
       </div>
 
+      <div className="border-b border-zinc-200 bg-white px-4 py-2">
+        <label className="flex items-center gap-2 text-xs text-zinc-600">
+          <span className="shrink-0 font-medium">Preview as</span>
+          <select
+            value={
+              previewMode.kind === "everyone"
+                ? "everyone"
+                : previewMode.kind === "group"
+                  ? `group:${previewMode.groupId}`
+                  : `participant:${previewMode.participantId}`
+            }
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "everyone") {
+                setPreviewMode({ kind: "everyone" });
+                return;
+              }
+              if (v.startsWith("group:")) {
+                setPreviewMode({ kind: "group", groupId: v.slice(6) });
+                return;
+              }
+              if (v.startsWith("participant:")) {
+                const participantId = v.slice(12);
+                const p = roster.participants.find((x) => x.id === participantId);
+                setPreviewMode({
+                  kind: "participant",
+                  participantId,
+                  role: (p?.role as "student") ?? "student",
+                  groupIds: [],
+                  roomId: null,
+                });
+              }
+            }}
+            className="h-8 min-w-0 flex-1 rounded-lg border border-zinc-200 px-2 text-xs"
+          >
+            <option value="everyone">Everyone</option>
+            {roster.groups.map((g) => (
+              <option key={g.id} value={`group:${g.id}`}>
+                Group: {g.name}
+              </option>
+            ))}
+            {roster.participants.map((p) => (
+              <option key={p.id} value={`participant:${p.id}`}>
+                Student: {p.fullName}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {tripWarnings.length > 0 ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-950">
+          <p className="font-medium">Trip warnings ({tripWarnings.length})</p>
+          <ul className="mt-1 max-h-24 list-disc space-y-0.5 overflow-y-auto pl-4">
+            {tripWarnings.slice(0, 5).map((w) => (
+              <li key={w.id}>{w.message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {building ? (
         <div className="border-b border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
           <p className="font-medium">AI is building your itinerary…</p>
@@ -412,6 +489,9 @@ export function LivePreviewPanel(props: {
         <div className="flex min-h-0 min-w-0 flex-1 items-start justify-center gap-3 overflow-hidden bg-zinc-100/80 px-3 py-4">
           <div className="flex h-full min-h-0 max-h-full w-full max-w-md shrink-0 flex-col overflow-hidden">
             <StudentTodayPreviewShell
+              tripId={tripId}
+              tripName={tripName}
+              inviteCode={inviteCode}
               timezone={timezone}
               startDate={startDate}
               endDate={endDate}
@@ -426,6 +506,7 @@ export function LivePreviewPanel(props: {
                 <CompactDaySheet
                   items={dayItems}
                   prepItems={selectedDay.prep}
+                  dayReminders={[]}
                   tripTimezone={timezone}
                   dateISO={selectedDay.date}
                   cityLabel={selectedDay.cityLabel}

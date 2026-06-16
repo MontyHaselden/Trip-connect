@@ -55,59 +55,77 @@ export function categoryAccent(category: ActivityCategory) {
   switch (category) {
     case "travel":
       return {
-        dot: "bg-sky-500",
-        bar: "bg-sky-500",
+        dot: "bg-[var(--cat-travel)]",
+        bar: "bg-[var(--cat-travel)]",
+        pill: "text-[var(--cat-travel)]",
         label: "Travel",
       };
     case "meal":
       return {
-        dot: "bg-amber-500",
-        bar: "bg-amber-500",
+        dot: "bg-[var(--cat-meal)]",
+        bar: "bg-[var(--cat-meal)]",
+        pill: "text-[var(--cat-meal)]",
         label: "Meal",
       };
     case "school":
       return {
-        dot: "bg-indigo-400",
-        bar: "bg-indigo-400",
+        dot: "bg-[var(--cat-school)]",
+        bar: "bg-[var(--cat-school)]",
+        pill: "text-[var(--cat-school)]",
         label: "School",
       };
     case "activity":
       return {
-        dot: "bg-violet-400",
-        bar: "bg-violet-400",
+        dot: "bg-[var(--cat-activity)]",
+        bar: "bg-[var(--cat-activity)]",
+        pill: "text-[var(--cat-activity)]",
         label: "Activity",
       };
     case "free_time":
       return {
-        dot: "bg-zinc-300",
-        bar: "bg-zinc-300",
+        dot: "bg-[var(--cat-free_time)]",
+        bar: "bg-[var(--cat-free_time)]",
+        pill: "text-[var(--cat-free_time)]",
         label: "Free time",
       };
     case "hotel":
       return {
-        dot: "bg-teal-500",
-        bar: "bg-teal-500",
+        dot: "bg-[var(--cat-hotel)]",
+        bar: "bg-[var(--cat-hotel)]",
+        pill: "text-[var(--cat-hotel)]",
         label: "Hotel",
       };
     case "meeting":
       return {
-        dot: "bg-rose-400",
-        bar: "bg-rose-400",
+        dot: "bg-[var(--cat-meeting)]",
+        bar: "bg-[var(--cat-meeting)]",
+        pill: "text-[var(--cat-meeting)]",
         label: "Meeting",
       };
     case "important":
       return {
-        dot: "bg-emerald-500",
-        bar: "bg-emerald-500",
+        dot: "bg-[var(--cat-important)]",
+        bar: "bg-[var(--cat-important)]",
+        pill: "text-[var(--cat-important)]",
         label: "Important",
       };
     default:
       return {
-        dot: "bg-zinc-300",
-        bar: "bg-zinc-300",
+        dot: "bg-[var(--cat-other)]",
+        bar: "bg-[var(--cat-other)]",
+        pill: "text-[var(--cat-other)]",
         label: "Event",
       };
   }
+}
+
+export function categorySubtitle(item: ItineraryRowItem): string {
+  const category = resolveCategory(item);
+  const accent = categoryAccent(category);
+  const location = itemLocationLine(item);
+  if (location) return `${accent.label} · ${location}`;
+  if (item.transportNote) return `${accent.label} · ${item.transportNote}`;
+  return accent.label;
 }
 
 /** @deprecated Use categoryAccent */
