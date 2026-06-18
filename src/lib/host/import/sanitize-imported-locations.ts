@@ -2,7 +2,7 @@ import { placesShareMetro } from "@/lib/geo/airport-codes";
 import { collectFlightConnectionChains } from "@/lib/host/setup/flight-connection-chains";
 import { metroDisplayLabel } from "@/lib/host/setup/metro-display";
 import { inferDayPlacesFromFlightLegs } from "@/lib/host/setup/infer-flight-calendar";
-import { locationsMatch } from "@/lib/host/wizard/location-stays";
+import { locationsMatch, inferStaysFromDayPlaces, enumerateDates } from "@/lib/host/wizard/location-stays";
 import type {
   AccommodationStayDraft,
   DayPlaceDraft,
@@ -289,4 +289,115 @@ export function reconcileImportedDayPlacesWithFlights(
   return inferDayPlacesFromFlightLegs(stripped, legs.filter((l) => l.transportType === "plane"), {
     stays,
   });
+}
+
+function outlineDaysToPlaces(
+  days: Array<{ date: string; cityLabel: string }>,
+): DayPlaceDraft[] {
+  return days.map((d) => ({
+    date: d.date,
+    primaryCity: d.cityLabel.trim(),
+    secondaryCity: null,
+    primaryShare: 1,
+    dayType: "trip" as const,
+    includeBuffer: false,
+  }));
+}
+
+function emptyImportedDay(date: string): DayPlaceDraft {
+  return {
+    date,
+    primaryCity: "",
+    secondaryCity: null,
+    primaryShare: 1,
+    dayType: "trip",
+    includeBuffer: false,
+  };
+}
+
+function structurePaintOverridesOutline(day: DayPlaceDraft): boolean {
+  if (day.dayType === "travel") return true;
+  if (day.secondaryCity?.trim()) return true;
+  return Boolean(day.primaryCity.trim());
+}
+
+/**
+ * Structure import often returns sparse arrival/travel days only.
+ * Keep the full per-day outline as the base and let structure override travel splits.
+ */
+export function mergeImportedDayPlacesWithOutline(
+  structurePlaces: DayPlaceDraft[],
+  outlineDays: Array<{ date: string; cityLabel: string }>,
+): DayPlaceDraft[] {
+  const fromOutline = outlineDaysToPlaces(outlineDays);
+  if (!structurePlaces.length) return fromOutline;
+
+  const outlineByDate = new Map(fromOutline.map((d) => [d.date, d]));
+  const structureByDate = new Map(structurePlaces.map((d) => [d.date, d]));
+  const allDates = [
+    ...new Set([...outlineByDate.keys(), ...structureByDate.keys()]),
+  ].sort();
+
+  return allDates.map((date) => {
+    const structure = structureByDate.get(date);
+    const outline = outlineByDate.get(date);
+    if (structure && structurePaintOverridesOutline(structure)) return structure;
+    return outline ?? structure ?? emptyImportedDay(date);
+  });
+}
+
+/** Paint empty days inside inferred location stays (between arrival anchors). */
+export function fillGapsBetweenLocationStays(
+  dayPlaces: DayPlaceDraft[],
+  bounds: {
+    startDate: string;
+    endDate: string;
+    departureCity: string;
+    returnCity: string;
+  },
+): DayPlaceDraft[] {
+  const stays = inferStaysFromDayPlaces(
+    dayPlaces,
+    bounds.startDate,
+    bounds.endDate,
+    bounds.departureCity,
+    bounds.returnCity,
+  );
+  const byDate = new Map(dayPlaces.map((d) => [d.date, { ...d }]));
+
+  for (const stay of stays) {
+    const city = stay.location.trim();
+    if (!city) continue;
+
+    for (const date of enumerateDates(stay.startDate, stay.endDate)) {
+      const day = byDate.get(date);
+      if (!day) continue;
+      if (day.dayType === "travel" && day.secondaryCity?.trim()) continue;
+
+      const primary = day.primaryCity.trim();
+      const secondary = day.secondaryCity?.trim() ?? "";
+
+      if (!primary && !secondary) {
+        byDate.set(date, {
+          ...day,
+          primaryCity: city,
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: day.dayType === "buffer" ? "buffer" : "trip",
+        });
+      } else if (!primary && secondary && locationsMatch(secondary, city)) {
+        byDate.set(date, {
+          ...day,
+          primaryCity: city,
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: day.dayType === "buffer" ? "buffer" : "trip",
+        });
+      } else if (primary && locationsMatch(primary, city) && !secondary && (day.primaryShare ?? 1) < 1) {
+        byDate.set(date, { ...day, primaryShare: 1, dayType: "trip" });
+      }
+    }
+  }
+
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }

@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 
 import {
   dedupeTransportLegs,
+  fillGapsBetweenLocationStays,
   filterInvalidTransportLegs,
   filterMisplacedHomeDirectionLegs,
+  mergeImportedDayPlacesWithOutline,
   reconcileImportedDayPlacesWithFlights,
   sanitizeImportedDayPlaces,
 } from "@/lib/host/import/sanitize-imported-locations";
@@ -55,6 +57,38 @@ describe("sanitizeImportedDayPlaces", () => {
       dayType: "travel",
       includeBuffer: false,
     });
+  });
+});
+
+describe("mergeImportedDayPlacesWithOutline", () => {
+  it("fills calendar days from outline when structure only has arrival anchors", () => {
+    const outline = [
+      { date: "2026-07-17", cityLabel: "London" },
+      { date: "2026-07-18", cityLabel: "London" },
+      { date: "2026-07-19", cityLabel: "London" },
+      { date: "2026-07-20", cityLabel: "Pisa" },
+      { date: "2026-07-21", cityLabel: "La Spezia" },
+    ];
+    const structure = [
+      day("2026-07-17", "Christchurch", {
+        secondaryCity: "London",
+        primaryShare: 0.5,
+        dayType: "travel",
+      }),
+      day("2026-07-20", "Pisa"),
+    ];
+
+    const merged = mergeImportedDayPlacesWithOutline(structure, outline);
+    const filled = fillGapsBetweenLocationStays(merged, {
+      startDate: "2026-07-17",
+      endDate: "2026-07-21",
+      departureCity: "Christchurch",
+      returnCity: "Christchurch",
+    });
+
+    assert.equal(filled.find((d) => d.date === "2026-07-18")?.primaryCity, "London");
+    assert.equal(filled.find((d) => d.date === "2026-07-19")?.primaryCity, "London");
+    assert.equal(filled.find((d) => d.date === "2026-07-17")?.dayType, "travel");
   });
 });
 

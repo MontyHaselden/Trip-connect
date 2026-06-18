@@ -13,6 +13,7 @@ import { applyTripLocationState, purgeAccommodationWizardItineraryItems } from "
 import { clearTripContent } from "@/lib/host/locations/clear-trip-content";
 import { applyTripSetupState } from "@/lib/host/setup/apply-setup-state";
 import { loadTripSetupState } from "@/lib/host/setup/load-setup-state";
+import { alignAccommodationStaysToLocationStays } from "@/lib/host/setup/accommodation-calendar";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import type { TripLocationState } from "@/lib/host/locations/types";
 import {
@@ -25,6 +26,8 @@ import {
 import {
   filterMisplacedHomeDirectionLegs,
   filterSpuriousAutoTransfers,
+  fillGapsBetweenLocationStays,
+  mergeImportedDayPlacesWithOutline,
   reconcileImportedDayPlacesWithFlights,
   sanitizeImportedDayPlaces,
   sanitizeImportedTransport,
@@ -36,19 +39,6 @@ import type { TripImportProgress } from "@/types/trip-import-progress";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function outlineDaysToPlaces(
-  days: Array<{ date: string; cityLabel: string }>,
-): TripLocationState["dayPlaces"] {
-  return days.map((d) => ({
-    date: d.date,
-    primaryCity: d.cityLabel,
-    secondaryCity: null,
-    primaryShare: 1,
-    dayType: "trip" as const,
-    includeBuffer: false,
-  }));
 }
 
 export async function importTripFromDocumentText(params: {
@@ -92,9 +82,7 @@ export async function importTripFromDocumentText(params: {
     outline.days[outline.days.length - 1]?.cityLabel ||
     "";
 
-  let dayPlaces = structure.dayPlaces.length
-    ? structure.dayPlaces
-    : outlineDaysToPlaces(outline.days);
+  let dayPlaces = mergeImportedDayPlacesWithOutline(structure.dayPlaces, outline.days);
 
   if (!dayPlaces.length) {
     dayPlaces = buildDefaultDayPlaces(
@@ -110,6 +98,13 @@ export async function importTripFromDocumentText(params: {
     returnCity,
     startDate: outline.startDate,
     endDate: outline.endDate,
+  });
+
+  dayPlaces = fillGapsBetweenLocationStays(dayPlaces, {
+    startDate: outline.startDate,
+    endDate: outline.endDate,
+    departureCity,
+    returnCity,
   });
 
   const tripBounds = {
@@ -164,9 +159,17 @@ export async function importTripFromDocumentText(params: {
   );
 
   const allDepartureLegs = [...outboundLegs, ...returnLegs, ...intercityLegs];
-  const accommodationStays = reconcileImportedAccommodationStays(
+  let accommodationStays = reconcileImportedAccommodationStays(
     structure.accommodationStays,
     allDepartureLegs,
+  );
+  accommodationStays = alignAccommodationStaysToLocationStays(
+    accommodationStays,
+    dayPlaces,
+    outline.startDate,
+    outline.endDate,
+    departureCity,
+    returnCity,
   );
 
   const locationState: TripLocationState = {
