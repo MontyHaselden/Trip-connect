@@ -14,9 +14,9 @@ import { newId, type IntercityLegDraft, type TransportLegDraft } from "@/lib/hos
 
 import { AsyncButton } from "./AsyncButton";
 import { TripDateInput } from "./TripDateInput";
+import { tripFieldClass } from "./TripInput";
 
-const inputClass =
-  "w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm shadow-sm focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-100";
+const inputClass = tripFieldClass;
 
 type LegRow = {
   id: string;
@@ -119,7 +119,7 @@ function LegRowFields(props: {
     placeholderOpen || Boolean(props.forcePlaceholderOpen) || hasManualRouteFields(row);
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-3">
+    <div className="rounded-2xl bg-zinc-50/80 p-4">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{label}</p>
         {canRemove ? (

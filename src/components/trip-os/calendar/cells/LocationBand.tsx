@@ -1,7 +1,8 @@
 import {
-  locationColor,
-  locationTextColor,
+  tripLocationColor,
+  tripLocationTextColor,
   DEFAULT_HALF_SHARE,
+  type LocationPaletteSwatch,
 } from "@/lib/host/wizard/location-stays";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import type { OverlayMeta } from "@/lib/trip-engine/types";
@@ -15,8 +16,10 @@ export function LocationBand(props: {
   displayShare: number;
   showStayPaint: boolean;
   cityPaintHeight: string;
+  locationColorByKey?: Map<string, LocationPaletteSwatch>;
 }) {
-  const { day, baseDay, overlayKind, displayShare, showStayPaint, cityPaintHeight } = props;
+  const { day, baseDay, overlayKind, displayShare, showStayPaint, cityPaintHeight, locationColorByKey } =
+    props;
   const primary = day.primaryCity.trim();
   const secondary = day.secondaryCity?.trim() ?? "";
   const isSplit = Boolean(primary && (secondary || (day.primaryShare ?? 1) < 1));
@@ -37,7 +40,7 @@ export function LocationBand(props: {
             className="absolute inset-y-0 left-0 flex items-end overflow-hidden px-1.5 pb-1.5 pt-6"
             style={{
               width: `${(baseDay.primaryShare ?? 1) * 100}%`,
-              backgroundColor: locationColor(baseDay.primaryCity),
+              backgroundColor: tripLocationColor(baseDay.primaryCity, locationColorByKey),
             }}
           >
             <span
@@ -56,13 +59,13 @@ export function LocationBand(props: {
           style={{
             height: cityPaintHeight,
             width: `${displayShare * 100}%`,
-            backgroundColor: locationColor(primary),
+            backgroundColor: tripLocationColor(primary, locationColorByKey),
           }}
           title={primary}
         >
           <span
             className="truncate text-[10px] font-semibold"
-            style={{ color: locationTextColor(primary) }}
+            style={{ color: tripLocationTextColor(primary, locationColorByKey) }}
           >
             {shortCity(primary)}
           </span>
@@ -75,13 +78,13 @@ export function LocationBand(props: {
           style={{
             height: cityPaintHeight,
             width: `${(1 - displayShare) * 100}%`,
-            backgroundColor: locationColor(secondary),
+            backgroundColor: tripLocationColor(secondary, locationColorByKey),
           }}
           title={secondary}
         >
           <span
             className="truncate text-right text-[10px] font-semibold"
-            style={{ color: locationTextColor(secondary) }}
+            style={{ color: tripLocationTextColor(secondary, locationColorByKey) }}
           >
             {shortCity(secondary)}
           </span>
@@ -94,13 +97,13 @@ export function LocationBand(props: {
             className="absolute inset-y-0 left-0 z-[8] flex items-end overflow-hidden px-1 pb-1 pt-5"
             style={{
               width: `${displayShare * 100}%`,
-              backgroundColor: locationColor(primary),
+              backgroundColor: tripLocationColor(primary, locationColorByKey),
             }}
             title={primary}
           >
             <span
               className="truncate text-[10px] font-semibold"
-              style={{ color: locationTextColor(primary) }}
+              style={{ color: tripLocationTextColor(primary, locationColorByKey) }}
             >
               {corridorAbbrev(primary)}
             </span>
@@ -109,13 +112,13 @@ export function LocationBand(props: {
             className="absolute inset-y-0 right-0 z-[8] flex items-end justify-end overflow-hidden px-1 pb-1 pt-5"
             style={{
               width: `${DEFAULT_HALF_SHARE * 100}%`,
-              backgroundColor: locationColor(secondary),
+              backgroundColor: tripLocationColor(secondary, locationColorByKey),
             }}
             title={secondary}
           >
             <span
               className="truncate text-right text-[10px] font-semibold"
-              style={{ color: locationTextColor(secondary) }}
+              style={{ color: tripLocationTextColor(secondary, locationColorByKey) }}
             >
               {corridorAbbrev(secondary)}
             </span>

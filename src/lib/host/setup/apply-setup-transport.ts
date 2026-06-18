@@ -1,6 +1,6 @@
 import { calendarGridBounds, calendarScrollBounds } from "@/lib/host/setup/calendar-bounds";
 import { deriveHomeArrivalDay } from "@/lib/host/setup/derive-trip-bounds";
-import { deriveCalendarState } from "@/lib/host/setup/derive-calendar";
+import { deriveCalendarState, overlayStoredHostLocations } from "@/lib/host/setup/derive-calendar";
 import {
   clearOrphanOutboundHomePaint,
   enforceHomeLocks,
@@ -109,6 +109,7 @@ export function applySetupTransportChange(
   let lockedDays;
 
   if (rebuildFromStays) {
+    const storedDays = boundsSynced.dayPlacesByGroupId[next.mainGroupId] ?? [];
     const scroll = calendarScrollBounds(
       boundsSynced.basics.startDate,
       boundsSynced.basics.endDate,
@@ -119,22 +120,30 @@ export function applySetupTransportChange(
       stays: mainAccommodationStays({ ...next, accommodationStays: syncedStays }),
       intercityLegs: mainIntercityLegs({ ...next, intercityLegs: synced.intercityLegs }),
       trip,
-      transportDraft: { ...transportDraft, dayPlaces: [] },
+      transportDraft: { ...transportDraft, dayPlaces: storedDays },
       gridStart: grid.gridStart,
       gridEnd: grid.gridEnd,
-      overlayStoredLocationGaps: false,
+      overlayStoredLocationGaps: true,
     });
     lockedDays = derived.dayPlaces;
   } else {
     const planeLegs = allPlaneLegsFromState(synced);
-    const strippedDays = stripOrphanFlightPaint(
-      synced.dayPlaces,
-      planeLegs,
-      syncedStays.filter((s) => s.name?.trim()),
-    );
+    const strippedDays =
+      planeLegs.length > 0
+        ? stripOrphanFlightPaint(
+            synced.dayPlaces,
+            planeLegs,
+            syncedStays.filter((s) => s.name?.trim()),
+          )
+        : synced.dayPlaces;
     lockedDays = inferDayPlacesFromFlightLegs(strippedDays, planeLegs, {
       stays: syncedStays.filter((s) => s.name?.trim()),
     });
+    lockedDays = overlayStoredHostLocations(
+      lockedDays,
+      boundsSynced.dayPlacesByGroupId[next.mainGroupId] ?? [],
+      namedStays,
+    );
   }
 
   const hasReturnTransport = hasScheduledReturnTransport(transportDraft, trip);

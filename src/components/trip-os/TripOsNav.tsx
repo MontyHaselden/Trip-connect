@@ -4,106 +4,109 @@ import type { EngineReadinessStatus, EngineSectionReadiness } from "@/lib/trip-e
 
 import type { TripOsSection } from "./TripOsWorkspace";
 
-const SECTIONS: Array<{ id: TripOsSection; label: string; advanced?: boolean }> = [
+const SECTIONS: Array<{ id: TripOsSection; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "ingest", label: "AI / Import" },
   { id: "map", label: "Map" },
-  { id: "locations", label: "Locations", advanced: true },
-  { id: "accommodation", label: "Accommodation", advanced: true },
-  { id: "transport", label: "Transport", advanced: true },
-  { id: "activities", label: "Activities", advanced: true },
-  { id: "groups", label: "Groups", advanced: true },
+  { id: "locations", label: "Locations" },
+  { id: "accommodation", label: "Stays" },
+  { id: "transport", label: "Transport" },
+  { id: "activities", label: "Activities" },
+  { id: "participants", label: "Users" },
   { id: "bookings", label: "Bookings" },
+  { id: "participant-view", label: "Participant view" },
 ];
 
-function statusIcon(status: EngineReadinessStatus): string {
-  switch (status) {
-    case "complete":
-      return "✓";
-    case "mostly_complete":
-      return "◐";
-    case "warning":
-      return "!";
-    case "question":
-      return "?";
-    case "conflict":
-      return "✕";
-    default:
-      return "·";
-  }
+function showStatus(status: EngineReadinessStatus, calmNav: boolean): boolean {
+  if (calmNav) return status === "complete" || status === "mostly_complete";
+  return status !== "idle";
 }
 
-function statusClass(status: EngineReadinessStatus): string {
+function statusDot(status: EngineReadinessStatus): string {
   switch (status) {
     case "complete":
-      return "text-emerald-600";
+      return "bg-emerald-400";
     case "mostly_complete":
-    case "warning":
-      return "text-amber-600";
-    case "question":
-      return "text-amber-700";
+      return "bg-emerald-400/70";
     case "conflict":
-      return "text-red-600";
+      return "bg-red-400";
     default:
-      return "text-zinc-400";
+      return "bg-amber-400/80";
   }
 }
 
 export function TripOsNav(props: {
-  readiness: EngineSectionReadiness[];
-  activeSection: TripOsSection;
-  onSelect: (id: TripOsSection) => void;
-  onBackHome: () => void;
-  saving: boolean;
+  readiness?: EngineSectionReadiness[];
+  activeSection?: TripOsSection;
+  onSelect?: (id: TripOsSection) => void;
+  onBackHome?: () => void;
+  saving?: boolean;
+  calmNav?: boolean;
+  variant?: "board" | "list";
+  backLabel?: string;
 }) {
-  const byId = new Map(props.readiness.map((r) => [r.id, r]));
+  const variant = props.variant ?? "board";
+  const byId = new Map((props.readiness ?? []).map((r) => [r.id, r]));
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-zinc-200 bg-zinc-50">
-      <div className="border-b border-zinc-200 px-4 py-3">
-        <p className="text-sm font-semibold">Trip OS</p>
-        <p className="text-xs text-zinc-500">Graph + projections</p>
+    <aside className="trip-os-nav flex w-[15.5rem] shrink-0 flex-col text-indigo-200/60">
+      <div className="px-5 pb-4 pt-5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-300/50">
+          Trip OS
+        </p>
+        {variant === "list" ? (
+          <p className="mt-2 text-sm font-medium text-white">Your trips</p>
+        ) : null}
       </div>
-      <nav className="flex-1 overflow-y-auto p-2">
-        {SECTIONS.map((s) => {
-          const meta =
-            s.id === "ingest" || s.id === "map" ? undefined : byId.get(s.id);
-          const status = meta?.status ?? "idle";
-          return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => props.onSelect(s.id)}
-              className={[
-                "mb-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm",
-                props.activeSection === s.id ? "bg-white shadow-sm" : "hover:bg-white/70",
-              ].join(" ")}
-            >
-              <span>
-                {s.label}
-                {s.advanced ? (
-                  <span className="ml-1 text-[10px] text-zinc-400">bulk</span>
+
+      {variant === "board" && props.onSelect ? (
+        <nav className="flex-1 overflow-y-auto px-3">
+          {SECTIONS.map((s) => {
+            const meta =
+              s.id === "ingest" ||
+              s.id === "map" ||
+              s.id === "participant-view" ||
+              s.id === "participants"
+                ? undefined
+                : byId.get(s.id);
+            const status = meta?.status ?? "idle";
+            const active = props.activeSection === s.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => props.onSelect!(s.id)}
+                className={[
+                  "mb-0.5 flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[13px] font-medium transition",
+                  active
+                    ? "bg-violet-500/15 text-white"
+                    : "text-indigo-200/60 hover:bg-indigo-400/10 hover:text-indigo-100",
+                ].join(" ")}
+              >
+                <span>{s.label}</span>
+                {meta && showStatus(status, props.calmNav ?? false) ? (
+                  <span className={["h-1.5 w-1.5 shrink-0 rounded-full", statusDot(status)].join(" ")} />
                 ) : null}
-              </span>
-              {meta ? (
-                <span className={["text-xs font-bold", statusClass(status)].join(" ")}>
-                  {statusIcon(status)}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </nav>
-      <div className="border-t border-zinc-200 p-3">
-        <button
-          type="button"
-          onClick={props.onBackHome}
-          className="w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-600 hover:bg-white"
-        >
-          Back to trips
-        </button>
+              </button>
+            );
+          })}
+        </nav>
+      ) : (
+        <div className="flex-1" />
+      )}
+
+      <div className="px-3 pb-4 pt-2">
+        {variant === "board" && props.onBackHome ? (
+          <button
+            type="button"
+            onClick={props.onBackHome}
+            className="w-full rounded-xl px-3 py-2.5 text-left text-[13px] text-indigo-300/50 transition hover:bg-indigo-400/10 hover:text-indigo-100"
+          >
+            ← All trips
+          </button>
+        ) : null}
         {props.saving ? (
-          <p className="mt-2 px-3 text-xs text-zinc-500">Saving…</p>
+          <p className="mt-2 px-3 text-xs text-indigo-300/40">Saving…</p>
         ) : null}
       </div>
     </aside>

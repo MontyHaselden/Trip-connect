@@ -302,4 +302,37 @@ describe("inferDayPlacesFromFlightLegs", () => {
     const cleared = stripOrphanFlightPaint(painted, []);
     assert.equal(cleared.find((d) => d.date === "2026-08-19"), undefined);
   });
+
+  it("preserves host-painted gap days beyond named stays", () => {
+    const cleared = stripOrphanFlightPaint(
+      [
+        {
+          date: "2026-07-12",
+          primaryCity: "Paris, France",
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: "trip",
+          includeBuffer: false,
+        },
+      ],
+      [],
+      [
+        {
+          id: "stay",
+          cityLabel: "Bangkok",
+          stayType: "hotel",
+          name: "Centre Point Plus",
+          url: null,
+          address: null,
+          phone: null,
+          checkInDate: "2026-07-06",
+          checkOutDate: "2026-07-10",
+          notes: null,
+          isHomestayGroup: false,
+          multipleInCity: false,
+        },
+      ],
+    );
+    assert.equal(cleared[0]?.primaryCity, "Paris, France");
+  });
 });

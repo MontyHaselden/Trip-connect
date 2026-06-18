@@ -89,4 +89,38 @@ describe("flight connection chains", () => {
     ]);
     assert.equal(withStay.length, 0);
   });
+
+  it("still collapses chains when AI painted a travel crossover through the hub", () => {
+    const legs = [
+      planeLeg({
+        fromCity: "Suvarnabhumi Airport (BKK), Thailand",
+        toCity: "Melbourne Airport (MEL), Australia",
+        travelDate: "2026-09-04",
+        arrivalDate: "2026-09-05",
+      }),
+      planeLeg({
+        fromCity: "Melbourne Airport (MEL), Australia",
+        toCity: "Christchurch Airport (CHC), New Zealand",
+        travelDate: "2026-09-05",
+        arrivalDate: "2026-09-05",
+      }),
+    ];
+    const dayByDate = new Map<string, DayPlaceDraft>([
+      [
+        "2026-09-04",
+        {
+          date: "2026-09-04",
+          primaryCity: "Bangkok",
+          secondaryCity: "Melbourne",
+          primaryShare: 0.5,
+          dayType: "travel",
+          includeBuffer: false,
+        },
+      ],
+    ]);
+
+    const collapsed = collectFlightConnectionChains(legs, dayByDate);
+    assert.equal(collapsed.length, 1);
+    assert.equal(collapsed[0]!.sameDay, false);
+  });
 });

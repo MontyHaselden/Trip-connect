@@ -4,6 +4,11 @@ import { effectiveTripBoundsFromState } from "@/lib/host/setup/sync-trip-bounds"
 import { tripDatesAreUnset } from "@/lib/host/trip-date-display";
 import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import {
+  buildTripLocationColorMap,
+  collectOrderedTripLocationNames,
+  type LocationPaletteSwatch,
+} from "@/lib/host/wizard/location-stays";
+import {
   computeCalendarTransport,
   type CalendarDaySegment,
   type TransitOverlay,
@@ -17,7 +22,8 @@ import type {
   ProjectedDay,
   TripEntityGraph,
 } from "./types";
-import { activitiesOnDate, dayPlacesForGroup, namedStays } from "./selectors";
+import { dayPlacesForGroup, namedStays } from "./selectors";
+import { calendarDotActivitiesForDate } from "./calendar-activity-dots";
 
 function projectedToDayPlace(day: ProjectedDay): DayPlaceDraft {
   return {
@@ -33,14 +39,7 @@ function projectedToDayPlace(day: ProjectedDay): DayPlaceDraft {
 function buildActivitiesByDate(graph: TripEntityGraph, dates: string[]): Map<string, ActivityMarker[]> {
   const map = new Map<string, ActivityMarker[]>();
   for (const date of dates) {
-    const markers = activitiesOnDate(graph, date).map((a) => ({
-      id: a.id,
-      title: a.title,
-      startTime: a.startTime,
-      endTime: a.endTime,
-      category: a.category,
-      bookingStatus: a.bookingStatus,
-    }));
+    const markers = calendarDotActivitiesForDate(graph.activities, date);
     if (markers.length) map.set(date, markers);
   }
   return map;
@@ -60,6 +59,8 @@ export function buildCalendarRenderModel(
     if (leg.travelDate?.trim()) transportDates.push(leg.travelDate);
   }
 
+  const activityDates = graph.activities.map((a) => a.date).filter((d) => d.trim());
+
   const gridMeta = calendarGridFromToday({
     startDate: bounds.startDate,
     endDate: bounds.endDate,
@@ -67,6 +68,7 @@ export function buildCalendarRenderModel(
     dayPlaces: storedDays,
     accommodationStays: graph.accommodationStays,
     transportDates,
+    activityDates,
   });
   const gridStart = options?.gridStart ?? gridMeta.gridStart;
   const gridEnd = options?.gridEnd ?? gridMeta.gridEnd;
@@ -127,6 +129,21 @@ export function buildCalendarRenderModel(
     baseDays = mainProj.days.map(projectedToDayPlace);
   }
 
+  const segmentCities: string[] = [];
+  for (const segments of travelLayouts.values()) {
+    for (const segment of segments) {
+      if (segment.kind === "city") segmentCities.push(segment.city);
+    }
+  }
+  const locationColorByKey = buildTripLocationColorMap(
+    collectOrderedTripLocationNames({
+      days,
+      departureCity: graph.basics.departureCity,
+      returnCity: graph.basics.returnCity,
+      segmentCities,
+    }),
+  );
+
   return {
     groupId,
     gridStart,
@@ -146,6 +163,7 @@ export function buildCalendarRenderModel(
     boundaries: derived.boundaries,
     activitiesByDate: buildActivitiesByDate(graph, allDates),
     projectedDays: projection.days,
+    locationColorByKey,
     scrollAnchorDate: gridMeta.scrollAnchorDate,
     todayIso: gridMeta.todayIso,
     interactionStart: gridMeta.interactionStart,

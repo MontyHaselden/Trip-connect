@@ -10,15 +10,15 @@ import { normalizeToE164 } from "@/lib/utils/phone";
 import { generateAccessToken } from "@/lib/utils/tokens";
 import {
   getRoomForTrip,
-  loadRoster,
   setParticipantGroups,
   setParticipantRoom,
 } from "@/lib/host/roster-queries";
-import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
+import { scheduleAutoPublish } from "@/lib/publish/maybe-auto-publish";
+import { generatePlaceholderPhone } from "@/lib/participants/roster-phone";
 
 const CreateParticipantSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
-  phoneNumber: z.string().trim().min(3).max(40),
+  phoneNumber: z.string().trim().min(3).max(40).optional(),
   role: z.enum(["student", "helper", "teacher", "host"]).default("student"),
   roomId: z.string().uuid().nullable().optional(),
   groupIds: z.array(z.string().uuid()).optional(),
@@ -37,10 +37,9 @@ export async function POST(
       return NextResponse.json({ error: "Invalid request." }, { status: 400 });
     }
 
-    const phoneE164 = normalizeToE164(
-      parsed.data.phoneNumber,
-      trip.defaultCountryCallingCode,
-    );
+    const phoneE164 = parsed.data.phoneNumber
+      ? normalizeToE164(parsed.data.phoneNumber, trip.defaultCountryCallingCode)
+      : generatePlaceholderPhone();
 
     const existing = await db
       .select({ id: participants.id })
@@ -89,10 +88,16 @@ export async function POST(
       await setParticipantGroups(created.id, parsed.data.groupIds);
     }
 
-    const roster = await loadRoster(trip.id);
-    const p = roster.participants.find((x) => x.id === created.id);
-    await maybeAutoPublish(trip.id);
-    return NextResponse.json(p ?? created);
+    scheduleAutoPublish(trip.id);
+    return NextResponse.json({
+      id: created.id,
+      fullName: created.fullName,
+      phoneNumberE164: created.phoneNumberE164,
+      role: created.role,
+      hasPassword: false,
+      roomId: parsed.data.roomId ?? null,
+      groupIds: parsed.data.groupIds ?? [],
+    });
   } catch (err) {
     return hostApiError(err);
   }

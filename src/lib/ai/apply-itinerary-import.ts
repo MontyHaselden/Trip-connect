@@ -6,12 +6,14 @@ import type { ItineraryImportResult } from "@/lib/ai/itinerary-import";
 import type { z } from "zod";
 
 import type { ImportDaySchema, ImportItemSchema } from "@/lib/ai/itinerary-import-schemas";
+import { isAccommodationCheckItemTitle } from "@/lib/host/import/reconcile-accommodation-stays";
 import {
   nextDaySortOrder,
   nextItemSortOrder,
 } from "@/lib/host/itinerary-queries";
 import { syncTripDatesFromDays } from "@/lib/host/trip-dates";
-import { normalizeStoredTime } from "@/lib/utils/ai-time";
+import { toDbBookingStatus } from "@/lib/host/wizard/db-enums";
+import { assertValidIsoDate } from "@/lib/utils/iso-date";
 
 type ImportDay = z.infer<typeof ImportDaySchema>;
 type ImportItem = z.infer<typeof ImportItemSchema>;
@@ -20,6 +22,7 @@ export async function ensureTripDay(
   tripId: string,
   day: Pick<ImportDay, "date" | "cityLabel" | "summary">,
 ) {
+  assertValidIsoDate(day.date, "trip day date");
   const existing = await db
     .select()
     .from(tripDays)
@@ -62,6 +65,10 @@ export async function applyItineraryItem(
   dayId: string,
   item: ImportItem,
 ) {
+  if (isAccommodationCheckItemTitle(item.title)) {
+    return null;
+  }
+
   const sortOrder = await nextItemSortOrder(dayId);
   const [created] = await db
     .insert(itineraryItems)
@@ -80,8 +87,12 @@ export async function applyItineraryItem(
       hostNote: null,
       audienceType: "everyone",
       audienceId: null,
-      category: item.category ?? null,
+      category: item.category ?? "other",
       sortOrder,
+      wizardSource: "activity",
+      bookingStatus: toDbBookingStatus("not_booked"),
+      isTimeTbc: false,
+      isLocationTbc: !(item.locationName?.trim() || item.address?.trim()),
     })
     .returning({ id: itineraryItems.id });
 

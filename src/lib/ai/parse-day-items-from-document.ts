@@ -9,6 +9,7 @@ import {
 } from "@/lib/documents/document-import-instructions";
 import { prepareDocumentForAi } from "@/lib/documents/prepare-for-ai";
 import { ACTIVITY_CATEGORIES } from "@/types/activity-category";
+import { isAccommodationCheckItemTitle } from "@/lib/host/import/reconcile-accommodation-stays";
 import { sanitizeItineraryTimes } from "@/lib/utils/ai-time";
 
 const DayItemsSchema = z.object({
@@ -40,6 +41,8 @@ Rules:
 - ${AI_TIME_NORMALIZATION_RULES}
 - For each item, set category to one of: ${CATEGORY_LIST}. Use null only if truly unclear.
 - Use an empty items array if the day has no scheduled events.
+- Do NOT extract hotel check-in or check-out lines — the system generates those from accommodation stays.
+- Do NOT extract flights or other transport — the system generates those from trip structure.
 - Do not include markdown or commentary.`;
 
   const userContent = `${buildDocumentImportUserMessage({
@@ -58,5 +61,9 @@ ${params.date} — ${params.cityLabel}`;
   }
 
   const sanitized = sanitizeItineraryTimes({ days: [{ date: params.date, cityLabel: params.cityLabel, items: validated.data.items }] });
-  return sanitized.days[0]?.items.filter((item) => item.title.trim().length > 0) ?? [];
+  return (
+    sanitized.days[0]?.items.filter(
+      (item) => item.title.trim().length > 0 && !isAccommodationCheckItemTitle(item.title),
+    ) ?? []
+  );
 }

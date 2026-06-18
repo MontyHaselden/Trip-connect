@@ -1,6 +1,8 @@
 "use client";
 
 import { MonthCalendar } from "./MonthCalendar";
+import { useStudentOverlay } from "@/components/student/StudentOverlayContext";
+import { studentOverlayRootClass } from "@/lib/student/overlay-classes";
 
 export function DayCalendarSheet(props: {
   open: boolean;
@@ -20,13 +22,16 @@ export function DayCalendarSheet(props: {
 }) {
   const { open, onClose, days, selectedDateISO, tripDates, itemCountByDayId, firstItemTitleByDayId, onSelectDate } =
     props;
+  const { contained } = useStudentOverlay();
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
+    <div className={studentOverlayRootClass(contained, { zClass: "z-[60]" })}>
       <div role="presentation" onClick={onClose} className="absolute inset-0 bg-black/30" />
-      <div className="relative mx-auto flex max-h-[min(68dvh,520px)] w-full max-w-sm flex-col overflow-hidden rounded-t-2xl bg-[var(--student-surface)] shadow-xl ring-1 ring-[var(--student-line)] sm:rounded-2xl">
+      <div
+        className={`relative mx-auto flex w-full max-w-sm flex-col overflow-hidden rounded-t-2xl bg-[var(--student-surface)] shadow-xl ring-1 ring-[var(--student-line)] ${contained ? "max-h-[85%]" : "max-h-[min(68dvh,520px)] sm:rounded-2xl"}`}
+      >
         <div className="flex shrink-0 items-center justify-between border-b border-[var(--student-line)] px-4 py-2.5">
           <h2 className="text-sm font-semibold text-[var(--student-text)]">Calendar</h2>
           <button

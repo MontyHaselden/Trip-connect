@@ -63,4 +63,20 @@ describe("isCalendarDayInteractive", () => {
       true,
     );
   });
+
+  it("allows selecting the trip end day when it has orphan location paint", () => {
+    assert.equal(
+      isCalendarDayInteractive({
+        iso: "2026-09-04",
+        trip: { ...trip, endDate: "2026-09-04" },
+        day: {
+          primaryCity: "Paris, France",
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: "trip",
+        },
+      }),
+      true,
+    );
+  });
 });

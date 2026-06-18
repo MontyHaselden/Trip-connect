@@ -1,4 +1,10 @@
-export async function completeOpenAiJson(params: {
+import {
+  openAiFixtureKey,
+  readOpenAiFixture,
+  writeOpenAiFixture,
+} from "@/lib/ai/openai-fixtures";
+
+async function callOpenAiApi(params: {
   system: string;
   user: string;
   temperature?: number;
@@ -37,6 +43,31 @@ export async function completeOpenAiJson(params: {
   const content = body.choices?.[0]?.message?.content;
   if (!content) throw new Error("OpenAI returned an empty response.");
   return content;
+}
+
+export async function completeOpenAiJson(params: {
+  system: string;
+  user: string;
+  temperature?: number;
+}): Promise<string> {
+  const fixtureDir = process.env.OPENAI_FIXTURE_DIR?.trim();
+  if (fixtureDir) {
+    const key = openAiFixtureKey(params.system, params.user);
+    const cached = readOpenAiFixture(fixtureDir, key);
+    if (cached) return cached;
+
+    if (process.env.OPENAI_FIXTURE_RECORD === "1") {
+      const content = await callOpenAiApi(params);
+      writeOpenAiFixture(fixtureDir, key, content);
+      return content;
+    }
+
+    throw new Error(
+      `OpenAI fixture missing (${key}). Record once with OPENAI_FIXTURE_DIR=${fixtureDir} OPENAI_FIXTURE_RECORD=1, then replay for free.`,
+    );
+  }
+
+  return callOpenAiApi(params);
 }
 
 export function parseOpenAiJsonContent(content: string): unknown {

@@ -10,6 +10,7 @@ import type {
   TripEntityGraph,
 } from "./types";
 import { activitiesOnDate, dayPlacesForGroup, namedStays } from "./selectors";
+import { filterCalendarDotActivities, activityToMarker } from "./calendar-activity-dots";
 
 export type ProjectCalendarOptions = {
   groupId?: string;
@@ -119,14 +120,9 @@ export function projectCalendar(
       });
     }
 
-    const activities: ActivityMarker[] = activitiesOnDate(graph, day.date).map((a) => ({
-      id: a.id,
-      title: a.title,
-      startTime: a.startTime,
-      endTime: a.endTime,
-      category: a.category,
-      bookingStatus: a.bookingStatus,
-    }));
+    const activities: ActivityMarker[] = filterCalendarDotActivities(
+      activitiesOnDate(graph, day.date),
+    ).map(activityToMarker);
 
     const warnings: ProjectedDay["warnings"] = [];
     if (derived.accommodationByDate.has(day.date) && !day.primaryCity.trim() && !day.secondaryCity?.trim()) {

@@ -82,6 +82,8 @@ export type ClearDayRangeCommand = {
   groupId: string;
   rangeStart: string;
   rangeEnd: string;
+  startHalf?: HalfSide | "full";
+  endHalf?: HalfSide | "full";
 };
 
 /** @deprecated aliases */

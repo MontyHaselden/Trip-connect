@@ -1,4 +1,5 @@
 import { placesShareMetro } from "@/lib/geo/airport-codes";
+import { findOnwardConnectionLeg } from "@/lib/host/setup/flight-connection-chains";
 import {
   arrivalDate,
   flightArrivalDates,
@@ -48,6 +49,15 @@ function paintedCityBeforeFlight(day: DayPlaceDraft): string {
   return "";
 }
 
+function sharesHome(city: string, trip: TripBounds): boolean {
+  const trimmed = city.trim();
+  if (!trimmed) return false;
+  return (
+    placesShareMetro(trimmed, trip.departureCity) ||
+    placesShareMetro(trimmed, trip.returnCity)
+  );
+}
+
 export function detectAirportTransfers(
   dayPlaces: DayPlaceDraft[],
   draft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs">,
@@ -75,6 +85,17 @@ export function detectAirportTransfers(
     );
     if (!arriving || placesShareMetro(arriving.toCity, painted)) continue;
 
+    const onward = findOnwardConnectionLeg(legs, arriving);
+    if (onward && !sharesHome(onward.toCity, trip)) continue;
+
+    if (
+      sharesHome(painted, trip) &&
+      sharesHome(arriving.fromCity, trip) &&
+      date <= trip.startDate
+    ) {
+      continue;
+    }
+
     transfers.push({
       legKind: "airport_arrival",
       fromCity: arriving.toCity.trim(),
@@ -91,9 +112,17 @@ export function detectAirportTransfers(
     const painted = paintedCityBeforeFlight(day);
     if (!painted) continue;
 
-    const departing = legs.find((leg) => leg.travelDate === date && leg.fromCity.trim());
-    if (!departing || placesShareMetro(departing.fromCity, painted)) continue;
+    const dayDepartures = legs.filter(
+      (leg) => leg.travelDate === date && leg.fromCity.trim(),
+    );
+    if (!dayDepartures.length) continue;
 
+    const leavesFromPaintedMetro = dayDepartures.some((leg) =>
+      placesShareMetro(leg.fromCity, painted),
+    );
+    if (leavesFromPaintedMetro) continue;
+
+    const departing = dayDepartures[0]!;
     transfers.push({
       legKind: "airport_departure",
       fromCity: painted,

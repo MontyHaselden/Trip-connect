@@ -1,11 +1,24 @@
+import {
+  stayBandBorder,
+  stayBandFill,
+  stayBandText,
+} from "@/lib/host/locations/accommodation-colors";
+
+type StayBandStyle = {
+  fill: string;
+  border: string;
+  text: string;
+};
+
 function StayBandSlice(props: {
   label: string;
   side: "left" | "right" | "full";
   displayShare: number;
   primary?: string;
   secondary?: string;
+  colors?: StayBandStyle | null;
 }) {
-  const { label, side, displayShare } = props;
+  const { label, side, displayShare, colors } = props;
   const primary = props.primary?.trim() ?? "";
   const secondary = props.secondary?.trim() ?? "";
   const secondaryOnly = Boolean(secondary && !primary && displayShare < 1);
@@ -24,11 +37,28 @@ function StayBandSlice(props: {
 
   return (
     <div
-      className="pointer-events-none absolute bottom-0 z-[10] flex h-1/4 items-center overflow-hidden border-t border-violet-300/70 bg-violet-100 px-1 pb-0.5 pt-0.5"
-      style={widthStyle}
+      className={[
+        "pointer-events-none absolute bottom-0 z-[10] flex h-1/4 items-center overflow-hidden border-t px-1 pb-0.5 pt-0.5",
+        colors ? "" : "border-violet-300/70 bg-violet-100",
+      ].join(" ")}
+      style={{
+        ...widthStyle,
+        ...(colors
+          ? {
+              backgroundColor: colors.fill,
+              borderTopColor: colors.border,
+            }
+          : {}),
+      }}
       title={label}
     >
-      <span className="block truncate text-[8px] font-semibold leading-tight text-violet-950">
+      <span
+        className={[
+          "block truncate text-[8px] font-semibold leading-tight",
+          colors ? "" : "text-violet-950",
+        ].join(" ")}
+        style={colors ? { color: colors.text } : undefined}
+      >
         {label}
       </span>
     </div>
@@ -44,6 +74,9 @@ export function StayBand(props: {
   displayShare?: number;
   primary?: string;
   secondary?: string;
+  leftColors?: StayBandStyle | null;
+  rightColors?: StayBandStyle | null;
+  singleColors?: StayBandStyle | null;
 }) {
   const share = props.displayShare ?? 1;
   const left = props.leftLabel?.trim() || (!props.rightOnly ? props.label?.trim() : "") || null;
@@ -66,6 +99,7 @@ export function StayBand(props: {
           displayShare={share}
           primary={props.primary}
           secondary={props.secondary}
+          colors={props.leftColors}
         />
         <StayBandSlice
           label={right}
@@ -73,6 +107,7 @@ export function StayBand(props: {
           displayShare={share}
           primary={props.primary}
           secondary={props.secondary}
+          colors={props.rightColors}
         />
       </>
     );
@@ -86,6 +121,7 @@ export function StayBand(props: {
         displayShare={share}
         primary={props.primary}
         secondary={props.secondary}
+        colors={props.leftColors ?? props.singleColors}
       />
     );
   }
@@ -98,6 +134,7 @@ export function StayBand(props: {
         displayShare={share}
         primary={props.primary}
         secondary={props.secondary}
+        colors={props.rightColors ?? props.singleColors}
       />
     );
   }
@@ -112,6 +149,19 @@ export function StayBand(props: {
       displayShare={share}
       primary={props.primary}
       secondary={props.secondary}
+      colors={props.singleColors ?? props.leftColors ?? props.rightColors}
     />
   );
+}
+
+export function stayBandStyleForLabel(stay: {
+  id?: string;
+  name: string | null;
+  cityLabel: string;
+}): StayBandStyle {
+  return {
+    fill: stayBandFill(stay),
+    border: stayBandBorder(stay),
+    text: stayBandText(stay),
+  };
 }

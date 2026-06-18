@@ -63,7 +63,14 @@ function parseStudentRoute(pathname: string): {
   return {};
 }
 
-export function StudentBottomNav(props: { inviteCode?: string; preview?: boolean }) {
+export type StudentEmbeddedTab = "today" | "my-trip";
+
+export function StudentBottomNav(props: {
+  inviteCode?: string;
+  preview?: boolean;
+  embeddedTab?: StudentEmbeddedTab;
+  onEmbeddedTabChange?: (tab: StudentEmbeddedTab) => void;
+}) {
   const pathname = usePathname();
   const { cache, todayNav, participantPhotos } = useTripApp();
   const route = parseStudentRoute(pathname);
@@ -142,15 +149,49 @@ export function StudentBottomNav(props: { inviteCode?: string; preview?: boolean
   if (!todayBase || !myTripHref) return null;
 
   if (props.preview) {
+    const embeddedTab = props.embeddedTab ?? "today";
+    const onTabChange = props.onEmbeddedTabChange;
+
     return (
       <nav className="relative z-20 mt-auto shrink-0 border-t border-[var(--student-line)] bg-[var(--student-bg)] pb-[max(env(safe-area-inset-bottom),0px)] pt-2">
         <div className="flex items-center gap-1 rounded-full bg-[var(--student-surface)] p-1 shadow-sm ring-1 ring-[var(--student-line)]/80">
-          <span className="relative flex flex-1 items-center justify-center rounded-full bg-[var(--student-nav)] px-3 py-2.5 text-sm font-semibold text-white">
-            Today
-          </span>
-          <span className="relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold text-[var(--student-text-muted)]">
-            My Trip
-          </span>
+          {onTabChange ? (
+            <>
+              <button
+                type="button"
+                onClick={() => onTabChange("today")}
+                className={[
+                  "relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold transition-colors",
+                  embeddedTab === "today"
+                    ? "bg-[var(--student-nav)] text-white"
+                    : "text-[var(--student-text-muted)]",
+                ].join(" ")}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => onTabChange("my-trip")}
+                className={[
+                  "relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold transition-colors",
+                  embeddedTab === "my-trip"
+                    ? "bg-[var(--student-nav)] text-white"
+                    : "text-[var(--student-text-muted)]",
+                ].join(" ")}
+              >
+                My Trip
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="relative flex flex-1 items-center justify-center rounded-full bg-[var(--student-nav)] px-3 py-2.5 text-sm font-semibold text-white">
+                Today
+              </span>
+              <span className="relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold text-[var(--student-text-muted)]">
+                My Trip
+              </span>
+            </>
+          )}
         </div>
       </nav>
     );

@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AirportPicker } from "@/components/geo/AirportPicker";
 import { PlacePicker } from "@/components/geo/PlacePicker";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { tripFieldClass } from "@/components/trip-os/shared/TripInput";
 import {
   PERSONAL_PLANS,
   SCHOOL_PLANS,
@@ -195,8 +196,8 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                 className={[
                   "rounded-lg px-3 py-2 text-sm font-medium",
                   signupKind === kind
-                    ? "bg-zinc-900 text-white"
-                    : "border border-zinc-200 bg-white text-zinc-700",
+                    ? "bg-violet-600 text-white"
+                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200",
                 ].join(" ")}
               >
                 {label}
@@ -222,7 +223,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                className={["mt-1", tripFieldClass, "h-11"].join(" ")}
               />
             </label>
           ) : null}
@@ -234,7 +235,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                 required
                 value={organisationName}
                 onChange={(e) => setOrganisationName(e.target.value)}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                className={["mt-1", tripFieldClass, "h-11"].join(" ")}
               />
             </label>
           ) : null}
@@ -250,7 +251,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                   value={homeCity}
                   onChange={setHomeCity}
                   countryNames={["New Zealand"]}
-                  inputClassName="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                  inputClassName={["mt-1 h-11", tripFieldClass].join(" ")}
                 />
               </label>
               <label className="block">
@@ -262,7 +263,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                   value={defaultAirport}
                   onChange={setDefaultAirport}
                   countryNames={["New Zealand"]}
-                  inputClassName="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                  inputClassName={["mt-1 h-11", tripFieldClass].join(" ")}
                 />
               </label>
             </>
@@ -276,7 +277,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                   required
                   value={schoolName}
                   onChange={(e) => setSchoolName(e.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                  className={["mt-1", tripFieldClass, "h-11"].join(" ")}
                 />
               </label>
               <label className="block">
@@ -286,7 +287,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                   value={jobTitle}
                   onChange={(e) => setJobTitle(e.target.value)}
                   placeholder="e.g. International trips coordinator"
-                  className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                  className={["mt-1", tripFieldClass, "h-11"].join(" ")}
                 />
               </label>
               <label className="block">
@@ -294,7 +295,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                 <input
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                  className={["mt-1", tripFieldClass, "h-11"].join(" ")}
                 />
               </label>
             </>
@@ -307,7 +308,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+              className={["mt-1 h-11", tripFieldClass].join(" ")}
             />
           </label>
 
@@ -320,7 +321,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                 minLength={mode === "signup" ? 8 : 1}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                className={["mt-1", tripFieldClass, "h-11"].join(" ")}
               />
             </label>
           ) : null}
@@ -331,7 +332,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value as typeof role)}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                className={["mt-1", tripFieldClass, "h-11"].join(" ")}
               >
                 <option value="teacher">Teacher</option>
                 <option value="helper">Helper</option>
@@ -346,7 +347,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
               <select
                 value={plan}
                 onChange={(e) => setPlan(e.target.value as SubscriptionPlan)}
-                className="mt-1 h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                className={["mt-1", tripFieldClass, "h-11"].join(" ")}
               >
                 {planOptions.map((p) => (
                   <option key={p.code} value={p.code}>
@@ -367,7 +368,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                 value={interestMessage}
                 onChange={(e) => setInterestMessage(e.target.value)}
                 rows={4}
-                className="mt-1 w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm"
+                className={["mt-1", tripFieldClass].join(" ")}
               />
             </label>
           ) : null}
@@ -380,7 +381,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                 signupKind !== "organisation" &&
                 (!homeCity.trim() || !defaultAirport.trim()))
             }
-            className="h-11 w-full rounded-xl bg-zinc-900 text-sm font-medium text-white disabled:opacity-50"
+            className="h-11 w-full rounded-full bg-violet-600 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
           >
             {busy
               ? "Please wait…"

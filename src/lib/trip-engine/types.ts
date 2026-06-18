@@ -7,6 +7,7 @@ import type {
   TransportLegDraft,
 } from "@/lib/host/wizard/types";
 import type { NightBoundary } from "@/lib/host/setup/stay-boundaries";
+import type { LocationPaletteSwatch } from "@/lib/host/wizard/location-stays";
 
 export type BookingDetailsSummary = {
   id: string;
@@ -149,6 +150,8 @@ export type CalendarRenderModel = {
   boundaries: NightBoundary[];
   activitiesByDate: Map<string, ActivityMarker[]>;
   projectedDays: ProjectedDay[];
+  /** Trip-scoped location colors — distinct slots per city on this trip. */
+  locationColorByKey: Map<string, LocationPaletteSwatch>;
   scrollAnchorDate: string;
   /** First selectable/rendered day — never before today in trip timezone. */
   todayIso: string;

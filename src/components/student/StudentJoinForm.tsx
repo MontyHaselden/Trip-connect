@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { phoneInputProps } from "@/lib/mobile/phone-input-props";
 import { redirectToStudentApp, saveTripSession } from "@/lib/mobile/trip-storage";
 
 type JoinResponse = {
@@ -13,6 +12,20 @@ type JoinResponse = {
   tripInviteCode?: string;
 };
 
+type RosterPerson = {
+  id: string;
+  fullName: string;
+  role: string;
+  hasJoined: boolean;
+};
+
+type JoinRosterResponse = {
+  tripName: string;
+  available: RosterPerson[];
+  joined: RosterPerson[];
+  error?: string;
+};
+
 export function StudentJoinForm(props: {
   inviteCode: string;
   tripInviteCode?: string;
@@ -21,11 +34,42 @@ export function StudentJoinForm(props: {
 }) {
   const { inviteCode, tripInviteCode = inviteCode, tripName, onJoined } = props;
   const [tab, setTab] = useState<"join" | "signin">("join");
-  const [fullName, setFullName] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [roster, setRoster] = useState<JoinRosterResponse | null>(null);
+  const [rosterLoading, setRosterLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showFallback, setShowFallback] = useState(false);
+  const [fallbackName, setFallbackName] = useState("");
+  const [fallbackPhone, setFallbackPhone] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRoster() {
+      setRosterLoading(true);
+      try {
+        const res = await fetch(`/api/join/${encodeURIComponent(inviteCode)}/roster`);
+        const body = (await res.json().catch(() => ({}))) as JoinRosterResponse;
+        if (!res.ok) throw new Error(body.error || "Could not load names");
+        if (!cancelled) setRoster(body);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Could not load names");
+        }
+      } finally {
+        if (!cancelled) setRosterLoading(false);
+      }
+    }
+    void loadRoster();
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteCode]);
+
+  const selectedPerson =
+    roster?.available.find((p) => p.id === selectedId) ??
+    roster?.joined.find((p) => p.id === selectedId);
 
   function complete(data: JoinResponse) {
     saveTripSession({
@@ -41,7 +85,38 @@ export function StudentJoinForm(props: {
     redirectToStudentApp(inviteCode, { promptInstall: true });
   }
 
-  async function onJoin(e: React.FormEvent) {
+  function resetSelection() {
+    setSelectedId(null);
+    setPassword("");
+    setError(null);
+  }
+
+  async function onClaim(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const endpoint =
+        tab === "signin"
+          ? `/api/join/${encodeURIComponent(inviteCode)}/login`
+          : `/api/join/${encodeURIComponent(inviteCode)}`;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ participantId: selectedId, password }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Could not continue");
+      complete(body as JoinResponse);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not continue");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onFallbackJoin(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
@@ -49,7 +124,11 @@ export function StudentJoinForm(props: {
       const res = await fetch(`/api/join/${encodeURIComponent(inviteCode)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ fullName, phoneNumber, password }),
+        body: JSON.stringify({
+          fullName: fallbackName,
+          phoneNumber: fallbackPhone,
+          password,
+        }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Join failed");
@@ -61,42 +140,28 @@ export function StudentJoinForm(props: {
     }
   }
 
-  async function onSignIn(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(
-        `/api/join/${encodeURIComponent(inviteCode)}/login`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ phoneNumber, password }),
-        },
-      );
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Sign in failed");
-      complete(body as JoinResponse);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign in failed");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const displayName = roster?.tripName ?? tripName;
+  const nameList = tab === "join" ? (roster?.available ?? []) : (roster?.joined ?? []);
+  const hasNamePicker = nameList.length > 0;
 
   return (
     <main className="student-app-scroll flex h-dvh flex-col items-center justify-center overflow-y-auto overscroll-y-contain bg-[var(--student-bg)] px-6 py-10">
       <div className="student-card w-full max-w-md shadow-sm">
-        <h1 className="text-xl font-bold text-[var(--student-text)]">{tripName}</h1>
+        <h1 className="text-xl font-bold text-[var(--student-text)]">{displayName}</h1>
         <p className="mt-1 text-sm text-[var(--student-text-muted)]">
-          Join your school trip. This link is your app — add it to your home screen
-          when you&apos;re ready.
+          {tab === "join"
+            ? "Tap your name, then set a password. Your itinerary loads straight away."
+            : "Tap your name and enter your password."}
         </p>
 
         <div className="mt-4 flex gap-2">
           <button
             type="button"
-            onClick={() => setTab("join")}
+            onClick={() => {
+              setTab("join");
+              resetSelection();
+              setShowFallback(false);
+            }}
             className={[
               "flex-1 rounded-lg py-2 text-sm font-medium",
               tab === "join"
@@ -108,7 +173,11 @@ export function StudentJoinForm(props: {
           </button>
           <button
             type="button"
-            onClick={() => setTab("signin")}
+            onClick={() => {
+              setTab("signin");
+              resetSelection();
+              setShowFallback(false);
+            }}
             className={[
               "flex-1 rounded-lg py-2 text-sm font-medium",
               tab === "signin"
@@ -122,14 +191,61 @@ export function StudentJoinForm(props: {
 
         {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
 
-        {tab === "join" ? (
-          <form onSubmit={onJoin} className="mt-4 space-y-3">
+        {rosterLoading ? (
+          <p className="mt-6 text-center text-sm text-[var(--student-text-muted)]">Loading names…</p>
+        ) : selectedId && selectedPerson ? (
+          <form onSubmit={onClaim} className="mt-4 space-y-3">
+            <div className="rounded-xl bg-[var(--student-surface)] px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--student-text-muted)]">
+                {tab === "join" ? "You are" : "Signing in as"}
+              </p>
+              <p className="mt-1 text-lg font-semibold text-[var(--student-text)]">
+                {selectedPerson.fullName}
+              </p>
+              <button
+                type="button"
+                onClick={resetSelection}
+                className="mt-2 text-sm font-medium text-[var(--student-nav)]"
+              >
+                Choose someone else
+              </button>
+            </div>
+            <label className="block text-sm">
+              <span className="font-medium">Password</span>
+              <input
+                required
+                type="password"
+                minLength={8}
+                autoComplete={tab === "join" ? "new-password" : "current-password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3"
+              />
+            </label>
+            {tab === "join" ? (
+              <p className="text-xs text-[var(--student-text-muted)]">
+                You&apos;ll need this if you sign out or get a new phone.
+              </p>
+            ) : null}
+            <button
+              type="submit"
+              disabled={busy}
+              className="student-btn-primary h-11 w-full text-sm disabled:opacity-50"
+            >
+              {busy ? "Loading…" : tab === "join" ? "Join trip" : "Sign in"}
+            </button>
+          </form>
+        ) : showFallback ? (
+          <form onSubmit={onFallbackJoin} className="mt-4 space-y-3">
+            <p className="text-sm text-[var(--student-text-muted)]">
+              Your teacher may not have added you yet. Join with your name and phone instead.
+            </p>
             <label className="block text-sm">
               <span className="font-medium">Full name</span>
               <input
                 required
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                value={fallbackName}
+                onChange={(e) => setFallbackName(e.target.value)}
                 autoComplete="name"
                 className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3"
               />
@@ -138,9 +254,10 @@ export function StudentJoinForm(props: {
               <span className="font-medium">Phone number</span>
               <input
                 required
-                {...phoneInputProps}
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
+                inputMode="tel"
+                autoComplete="tel"
+                value={fallbackPhone}
+                onChange={(e) => setFallbackPhone(e.target.value)}
                 placeholder="e.g. +64 21 123 456"
                 className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3"
               />
@@ -157,9 +274,6 @@ export function StudentJoinForm(props: {
                 className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3"
               />
             </label>
-            <p className="text-xs text-[var(--student-text-muted)]">
-              You&apos;ll need this password if you sign out or reinstall the app.
-            </p>
             <button
               type="submit"
               disabled={busy}
@@ -167,40 +281,68 @@ export function StudentJoinForm(props: {
             >
               {busy ? "Joining…" : "Join trip"}
             </button>
-          </form>
-        ) : (
-          <form onSubmit={onSignIn} className="mt-4 space-y-3">
-            <label className="block text-sm">
-              <span className="font-medium">Phone number</span>
-              <input
-                required
-                {...phoneInputProps}
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="e.g. +64 21 123 456"
-                className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="font-medium">Password</span>
-              <input
-                required
-                type="password"
-                minLength={8}
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 h-11 w-full rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-3"
-              />
-            </label>
             <button
-              type="submit"
-              disabled={busy}
-              className="student-btn-primary h-11 w-full text-sm disabled:opacity-50"
+              type="button"
+              onClick={() => setShowFallback(false)}
+              className="w-full text-sm text-[var(--student-text-muted)]"
             >
-              {busy ? "Signing in…" : "Sign in"}
+              Back to name list
             </button>
           </form>
+        ) : hasNamePicker ? (
+          <div className="mt-4">
+            <p className="mb-2 text-sm font-medium text-[var(--student-text)]">
+              {tab === "join" ? "Find your name" : "Who are you?"}
+            </p>
+            <ul className="max-h-64 space-y-2 overflow-y-auto">
+              {nameList.map((person) => (
+                <li key={person.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedId(person.id);
+                      setPassword("");
+                      setError(null);
+                    }}
+                    className="flex w-full items-center justify-between rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] px-4 py-3 text-left transition hover:border-[var(--student-nav)]"
+                  >
+                    <span className="font-medium text-[var(--student-text)]">{person.fullName}</span>
+                    {person.role === "teacher" ? (
+                      <span className="text-xs text-[var(--student-text-muted)]">Teacher</span>
+                    ) : person.role === "helper" ? (
+                      <span className="text-xs text-[var(--student-text-muted)]">Helper</span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {tab === "join" ? (
+              <button
+                type="button"
+                onClick={() => setShowFallback(true)}
+                className="mt-4 w-full text-sm text-[var(--student-text-muted)] underline-offset-2 hover:underline"
+              >
+                My name isn&apos;t listed
+              </button>
+            ) : null}
+          </div>
+        ) : tab === "join" ? (
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-[var(--student-text-muted)]">
+              No names have been added yet. Ask your teacher to add you, or join manually below.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowFallback(true)}
+              className="student-btn-primary h-11 w-full text-sm"
+            >
+              Join manually
+            </button>
+          </div>
+        ) : (
+          <p className="mt-6 text-center text-sm text-[var(--student-text-muted)]">
+            Nobody has joined yet. Use Join to get started.
+          </p>
         )}
       </div>
     </main>

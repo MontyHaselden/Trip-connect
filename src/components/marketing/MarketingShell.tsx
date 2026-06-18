@@ -39,7 +39,7 @@ export function MarketingShell(props: {
             </Link>
             <Link
               href="/signup?type=school"
-              className="inline-flex h-9 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white"
+              className="inline-flex h-9 items-center justify-center rounded-full bg-violet-600 px-4 text-sm font-medium text-white hover:bg-violet-700"
             >
               Start school account
             </Link>

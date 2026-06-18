@@ -4,15 +4,15 @@ import {
   classifyImportedFlightChain,
   mergeClassifiedLegsIntoState,
 } from "@/lib/host/setup/classify-flight-legs";
-import { clearEverythingFromDay } from "@/lib/host/setup/clear-day-content";
-import { removeAccommodationAndCitiesFromRange } from "@/lib/host/setup/remove-accommodation-range";
-import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
+import { clearCalendarContentInRange } from "@/lib/host/setup/clear-day-content";
 import {
-  applyLocationStays,
-  effectiveStayStart,
-  enumerateDates,
-} from "@/lib/host/wizard/location-stays";
-import { applyHalfDayPaint } from "./paint-day-range";
+  removeAccommodationAndCitiesFromRange,
+  trimConflictingStaysForLocationPaint,
+} from "@/lib/host/setup/remove-accommodation-range";
+import { mergeAccommodationStays } from "@/lib/host/setup/entity-scope";
+import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
+import { enumerateDates } from "@/lib/host/wizard/location-stays";
+import { paintLocationDayRange } from "./paint-day-range";
 import { normalizeCommand, type TripCommand } from "./commands";
 import type { CommandResult, EngineConflict, EngineWarning, TripEntityGraph } from "./types";
 import type { TripSetupState } from "@/lib/host/setup/types";
@@ -184,34 +184,47 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
       }
       const dayPlaces = graph.dayPlacesByGroupId[groupId] ?? [];
       const endDate = rangeEnd || rangeStart;
-      const startDate = effectiveStayStart(rangeStart, endDate, dayPlaces);
-      const bounds = syncTripBoundsFromContent(graph).basics;
-      let painted = applyLocationStays(
-        dayPlaces,
-        [{ location: location.trim(), startDate, endDate }],
-        {
-          startDate: bounds.startDate,
-          endDate: bounds.endDate,
-          departureCity: graph.basics.departureCity,
-          returnCity: graph.basics.returnCity,
-        },
+      const scopedStays = graph.accommodationStays.filter((stay) =>
+        groupId === graph.mainGroupId
+          ? !stay.originGroupId || stay.originGroupId === graph.mainGroupId
+          : stay.originGroupId === groupId,
       );
-      painted = applyHalfDayPaint(painted, rangeStart, endDate, location.trim(), startHalf, endHalf);
+      const trimmedStays = trimConflictingStaysForLocationPaint(
+        scopedStays,
+        location.trim(),
+        rangeStart,
+        endDate,
+      );
+      const painted = paintLocationDayRange(
+        dayPlaces,
+        rangeStart,
+        endDate,
+        location.trim(),
+        startHalf,
+        endHalf,
+      );
       const next = syncTripBoundsFromContent({
         ...graph,
+        accommodationStays: mergeAccommodationStays(graph, groupId, trimmedStays),
         dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: painted },
       });
       return ok(mergeGraphState(graph, next), warnings);
     }
 
     case "clearDayRange": {
-      const { groupId, rangeStart, rangeEnd } = command;
-      const end = rangeEnd || rangeStart;
-      let next: TripSetupState = graph;
-      for (const date of enumerateDates(rangeStart, end)) {
-        next = clearEverythingFromDay(next, date, groupId);
-      }
-      return ok(mergeGraphState(graph, next), warnings);
+      const {
+        groupId,
+        rangeStart,
+        rangeEnd,
+        startHalf = "full",
+        endHalf = "full",
+      } = command;
+      const synced = clearCalendarContentInRange(
+        graph,
+        { rangeStart, rangeEnd: rangeEnd || rangeStart, startHalf, endHalf },
+        groupId,
+      );
+      return ok(mergeGraphState(graph, synced), warnings);
     }
 
     case "setDayPlaces": {

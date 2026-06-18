@@ -3,12 +3,15 @@ import { describe, it } from "node:test";
 
 import {
   applyLocationStays,
+  buildTripLocationColorMap,
   coalesceAdjacentStays,
+  collectOrderedTripLocationNames,
   DEFAULT_HALF_SHARE,
   hasUncoveredTripDays,
   locationColor,
   locationPaletteKey,
   mergeStaysWithNewRange,
+  tripLocationColor,
 } from "@/lib/host/wizard/location-stays";
 import { buildTripDayCoverageContext } from "@/lib/host/wizard/transport-day-placement";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
@@ -241,6 +244,34 @@ describe("locationColor", () => {
       locationColor("Christchurch, New Zealand"),
       locationColor("Christchurch"),
     );
+  });
+});
+
+describe("buildTripLocationColorMap", () => {
+  it("gives each Japan itinerary city a distinct color", () => {
+    const cities = [
+      "Minato City, Tokyo",
+      "Oita",
+      "Kagoshima",
+      "Hiroshima",
+      "Kyoto",
+      "Tokyo",
+    ];
+    const map = buildTripLocationColorMap(cities);
+    const colors = cities.map((city) => tripLocationColor(city, map));
+    assert.equal(new Set(colors).size, cities.length);
+    assert.notEqual(tripLocationColor("Minato City, Tokyo", map), tripLocationColor("Oita", map));
+    assert.notEqual(tripLocationColor("Kyoto", map), tripLocationColor("Tokyo", map));
+  });
+
+  it("orders locations by first calendar appearance", () => {
+    const ordered = collectOrderedTripLocationNames({
+      days: [
+        { date: "2026-12-15", primaryCity: "Kyoto", secondaryCity: null },
+        { date: "2026-12-10", primaryCity: "Oita", secondaryCity: null },
+      ],
+    });
+    assert.deepEqual(ordered.map(locationPaletteKey), ["oita", "kyoto"]);
   });
 });
 

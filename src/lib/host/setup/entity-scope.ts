@@ -49,7 +49,10 @@ export function mergeAccommodationStays(
   groupId: string,
   groupStays: AccommodationStayDraft[],
 ): AccommodationStayDraft[] {
-  const others = state.accommodationStays.filter((s) => s.originGroupId !== groupId);
+  const others =
+    groupId === state.mainGroupId
+      ? state.accommodationStays.filter((s) => !isMainOwned(s, state.mainGroupId))
+      : state.accommodationStays.filter((s) => s.originGroupId !== groupId);
   return [...others, ...groupStays.map((s) => ({ ...s, originGroupId: groupId }))];
 }
 

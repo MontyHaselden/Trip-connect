@@ -5,11 +5,12 @@ import { useState } from "react";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 import { legsForGroup } from "@/lib/trip-engine/selectors";
-import { legScheduleSummary } from "@/lib/host/setup/repair-transport-legs";
+import { legScheduleSummary, legTransportTypeLabel } from "@/lib/host/setup/repair-transport-legs";
 import type { IntercityLegDraft, TransportLegDraft } from "@/lib/host/wizard/types";
 
 import { AsyncButton } from "../shared/AsyncButton";
 import { FlightLegQuickForm } from "../shared/FlightLegQuickForm";
+import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 import { tripDatePickerContext } from "../shared/trip-date-picker";
 
 function legRouteLabel(leg: TransportLegDraft | IntercityLegDraft): string {
@@ -71,41 +72,48 @@ export function TransportSection(props: {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Transport</h2>
-        <p className="text-sm text-zinc-600">Advanced / bulk edit — flights, trains, intercity legs.</p>
-      </div>
+    <TripSectionShell
+      eyebrow="Advanced"
+      title="Transport"
+      description="Flights, trains, and intercity legs."
+    >
       <ul className="space-y-2">
         {all.map((leg) => (
-          <li key={leg.id} className="flex items-center justify-between rounded-lg border border-zinc-200 p-3">
+          <li
+            key={leg.id}
+            className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm"
+          >
             <div>
-              <p className="font-medium">{legRouteLabel(leg)}</p>
-              <p className="text-sm text-zinc-600">{legScheduleSummary(leg)}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">
+                  {legTransportTypeLabel(leg)}
+                </span>
+                <p className="font-medium text-zinc-900">{legRouteLabel(leg)}</p>
+              </div>
+              <p className="mt-0.5 text-sm text-zinc-500">{legScheduleSummary(leg)}</p>
             </div>
             <AsyncButton
               loading={removingLegId === leg.id}
               loadingLabel="Removing…"
               onClick={() => void removeLeg(leg.id)}
               disabled={removingLegId !== null && removingLegId !== leg.id}
-              className="text-sm text-red-700 hover:underline"
+              className="text-sm text-red-600 hover:text-red-700"
             >
               Delete
             </AsyncButton>
           </li>
         ))}
         {!all.length ? (
-          <li className="rounded-lg border border-dashed border-zinc-300 p-4 text-sm text-zinc-500">
+          <li className="rounded-2xl bg-zinc-50/80 px-4 py-6 text-center text-sm text-zinc-500">
             No transport legs yet.
           </li>
         ) : null}
       </ul>
-      <div className="rounded-xl border border-zinc-200 p-4">
-        <h3 className="text-sm font-semibold">Add flight</h3>
-        <p className="mt-1 text-xs text-zinc-500">
+      <TripSoftPanel title="Add flight">
+        <p className="text-xs text-zinc-500">
           Enter departure date and flight number — we&apos;ll look up the schedule. Use &ldquo;Add
-          connection leg&rdquo; for multi-leg routes (e.g. CHC → MEL → HKT). Open &ldquo;Placeholder
-          flights&rdquo; only if lookup fails or you need a manual route.
+          connection leg&rdquo; for multi-leg routes. Open &ldquo;Placeholder flights&rdquo; only if
+          lookup fails.
         </p>
         <div className="mt-3">
           <FlightLegQuickForm
@@ -116,7 +124,7 @@ export function TransportSection(props: {
             onSubmit={addLegs}
           />
         </div>
-      </div>
-    </div>
+      </TripSoftPanel>
+    </TripSectionShell>
   );
 }

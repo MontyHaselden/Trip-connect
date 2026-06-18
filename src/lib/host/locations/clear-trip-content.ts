@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import {
+  groupDayPlaces,
+  groupOverlayOps,
   itineraryItems,
   tripAccommodationStays,
   tripDays,
@@ -14,4 +16,6 @@ export async function clearTripContent(tripId: string) {
   await db.delete(tripTransportLegs).where(eq(tripTransportLegs.tripId, tripId));
   await db.delete(tripAccommodationStays).where(eq(tripAccommodationStays.tripId, tripId));
   await db.delete(tripDays).where(eq(tripDays.tripId, tripId));
+  await db.delete(groupDayPlaces).where(eq(groupDayPlaces.tripId, tripId));
+  await db.delete(groupOverlayOps).where(eq(groupOverlayOps.tripId, tripId));
 }

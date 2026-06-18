@@ -2,7 +2,7 @@ import {
   applyStaysToDayPlaces,
   coalesceAdjacentNamedStays,
 } from "@/lib/host/setup/accommodation-calendar";
-import { applySetupTransportChange } from "@/lib/host/setup/apply-setup-transport";
+import { overlayStoredHostLocations } from "@/lib/host/setup/derive-calendar";
 import {
   groupAccommodationStays,
   mainAccommodationStays,
@@ -22,12 +22,14 @@ export function applySetupAccommodationChange(
     : groupAccommodationStays(state, groupId);
   const coalescedStays = coalesceAdjacentNamedStays(stays);
   const namedStays = coalescedStays.filter((s) => s.name?.trim());
-  const days = state.dayPlacesByGroupId[groupId] ?? [];
-  const repainted = applyStaysToDayPlaces(days, namedStays).filter(
-    (d) => d.primaryCity.trim() || d.secondaryCity?.trim(),
+  const storedDays = state.dayPlacesByGroupId[groupId] ?? [];
+  const repainted = overlayStoredHostLocations(
+    applyStaysToDayPlaces(storedDays, namedStays),
+    storedDays,
+    namedStays,
   );
 
-  let next: TripSetupState = {
+  const next: TripSetupState = {
     ...state,
     accommodationStays: mergeAccommodationStays(state, groupId, coalescedStays),
     dayPlacesByGroupId: {
@@ -35,10 +37,6 @@ export function applySetupAccommodationChange(
       [groupId]: repainted,
     },
   };
-
-  if (isMain) {
-    next = applySetupTransportChange(next, { intercityLegs: next.intercityLegs });
-  }
 
   return syncTripBoundsFromContent(next);
 }

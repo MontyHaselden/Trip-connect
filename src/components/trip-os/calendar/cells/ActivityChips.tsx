@@ -1,20 +1,33 @@
 import type { ActivityMarker } from "@/lib/trip-engine/types";
 
-import { ActivityMarker as ActivityMarkerChip } from "../ActivityMarker";
+import {
+  CALENDAR_ACTIVITY_DOTS_PER_ROW,
+  CALENDAR_ACTIVITY_DOT_LIMIT,
+} from "@/lib/trip-engine/calendar-activity-dots";
+
+const DOT_COLOR = "#2e1065";
 
 export function ActivityChips(props: { activities: ActivityMarker[] }) {
-  if (!props.activities.length) return null;
+  const dots = props.activities.slice(0, CALENDAR_ACTIVITY_DOT_LIMIT);
+  if (!dots.length) return null;
 
   return (
-    <div className="pointer-events-none absolute right-0.5 top-0.5 z-[25] flex max-w-[45%] flex-col items-end gap-0.5">
-      {props.activities.slice(0, 2).map((a) => (
-        <ActivityMarkerChip key={a.id} activity={a} />
+    <div
+      className="pointer-events-none absolute left-1 top-1 z-[35] grid gap-[3px]"
+      style={{
+        gridTemplateColumns: `repeat(${CALENDAR_ACTIVITY_DOTS_PER_ROW}, 6px)`,
+        gridTemplateRows: "repeat(2, 6px)",
+      }}
+      aria-label={`${dots.length} activit${dots.length === 1 ? "y" : "ies"}`}
+    >
+      {dots.map((activity) => (
+        <span
+          key={activity.id}
+          className="h-[6px] w-[6px] rounded-full ring-1 ring-white/90"
+          style={{ backgroundColor: DOT_COLOR }}
+          title={activity.title}
+        />
       ))}
-      {props.activities.length > 2 ? (
-        <span className="rounded bg-white/80 px-1 text-[9px] text-zinc-500">
-          +{props.activities.length - 2}
-        </span>
-      ) : null}
     </div>
   );
 }

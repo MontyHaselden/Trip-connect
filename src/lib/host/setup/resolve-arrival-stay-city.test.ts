@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { patongStay } from "@/lib/host/setup/calendar-fixtures";
-import { resolveArrivalStayCity } from "@/lib/host/setup/resolve-arrival-stay-city";
+import {
+  resolveArrivalStayCity,
+  resolveDepartureStayCity,
+} from "@/lib/host/setup/resolve-arrival-stay-city";
 import type { TransportLegDraft } from "@/lib/host/wizard/types";
 import { newId } from "@/lib/host/wizard/types";
 
@@ -51,5 +54,21 @@ describe("resolveArrivalStayCity", () => {
       "2026-09-04",
     );
     assert.equal(city, "Bangkok");
+  });
+});
+
+describe("resolveDepartureStayCity", () => {
+  it("maps HKT airport to Patong when Royal Paradise checks out that morning", () => {
+    const patong = patongStay({
+      checkInDate: "2026-08-23",
+      checkOutDate: "2026-08-31",
+      name: "The Royal Paradise Hotel & Spa",
+    });
+    const city = resolveDepartureStayCity(
+      "Phuket International Airport (HKT), Thailand",
+      [patong],
+      "2026-08-31",
+    );
+    assert.equal(city, "Patong");
   });
 });

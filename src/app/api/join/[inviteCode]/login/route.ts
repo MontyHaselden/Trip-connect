@@ -9,10 +9,17 @@ import { verifyParticipantPassword } from "@/lib/participants/password";
 import { ensureTripPublishedIfReady } from "@/lib/publish/ensure-published";
 import { normalizeToE164 } from "@/lib/utils/phone";
 
-const LoginBodySchema = z.object({
+const ClaimLoginSchema = z.object({
+  participantId: z.string().uuid(),
+  password: z.string().min(1).max(200),
+});
+
+const LegacyLoginSchema = z.object({
   phoneNumber: z.string().trim().min(3).max(40),
   password: z.string().min(1).max(200),
 });
+
+const LoginBodySchema = z.union([ClaimLoginSchema, LegacyLoginSchema]);
 
 export async function POST(
   req: Request,
@@ -37,34 +44,58 @@ export async function POST(
       defaultCountryCallingCode: resolved.defaultCountryCallingCode,
     };
 
-    const phoneE164 = normalizeToE164(
-      parsed.data.phoneNumber,
-      trip.defaultCountryCallingCode ?? "+64",
-    );
+    let participant: {
+      id: string;
+      accessToken: string;
+      passwordHash: string | null;
+    } | null = null;
 
-    const participant = await db
-      .select({
-        id: participants.id,
-        accessToken: participants.accessToken,
-        passwordHash: participants.passwordHash,
-      })
-      .from(participants)
-      .where(
-        and(
-          eq(participants.tripId, trip.id),
-          eq(participants.phoneNumberE164, phoneE164),
-        ),
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
+    if ("participantId" in parsed.data) {
+      participant = await db
+        .select({
+          id: participants.id,
+          accessToken: participants.accessToken,
+          passwordHash: participants.passwordHash,
+        })
+        .from(participants)
+        .where(
+          and(
+            eq(participants.tripId, trip.id),
+            eq(participants.id, parsed.data.participantId),
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+    } else {
+      const phoneE164 = normalizeToE164(
+        parsed.data.phoneNumber,
+        trip.defaultCountryCallingCode ?? "+64",
+      );
+
+      participant = await db
+        .select({
+          id: participants.id,
+          accessToken: participants.accessToken,
+          passwordHash: participants.passwordHash,
+        })
+        .from(participants)
+        .where(
+          and(
+            eq(participants.tripId, trip.id),
+            eq(participants.phoneNumberE164, phoneE164),
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+    }
 
     if (!participant) {
-      return NextResponse.json({ error: "No account found for that phone number." }, { status: 404 });
+      return NextResponse.json({ error: "Account not found." }, { status: 404 });
     }
 
     if (!participant.passwordHash) {
       return NextResponse.json(
-        { error: "This account has no password yet. Use Join to set one up." },
+        { error: "You haven't joined yet. Use Join to set your password." },
         { status: 400 },
       );
     }

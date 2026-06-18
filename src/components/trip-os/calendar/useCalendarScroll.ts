@@ -1,19 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef, type RefObject } from "react";
 
-const MAX_SCROLL_ATTEMPTS = 16;
+/** Scroll `target` to the top of `scroller` with optional padding. */
+export function scrollElementToTop(
+  scroller: HTMLElement,
+  target: HTMLElement,
+  padding = 12,
+): void {
+  const scrollerRect = scroller.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  scroller.scrollTop = Math.max(
+    0,
+    targetRect.top - scrollerRect.top + scroller.scrollTop - padding,
+  );
+}
 
 /**
  * Preserves calendar scroll position across re-renders and command dispatch.
- * Initial load scrolls to trip dates — not today.
+ * Initial scroll-to-trip is handled by InteractiveTripCalendar once cells mount.
  */
-export function useCalendarScroll(tripKey: string, anchorDate: string) {
+export function useCalendarScroll() {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const hasInitialScrolled = useRef(false);
   const savedScrollTop = useRef(0);
   const restorePending = useRef(false);
-  const scrollGeneration = useRef("");
 
   const saveScrollPosition = useCallback(() => {
     if (scrollRef.current) {
@@ -21,18 +31,6 @@ export function useCalendarScroll(tripKey: string, anchorDate: string) {
       restorePending.current = true;
     }
   }, []);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const onScroll = () => {
-      savedScrollTop.current = el.scrollTop;
-    };
-
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  });
 
   useLayoutEffect(() => {
     if (!restorePending.current) return;
@@ -42,49 +40,56 @@ export function useCalendarScroll(tripKey: string, anchorDate: string) {
     restorePending.current = false;
   });
 
-  useEffect(() => {
-    const generation = `${tripKey}:${anchorDate}`;
-    if (!anchorDate) return;
+  return { scrollRef, saveScrollPosition };
+}
 
-    if (scrollGeneration.current !== generation) {
-      scrollGeneration.current = generation;
-      hasInitialScrolled.current = false;
+export function useCalendarInitialScroll(params: {
+  scrollRef: RefObject<HTMLDivElement | null>;
+  anchorDate: string;
+  scrollKey: string;
+  contentReady: boolean;
+}) {
+  const hasAutoScrolled = useRef(false);
+  const lastScrollKey = useRef("");
+
+  useLayoutEffect(() => {
+    if (lastScrollKey.current !== params.scrollKey) {
+      lastScrollKey.current = params.scrollKey;
+      hasAutoScrolled.current = false;
     }
 
-    if (hasInitialScrolled.current) return;
+    if (hasAutoScrolled.current || !params.contentReady || !params.anchorDate) return;
+
+    const scroller = params.scrollRef.current;
+    if (!scroller) return;
 
     let cancelled = false;
     let attempts = 0;
+    const maxAttempts = 80;
 
-    function centerOnAnchor(): boolean {
-      const scroller = scrollRef.current;
-      if (!scroller) return false;
-
-      const anchor = scroller.querySelector(`[data-calendar-day="${anchorDate}"]`);
+    function tryScroll(): boolean {
+      const anchor = scroller!.querySelector(
+        `[data-calendar-day="${params.anchorDate}"]`,
+      ) as HTMLElement | null;
       if (!anchor) return false;
-
-      anchor.scrollIntoView({ block: "center", inline: "nearest" });
-      savedScrollTop.current = scroller.scrollTop;
-      hasInitialScrolled.current = true;
+      scrollElementToTop(scroller!, anchor);
+      hasAutoScrolled.current = true;
       return true;
     }
 
-    function tryScroll() {
-      if (cancelled || hasInitialScrolled.current) return;
-      if (centerOnAnchor()) return;
-
+    function tick() {
+      if (cancelled || hasAutoScrolled.current) return;
+      if (tryScroll()) return;
       attempts += 1;
-      if (attempts < MAX_SCROLL_ATTEMPTS) {
-        window.requestAnimationFrame(tryScroll);
+      if (attempts < maxAttempts) {
+        window.requestAnimationFrame(tick);
       }
     }
 
-    window.requestAnimationFrame(tryScroll);
+    tick();
 
     return () => {
       cancelled = true;
     };
-  }, [tripKey, anchorDate]);
-
-  return { scrollRef, saveScrollPosition };
+  }, [params.scrollKey, params.anchorDate, params.contentReady, params.scrollRef]);
 }

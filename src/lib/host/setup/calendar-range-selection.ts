@@ -14,6 +14,28 @@ export const EMPTY_CALENDAR_SELECTION: CalendarRangeSelection = {
   endHalf: "full",
 };
 
+/** Second click on the same half-day expands to the full day. */
+export function expandHalfSelectionToFullDay(
+  selection: CalendarRangeSelection,
+  iso: string,
+  half: HalfSide,
+): CalendarRangeSelection | null {
+  if (
+    selection.rangeStart !== iso ||
+    selection.rangeEnd !== iso ||
+    selection.startHalf !== half ||
+    selection.endHalf !== half
+  ) {
+    return null;
+  }
+  return {
+    rangeStart: iso,
+    rangeEnd: iso,
+    startHalf: "full",
+    endHalf: "full",
+  };
+}
+
 /** Forward-only range building: anchor day, then extend end; click inside range re-anchors. */
 export function nextCalendarRangeSelection(
   current: CalendarRangeSelection,
@@ -51,12 +73,18 @@ export function nextCalendarRangeSelection(
 
   const newStart = clickedIso < rangeStart ? clickedIso : rangeStart;
   const newEnd = clickedIso > end ? clickedIso : end;
+
+  let startHalf = current.startHalf;
+  let endHalf = current.endHalf;
+  if (newStart !== rangeStart) startHalf = "full";
+  if (newEnd !== end) endHalf = "full";
+
   return {
     selection: {
       rangeStart: newStart,
       rangeEnd: newEnd,
-      startHalf: "full",
-      endHalf: "full",
+      startHalf,
+      endHalf,
     },
     selected: true,
   };

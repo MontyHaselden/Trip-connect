@@ -3,6 +3,7 @@ import {
   coalesceAdjacentNamedStays,
   stayCityLabel,
 } from "@/lib/host/setup/accommodation-calendar";
+import { stripConnectionHubsFromImportedDayPlaces } from "@/lib/host/import/sanitize-imported-locations";
 import { locationsMatch } from "@/lib/host/wizard/location-stays";
 import {
   inferDayPlacesFromIntercityLeg,
@@ -29,6 +30,7 @@ import type {
 import {
   allPlaneLegsFromState,
   inferDayPlacesFromFlightLegs,
+  isExplicitHostLocationPaint,
   stripOrphanFlightPaint,
 } from "@/lib/host/setup/infer-flight-calendar";
 import {
@@ -121,6 +123,49 @@ function fillStoredLocationGaps(
   });
 }
 
+/** Merge DB-stored host location paint over stay-derived calendar days. */
+export function overlayStoredHostLocations(
+  derived: DayPlaceDraft[],
+  stored: DayPlaceDraft[],
+  namedStays: AccommodationStayDraft[],
+): DayPlaceDraft[] {
+  const pruned = pruneOrphanStoredLocations(stored, namedStays);
+  const storedByDate = new Map(pruned.map((d) => [d.date, d]));
+  const derivedDates = new Set(derived.map((d) => d.date));
+
+  let merged = fillStoredLocationGaps(derived, pruned);
+
+  merged = merged.map((day) => {
+    const storedDay = storedByDate.get(day.date);
+    if (!storedDay || !dayHasLocationPaint(storedDay)) return day;
+    if (isExplicitHostLocationPaint(storedDay, namedStays)) return storedDay;
+    if (
+      storedDay.secondaryCity?.trim() &&
+      !day.secondaryCity?.trim() &&
+      day.primaryCity.trim()
+    ) {
+      return {
+        ...day,
+        secondaryCity: storedDay.secondaryCity,
+        primaryShare: storedDay.primaryShare ?? day.primaryShare,
+        dayType: storedDay.dayType ?? day.dayType,
+      };
+    }
+    return day;
+  });
+
+  for (const storedDay of pruned) {
+    if (derivedDates.has(storedDay.date) || !dayHasLocationPaint(storedDay)) continue;
+    if (isExplicitHostLocationPaint(storedDay, namedStays)) {
+      merged.push(storedDay);
+    }
+  }
+
+  return merged
+    .filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim())
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function emptyDay(date: string): DayPlaceDraft {
   return {
     date,
@@ -186,7 +231,7 @@ export function deriveCalendarState(input: {
       dayPlaces = inferDayPlacesFromIntercityLeg(dayPlaces, {
         ...leg,
         travelDate: paintDate,
-      });
+      }, { stays: named });
     }
   }
 
@@ -195,15 +240,24 @@ export function deriveCalendarState(input: {
     returnDepartsAfterTripEnd(transportDraft, trip.endDate) || !hasReturnTransport;
 
   if (overlayStoredLocationGaps) {
-    const prunedStored = stripOrphanFlightPaint(
-      pruneOrphanStoredLocations(transportDraft.dayPlaces, named),
+    const storedDayPlaces = stripConnectionHubsFromImportedDayPlaces(
+      transportDraft.dayPlaces,
       planeLegs,
       named,
     );
-    dayPlaces = fillStoredLocationGaps(dayPlaces, prunedStored);
+    dayPlaces = overlayStoredHostLocations(dayPlaces, storedDayPlaces, named);
   }
 
   dayPlaces = inferDayPlacesFromFlightLegs(dayPlaces, planeLegs, { stays: named });
+
+  if (overlayStoredLocationGaps) {
+    const storedDayPlaces = stripConnectionHubsFromImportedDayPlaces(
+      transportDraft.dayPlaces,
+      planeLegs,
+      named,
+    );
+    dayPlaces = overlayStoredHostLocations(dayPlaces, storedDayPlaces, named);
+  }
 
   dayPlaces = enforceHomeLocks(
     dayPlaces,

@@ -1,3 +1,4 @@
+import { reconcileTripShellState } from "@/lib/host/setup/reconcile-trip-shell";
 import { buildCalendarRenderModel } from "./calendar-render-model";
 import { detectGraphConflicts } from "./conflicts";
 import { computeReadiness } from "./compute-readiness";
@@ -12,6 +13,7 @@ function serializeRenderModel(model: CalendarRenderModel) {
     transitByDate: Object.fromEntries(model.transitByDate),
     accommodationByDate: Object.fromEntries(model.accommodationByDate),
     activitiesByDate: Object.fromEntries(model.activitiesByDate),
+    locationColorByKey: Object.fromEntries(model.locationColorByKey),
   };
 }
 
@@ -19,14 +21,15 @@ export function buildSetupEngineResponse(
   graph: TripEntityGraph,
   options?: { groupId?: string; inviteCode?: string },
 ): SetupEngineResponse {
-  const groupId = options?.groupId ?? graph.mainGroupId;
-  const calendarProjection = projectCalendar(graph, { groupId });
-  const calendarRenderModel = buildCalendarRenderModel(graph, { groupId });
-  const readiness = computeReadiness(graph, calendarProjection);
-  const conflicts = detectGraphConflicts(graph, calendarProjection, groupId);
+  const reconciled = reconcileTripShellState(graph);
+  const groupId = options?.groupId ?? reconciled.mainGroupId;
+  const calendarProjection = projectCalendar(reconciled, { groupId });
+  const calendarRenderModel = buildCalendarRenderModel(reconciled, { groupId });
+  const readiness = computeReadiness(reconciled, calendarProjection);
+  const conflicts = detectGraphConflicts(reconciled, calendarProjection, groupId);
 
   return {
-    graph,
+    graph: reconciled,
     calendarProjection,
     calendarRenderModel,
     readiness,
@@ -61,5 +64,6 @@ export function deserializeRenderModel(raw: CalendarRenderModel): CalendarRender
     transitByDate: toMap(raw.transitByDate),
     accommodationByDate: toMap(raw.accommodationByDate),
     activitiesByDate: toMap(raw.activitiesByDate),
+    locationColorByKey: toMap(raw.locationColorByKey),
   };
 }

@@ -16,17 +16,19 @@ import { SmartOverview } from "./overview/SmartOverview";
 import { AccommodationSection } from "./sections/AccommodationSection";
 import { ActivitiesSection } from "./sections/ActivitiesSection";
 import { BookingsSection } from "./sections/BookingsSection";
-import { GroupsSection } from "./sections/GroupsSection";
 import { LocationsSection } from "./sections/LocationsSection";
+import { ParticipantViewSection } from "./sections/ParticipantViewSection";
 import { TransportSection } from "./sections/TransportSection";
+import { UsersSection } from "./sections/UsersSection";
 
-export type TripOsSection = SetupSectionId | "ingest" | "map";
+export type TripOsSection = SetupSectionId | "ingest" | "map" | "participant-view";
 
 export function TripOsWorkspace(props: {
   section: TripOsSection;
   graph: TripEntityGraph;
   groupId: string;
   tripId: string;
+  inviteCode: string;
   readiness: EngineSectionReadiness[];
   selectedDay: ProjectedDay | null;
   warnings: EngineWarning[];
@@ -35,8 +37,9 @@ export function TripOsWorkspace(props: {
   onNavigateSection: (section: TripOsSection) => void;
   onReload: () => void;
   saving?: boolean;
+  participantViewRefreshKey?: number;
 }) {
-  const { graph, groupId, tripId, onDispatch, saving } = props;
+  const { graph, groupId, tripId, inviteCode, onDispatch, saving } = props;
 
   switch (props.section) {
     case "overview":
@@ -53,14 +56,13 @@ export function TripOsWorkspace(props: {
       );
     case "ingest":
       return (
-        <IngestPanel
-          tripId={tripId}
-          graph={graph}
-          groupId={groupId}
-          saving={saving}
-          onDispatch={onDispatch}
-          onReload={props.onReload}
-        />
+        <div className="flex min-h-0 flex-1 flex-col">
+          <IngestPanel
+            tripId={tripId}
+            timezone={graph.basics.timezone}
+            onReload={props.onReload}
+          />
+        </div>
       );
     case "map":
       return <MapView graph={graph} groupId={groupId} />;
@@ -104,10 +106,17 @@ export function TripOsWorkspace(props: {
           onDispatch={onDispatch}
         />
       );
-    case "groups":
-      return <GroupsSection graph={graph} saving={saving} onDispatch={onDispatch} />;
+    case "participants":
+      return <UsersSection inviteCode={inviteCode} />;
     case "bookings":
       return <BookingsSection graph={graph} tripId={tripId} />;
+    case "participant-view":
+      return (
+        <ParticipantViewSection
+          tripId={tripId}
+          refreshKey={props.participantViewRefreshKey ?? 0}
+        />
+      );
     default:
       return (
         <div className="rounded-xl border border-dashed border-zinc-300 p-6 text-sm text-zinc-600">

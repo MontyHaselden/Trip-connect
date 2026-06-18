@@ -4,10 +4,12 @@ import { useMemo, useState } from "react";
 import { DateTime } from "luxon";
 
 import { useTripApp } from "@/components/layout/TripAppContext";
+import { useStudentOverlay } from "@/components/student/StudentOverlayContext";
 import {
   photosForDay,
   type ParticipantPhoto,
 } from "@/lib/student/participant-photos";
+import { studentOverlayRootClass } from "@/lib/student/overlay-classes";
 
 import { DayPhotoUpload } from "./DayPhotoUpload";
 
@@ -17,9 +19,10 @@ function PhotoViewer(props: {
   onClose: () => void;
 }) {
   const { photo, label, onClose } = props;
+  const { contained } = useStudentOverlay();
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4">
+    <div className={`${studentOverlayRootClass(contained, { zClass: "z-[70]", align: "center" })} bg-black/80 p-4`}>
       <button
         type="button"
         aria-label="Close"

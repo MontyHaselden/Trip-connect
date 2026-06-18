@@ -169,25 +169,22 @@ function deriveLastPaintedDay(input: BoundsInput): string | null {
   return [...dates].sort().at(-1)!;
 }
 
-function hasStructuredTripContent(input: BoundsInput): boolean {
-  const namedStays = (input.accommodationStays ?? []).some((s) => s.name?.trim());
-  const transport = allLegs(input).some((leg) => leg.travelDate?.trim());
-  return namedStays || transport;
-}
-
 /** Infer trip span from current named stays, transport, activities, and painted days. */
 export function deriveTripBoundsFromContent(input: BoundsInput): TripBoundsFromContent | null {
   const startDate = deriveFirstTripDay(input);
   const lastAbroad = deriveLastAbroadDay(input);
-  const lastPainted = !hasStructuredTripContent(input) ? deriveLastPaintedDay(input) : null;
+  const lastPainted = deriveLastPaintedDay(input);
 
   if (!startDate && !lastAbroad && !lastPainted) return null;
 
-  const endDate = lastAbroad ?? lastPainted ?? startDate;
-  if (!startDate) return { startDate: endDate!, endDate: endDate! };
+  const endCandidates = [lastAbroad, lastPainted, startDate].filter(
+    (date): date is string => Boolean(date),
+  );
+  const endDate = endCandidates.sort().at(-1)!;
+  if (!startDate) return { startDate: endDate, endDate };
 
   return {
     startDate,
-    endDate: endDate && endDate >= startDate ? endDate : startDate,
+    endDate: endDate >= startDate ? endDate : startDate,
   };
 }

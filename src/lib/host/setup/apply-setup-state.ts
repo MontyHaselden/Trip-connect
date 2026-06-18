@@ -16,6 +16,7 @@ import {
   applyTripLocationState,
   syncTransportLegsTable,
 } from "@/lib/host/locations/apply-location-state";
+import { reconcileImportedAccommodationStays } from "@/lib/host/import/reconcile-accommodation-stays";
 import { toDbBookingStatus, toDbTransportType } from "@/lib/host/wizard/db-enums";
 import { resolveItemVisibility, persistEntityVisibility } from "@/lib/visibility/item-visibility";
 import type {
@@ -296,7 +297,7 @@ function applyGroupInference(
     dayPlaces = inferDayPlacesFromStay(dayPlaces, stay, { replaceExisting: true });
   }
   for (const leg of groupLegs) {
-    dayPlaces = inferDayPlacesFromIntercityLeg(dayPlaces, leg);
+    dayPlaces = inferDayPlacesFromIntercityLeg(dayPlaces, leg, { stays: groupStays });
   }
 
   const overlayOps = inferHideOpsForGroupStays(
@@ -319,7 +320,12 @@ function applyGroupInference(
 export async function applyTripSetupState(
   tripId: string,
   state: TripSetupState,
-  options?: { activeGroupId?: string; skipWizardItineraryItems?: boolean },
+  options?: {
+    activeGroupId?: string;
+    skipWizardItineraryItems?: boolean;
+    syncTransportItems?: boolean;
+    syncAccommodationItems?: boolean;
+  },
 ): Promise<{ dayCount: number }> {
   const activeGroupId = options?.activeGroupId ?? state.mainGroupId;
   const inferred = applyGroupInference(state, activeGroupId);
@@ -340,6 +346,16 @@ export async function applyTripSetupState(
   await syncOverlayOps(tripId, inferred.overlayOps);
 
   if (activeGroupId === state.mainGroupId) {
+    const allDepartureLegs = [
+      ...main.outboundLegs,
+      ...main.returnLegs,
+      ...main.intercityLegs,
+    ];
+    const accommodationStays = reconcileImportedAccommodationStays(
+      main.accommodationStays,
+      allDepartureLegs,
+    );
+
     return applyTripLocationState(
       tripId,
       {
@@ -348,10 +364,13 @@ export async function applyTripSetupState(
         outboundLegs: main.outboundLegs,
         returnLegs: main.returnLegs,
         intercityLegs: main.intercityLegs,
-        accommodationStays: main.accommodationStays,
+        accommodationStays,
       },
       {
-        syncTransportItems: options?.skipWizardItineraryItems ? false : undefined,
+        syncTransportItems:
+          options?.syncTransportItems ??
+          (options?.skipWizardItineraryItems ? false : true),
+        syncAccommodationItems: options?.syncAccommodationItems,
       },
     );
   }

@@ -13,6 +13,9 @@ import type { TripCommand } from "@/lib/trip-engine/commands";
 
 import { AsyncButton } from "../shared/AsyncButton";
 import { TripDateInput } from "../shared/TripDateInput";
+import { TripInput, tripFieldClass } from "../shared/TripInput";
+import { TripPrimaryButton } from "../shared/TripPrimaryButton";
+import { TripListRow, TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 import { tripDatePickerContext } from "../shared/trip-date-picker";
 
 export function LocationsSection(props: {
@@ -46,40 +49,37 @@ export function LocationsSection(props: {
         returnLegs: props.graph.returnLegs,
         intercityLegs: props.graph.intercityLegs,
       }),
-    [
-      days,
-      bounds.startDate,
-      bounds.endDate,
-      props.graph,
-      props.graph.basics.departureCity,
-      props.graph.basics.returnCity,
-    ],
+    [days, bounds.startDate, bounds.endDate, props.graph],
   );
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Locations</h2>
-        <p className="text-sm text-zinc-600">Advanced / bulk edit — paint city ranges via commands.</p>
-      </div>
-      <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
+    <TripSectionShell
+      eyebrow="Advanced"
+      title="Locations"
+      description="Paint city ranges via commands — same engine as the calendar."
+    >
+      <ul className="max-h-48 space-y-1.5 overflow-y-auto">
         {locationRanges.map((range) => (
-          <li key={`${range.location}-${range.startDate}-${range.endDate}`} className="rounded border border-zinc-100 px-2 py-1">
+          <TripListRow key={`${range.location}-${range.startDate}-${range.endDate}`}>
             {formatLocationStayRange(range)}
-          </li>
+          </TripListRow>
         ))}
       </ul>
-      <div className="rounded-xl border border-zinc-200 p-4">
-        <h3 className="text-sm font-semibold">Paint location range</h3>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="City name" className="rounded-lg border px-3 py-2 text-sm sm:col-span-2" />
+      <TripSoftPanel title="Paint location range">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <TripInput
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="City name"
+            className="sm:col-span-2"
+          />
           <TripDateInput
             value={rangeStart}
             onChange={setRangeStart}
             tripStart={datePicker.tripStart}
             tripEnd={datePicker.tripEnd}
             anchorDate={datePicker.anchorDate}
-            className="rounded-lg border px-3 py-2 text-sm"
+            className={tripFieldClass}
           />
           <TripDateInput
             value={rangeEnd}
@@ -87,10 +87,10 @@ export function LocationsSection(props: {
             tripStart={datePicker.tripStart}
             tripEnd={datePicker.tripEnd}
             anchorDate={datePicker.anchorDate}
-            className="rounded-lg border px-3 py-2 text-sm"
+            className={tripFieldClass}
           />
         </div>
-        <AsyncButton
+        <TripPrimaryButton
           onClick={() =>
             void props.onDispatch([
               {
@@ -102,13 +102,12 @@ export function LocationsSection(props: {
               },
             ])
           }
-          loading={props.saving}
-          loadingLabel="Painting…"
-          className="mt-3 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
+          disabled={props.saving}
+          className="mt-4"
         >
-          Paint range
-        </AsyncButton>
-      </div>
-    </div>
+          {props.saving ? "Painting…" : "Paint range"}
+        </TripPrimaryButton>
+      </TripSoftPanel>
+    </TripSectionShell>
   );
 }

@@ -29,10 +29,10 @@ function emptyState(): TripSetupState {
 }
 
 describe("buildOverviewNextSteps", () => {
-  it("suggests transport before accommodation on a blank trip", () => {
+  it("suggests locations first on a blank trip", () => {
     const steps = buildOverviewNextSteps(emptyState());
-    assert.equal(steps[0]?.id, "transport");
-    assert.match(steps[0]!.detail, /plane, train, bus/i);
+    assert.equal(steps[0]?.id, "locations");
+    assert.match(steps[0]!.detail, /calendar/i);
   });
 });
 

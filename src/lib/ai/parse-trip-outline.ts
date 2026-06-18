@@ -5,6 +5,7 @@ import {
   buildDocumentImportUserMessage,
   documentImportSystemRules,
 } from "@/lib/documents/document-import-instructions";
+import { repairIsoDate } from "@/lib/utils/iso-date";
 import { prepareDocumentForAi } from "@/lib/documents/prepare-for-ai";
 
 const TripOutlineDaySchema = z.object({
@@ -91,11 +92,11 @@ Rules:
   return {
     name: data.name?.trim() || "Imported trip",
     schoolName: data.schoolName?.trim() || "School trip",
-    startDate: data.startDate,
-    endDate: data.endDate,
+    startDate: repairIsoDate(data.startDate),
+    endDate: repairIsoDate(data.endDate),
     timezone: data.timezone?.trim() || params.defaultTimezone,
     destinationCountry: data.destinationCountry ?? null,
     destinationLanguage: data.destinationLanguage ?? null,
-    days,
+    days: days.map((day) => ({ ...day, date: repairIsoDate(day.date) })),
   };
 }

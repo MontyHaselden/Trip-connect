@@ -21,7 +21,8 @@ function importErrorResponse(err: unknown) {
     msg.includes("Could not parse") ||
     msg.includes("OpenAI") ||
     msg.includes("enough text") ||
-    msg.includes("Could not read")
+    msg.includes("Could not read") ||
+    msg.includes("not a real calendar day")
   ) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
@@ -56,12 +57,21 @@ export async function POST(
         : null,
     );
 
+    const pastedDocumentText =
+      typeof form.get("documentText") === "string"
+        ? String(form.get("documentText")).trim()
+        : "";
+
     let documentText: string;
-    try {
-      documentText = await extractTextFromUpload(file);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not read document.";
-      return NextResponse.json({ error: msg }, { status: 400 });
+    if (pastedDocumentText.length >= 50) {
+      documentText = pastedDocumentText.replace(/\r\n/g, "\n");
+    } else {
+      try {
+        documentText = await extractTextFromUpload(file);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Could not read document.";
+        return NextResponse.json({ error: msg }, { status: 400 });
+      }
     }
 
     const stream = new ReadableStream({

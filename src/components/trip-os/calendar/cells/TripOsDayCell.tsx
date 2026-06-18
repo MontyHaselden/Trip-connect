@@ -15,6 +15,7 @@ import {
   stayCityPaintShareForDay,
   travelLayoutBlocksPainting,
   travelLayoutMorningPaintEnd,
+  rightHalfSelectionBounds,
   travelLayoutPaintStart,
   travelLayoutSummary,
   type CalendarDaySegment,
@@ -22,11 +23,18 @@ import {
 } from "@/lib/host/wizard/transport-day-placement";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import type { ActivityMarker, OverlayMeta } from "@/lib/trip-engine/types";
+import type { LocationPaletteSwatch } from "@/lib/host/wizard/location-stays";
 
 import type { CalendarSelection } from "../useCalendarSelection";
 import { ActivityChips } from "./ActivityChips";
 import { LocationBand } from "./LocationBand";
 import { StayBand } from "./StayBand";
+
+type StayBandStyle = {
+  fill: string;
+  border: string;
+  text: string;
+};
 import { TransportBand } from "./TransportBand";
 import { TransitOverlay } from "./TransitOverlay";
 
@@ -50,8 +58,13 @@ export function TripOsDayCell(props: {
   showTransportCorridor: boolean;
   activities: ActivityMarker[];
   selection: CalendarSelection;
+  locationColorByKey?: Map<string, LocationPaletteSwatch>;
+  accommodationLeftColors?: StayBandStyle | null;
+  accommodationRightColors?: StayBandStyle | null;
+  accommodationSingleColors?: StayBandStyle | null;
   pendingFillHalf: (iso: string) => HalfSide | "full" | null;
   onDayClick: (iso: string, half?: HalfSide, options?: { transportClick?: boolean }) => boolean;
+  isToday?: boolean;
   onTransportCorridorClick?: (iso: string) => void;
 }) {
   const cellRef = useRef<HTMLDivElement>(null);
@@ -67,9 +80,6 @@ export function TripOsDayCell(props: {
     Boolean(selection.rangeStart) &&
     iso >= selection.rangeStart! &&
     iso <= (selection.rangeEnd || selection.rangeStart!);
-  const isRangeStart = selection.rangeStart === iso;
-  const isRangeEnd = (selection.rangeEnd || selection.rangeStart) === iso;
-  const isEndpoint = isInPendingRange && (isRangeStart || isRangeEnd);
 
   const hasTravelLayout = Boolean(props.travelSegments?.length);
   const hasFullStayDay = Boolean(primary) && !secondary && share >= 1;
@@ -111,29 +121,22 @@ export function TripOsDayCell(props: {
   );
   const cityPaintHeight = hasAccommodationBand ? "75%" : "100%";
   const isBuffer = day.dayType === "buffer";
-  const isEmpty =
-    showStayPaint &&
-    !primary &&
-    !secondary &&
-    !props.transitOverlays.length &&
-    !hasAccommodationBand &&
-    (!hasTravelLayout || travelPaintStart < 1 || hasMorningTravelPaint);
   const isHalfPending =
     isInPendingRange && (resolvedFillHalf === "left" || resolvedFillHalf === "right");
   const travelSummary = travelLayoutSummary(displayTravelSegments ?? props.travelSegments);
+  const halfSelectionDivider =
+    isSplitDay(day) && displayShare < 0.99 ? displayShare : 0.5;
 
-  const selectionPaintStart =
-    resolvedFillHalf === "right" && hasAfternoonTravelPaint
-      ? travelPaintStart
-      : resolvedFillHalf === "right"
-        ? displayShare
-        : 0;
+  const rightSelectionBounds =
+    resolvedFillHalf === "right"
+      ? rightHalfSelectionBounds(day, layoutSegments)
+      : null;
   const leftPendingWidth =
     resolvedFillHalf === "left" && hasMorningTravelPaint && !primary
       ? travelMorningEnd
       : resolvedFillHalf === "left" && hasAfternoonDepartureOnly && !primary
         ? 0.5
-        : displayShare;
+        : halfSelectionDivider;
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!props.isSelectable) return;
@@ -156,17 +159,24 @@ export function TripOsDayCell(props: {
     props.onDayClick(iso, halfFromClickX(e.clientX, rect, day));
   }
 
+  const selectedFullDay =
+    isInPendingRange && !isHalfPending && !hasPartialTravelPaint;
+  const selectedHalfDay = isHalfPending;
+  const dayNumSelected = isInPendingRange && !isHalfPending;
+
   return (
-    <div className="flex min-h-[5.5rem] flex-col border-b border-r border-zinc-200 p-0.5">
-      <div className="flex shrink-0 justify-center pt-0.5">
+    <div className="flex min-h-[5.75rem] flex-col p-0.5">
+      <div className="flex shrink-0 justify-center pt-1">
         <span
           className={[
-            "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold transition-colors",
-            isInPendingRange
-              ? isEndpoint
-                ? "bg-indigo-950 text-white ring-2 ring-indigo-700/60"
-                : "bg-indigo-800 text-white"
-              : "text-zinc-500",
+            "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold transition-colors duration-200",
+            dayNumSelected
+              ? "font-semibold text-violet-700 ring-2 ring-violet-500/80"
+              : isInPendingRange && isHalfPending
+                ? "font-semibold text-violet-700"
+                : props.isToday
+                  ? "text-violet-700 ring-2 ring-violet-400/60"
+                  : "text-zinc-500",
           ].join(" ")}
         >
           {props.dayNum}
@@ -177,22 +187,17 @@ export function TripOsDayCell(props: {
         ref={cellRef}
         data-calendar-day={iso}
         className={[
-          "relative mt-0.5 min-h-[4.5rem] flex-1 overflow-hidden rounded-lg border transition-all duration-150",
+          "relative mt-1 min-h-[4.75rem] flex-1 overflow-hidden rounded-xl border transition-all duration-200",
           isBuffer
-            ? "border-dashed border-zinc-300 bg-zinc-100/80 opacity-90"
+            ? "border-dashed border-zinc-200 bg-zinc-100/60 opacity-90"
             : props.isHomeEdge
-              ? "border-zinc-300 bg-zinc-50/90"
-              : isInPendingRange && isEmpty && !hasPartialTravelPaint
-                ? "border-indigo-950 bg-indigo-900 shadow-sm"
-                : isInPendingRange && !isHalfPending && !hasPartialTravelPaint
-                  ? "border-indigo-800 bg-white shadow-sm ring-2 ring-inset ring-indigo-900/70"
-                  : "border-zinc-200/90 bg-white shadow-sm",
-          !isHalfPending &&
-          !hasPartialTravelPaint &&
-          (isRangeStart || isRangeEnd)
-            ? "ring-2 ring-indigo-300 ring-offset-1"
-            : "",
-          props.isSelectable ? "cursor-pointer hover:opacity-95" : "cursor-default",
+              ? "border-zinc-200/80 bg-zinc-50/90"
+              : selectedFullDay
+                ? "border-violet-400/70 bg-white shadow-sm ring-2 ring-violet-500/70 ring-offset-1"
+                : "border-zinc-200/60 bg-white shadow-sm",
+          props.isSelectable
+            ? "cursor-pointer hover:scale-[1.01] hover:shadow-md"
+            : "cursor-default",
         ].join(" ")}
         onClick={handleClick}
         onKeyDown={(e) => {
@@ -204,14 +209,14 @@ export function TripOsDayCell(props: {
         tabIndex={props.isSelectable ? 0 : -1}
         title={travelSummary || undefined}
       >
-        {isHalfPending ? (
+        {selectedHalfDay ? (
           <div
-            className="pointer-events-none absolute inset-y-0 z-[6] bg-indigo-400/25"
+            className="pointer-events-none absolute inset-y-0 z-[20] rounded-lg border-2 border-violet-500/90 bg-violet-500/10"
             style={
-              resolvedFillHalf === "right"
+              resolvedFillHalf === "right" && rightSelectionBounds
                 ? {
-                    left: `${selectionPaintStart * 100}%`,
-                    width: `${(1 - selectionPaintStart) * 100}%`,
+                    left: `${rightSelectionBounds.start * 100}%`,
+                    width: `${rightSelectionBounds.width * 100}%`,
                   }
                 : { left: 0, width: `${leftPendingWidth * 100}%` }
             }
@@ -226,6 +231,9 @@ export function TripOsDayCell(props: {
           secondary={secondary}
           corridorDepartureAcco={props.corridorDepartureAcco}
           corridorArrivalAcco={props.corridorArrivalAcco}
+          corridorDepartureAccoColors={props.accommodationLeftColors}
+          corridorArrivalAccoColors={props.accommodationRightColors}
+          locationColorByKey={props.locationColorByKey}
           onTransportCorridorClick={
             props.onTransportCorridorClick
               ? () => props.onTransportCorridorClick!(iso)
@@ -241,6 +249,7 @@ export function TripOsDayCell(props: {
           displayShare={displayShare}
           showStayPaint={showStayPaint && !props.showTransportCorridor}
           cityPaintHeight={cityPaintHeight}
+          locationColorByKey={props.locationColorByKey}
         />
 
         <TransitOverlay overlays={props.transitOverlays} />
@@ -254,6 +263,9 @@ export function TripOsDayCell(props: {
             displayShare={displayShare}
             primary={primary}
             secondary={secondary}
+            leftColors={props.accommodationLeftColors}
+            rightColors={props.accommodationRightColors}
+            singleColors={props.accommodationSingleColors}
           />
         ) : null}
         <ActivityChips activities={props.activities} />

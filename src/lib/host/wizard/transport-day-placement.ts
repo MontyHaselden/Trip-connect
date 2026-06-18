@@ -135,18 +135,13 @@ export function isOvernightHubSecondaryOnDepartureDay(
   return false;
 }
 
-export function arrivalDate(leg: {
-  travelDate?: string | null;
-  arrivalDate?: string | null;
-  departureTime?: string | null;
-  arrivalTime?: string | null;
-}): string {
+export function arrivalDate(leg: TransportLegDraft): string {
   const travelDate = leg.travelDate?.trim() ?? "";
   if (leg.arrivalDate?.trim()) return leg.arrivalDate.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(travelDate)) return travelDate;
 
-  const dep = parseMinutes(leg.departureTime ?? null);
-  const arr = parseMinutes(leg.arrivalTime ?? null);
+  const dep = parseMinutes(leg.departureTime);
+  const arr = parseMinutes(leg.arrivalTime);
   if (dep !== null && arr !== null && arr < dep) {
     return addDays(travelDate, 1);
   }
@@ -838,6 +833,49 @@ export function travelLayoutMorningPaintEnd(
       segment.end > segment.start,
   );
   return afternoonTransit ? afternoonTransit.start : 0;
+}
+
+/** Trailing destination city band after the last transit slice on a travel day. */
+export function trailingCitySliceAfterTransit(
+  segments: CalendarDaySegment[] | undefined,
+): { start: number; end: number } | null {
+  if (!segments?.length) return null;
+
+  let lastTransitIndex = -1;
+  for (let i = 0; i < segments.length; i += 1) {
+    if (segments[i]!.kind === "transit") lastTransitIndex = i;
+  }
+  if (lastTransitIndex < 0) return null;
+
+  for (let i = lastTransitIndex + 1; i < segments.length; i += 1) {
+    const segment = segments[i]!;
+    if (segment.kind === "city") {
+      return { start: segment.start, end: segment.end };
+    }
+  }
+  return null;
+}
+
+/** Selection ring for the right / arrival slice — uses the trailing city band when present. */
+export function rightHalfSelectionBounds(
+  day: Pick<DayPlaceDraft, "primaryShare" | "secondaryCity">,
+  segments: CalendarDaySegment[] | undefined,
+): { start: number; width: number } {
+  const trailing = trailingCitySliceAfterTransit(segments);
+  if (trailing) {
+    return {
+      start: trailing.start,
+      width: trailing.end - trailing.start,
+    };
+  }
+
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const divider =
+    secondary && (day.primaryShare ?? 1) < 0.99 ? (day.primaryShare ?? DEFAULT_HALF_SHARE) : DEFAULT_HALF_SHARE;
+  return {
+    start: divider,
+    width: 1 - divider,
+  };
 }
 
 /** One-line summary for calendar cell tooltips. */

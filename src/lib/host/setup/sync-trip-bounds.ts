@@ -9,6 +9,17 @@ import { locationsMatch } from "@/lib/host/wizard/location-stays";
 import { hasScheduledReturnTransport } from "@/lib/host/wizard/transport-day-placement";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
+function tripHasStoredContent(state: TripSetupState): boolean {
+  const mainDays = state.dayPlacesByGroupId[state.mainGroupId] ?? [];
+  const hasPaint = mainDays.some((d) => d.primaryCity.trim() && d.dayType !== "buffer");
+  const hasStays = mainAccommodationStays(state).some((s) => s.name?.trim());
+  const hasTransport =
+    state.outboundLegs.length > 0 ||
+    state.returnLegs.length > 0 ||
+    state.intercityLegs.length > 0;
+  return hasPaint || hasStays || hasTransport || state.activities.length > 0;
+}
+
 function returnCityOnlyDay(day: DayPlaceDraft, returnCity: string): boolean {
   const ret = returnCity.trim();
   if (!ret || day.secondaryCity?.trim()) return false;
@@ -60,6 +71,14 @@ export function effectiveTripBoundsFromState(state: TripSetupState): {
   const content = contentTripBoundsFromState(state);
   if (content) {
     return { ...content, fromContent: true };
+  }
+  // Stored rows can lag after calendar clears — do not show ghost dates when DB has no content.
+  if (!tripHasStoredContent(state)) {
+    return {
+      startDate: TRIP_DATES_UNSET,
+      endDate: TRIP_DATES_UNSET,
+      fromContent: false,
+    };
   }
   if (!tripDatesAreUnset(state.basics.startDate, state.basics.endDate)) {
     return {

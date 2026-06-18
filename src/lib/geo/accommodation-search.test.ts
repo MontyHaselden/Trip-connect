@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { inferCityLabelFromAddress } from "./accommodation-search";
+import {
+  friendlyCityFromHotelName,
+  inferCityLabelFromAddress,
+  looksLikeFormalMapsCityLabel,
+  resolveStayCityOnHotelPick,
+  suggestKeepStayCityLabel,
+} from "./accommodation-search";
 import { cityLabelFromAddressComponents } from "./google-places";
 
 describe("inferCityLabelFromAddress", () => {
@@ -28,5 +34,66 @@ describe("cityLabelFromAddressComponents", () => {
       { longText: "Thailand", types: ["country", "political"] },
     ]);
     assert.equal(label, "Pa Tong, Phuket");
+  });
+});
+
+describe("friendlyCityFromHotelName", () => {
+  it("extracts Patong from Royal Paradise hotel name", () => {
+    assert.equal(
+      friendlyCityFromHotelName("The Royal Paradise Hotel & Spa Patong Phuket"),
+      "Patong",
+    );
+  });
+});
+
+describe("resolveStayCityOnHotelPick", () => {
+  it("prefers Patong from hotel name over formal maps label", () => {
+    assert.equal(
+      resolveStayCityOnHotelPick({
+        hotelName: "The Royal Paradise Hotel & Spa Patong Phuket",
+        mapsCityLabel: "Amphoe Kathu, Chang Wat Phuket",
+        address: "135 Rat Uthit Song Roi Pi Rd, Pa Tong, Kathu District, Phuket, Thailand",
+      }),
+      "Patong",
+    );
+  });
+});
+
+describe("suggestKeepStayCityLabel", () => {
+  it("suggests Patong when maps returns formal admin text", () => {
+    assert.equal(
+      suggestKeepStayCityLabel({
+        hotelName: "The Royal Paradise Hotel & Spa Patong Phuket",
+        effectiveCity: "Amphoe Kathu, Chang Wat Phuket",
+      }),
+      "Patong",
+    );
+  });
+
+  it("suggests Patong when calendar already says Phuket", () => {
+    assert.equal(
+      suggestKeepStayCityLabel({
+        hotelName: "The Royal Paradise Hotel & Spa Patong Phuket",
+        effectiveCity: "Phuket",
+      }),
+      "Patong",
+    );
+  });
+
+  it("returns null when city already matches", () => {
+    assert.equal(
+      suggestKeepStayCityLabel({
+        hotelName: "The Royal Paradise Hotel & Spa Patong Phuket",
+        effectiveCity: "Patong",
+      }),
+      null,
+    );
+  });
+});
+
+describe("looksLikeFormalMapsCityLabel", () => {
+  it("flags amphoe and comma-separated labels", () => {
+    assert.equal(looksLikeFormalMapsCityLabel("Amphoe Kathu, Chang Wat Phuket"), true);
+    assert.equal(looksLikeFormalMapsCityLabel("Patong"), false);
   });
 });

@@ -6,6 +6,9 @@ import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 
 import { AsyncButton } from "../shared/AsyncButton";
+import { TripInput, tripFieldClass } from "../shared/TripInput";
+import { TripPrimaryButton } from "../shared/TripPrimaryButton";
+import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 
 export function GroupsSection(props: {
   graph: TripEntityGraph;
@@ -16,27 +19,30 @@ export function GroupsSection(props: {
   const [type, setType] = useState("split_travel");
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Groups</h2>
-        <p className="text-sm text-zinc-600">Advanced / bulk edit — main group + subgroup overlays.</p>
-      </div>
+    <TripSectionShell
+      eyebrow="Advanced"
+      title="Groups"
+      description="Main group plus subgroup overlays for split travel."
+    >
       <ul className="space-y-2">
         {props.graph.groups.map((g) => (
-          <li key={g.id} className="flex items-center justify-between rounded-lg border border-zinc-200 p-3">
+          <li
+            key={g.id}
+            className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm"
+          >
             <div>
-              <p className="font-medium">
+              <p className="font-medium text-zinc-900">
                 {g.name}
                 {g.isMain ? " (main)" : ""}
               </p>
-              <p className="text-sm text-zinc-600">{g.type}</p>
+              <p className="text-sm text-zinc-500">{g.type}</p>
             </div>
             {!g.isMain ? (
               <AsyncButton
                 loading={props.saving}
                 loadingLabel="Removing…"
                 onClick={() => void props.onDispatch([{ type: "deleteGroup", groupId: g.id }])}
-                className="text-sm text-red-700 hover:underline"
+                className="text-sm text-red-600 hover:text-red-700"
               >
                 Delete
               </AsyncButton>
@@ -44,32 +50,28 @@ export function GroupsSection(props: {
           </li>
         ))}
       </ul>
-      <div className="rounded-xl border border-zinc-200 p-4">
-        <h3 className="text-sm font-semibold">Create group</h3>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Group name" className="rounded-lg border px-3 py-2 text-sm" />
-          <select value={type} onChange={(e) => setType(e.target.value)} className="rounded-lg border px-3 py-2 text-sm">
+      <TripSoftPanel title="Create group">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <TripInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Group name" />
+          <select value={type} onChange={(e) => setType(e.target.value)} className={tripFieldClass}>
             <option value="split_travel">Split travel</option>
             <option value="activity">Activity</option>
             <option value="accommodation">Accommodation</option>
             <option value="other">Other</option>
           </select>
         </div>
-        <AsyncButton
+        <TripPrimaryButton
           onClick={() => {
             if (!name.trim()) return;
-            void props.onDispatch([
-              { type: "createGroup", name: name.trim(), groupType: type },
-            ]);
+            void props.onDispatch([{ type: "createGroup", name: name.trim(), groupType: type }]);
             setName("");
           }}
-          loading={props.saving}
-          loadingLabel="Creating…"
-          className="mt-3 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
+          disabled={props.saving}
+          className="mt-4"
         >
-          Create group
-        </AsyncButton>
-      </div>
-    </div>
+          {props.saving ? "Creating…" : "Create group"}
+        </TripPrimaryButton>
+      </TripSoftPanel>
+    </TripSectionShell>
   );
 }

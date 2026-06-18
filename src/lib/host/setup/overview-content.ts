@@ -1,6 +1,9 @@
 import { stayCityLabel } from "@/lib/host/setup/accommodation-calendar";
 import { mainAccommodationStays } from "@/lib/host/setup/entity-scope";
-import { resolvedMainDayPlaces } from "@/lib/host/setup/resolved-day-places";
+import {
+  getVisibleCalendarDayPlaces,
+  tripHasPlannedContent,
+} from "@/lib/host/setup/reconcile-trip-shell";
 import {
   effectiveTripBoundsFromState,
   uncoveredTripDays,
@@ -18,11 +21,13 @@ export type OverviewSummaryLine = {
   value: string;
 };
 
+export type OverviewNavTarget = SetupSectionId | "ingest" | "map";
+
 export type OverviewNextStep = {
   id: string;
   title: string;
   detail: string;
-  section?: SetupSectionId;
+  section?: OverviewNavTarget;
 };
 
 function legRoute(from: string, to: string): string {
@@ -44,8 +49,7 @@ function uniqueCities(days: TripSetupState["dayPlacesByGroupId"][string]): strin
 /** Group-wide snapshot — only lines that have real data. */
 export function buildOverviewSummary(state: TripSetupState): OverviewSummaryLine[] {
   const lines: OverviewSummaryLine[] = [];
-  const mainDays = resolvedMainDayPlaces(state);
-  const paintedDays = mainDays.filter((d) => d.primaryCity.trim() && d.dayType !== "buffer");
+  const paintedDays = getVisibleCalendarDayPlaces(state);
 
   const tripBounds = effectiveTripBoundsFromState(state);
   if (!tripDatesAreUnset(tripBounds.startDate, tripBounds.endDate)) {
@@ -57,7 +61,7 @@ export function buildOverviewSummary(state: TripSetupState): OverviewSummaryLine
   }
 
   if (paintedDays.length) {
-    const cities = uniqueCities(mainDays);
+    const cities = uniqueCities(paintedDays);
     lines.push({
       id: "locations",
       label: "Locations",
@@ -110,10 +114,56 @@ export function buildOverviewSummary(state: TripSetupState): OverviewSummaryLine
   return lines;
 }
 
+/** True when the host has not yet added locations, stays, transport, or activities. */
+export function isTripWelcomeState(state: TripSetupState): boolean {
+  return !tripHasPlannedContent(state);
+}
+
+/** Friendly first-visit suggestions — no warning labels. */
+export function buildWelcomeSuggestions(state: TripSetupState): OverviewNextStep[] {
+  const steps: OverviewNextStep[] = [
+    {
+      id: "locations",
+      title: "Pick cities and locations",
+      detail:
+        "Select days on the calendar (right) and paint where the group will be — Tokyo, Kyoto, a region, or home city.",
+      section: "locations",
+    },
+    {
+      id: "accommodation",
+      title: "Already have a hotel booked?",
+      detail:
+        "Tap the nights you need on the calendar and add the property — booked or still to confirm.",
+      section: "accommodation",
+    },
+    {
+      id: "transport",
+      title: "Flights and transfers (when ready)",
+      detail:
+        "Add outbound, return, and between-city legs once you know how the group is travelling.",
+      section: "transport",
+    },
+  ];
+
+  if (tripNameNeedsAttention(state.basics.name)) {
+    steps.unshift({
+      id: "trip-name",
+      title: "Give this trip a name",
+      detail: "Rename “New trip” above so it is easy to find on your dashboard.",
+    });
+  }
+
+  return steps;
+}
+
 /** Suggested next actions in priority order. */
 export function buildOverviewNextSteps(state: TripSetupState): OverviewNextStep[] {
+  if (isTripWelcomeState(state)) {
+    return buildWelcomeSuggestions(state);
+  }
+
   const steps: OverviewNextStep[] = [];
-  const mainDays = resolvedMainDayPlaces(state);
+  const mainDays = state.dayPlacesByGroupId[state.mainGroupId] ?? [];
   const tripBounds = effectiveTripBoundsFromState(state);
   const uncovered = uncoveredTripDays(
     mainDays,
@@ -134,12 +184,12 @@ export function buildOverviewNextSteps(state: TripSetupState): OverviewNextStep[
     });
   }
 
-  if (!hasTransport) {
+  if (uncovered.length) {
     steps.push({
-      id: "transport",
-      title: "Transportation",
-      detail: "Lock in how the group gets there and back — plane, train, bus, ferry, or other.",
-      section: "transport",
+      id: "locations",
+      title: "Daily locations",
+      detail: `${uncovered.length} day${uncovered.length === 1 ? "" : "s"} still need a location — select them on the calendar and assign a city.`,
+      section: "locations",
     });
   }
 
@@ -152,12 +202,12 @@ export function buildOverviewNextSteps(state: TripSetupState): OverviewNextStep[
     });
   }
 
-  if (uncovered.length) {
+  if (!hasTransport) {
     steps.push({
-      id: "locations",
-      title: "Daily locations",
-      detail: `${uncovered.length} day${uncovered.length === 1 ? "" : "s"} still need a location — select them on the calendar and assign a city.`,
-      section: "locations",
+      id: "transport",
+      title: "Transportation",
+      detail: "Lock in how the group gets there and back — plane, train, bus, ferry, or other.",
+      section: "transport",
     });
   }
 

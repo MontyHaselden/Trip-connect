@@ -5,6 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import type { IntercityLegDraft, TransportLegDraft } from "@/lib/host/wizard/types";
 
+import { TripInput } from "../shared/TripInput";
+import { TripSectionShell } from "../shared/TripSectionShell";
+
 function legRouteLabel(leg: TransportLegDraft | IntercityLegDraft): string {
   const ic = leg as IntercityLegDraft;
   if (ic.intercityFromCity && ic.intercityToCity) {
@@ -94,33 +97,29 @@ export function BookingsSection(props: { graph: TripEntityGraph; tripId: string 
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Bookings & references</h2>
-        <p className="text-sm text-zinc-600">
-          Track supplier and reference numbers — overview surfaces invoice gaps.
-        </p>
-      </div>
+    <TripSectionShell
+      eyebrow="References"
+      title="Bookings & references"
+      description="Track supplier and reference numbers — overview surfaces invoice gaps."
+    >
       <ul className="space-y-3">
         {rows.map((row) => (
-          <li key={row.entityId} className="rounded-xl border border-zinc-200 p-4">
-            <p className="font-medium">{row.label}</p>
+          <li key={row.entityId} className="rounded-2xl bg-zinc-50/80 p-5">
+            <p className="font-medium text-zinc-900">{row.label}</p>
             <p className="text-xs text-zinc-500">Status: {row.bookingStatus}</p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              <input
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <TripInput
                 defaultValue={row.supplier ?? ""}
                 placeholder="Supplier"
-                className="rounded-lg border px-3 py-2 text-sm"
                 onBlur={(e) => {
                   if (e.target.value !== (row.supplier ?? "")) {
                     void saveBooking(row, { supplier: e.target.value });
                   }
                 }}
               />
-              <input
+              <TripInput
                 defaultValue={row.bookingReference ?? ""}
                 placeholder="Booking reference / invoice #"
-                className="rounded-lg border px-3 py-2 text-sm"
                 onBlur={(e) => {
                   if (e.target.value !== (row.bookingReference ?? "")) {
                     void saveBooking(row, { bookingReference: e.target.value });
@@ -129,7 +128,7 @@ export function BookingsSection(props: { graph: TripEntityGraph; tripId: string 
               />
             </div>
             {saving === row.entityId ? (
-              <p className="mt-1 text-xs text-zinc-500">Saving…</p>
+              <p className="mt-2 text-xs text-zinc-500">Saving…</p>
             ) : null}
             {row.bookingStatus === "booked" && !row.bookingReference?.trim() ? (
               <p className="mt-2 text-xs text-amber-800">Booked but no invoice/reference on file.</p>
@@ -137,11 +136,11 @@ export function BookingsSection(props: { graph: TripEntityGraph; tripId: string 
           </li>
         ))}
         {!rows.length ? (
-          <li className="rounded-lg border border-dashed border-zinc-300 p-4 text-sm text-zinc-500">
+          <li className="rounded-2xl bg-zinc-50/80 px-4 py-6 text-center text-sm text-zinc-500">
             Add stays or transport legs first.
           </li>
         ) : null}
       </ul>
-    </div>
+    </TripSectionShell>
   );
 }

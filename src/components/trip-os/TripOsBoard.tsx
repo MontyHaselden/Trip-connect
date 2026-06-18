@@ -1,9 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { tripOsHomePath } from "@/lib/trip-os/paths";
+
+import { graphToSetupState } from "@/lib/trip-engine/adapters";
+import type { TripCommand } from "@/lib/trip-engine/commands";
+import { isTripWelcomeState } from "@/lib/host/setup/overview-content";
 
 import { InteractiveTripCalendar } from "./calendar/InteractiveTripCalendar";
 import { useCalendarScroll } from "./calendar/useCalendarScroll";
@@ -20,6 +24,35 @@ export function TripOsBoard(props: { tripId: string }) {
   const engine = useTripOsEngine(props.tripId);
   const [middleView, setMiddleView] = useState<MiddleView>("section");
   const [activeSection, setActiveSection] = useState<TripOsSection>("overview");
+  const [participantViewRefreshKey, setParticipantViewRefreshKey] = useState(0);
+  const activeSectionRef = useRef(activeSection);
+  const previewRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  activeSectionRef.current = activeSection;
+
+  useEffect(() => {
+    return () => {
+      if (previewRefreshTimerRef.current) clearTimeout(previewRefreshTimerRef.current);
+    };
+  }, []);
+
+  const scheduleParticipantPreviewRefresh = useCallback(() => {
+    if (previewRefreshTimerRef.current) clearTimeout(previewRefreshTimerRef.current);
+    previewRefreshTimerRef.current = setTimeout(() => {
+      setParticipantViewRefreshKey((k) => k + 1);
+    }, 300);
+  }, []);
+
+  const dispatchWithPreviewRefresh = useCallback(
+    async (commands: TripCommand[]) => {
+      const ok = await engine.dispatch(commands);
+      if (ok) {
+        scheduleParticipantPreviewRefresh();
+      }
+      return ok;
+    },
+    [engine.dispatch, scheduleParticipantPreviewRefresh],
+  );
 
   useEffect(() => {
     void engine.load();
@@ -27,15 +60,14 @@ export function TripOsBoard(props: { tripId: string }) {
 
   const groupId = engine.activeGroupId || engine.data?.graph.mainGroupId || "";
   const renderModel = engine.data?.calendarRenderModel ?? null;
-  const initialAnchor = renderModel?.scrollAnchorDate ?? "";
 
-  const { scrollRef, saveScrollPosition } = useCalendarScroll(props.tripId, initialAnchor);
+  const { scrollRef, saveScrollPosition } = useCalendarScroll();
 
   const calendar = useCalendarSelection({
     graph: engine.data?.graph ?? null,
     renderModel,
     groupId,
-    onDispatch: engine.dispatch,
+    onDispatch: dispatchWithPreviewRefresh,
     onOpenDayView: () => setMiddleView("day"),
     onOpenSectionView: () => setMiddleView("section"),
     saveScrollPosition,
@@ -46,6 +78,9 @@ export function TripOsBoard(props: { tripId: string }) {
       calendar.clearSelection();
       setActiveSection(section);
       setMiddleView("section");
+      if (section === "participant-view") {
+        setParticipantViewRefreshKey((k) => k + 1);
+      }
     },
     [calendar],
   );
@@ -61,6 +96,7 @@ export function TripOsBoard(props: { tripId: string }) {
   const { graph, calendarProjection, calendarRenderModel, readiness, warnings, conflicts } =
     engine.data;
   const activeGroupId = engine.activeGroupId || graph.mainGroupId;
+  const calmNav = isTripWelcomeState(graphToSetupState(graph));
 
   const selectedDay =
     calendar.selection.rangeStart
@@ -71,7 +107,7 @@ export function TripOsBoard(props: { tripId: string }) {
     <select
       value={activeGroupId}
       onChange={(e) => void engine.switchGroup(e.target.value)}
-      className="rounded-lg border border-zinc-200 px-2 py-1 text-xs"
+      className="rounded-full border-0 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
     >
       {graph.groups.map((g) => (
         <option key={g.id} value={g.id}>
@@ -82,14 +118,10 @@ export function TripOsBoard(props: { tripId: string }) {
   );
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col">
-      <header className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-2">
-        <div>
-          <p className="text-sm font-semibold">{graph.basics.name || "New trip"}</p>
-          <p className="text-xs text-zinc-500">Trip operating system</p>
-        </div>
-        {engine.error ? <p className="text-sm text-red-700">{engine.error}</p> : null}
-      </header>
+    <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
+      {engine.error ? (
+        <div className="shrink-0 bg-red-50 px-4 py-2 text-sm text-red-700">{engine.error}</div>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <TripOsNav
@@ -98,8 +130,16 @@ export function TripOsBoard(props: { tripId: string }) {
           onSelect={handleNavSelect}
           onBackHome={() => router.push(tripOsHomePath())}
           saving={engine.saving}
+          calmNav={calmNav}
         />
-        <main className="min-w-0 flex-1 overflow-y-auto p-6">
+        <main
+          className={[
+            "trip-os-workspace min-w-0 flex-1 px-8 py-8",
+            activeSection === "ingest" && middleView === "section"
+              ? "flex min-h-0 flex-col overflow-hidden"
+              : "overflow-y-auto",
+          ].join(" ")}
+        >
           {middleView === "day" && calendar.selection.rangeStart ? (
             <DayContextPanel
               graph={graph}
@@ -109,7 +149,7 @@ export function TripOsBoard(props: { tripId: string }) {
               conflicts={conflicts}
               saving={engine.saving}
               error={engine.error}
-              onDispatch={engine.dispatch}
+              onDispatch={dispatchWithPreviewRefresh}
               onClearSelection={calendar.clearSelection}
             />
           ) : (
@@ -118,19 +158,22 @@ export function TripOsBoard(props: { tripId: string }) {
               graph={graph}
               groupId={activeGroupId}
               tripId={props.tripId}
+              inviteCode={engine.data.inviteCode}
               readiness={readiness}
               selectedDay={selectedDay}
               warnings={warnings}
               conflicts={conflicts}
               saving={engine.saving}
-              onDispatch={engine.dispatch}
+              onDispatch={dispatchWithPreviewRefresh}
               onNavigateSection={handleNavSelect}
               onReload={() => void engine.load()}
+              participantViewRefreshKey={participantViewRefreshKey}
             />
           )}
         </main>
-        <aside className="flex min-h-0 w-[min(42rem,48vw)] min-w-[320px] shrink-0 flex-col overflow-hidden border-l border-zinc-200">
+        <aside className="flex min-h-0 w-[min(42rem,48vw)] min-w-[320px] shrink-0 flex-col overflow-hidden bg-white shadow-[inset_1px_0_0_0_rgb(0_0_0/0.04)]">
           <InteractiveTripCalendar
+            tripId={props.tripId}
             model={calendarRenderModel}
             selection={calendar.selection}
             onDayClick={calendar.onDayClick}

@@ -82,6 +82,128 @@ export type TripStructureResult = {
   accommodationStays: AccommodationStayDraft[];
 };
 
+const TRANSPORT_TYPE_ALIASES: Record<string, (typeof TRANSPORT_TYPES)[number]> = {
+  flight: "plane",
+  airplane: "plane",
+  air: "plane",
+  flights: "plane",
+};
+
+function normalizeTransportType(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const key = value.trim().toLowerCase();
+  return TRANSPORT_TYPE_ALIASES[key] ?? value;
+}
+
+function normalizeBookingStatus(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const key = value.trim().toLowerCase();
+  return BOOKING_STATUSES.includes(key as (typeof BOOKING_STATUSES)[number])
+    ? key
+    : "not_booked";
+}
+
+function sanitizeTransportLeg(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const leg = { ...(raw as Record<string, unknown>) };
+  leg.transportType = normalizeTransportType(leg.transportType);
+  leg.bookingStatus = normalizeBookingStatus(leg.bookingStatus);
+  if (!leg.fromCity && typeof leg.intercityFromCity === "string") {
+    leg.fromCity = leg.intercityFromCity;
+  }
+  if (!leg.fromCity && typeof leg.departure === "string") {
+    leg.fromCity = leg.departure;
+  }
+  if (!leg.fromCity && typeof leg.departureCity === "string") {
+    leg.fromCity = leg.departureCity;
+  }
+  if (!leg.toCity && typeof leg.intercityToCity === "string") {
+    leg.toCity = leg.intercityToCity;
+  }
+  if (!leg.toCity && typeof leg.arrival === "string") {
+    leg.toCity = leg.arrival;
+  }
+  if (!leg.toCity && typeof leg.arrivalCity === "string") {
+    leg.toCity = leg.arrivalCity;
+  }
+  if (!leg.intercityFromCity && typeof leg.fromCity === "string") {
+    leg.intercityFromCity = leg.fromCity;
+  }
+  if (!leg.intercityToCity && typeof leg.toCity === "string") {
+    leg.intercityToCity = leg.toCity;
+  }
+  if (!leg.travelDate && typeof leg.date === "string") {
+    leg.travelDate = leg.date;
+  }
+  return leg;
+}
+
+function sanitizeDayPlace(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const day = { ...(raw as Record<string, unknown>) };
+  if (!day.primaryCity && typeof day.location === "string") {
+    day.primaryCity = day.location;
+  }
+  if (!day.primaryCity && typeof day.cityLabel === "string") {
+    day.primaryCity = day.cityLabel;
+  }
+  if (!day.primaryCity && typeof day.city === "string") {
+    day.primaryCity = day.city;
+  }
+  delete day.location;
+  delete day.cityLabel;
+  delete day.city;
+  delete day.activities;
+  delete day.summary;
+  return day;
+}
+
+function sanitizeStay(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const stay = { ...(raw as Record<string, unknown>) };
+  if (!stay.cityLabel && typeof stay.city === "string") {
+    stay.cityLabel = stay.city;
+  }
+  if (!stay.cityLabel && typeof stay.location === "string") {
+    stay.cityLabel = stay.location;
+  }
+  if (!stay.checkInDate && typeof stay.checkIn === "string") {
+    stay.checkInDate = stay.checkIn;
+  }
+  if (!stay.checkOutDate && typeof stay.checkOut === "string") {
+    stay.checkOutDate = stay.checkOut;
+  }
+  stay.stayType = normalizeStayType(stay.stayType);
+  return stay;
+}
+
+function normalizeStayType(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const key = value.trim().toLowerCase();
+  return STAY_TYPES.includes(key as (typeof STAY_TYPES)[number]) ? key : "hotel";
+}
+
+function sanitizeTripStructurePayload(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const obj = { ...(raw as Record<string, unknown>) };
+  if (Array.isArray(obj.outboundLegs)) {
+    obj.outboundLegs = obj.outboundLegs.map(sanitizeTransportLeg);
+  }
+  if (Array.isArray(obj.returnLegs)) {
+    obj.returnLegs = obj.returnLegs.map(sanitizeTransportLeg);
+  }
+  if (Array.isArray(obj.intercityLegs)) {
+    obj.intercityLegs = obj.intercityLegs.map(sanitizeTransportLeg);
+  }
+  if (Array.isArray(obj.dayPlaces)) {
+    obj.dayPlaces = obj.dayPlaces.map(sanitizeDayPlace);
+  }
+  if (Array.isArray(obj.accommodationStays)) {
+    obj.accommodationStays = obj.accommodationStays.map(sanitizeStay);
+  }
+  return obj;
+}
+
 function toTransportLeg(raw: z.infer<typeof TransportLegSchema>): TransportLegDraft {
   return {
     id: newId(),
@@ -135,9 +257,17 @@ Rules:
 - outboundLegs: flights from home to destination on or before start date.
 - returnLegs: flights home on or after end date.
 - intercityLegs: each distinct city change during the trip (train, bus, plane, etc.).
-- accommodationStays: hotels/hostels with check-in/out covering nights in each city. Use real hotel names when stated.
+- accommodationStays: hotels/hostels covering nights in each city. Use real hotel names when stated. These paint stay blocks on the calendar only — never become timeline activities.
+- checkInDate / checkOutDate: first night and departure day from the hotel. "Check in:" / "Check out:" lines in the document set these dates only — do not copy them as activities.
 - bookingStatus: "booked" only when clearly confirmed; otherwise "not_booked".
 - Do NOT include activity items.
+- Do NOT paint departureCity or returnCity as a full-day primaryCity in the destination country. Use dayType "travel" with secondaryCity for airport/transit days only.
+- Intercity moves (e.g. Phuket to Bangkok) belong on the checkout/travel day as a split day, not the day after arrival.
+- Return flights home (e.g. Melbourne → Christchurch) belong on returnLegs with travelDate on or after the trip end — never on outboundLegs or intercityLegs on the trip start date.
+- checkOutDate is the calendar day the group leaves the hotel — usually the same day as their departure flight from that city, NOT the day after.
+- Do not invent ground transport (train/bus) between cities unless the document explicitly mentions it.
+- Flight connections: when the document shows multi-leg flights (e.g. Bangkok → Melbourne → Christchurch), output each leg as a separate transport leg with airports in fromCity/toCity. Do NOT paint connection-hub cities (e.g. Melbourne on a 4-hour layover) as dayPlaces locations — the group is in transit, not visiting the hub. Only paint a hub city if the group has an overnight stay or explicit day tour there.
+- Use legKind "connection" on intercity legs after the first leg in a same-day or overnight flight chain.
 - ${documentImportSystemRules({ defaultTimezone: params.defaultTimezone })}
 - No markdown or commentary.`;
 
@@ -147,9 +277,10 @@ Rules:
   });
 
   const content = await completeOpenAiJson({ system, user: userContent });
-  const parsed = parseOpenAiJsonContent(content);
+  const parsed = sanitizeTripStructurePayload(parseOpenAiJsonContent(content));
   const validated = TripStructureSchema.safeParse(parsed);
   if (!validated.success) {
+    console.error("[parseTripStructureFromDocument] validation failed:", validated.error.message);
     throw new Error("AI could not read trip structure from that document.");
   }
 

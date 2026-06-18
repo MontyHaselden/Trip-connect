@@ -8,6 +8,7 @@ import {
   calendarScrollBounds,
   ensureDaysForRange,
   resolveCalendarScrollAnchor,
+  visibleCalendarScrollAnchor,
   tripCalendarScrollAnchor,
   weekStartMonday,
 } from "./calendar-bounds";
@@ -62,7 +63,7 @@ describe("ensureDaysForRange", () => {
 });
 
 describe("resolveCalendarScrollAnchor", () => {
-  it("centers on painted days when trip dates are unset", () => {
+  it("uses earliest painted day when trip dates are unset", () => {
     const anchor = resolveCalendarScrollAnchor({
       startDate: "2000-01-01",
       endDate: "2000-01-01",
@@ -85,7 +86,7 @@ describe("resolveCalendarScrollAnchor", () => {
       ],
       fallbackAnchor: "2026-12-01",
     });
-    assert.equal(anchor, "2026-08-29");
+    assert.equal(anchor, "2026-08-24");
   });
 
   it("ignores day selection — anchor stays on existing content", () => {
@@ -107,14 +108,68 @@ describe("resolveCalendarScrollAnchor", () => {
     assert.equal(anchor, "2026-08-24");
   });
 
-  it("uses real trip dates when they are set", () => {
+  it("uses trip start when dates are set and no content yet", () => {
     const anchor = resolveCalendarScrollAnchor({
       startDate: "2026-08-23",
       endDate: "2026-09-01",
       timezone: "Pacific/Auckland",
       fallbackAnchor: "2026-12-01",
     });
-    assert.equal(anchor, "2026-08-27");
+    assert.equal(anchor, "2026-08-23");
+  });
+
+  it("uses earliest on-trip content, skipping pre-trip buffer dates", () => {
+    const anchor = resolveCalendarScrollAnchor({
+      startDate: "2026-08-23",
+      endDate: "2026-09-05",
+      timezone: "Pacific/Auckland",
+      dayPlaces: [
+        {
+          date: "2026-08-20",
+          primaryCity: "Christchurch",
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: "buffer",
+        },
+        {
+          date: "2026-08-24",
+          primaryCity: "Phuket",
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: "trip",
+        },
+      ],
+      transportDates: ["2026-08-20"],
+    });
+    assert.equal(anchor, "2026-08-24");
+  });
+});
+
+describe("visibleCalendarScrollAnchor", () => {
+  it("uses first on-trip content on or after today when earlier content is not rendered", () => {
+    const anchor = visibleCalendarScrollAnchor({
+      startDate: "2026-01-01",
+      endDate: "2026-12-31",
+      timezone: "UTC",
+      dayPlaces: [
+        {
+          date: "2026-01-10",
+          primaryCity: "Tokyo",
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: "trip",
+        },
+        {
+          date: "2026-08-01",
+          primaryCity: "Osaka",
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: "trip",
+        },
+      ],
+      fallbackAnchor: "2026-06-17",
+    });
+    assert.equal(anchor, "2026-08-01");
   });
 });
 
@@ -139,22 +194,22 @@ describe("calendarGridFromToday", () => {
     assert.ok(!result.gridStart.startsWith("1999"));
   });
 
-  it("anchors scroll on trip dates even when the trip is in the past", () => {
+  it("anchors scroll on today when the trip is entirely in the past", () => {
     const result = calendarGridFromToday({
       startDate: "2024-01-01",
       endDate: "2024-01-14",
       timezone: "UTC",
     });
-    assert.equal(result.scrollAnchorDate, tripCalendarScrollAnchor("2024-01-01", "2024-01-14"));
+    assert.equal(result.scrollAnchorDate, result.todayIso);
   });
 
-  it("anchors scroll on the middle of a future trip", () => {
+  it("anchors scroll on the first content day of a future trip", () => {
     const result = calendarGridFromToday({
       startDate: "2026-08-23",
       endDate: "2026-09-04",
       timezone: "UTC",
     });
-    assert.equal(result.scrollAnchorDate, tripCalendarScrollAnchor("2026-08-23", "2026-09-04"));
+    assert.equal(result.scrollAnchorDate, "2026-08-23");
   });
 
   it("clamps grid start when trip started in the past", () => {

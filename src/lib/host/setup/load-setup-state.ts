@@ -84,16 +84,24 @@ export async function loadTripSetupState(tripId: string): Promise<TripSetupState
     .where(eq(groupOverlayOps.tripId, tripId));
 
   const dayPlacesByGroupId: Record<string, DayPlaceDraft[]> = {};
+  const locationDayPlaces = locationState.dayPlaces;
+  const locationHasPaint = locationDayPlaces.some(
+    (day) => day.primaryCity.trim() || day.secondaryCity?.trim(),
+  );
+
   for (const g of groupRows) {
-    const places = placeRows
+    const groupPlaces = placeRows
       .filter((p) => p.groupId === g.id)
       .map(rowToDayPlace);
+    const groupHasPaint = groupPlaces.some(
+      (day) => day.primaryCity.trim() || day.secondaryCity?.trim(),
+    );
     dayPlacesByGroupId[g.id] =
-      places.length > 0
-        ? places
-        : g.isMain
-          ? locationState.dayPlaces
-          : [];
+      groupHasPaint
+        ? groupPlaces
+        : g.isMain && locationHasPaint
+          ? locationDayPlaces
+          : groupPlaces;
   }
 
   const setupGroups: SetupGroup[] = groupRows.map((g) => ({

@@ -8,6 +8,7 @@ import {
   patongStay,
 } from "@/lib/host/setup/calendar-fixtures";
 import {
+  MAJOR_TRAVEL_DEST_SLICE,
   MAJOR_TRAVEL_DEST_START,
   MAJOR_TRAVEL_ORIGIN_END,
   MAJOR_TRAVEL_TRANSIT_END,
@@ -16,6 +17,10 @@ import {
   TRANSPORT_CORRIDOR_RIGHT_START,
 } from "@/lib/host/setup/transport-corridor";
 import { computeTravelDayLayouts } from "@/lib/host/wizard/transport-day-placement";
+import {
+  rightHalfSelectionBounds,
+  trailingCitySliceAfterTransit,
+} from "@/lib/host/wizard/transport-day-placement";
 import { newId } from "@/lib/host/wizard/types";
 import type { DayPlaceDraft, TransportLegDraft } from "@/lib/host/wizard/types";
 
@@ -91,6 +96,14 @@ describe("computeTravelDayLayouts outbound crossover", () => {
     assert.equal(segments?.[2]?.colorOnly, true);
     assert.ok(segments?.[2]?.kind === "city" && segments[2].city === "Patong");
     assert.deepEqual(parseAirportRouteLabel(segments?.[1]?.label ?? ""), ["CHC", "MEL", "HKT"]);
+
+    const trailing = trailingCitySliceAfterTransit(segments);
+    assert.deepEqual(trailing, { start: MAJOR_TRAVEL_DEST_START, end: 1 });
+
+    const day = dayPlaces[0]!;
+    const rightBounds = rightHalfSelectionBounds(day, segments);
+    assert.equal(rightBounds.start, MAJOR_TRAVEL_DEST_START);
+    assert.equal(rightBounds.width, MAJOR_TRAVEL_DEST_SLICE);
   });
 
   it("uses one stacked route on departure day for overnight home connections", () => {
@@ -189,6 +202,7 @@ describe("computeTravelDayLayouts outbound crossover", () => {
     assert.equal(segments?.[1]?.start, TRANSPORT_CORRIDOR_LEFT_SHARE);
     assert.equal(segments?.[1]?.end, TRANSPORT_CORRIDOR_RIGHT_START);
     assert.equal(segments?.[2]?.start, TRANSPORT_CORRIDOR_RIGHT_START);
+    assert.ok(segments?.[0]?.kind === "city" && segments[0].city === "Patong");
     assert.deepEqual(parseAirportRouteLabel(segments?.[1]?.label ?? ""), ["HKT", "DMK"]);
   });
 });

@@ -39,16 +39,12 @@ export type CalendarScrollAnchorInput = {
   dayPlaces?: DayPlaceDraft[];
   accommodationStays?: AccommodationStayDraft[];
   transportDates?: string[];
+  activityDates?: string[];
   /** Used when trip dates are unset and no painted content exists yet. */
   fallbackAnchor?: string;
 };
 
-/** Center on real trip dates, painted days, or today — not the wide default scroll range. */
-export function resolveCalendarScrollAnchor(input: CalendarScrollAnchorInput): string {
-  if (!tripDatesAreUnset(input.startDate, input.endDate)) {
-    return tripCalendarScrollAnchor(input.startDate, input.endDate);
-  }
-
+function collectContentDates(input: CalendarScrollAnchorInput): string[] {
   const dates: string[] = [];
 
   for (const day of input.dayPlaces ?? []) {
@@ -68,12 +64,61 @@ export function resolveCalendarScrollAnchor(input: CalendarScrollAnchorInput): s
     if (isMeaningfulCalendarDate(iso)) dates.push(iso);
   }
 
-  if (dates.length) {
-    const sorted = [...dates].sort();
-    return tripCalendarScrollAnchor(sorted[0]!, sorted[sorted.length - 1]!);
+  for (const iso of input.activityDates ?? []) {
+    if (isMeaningfulCalendarDate(iso)) dates.push(iso);
+  }
+
+  return dates;
+}
+
+/** Earliest on-trip content day — skips pre-trip buffer / outbound-only dates before startDate. */
+function earliestOnTripContentDate(
+  input: CalendarScrollAnchorInput,
+  dates: string[],
+): string | null {
+  if (!dates.length) return null;
+  const sorted = [...dates].sort();
+  if (!tripDatesAreUnset(input.startDate, input.endDate)) {
+    const onTrip = sorted.filter((d) => d >= input.startDate && d <= input.endDate);
+    if (onTrip.length) return onTrip[0]!;
+    return input.startDate;
+  }
+  return sorted[0]!;
+}
+
+/** Scroll to the earliest day with trip content — not today, not mid-trip. */
+export function resolveCalendarScrollAnchor(input: CalendarScrollAnchorInput): string {
+  const earliest = earliestOnTripContentDate(input, collectContentDates(input));
+  if (earliest) return earliest;
+
+  if (!tripDatesAreUnset(input.startDate, input.endDate)) {
+    return input.startDate;
   }
 
   return input.fallbackAnchor?.trim() || todayIso(input.timezone);
+}
+
+/** Scroll target that exists in the Trip OS grid (days before today are not rendered). */
+export function visibleCalendarScrollAnchor(input: CalendarScrollAnchorInput): string {
+  const target = resolveCalendarScrollAnchor(input);
+  const today = todayIso(input.timezone);
+  if (target >= today) return target;
+
+  const dates = collectContentDates(input).sort();
+  const onTripVisible = dates.filter((d) => {
+    if (d < today) return false;
+    if (!tripDatesAreUnset(input.startDate, input.endDate)) {
+      return d >= input.startDate && d <= input.endDate;
+    }
+    return true;
+  });
+  if (onTripVisible.length) return onTripVisible[0]!;
+
+  if (!tripDatesAreUnset(input.startDate, input.endDate) && input.startDate >= today) {
+    return input.startDate;
+  }
+
+  return today;
 }
 
 /** Wider range for scrolling the calendar grid (all months visible while scrolling). */
@@ -120,6 +165,7 @@ export type CalendarGridFromTodayInput = {
   dayPlaces?: DayPlaceDraft[];
   accommodationStays?: AccommodationStayDraft[];
   transportDates?: string[];
+  activityDates?: string[];
 };
 
 /** Scroll grid from today's week through trip padding — never renders days before todayIso. */
@@ -131,13 +177,14 @@ export function calendarGridFromToday(input: CalendarGridFromTodayInput): {
   scrollAnchorDate: string;
 } {
   const today = todayIso(input.timezone);
-  const scrollAnchorDate = resolveCalendarScrollAnchor({
+  const scrollAnchorDate = visibleCalendarScrollAnchor({
     startDate: input.startDate,
     endDate: input.endDate,
     timezone: input.timezone,
     dayPlaces: input.dayPlaces,
     accommodationStays: input.accommodationStays,
     transportDates: input.transportDates,
+    activityDates: input.activityDates,
     fallbackAnchor: today,
   });
   const anchor =

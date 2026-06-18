@@ -3,6 +3,18 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Host / Trip OS design tokens */
+  --trip-nav-from: #102a43;
+  --trip-nav-via: #1e1b4b;
+  --trip-nav-to: #2e1065;
+  --trip-nav-text: rgb(199 210 254 / 0.65);
+  --trip-nav-text-muted: rgb(199 210 254 / 0.4);
+  --trip-nav-active: rgb(139 92 246 / 0.15);
+  --trip-accent: #7c3aed;
+  --trip-accent-soft: rgb(139 92 246 / 0.12);
+  --trip-surface: #ffffff;
+  --trip-surface-muted: #fafafa;
+  --trip-line: rgb(0 0 0 / 0.04);
 }
 
 @theme inline {
@@ -22,7 +34,32 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Host Trip OS shell */
+.trip-os {
+  --trip-nav-from: #102a43;
+  --trip-nav-via: #1e1b4b;
+  --trip-nav-to: #2e1065;
+  color: var(--foreground);
+}
+
+.trip-os-nav {
+  background: linear-gradient(
+    180deg,
+    var(--trip-nav-from) 0%,
+    var(--trip-nav-via) 45%,
+    var(--trip-nav-to) 100%
+  );
+}
+
+.trip-os-workspace {
+  background: linear-gradient(180deg, var(--trip-surface) 0%, var(--trip-surface-muted) 100%);
+}
+
+.trip-os-calendar-scroll {
+  background: rgb(250 250 250 / 0.5);
 }
 
 /* Student PWA: lock the page shell; scroll only inside .student-app-scroll regions. */

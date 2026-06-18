@@ -8,6 +8,7 @@ import { TripAppContext, type TodayDayMeta, type TodayDayNav } from "@/component
 import { StudentBottomNav } from "@/components/layout/StudentBottomNav";
 import { TravelPassHeader } from "@/components/student/TravelPassHeader";
 import { DayCalendarSheet } from "@/components/student/today/DayCalendarSheet";
+import { StudentOverlayProvider } from "@/components/student/StudentOverlayContext";
 import type { TripCacheState } from "@/hooks/useTripCache";
 import { plusJakartaSans } from "@/lib/fonts/student-font";
 import type { DayWeatherSnapshot } from "@/types/activity-category";
@@ -168,9 +169,10 @@ export function StudentTodayPreviewShell(props: {
   );
 
   return (
-    <TripAppContext.Provider value={contextValue}>
+    <StudentOverlayProvider contained>
+      <TripAppContext.Provider value={contextValue}>
       <div
-        className={`${plusJakartaSans.variable} student-app flex h-full min-h-0 w-full max-w-md flex-col overflow-hidden bg-[var(--student-bg)] text-[var(--student-text)]`}
+        className={`${plusJakartaSans.variable} student-app relative flex h-full min-h-0 w-full max-w-md flex-col overflow-hidden bg-[var(--student-bg)] text-[var(--student-text)]`}
       >
         <div className="mx-auto flex h-full w-full max-w-md flex-col gap-2 overflow-hidden px-4 py-3">
           {todayNav && todayDayMeta ? <TravelPassHeader /> : (
@@ -198,5 +200,6 @@ export function StudentTodayPreviewShell(props: {
         ) : null}
       </div>
     </TripAppContext.Provider>
+    </StudentOverlayProvider>
   );
 }

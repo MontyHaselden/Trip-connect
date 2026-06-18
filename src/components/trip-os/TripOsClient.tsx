@@ -10,6 +10,10 @@ import { tripOsNewTripPath, tripOsSetupPath } from "@/lib/trip-os/paths";
 import { AccountPlanPanel } from "@/components/dashboard/AccountPlanPanel";
 import { TripStatusBadge } from "@/components/dashboard/TripStatusBadge";
 
+import { TripEyebrow } from "./shared/TripEyebrow";
+import { TripOsNav } from "./TripOsNav";
+import { TripPrimaryButton } from "./shared/TripPrimaryButton";
+
 type TripRow = {
   id: string;
   inviteCode: string;
@@ -73,67 +77,83 @@ export function TripOsClient() {
   }
 
   return (
-    <div className="min-h-dvh bg-zinc-50">
-      <div className="mx-auto max-w-4xl px-5 py-10">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Trip OS</h1>
-            <p className="mt-1 text-sm text-zinc-600">
-              Next-generation trip operating system — calendar, graph, and projections.
-            </p>
+    <div className="trip-os flex h-dvh min-h-0 bg-white">
+      <TripOsNav variant="list" />
+      <main className="trip-os-workspace min-w-0 flex-1 overflow-y-auto px-8 py-10">
+        <div className="relative mx-auto max-w-2xl">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -left-16 -top-8 h-64 w-64 rounded-full bg-gradient-to-br from-violet-400/20 to-transparent blur-3xl"
+          />
+
+          <div className="relative flex items-start justify-between gap-4">
+            <div>
+              <TripEyebrow accent>Trip OS</TripEyebrow>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-900">
+                Your trips
+              </h1>
+              <p className="mt-2 text-sm text-zinc-500">
+                Open a trip to build the itinerary — or start fresh.
+              </p>
+            </div>
+            <Link href={tripOsNewTripPath()}>
+              <TripPrimaryButton variant="violet">New trip</TripPrimaryButton>
+            </Link>
           </div>
-          <Link
-            href={tripOsNewTripPath()}
-            className="inline-flex h-10 items-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white"
-          >
-            New trip
-          </Link>
-        </div>
-        <AccountPlanPanel />
-        {error ? <p className="mt-4 text-sm text-red-700">{error}</p> : null}
-        {loading ? (
-          <p className="mt-8 text-sm text-zinc-600">Loading…</p>
-        ) : (
-          <ul className="mt-8 space-y-3">
-            {trips.map((t) => (
-              <li key={t.id}>
-                <div className="flex items-stretch gap-2 rounded-xl border border-zinc-200 bg-white hover:border-zinc-300">
-                  <Link href={t.continuePath} className="min-w-0 flex-1 p-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold">{t.name}</p>
-                      <TripStatusBadge status={t.status} label={t.statusLabel} />
-                    </div>
-                    <p className="mt-1 text-sm text-zinc-600">
-                      {t.schoolName} · {formatTripDateRangeLabel(t.startDate, t.endDate)}
-                    </p>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      Published v{t.publishedVersion} · invite {t.inviteCode}
-                    </p>
+
+          <div className="mt-8">
+            <AccountPlanPanel />
+          </div>
+
+          {error ? <p className="mt-4 text-sm text-red-700">{error}</p> : null}
+
+          {loading ? (
+            <p className="mt-10 text-sm text-zinc-500">Loading…</p>
+          ) : (
+            <ul className="mt-10 space-y-2">
+              {trips.map((t) => (
+                <li key={t.id}>
+                  <div className="group flex items-stretch gap-2 rounded-2xl bg-white shadow-sm transition hover:shadow-md">
+                    <Link href={t.continuePath} className="min-w-0 flex-1 px-5 py-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-zinc-900">{t.name}</p>
+                        <TripStatusBadge status={t.status} label={t.statusLabel} />
+                      </div>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        {t.schoolName} · {formatTripDateRangeLabel(t.startDate, t.endDate)}
+                      </p>
+                      <p className="mt-0.5 text-xs text-zinc-400">
+                        Published v{t.publishedVersion} · invite {t.inviteCode}
+                      </p>
+                    </Link>
+                    {t.canDelete ? (
+                      <button
+                        type="button"
+                        onClick={() => deleteTrip(t)}
+                        disabled={deletingId === t.id}
+                        className="shrink-0 self-center rounded-full px-4 py-2 text-sm font-medium text-red-600 opacity-0 transition hover:bg-red-50 group-hover:opacity-100 disabled:opacity-50"
+                      >
+                        {deletingId === t.id ? "Deleting…" : "Delete"}
+                      </button>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+              {!trips.length ? (
+                <li className="rounded-2xl bg-white px-8 py-12 text-center shadow-sm">
+                  <p className="text-sm text-zinc-500">No trips yet.</p>
+                  <Link
+                    href={tripOsNewTripPath()}
+                    className="mt-3 inline-block text-sm font-medium text-violet-600 hover:text-violet-700"
+                  >
+                    Create your first trip →
                   </Link>
-                  {t.canDelete ? (
-                    <button
-                      type="button"
-                      onClick={() => deleteTrip(t)}
-                      disabled={deletingId === t.id}
-                      className="shrink-0 self-center rounded-lg px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                    >
-                      {deletingId === t.id ? "Deleting…" : "Delete"}
-                    </button>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-            {!trips.length ? (
-              <li className="rounded-xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-600">
-                No trips yet.{" "}
-                <Link href={tripOsNewTripPath()} className="font-medium text-zinc-900">
-                  Create one
-                </Link>
-              </li>
-            ) : null}
-          </ul>
-        )}
-      </div>
+                </li>
+              ) : null}
+            </ul>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

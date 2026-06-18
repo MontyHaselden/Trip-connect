@@ -4,7 +4,9 @@ import { describe, it } from "node:test";
 import {
   removeAccommodationAndCitiesFromRange,
   splitStaysForRangeRemoval,
+  trimConflictingStaysForLocationPaint,
 } from "./remove-accommodation-range";
+import { clearCalendarContentInRange } from "./clear-day-content";
 import type { TripSetupState } from "./types";
 function baseState(): TripSetupState {
   const mainGroupId = "main";
@@ -66,6 +68,34 @@ describe("splitStaysForRangeRemoval", () => {
   });
 });
 
+describe("trimConflictingStaysForLocationPaint", () => {
+  it("shortens a stay that overlaps a new city paint", () => {
+    const stays = [
+      {
+        ...baseState().accommodationStays[0]!,
+        checkInDate: "2026-07-06",
+        checkOutDate: "2026-07-13",
+        cityLabel: "Bangkok",
+        name: "Centre Point Plus",
+      },
+    ];
+    const next = trimConflictingStaysForLocationPaint(
+      stays,
+      "Paris, France",
+      "2026-07-10",
+      "2026-07-16",
+    );
+    assert.equal(next.length, 1);
+    assert.equal(next[0]?.checkOutDate, "2026-07-10");
+  });
+
+  it("leaves same-city stays untouched", () => {
+    const stays = baseState().accommodationStays;
+    const next = trimConflictingStaysForLocationPaint(stays, "Patong", "2026-08-25", "2026-08-27");
+    assert.deepEqual(next, stays);
+  });
+});
+
 describe("removeAccommodationAndCitiesFromRange", () => {
   it("creates thin edges on boundary days and removes middle nights", () => {
     const state = baseState();
@@ -106,5 +136,41 @@ describe("removeAccommodationAndCitiesFromRange", () => {
       state.mainGroupId,
     );
     assert.equal(next.accommodationStays.length, 0);
+  });
+
+  it("clears host-painted Paris through checkout without leaving spill days", () => {
+    const state = baseState();
+    state.basics.startDate = "2026-07-01";
+    state.basics.endDate = "2026-07-20";
+    state.accommodationStays = [];
+    state.dayPlacesByGroupId.main = [
+      { date: "2026-07-10", primaryCity: "Bangkok", secondaryCity: "Paris, France", primaryShare: 0.5, dayType: "travel", includeBuffer: false },
+      { date: "2026-07-11", primaryCity: "Paris, France", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-07-12", primaryCity: "Paris, France", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-07-13", primaryCity: "Paris, France", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-07-14", primaryCity: "Paris, France", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-07-15", primaryCity: "Paris, France", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-07-16", primaryCity: "Paris, France", secondaryCity: null, primaryShare: 0.5, dayType: "trip", includeBuffer: false },
+      { date: "2026-07-17", primaryCity: "Paris, France", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+    ];
+
+    const next = clearCalendarContentInRange(
+      state,
+      {
+        rangeStart: "2026-07-10",
+        rangeEnd: "2026-07-16",
+        startHalf: "right",
+        endHalf: "full",
+      },
+      state.mainGroupId,
+    );
+
+    const days = next.dayPlacesByGroupId.main ?? [];
+    assert.equal(days.find((d) => d.date === "2026-07-13"), undefined);
+    assert.equal(days.find((d) => d.date === "2026-07-14"), undefined);
+    assert.equal(days.find((d) => d.date === "2026-07-16"), undefined);
+    assert.equal(days.find((d) => d.date === "2026-07-17"), undefined);
+    assert.equal(days.find((d) => d.date === "2026-07-10")?.primaryCity, "Bangkok");
+    assert.equal(days.find((d) => d.date === "2026-07-10")?.secondaryCity, null);
   });
 });

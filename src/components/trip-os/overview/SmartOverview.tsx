@@ -2,7 +2,14 @@
 
 import { useMemo } from "react";
 
-import { formatTripDateRangeLabel } from "@/lib/host/trip-date-display";
+import {
+  buildOverviewNextSteps,
+  buildOverviewSummary,
+  isTripWelcomeState,
+} from "@/lib/host/setup/overview-content";
+import { formatTripDateRangeLabel, tripDatesAreUnset } from "@/lib/host/trip-date-display";
+import { effectiveTripBoundsFromState } from "@/lib/host/setup/sync-trip-bounds";
+import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import { computeLogisticsPrompts } from "@/lib/trip-engine/logistics-prompts";
 import type {
   EngineConflict,
@@ -12,6 +19,26 @@ import type {
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
 
+import type { TripOsSection } from "../TripOsWorkspace";
+import { WelcomeOverview } from "./WelcomeOverview";
+
+const STATUS_LABELS: Record<string, string> = {
+  complete: "Complete",
+  mostly_complete: "Mostly complete",
+  warning: "Needs attention",
+  question: "Decision needed",
+  conflict: "Conflict",
+  idle: "Not started",
+  flexible: "Flexible",
+  todo: "To do",
+  decision: "Decision needed",
+};
+
+function readinessLabel(r: EngineSectionReadiness): string {
+  if (r.message?.trim()) return r.message.trim();
+  return STATUS_LABELS[r.status] ?? r.status.replace(/_/g, " ");
+}
+
 export function SmartOverview(props: {
   graph: TripEntityGraph;
   readiness: EngineSectionReadiness[];
@@ -19,112 +46,178 @@ export function SmartOverview(props: {
   warnings: EngineWarning[];
   conflicts: EngineConflict[];
   onUpdateName: (name: string) => void;
-  onNavigateSection?: (section: string) => void;
+  onNavigateSection?: (section: TripOsSection) => void;
 }) {
+  const setupState = useMemo(() => graphToSetupState(props.graph), [props.graph]);
+  const welcome = useMemo(() => isTripWelcomeState(setupState), [setupState]);
+  const summary = useMemo(() => buildOverviewSummary(setupState), [setupState]);
+  const suggestions = useMemo(() => buildOverviewNextSteps(setupState), [setupState]);
   const logisticsPrompts = useMemo(
-    () => computeLogisticsPrompts(props.graph),
-    [props.graph],
+    () => (welcome ? [] : computeLogisticsPrompts(props.graph)),
+    [props.graph, welcome],
   );
 
-  const readinessById = new Map(props.readiness.map((r) => [r.id, r]));
+  const tripBounds = effectiveTripBoundsFromState(setupState);
+  const datesLabel = tripDatesAreUnset(tripBounds.startDate, tripBounds.endDate)
+    ? "Dates not set yet"
+    : formatTripDateRangeLabel(tripBounds.startDate, tripBounds.endDate);
+
+  const metaLine = [
+    datesLabel,
+    props.graph.basics.timezone,
+    props.graph.basics.departureCity ? `from ${props.graph.basics.departureCity}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  if (welcome) {
+    return (
+      <WelcomeOverview
+        graph={props.graph}
+        metaLine={metaLine}
+        onUpdateName={props.onUpdateName}
+        onNavigateSection={props.onNavigateSection}
+      />
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-2xl space-y-10 py-2">
       <div>
-        <h2 className="text-lg font-semibold">Smart overview</h2>
-        <p className="text-sm text-zinc-600">
-          {formatTripDateRangeLabel(props.graph.basics.startDate, props.graph.basics.endDate)} ·{" "}
-          {props.graph.basics.timezone}
-          {props.graph.basics.departureCity
-            ? ` · from ${props.graph.basics.departureCity}`
-            : ""}
-        </p>
-      </div>
-
-      <label className="block">
-        <span className="text-sm font-medium">Trip name</span>
+        <p className="text-sm font-medium text-violet-600">Overview</p>
         <input
           value={props.graph.basics.name}
           onChange={(e) => props.onUpdateName(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+          className="mt-2 w-full border-0 bg-transparent text-3xl font-semibold tracking-tight text-zinc-900 focus:outline-none focus:ring-0"
         />
-      </label>
-
-      <div className="grid gap-2 sm:grid-cols-2">
-        {props.readiness
-          .filter((r) => r.id !== "overview")
-          .map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => props.onNavigateSection?.(r.id)}
-              className="rounded-lg border border-zinc-200 p-3 text-left hover:border-zinc-300"
-            >
-              <p className="text-sm font-medium">{r.label}</p>
-              <p className="mt-0.5 text-xs text-zinc-500">{r.message || r.status}</p>
-            </button>
-          ))}
+        <p className="mt-2 text-sm text-zinc-500">{metaLine}</p>
       </div>
 
-      {logisticsPrompts.length ? (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-          <h3 className="text-sm font-semibold text-blue-900">Logistics & bookings</h3>
-          <ul className="mt-2 space-y-2 text-sm text-blue-800">
-            {logisticsPrompts.map((p) => (
-              <li key={p.id} className="flex items-start gap-2">
-                <span>{p.severity === "warning" ? "⚠" : "ℹ"}</span>
-                <span>{p.message}</span>
+      {summary.length ? (
+        <section>
+          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+            In this trip
+          </h3>
+          <ul className="space-y-3">
+            {summary.map((line) => (
+              <li key={line.id} className="flex gap-4 text-sm">
+                <span className="w-24 shrink-0 font-medium text-zinc-400">{line.label}</span>
+                <span className="min-w-0 text-zinc-800">{line.value}</span>
               </li>
             ))}
           </ul>
+        </section>
+      ) : null}
+
+      {suggestions.length ? (
+        <section>
+          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+            Suggested next
+          </h3>
+          <ul className="space-y-1">
+            {suggestions.map((step) => (
+              <li key={step.id}>
+                {step.section ? (
+                  <button
+                    type="button"
+                    onClick={() => props.onNavigateSection?.(step.section as TripOsSection)}
+                    className="group flex w-full items-start gap-3 rounded-xl px-2 py-2.5 text-left transition hover:bg-zinc-50"
+                  >
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-zinc-900">{step.title}</span>
+                      <span className="mt-0.5 block text-sm text-zinc-500">{step.detail}</span>
+                    </span>
+                    <span className="shrink-0 text-zinc-300 group-hover:text-violet-400">→</span>
+                  </button>
+                ) : (
+                  <div className="flex items-start gap-3 px-2 py-2.5">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-300" />
+                    <div>
+                      <p className="text-sm font-semibold text-zinc-900">{step.title}</p>
+                      <p className="mt-0.5 text-sm text-zinc-500">{step.detail}</p>
+                    </div>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : (
+        <p className="text-sm text-emerald-700">
+          Core setup looks good — use the calendar to refine daily plans.
+        </p>
+      )}
+
+      <section>
+        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+          Sections
+        </h3>
+        <div className="flex flex-wrap gap-2">
+          {props.readiness
+            .filter((r) => r.id !== "overview")
+            .map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => props.onNavigateSection?.(r.id as TripOsSection)}
+                className="rounded-full bg-zinc-100 px-3.5 py-1.5 text-sm text-zinc-700 transition hover:bg-zinc-200"
+              >
+                {r.label}
+                <span className="ml-1.5 text-zinc-400">· {readinessLabel(r)}</span>
+              </button>
+            ))}
         </div>
+      </section>
+
+      {logisticsPrompts.length ? (
+        <section className="rounded-2xl bg-sky-50/80 px-5 py-4">
+          <h3 className="text-sm font-semibold text-sky-900">Logistics</h3>
+          <ul className="mt-2 space-y-1.5 text-sm text-sky-800">
+            {logisticsPrompts.map((p) => (
+              <li key={p.id}>{p.message}</li>
+            ))}
+          </ul>
+        </section>
       ) : null}
 
       {props.selectedDay ? (
-        <div className="rounded-xl border border-zinc-200 p-4">
-          <h3 className="text-sm font-semibold">Selected day — {props.selectedDay.date}</h3>
-          <p className="mt-2 text-sm text-zinc-700">
+        <section className="text-sm text-zinc-700">
+          <p className="font-semibold text-zinc-900">Selected — {props.selectedDay.date}</p>
+          <p className="mt-1">
             {props.selectedDay.primaryCity || "No city"}
             {props.selectedDay.accommodationLabel
               ? ` · ${props.selectedDay.accommodationLabel}`
               : ""}
           </p>
-          {props.selectedDay.activities.length ? (
-            <ul className="mt-2 text-sm text-zinc-600">
-              {props.selectedDay.activities.map((a) => (
-                <li key={a.id}>★ {a.title}</li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
+        </section>
       ) : null}
 
       {props.conflicts.length ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-          <h3 className="text-sm font-semibold text-red-800">Conflicts</h3>
-          <ul className="mt-2 space-y-1 text-sm text-red-700">
+        <section className="rounded-2xl bg-red-50/90 px-5 py-4 text-sm text-red-800">
+          <p className="font-semibold text-red-900">Conflicts</p>
+          <ul className="mt-2 space-y-1">
             {props.conflicts.map((c) => (
               <li key={c.id}>{c.message}</li>
             ))}
           </ul>
-        </div>
+        </section>
       ) : null}
 
       {props.warnings.length ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <h3 className="text-sm font-semibold text-amber-900">Warnings</h3>
-          <ul className="mt-2 space-y-1 text-sm text-amber-800">
+        <section className="rounded-2xl bg-amber-50/80 px-5 py-4 text-sm text-amber-900">
+          <p className="font-semibold">Notes</p>
+          <ul className="mt-2 space-y-1">
             {props.warnings.map((w) => (
               <li key={w.id}>{w.message}</li>
             ))}
           </ul>
-        </div>
+        </section>
       ) : null}
 
-      {readinessById.get("publish")?.status === "complete" ? (
+      {props.graph.publishSummary.publishedVersion > 0 ? (
         <p className="text-sm text-emerald-700">
-          Published v{props.graph.publishSummary.publishedVersion} — student app reads published
-          snapshot from this graph.
+          Published v{props.graph.publishSummary.publishedVersion}
         </p>
       ) : null}
     </div>

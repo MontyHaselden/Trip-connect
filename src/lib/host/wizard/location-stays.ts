@@ -703,6 +703,8 @@ const LOCATION_PALETTE = [
   { fill: "#f8e8ec", accent: "#9a4f62", text: "#4a1f2a" },
 ] as const;
 
+export type LocationPaletteSwatch = (typeof LOCATION_PALETTE)[number];
+
 /** Stable palette bucket — "Bangkok" and "Bangkok, Thailand" share one color. */
 export function locationPaletteKey(name: string): string {
   const trimmed = name.trim();
@@ -722,14 +724,93 @@ function paletteIndex(name: string): number {
   return Math.abs(hash) % LOCATION_PALETTE.length;
 }
 
+function swatchForName(name: string): LocationPaletteSwatch {
+  return LOCATION_PALETTE[paletteIndex(name)]!;
+}
+
+export type TripLocationColorSource = {
+  days: Pick<DayPlaceDraft, "date" | "primaryCity" | "secondaryCity">[];
+  departureCity?: string;
+  returnCity?: string;
+  segmentCities?: string[];
+};
+
+/** Unique trip locations in calendar order — used to avoid hash palette collisions. */
+export function collectOrderedTripLocationNames(source: TripLocationColorSource): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  const add = (name: string | null | undefined) => {
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    const key = locationPaletteKey(trimmed);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    ordered.push(trimmed);
+  };
+
+  add(source.departureCity);
+  for (const day of [...source.days].sort((a, b) => a.date.localeCompare(b.date))) {
+    add(day.primaryCity);
+    add(day.secondaryCity);
+  }
+  for (const city of source.segmentCities ?? []) {
+    add(city);
+  }
+  add(source.returnCity);
+  return ordered;
+}
+
+/** Assign each trip location a distinct palette slot (wraps after palette size). */
+export function buildTripLocationColorMap(
+  locationNames: Iterable<string>,
+): Map<string, LocationPaletteSwatch> {
+  const map = new Map<string, LocationPaletteSwatch>();
+  for (const name of locationNames) {
+    const key = locationPaletteKey(name);
+    if (!key || map.has(key)) continue;
+    map.set(key, LOCATION_PALETTE[map.size % LOCATION_PALETTE.length]!);
+  }
+  return map;
+}
+
+export function tripLocationSwatch(
+  name: string,
+  colorMap?: Map<string, LocationPaletteSwatch>,
+): LocationPaletteSwatch {
+  const key = locationPaletteKey(name);
+  if (key && colorMap?.has(key)) return colorMap.get(key)!;
+  return swatchForName(name);
+}
+
 export function locationColor(name: string): string {
-  return LOCATION_PALETTE[paletteIndex(name)].fill;
+  return swatchForName(name).fill;
 }
 
 export function locationBorderColor(name: string): string {
-  return LOCATION_PALETTE[paletteIndex(name)].accent;
+  return swatchForName(name).accent;
 }
 
 export function locationTextColor(name: string): string {
-  return LOCATION_PALETTE[paletteIndex(name)].text;
+  return swatchForName(name).text;
+}
+
+export function tripLocationColor(
+  name: string,
+  colorMap?: Map<string, LocationPaletteSwatch>,
+): string {
+  return tripLocationSwatch(name, colorMap).fill;
+}
+
+export function tripLocationBorderColor(
+  name: string,
+  colorMap?: Map<string, LocationPaletteSwatch>,
+): string {
+  return tripLocationSwatch(name, colorMap).accent;
+}
+
+export function tripLocationTextColor(
+  name: string,
+  colorMap?: Map<string, LocationPaletteSwatch>,
+): string {
+  return tripLocationSwatch(name, colorMap).text;
 }

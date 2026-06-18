@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import { applyCommands } from "./apply-commands";
 import { setupStateToGraph } from "./adapters";
+import { applySetupAccommodationChange } from "@/lib/host/setup/apply-setup-accommodation";
 import { computeReadiness } from "./compute-readiness";
 import { detectGraphConflicts, detectStayOverlaps, detectUncoveredDays } from "./conflicts";
 import { projectCalendar } from "./project-calendar";
@@ -123,6 +124,56 @@ describe("trip-engine applyCommands", () => {
     const day = result.graph.dayPlacesByGroupId["main-group"]?.find((d) => d.date === "2026-08-28");
     assert.equal(day?.secondaryCity, "Osaka");
     assert.equal(day?.primaryShare, 0.5);
+  });
+
+  it("paintDayRange survives accommodation re-derive after painting over a stay", () => {
+    const state = baseState();
+    state.basics.startDate = "2026-07-01";
+    state.basics.endDate = "2026-07-20";
+    state.dayPlacesByGroupId["main-group"] = [
+      { date: "2026-07-06", primaryCity: "Bangkok", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-07-07", primaryCity: "Bangkok", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-07-08", primaryCity: "Bangkok", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-07-09", primaryCity: "Bangkok", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-07-10", primaryCity: "Bangkok", secondaryCity: null, primaryShare: 0.5, dayType: "trip", includeBuffer: false },
+    ];
+    state.accommodationStays = [
+      stay({
+        cityLabel: "Bangkok",
+        name: "Centre Point Plus",
+        checkInDate: "2026-07-06",
+        checkOutDate: "2026-07-13",
+      }),
+    ];
+    const graph = setupStateToGraph("trip-1", state);
+    const painted = applyCommands(graph, [
+      {
+        type: "paintDayRange",
+        groupId: "main-group",
+        rangeStart: "2026-07-10",
+        rangeEnd: "2026-07-16",
+        location: "Paris, France",
+        startHalf: "right",
+        endHalf: "full",
+      },
+    ]).graph;
+
+    assert.equal(painted.accommodationStays[0]?.checkOutDate, "2026-07-10");
+
+    const reloaded = applySetupAccommodationChange(painted, "main-group");
+    const days = reloaded.dayPlacesByGroupId["main-group"] ?? [];
+    assert.ok(
+      days.some(
+        (d) =>
+          d.date === "2026-07-12" &&
+          (d.primaryCity.includes("Paris") || d.secondaryCity?.includes("Paris")),
+      ),
+      "Paris paint should survive reload-style stay re-derive",
+    );
+    assert.ok(
+      !days.some((d) => d.date === "2026-07-12" && d.primaryCity === "Bangkok"),
+      "Bangkok should not overwrite painted Paris nights",
+    );
   });
 
   it("addActivity appends to activities list", () => {

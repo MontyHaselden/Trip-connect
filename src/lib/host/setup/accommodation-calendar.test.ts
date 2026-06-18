@@ -184,6 +184,33 @@ describe("crossover accommodation labels", () => {
     assert.equal(checkoutMorning.leftOnly, true);
   });
 
+  it("shows checkout on the last selected day when location is fully painted", () => {
+    const stay = patongStay({
+      checkInDate: "2026-07-01",
+      checkOutDate: "2026-07-04",
+    });
+    const acco = accommodationLabelByDate([stay]);
+    const checkoutDay = {
+      primaryCity: "Patong",
+      secondaryCity: null,
+      primaryShare: 1,
+      dayType: "trip" as const,
+    };
+    assert.equal(acco.get("2026-07-04"), undefined);
+    const bands = accommodationBandsForCalendarDay(
+      "2026-07-04",
+      checkoutDay,
+      [stay],
+      acco,
+    );
+    assert.equal(bands.left, "Royal Paradise Hotel");
+    assert.equal(bands.leftOnly, true);
+    assert.equal(
+      accommodationBandsForCalendarDay("2026-07-05", checkoutDay, [stay], acco).left,
+      null,
+    );
+  });
+
   it("shows checkout and same-day check-in on opposite halves", () => {
     const osakaStay = {
       ...patongStay({

@@ -1,12 +1,23 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["pdfjs-dist"],
   async redirects() {
     return [
       {
         source: "/host",
         destination: "/dashboard",
         permanent: false,
+      },
+      {
+        source: "/dashboard-legacy",
+        destination: "/dashboard",
+        permanent: true,
+      },
+      {
+        source: "/dashboard-legacy/:path*",
+        destination: "/dashboard/:path*",
+        permanent: true,
       },
       {
         source: "/join/:inviteCode",

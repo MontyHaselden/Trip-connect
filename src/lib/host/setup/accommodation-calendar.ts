@@ -163,6 +163,23 @@ export type CalendarAccommodationBands = {
   rightOnly?: boolean;
 };
 
+/** Resolve a named stay from a calendar hotel label (optional city disambiguation). */
+export function namedStayForLabel(
+  stays: AccommodationStayDraft[],
+  label: string,
+  cityHint?: string,
+): AccommodationStayDraft | null {
+  const trimmed = label.trim();
+  if (!trimmed) return null;
+  const matches = stays.filter((s) => s.name?.trim() === trimmed);
+  if (!matches.length) return null;
+  if (cityHint?.trim()) {
+    const cityMatch = matches.find((s) => locationsMatch(stayCityLabel(s), cityHint));
+    if (cityMatch) return cityMatch;
+  }
+  return matches[0] ?? null;
+}
+
 function scopeAccommodationBandsToLocationHalf(
   day: Pick<DayPlaceDraft, "primaryCity" | "secondaryCity" | "primaryShare">,
   left: string | null,
@@ -232,7 +249,21 @@ export function accommodationBandsForCalendarDay(
     if (night) left = night;
   }
 
-  return scopeAccommodationBandsToLocationHalf(day, left, right);
+  const bands = scopeAccommodationBandsToLocationHalf(day, left, right);
+
+  const checkoutStay = stays.find((s) => s.name?.trim() && s.checkOutDate === iso);
+  const checkInSameDay = stays.some(
+    (s) =>
+      s.name?.trim() &&
+      s.checkInDate === iso &&
+      s.checkOutDate > iso &&
+      s.id !== checkoutStay?.id,
+  );
+  if (checkoutStay && bands.left && !bands.right && !checkInSameDay) {
+    return { ...bands, leftOnly: true };
+  }
+
+  return bands;
 }
 
 /** Calendar accommodation label scoped to the painted half of a split day. */

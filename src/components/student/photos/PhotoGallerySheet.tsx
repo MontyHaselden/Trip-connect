@@ -4,7 +4,9 @@ import { useState } from "react";
 import { DateTime } from "luxon";
 
 import { StudentBottomSheet } from "@/components/student/StudentBottomSheet";
+import { useStudentOverlay } from "@/components/student/StudentOverlayContext";
 import type { ParticipantPhoto } from "@/lib/student/participant-photos";
+import { studentOverlayRootClass } from "@/lib/student/overlay-classes";
 
 function PhotoViewer(props: {
   photo: ParticipantPhoto;
@@ -12,9 +14,10 @@ function PhotoViewer(props: {
   onClose: () => void;
 }) {
   const { photo, label, onClose } = props;
+  const { contained } = useStudentOverlay();
 
   return (
-    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/80 p-4">
+    <div className={`${studentOverlayRootClass(contained, { zClass: "z-[75]", align: "center" })} bg-black/80 p-4`}>
       <button
         type="button"
         aria-label="Close"

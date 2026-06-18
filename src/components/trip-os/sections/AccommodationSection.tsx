@@ -9,6 +9,9 @@ import { newId } from "@/lib/host/wizard/types";
 
 import { AsyncButton } from "../shared/AsyncButton";
 import { TripDateInput } from "../shared/TripDateInput";
+import { TripInput, tripFieldClass } from "../shared/TripInput";
+import { TripPrimaryButton } from "../shared/TripPrimaryButton";
+import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 import { tripDatePickerContext } from "../shared/trip-date-picker";
 
 export function AccommodationSection(props: {
@@ -24,80 +27,97 @@ export function AccommodationSection(props: {
   const [city, setCity] = useState("");
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
+  const [removingStayId, setRemovingStayId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
 
   async function addStay() {
     if (!name.trim() || !checkIn || !checkOut) return;
-    await props.onDispatch([
-      {
-        type: "addStay",
-        groupId: props.groupId,
-        stay: {
-          id: newId(),
-          cityLabel: city.trim() || name.trim(),
-          stayType: "hotel",
-          name: name.trim(),
-          url: null,
-          address: null,
-          phone: null,
-          checkInDate: checkIn,
-          checkOutDate: checkOut,
-          notes: null,
-          isHomestayGroup: false,
-          multipleInCity: false,
+    setAdding(true);
+    try {
+      await props.onDispatch([
+        {
+          type: "addStay",
+          groupId: props.groupId,
+          stay: {
+            id: newId(),
+            cityLabel: city.trim() || name.trim(),
+            stayType: "hotel",
+            name: name.trim(),
+            url: null,
+            address: null,
+            phone: null,
+            checkInDate: checkIn,
+            checkOutDate: checkOut,
+            notes: null,
+            isHomestayGroup: false,
+            multipleInCity: false,
+          },
         },
-      },
-    ]);
-    setName("");
-    setCity("");
-    setCheckIn("");
-    setCheckOut("");
+      ]);
+      setName("");
+      setCity("");
+      setCheckIn("");
+      setCheckOut("");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function removeStay(stayId: string) {
+    setRemovingStayId(stayId);
+    try {
+      await props.onDispatch([{ type: "removeStay", groupId: props.groupId, stayId }]);
+    } finally {
+      setRemovingStayId(null);
+    }
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Accommodation</h2>
-        <p className="text-sm text-zinc-600">Advanced / bulk edit — named stays with check-in/out.</p>
-      </div>
+    <TripSectionShell
+      eyebrow="Advanced"
+      title="Accommodation"
+      description="Named stays with check-in and check-out dates."
+    >
       <ul className="space-y-2">
         {stays.map((s) => (
-          <li key={s.id} className="flex items-center justify-between rounded-lg border border-zinc-200 p-3">
+          <li
+            key={s.id}
+            className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm"
+          >
             <div>
-              <p className="font-medium">{s.name || "Unnamed stay"}</p>
-              <p className="text-sm text-zinc-600">
+              <p className="font-medium text-zinc-900">{s.name || "Unnamed stay"}</p>
+              <p className="text-sm text-zinc-500">
                 {s.cityLabel} · {s.checkInDate} → {s.checkOutDate}
               </p>
             </div>
             <AsyncButton
-              loading={props.saving}
+              loading={removingStayId === s.id}
               loadingLabel="Removing…"
-              onClick={() =>
-                void props.onDispatch([{ type: "removeStay", groupId: props.groupId, stayId: s.id }])
-              }
-              className="text-sm text-red-700 hover:underline"
+              onClick={() => void removeStay(s.id)}
+              disabled={removingStayId !== null && removingStayId !== s.id}
+              className="text-sm text-red-600 hover:text-red-700"
             >
               Delete
             </AsyncButton>
           </li>
         ))}
         {!stays.length ? (
-          <li className="rounded-lg border border-dashed border-zinc-300 p-4 text-sm text-zinc-500">
+          <li className="rounded-2xl bg-zinc-50/80 px-4 py-6 text-center text-sm text-zinc-500">
             No stays yet.
           </li>
         ) : null}
       </ul>
-      <div className="rounded-xl border border-zinc-200 p-4">
-        <h3 className="text-sm font-semibold">Add stay</h3>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Hotel / property name" className="rounded-lg border px-3 py-2 text-sm" />
-          <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City / region" className="rounded-lg border px-3 py-2 text-sm" />
+      <TripSoftPanel title="Add stay">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <TripInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Hotel / property name" />
+          <TripInput value={city} onChange={(e) => setCity(e.target.value)} placeholder="City / region" />
           <TripDateInput
             value={checkIn}
             onChange={setCheckIn}
             tripStart={datePicker.tripStart}
             tripEnd={datePicker.tripEnd}
             anchorDate={datePicker.anchorDate}
-            className="rounded-lg border px-3 py-2 text-sm"
+            className={tripFieldClass}
           />
           <TripDateInput
             value={checkOut}
@@ -105,18 +125,13 @@ export function AccommodationSection(props: {
             tripStart={datePicker.tripStart}
             tripEnd={datePicker.tripEnd}
             anchorDate={datePicker.anchorDate}
-            className="rounded-lg border px-3 py-2 text-sm"
+            className={tripFieldClass}
           />
         </div>
-        <AsyncButton
-          onClick={() => void addStay()}
-          loading={props.saving}
-          loadingLabel="Adding…"
-          className="mt-3 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-        >
-          Add stay
-        </AsyncButton>
-      </div>
-    </div>
+        <TripPrimaryButton onClick={() => void addStay()} disabled={adding || removingStayId !== null} className="mt-4">
+          {adding ? "Adding…" : "Add stay"}
+        </TripPrimaryButton>
+      </TripSoftPanel>
+    </TripSectionShell>
   );
 }

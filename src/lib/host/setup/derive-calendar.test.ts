@@ -7,6 +7,7 @@ import {
 } from "./derive-calendar";
 import {
   bangkokStay,
+  haseldenIntercityLeg,
   patongBangkokLeg,
   patongBangkokTrip,
   patongStay,
@@ -43,6 +44,29 @@ describe("deriveCalendarState", () => {
     assert.equal(sep5?.primaryCity, "Bangkok");
     assert.equal(sep5?.primaryShare, 0.5);
     assert.equal(state.accommodationByDate.get("2026-09-04"), "Centre Point Plus");
+  });
+
+  it("keeps Patong on Aug 31 departure when intercity leg uses Phuket airport", () => {
+    const state = deriveCalendarState({
+      stays: [
+        patongStay({ checkInDate: "2026-08-23", checkOutDate: "2026-08-31" }),
+        bangkokStay({ checkInDate: "2026-09-01", checkOutDate: "2026-09-04" }),
+      ],
+      intercityLegs: [haseldenIntercityLeg()],
+      trip: patongBangkokTrip,
+      transportDraft: {
+        outboundLegs: [],
+        returnLegs: [],
+        intercityLegs: [haseldenIntercityLeg()],
+        dayPlaces: [],
+      },
+      gridStart: "2026-08-20",
+      gridEnd: "2026-09-10",
+    });
+
+    const aug31 = state.dayPlaces.find((d) => d.date === "2026-08-31");
+    assert.equal(aug31?.primaryCity, "Patong");
+    assert.equal(aug31?.secondaryCity, "Bangkok");
   });
 
   it("paints post-trip home buffer on the day after return departure", () => {

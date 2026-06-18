@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull, or } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { itineraryItems, tripDays } from "@/lib/db/schema";
@@ -78,7 +78,10 @@ export async function loadActivitiesForTrip(tripId: string): Promise<ActivityDra
     .select()
     .from(itineraryItems)
     .where(
-      and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.wizardSource, "activity")),
+      and(
+        eq(itineraryItems.tripId, tripId),
+        or(eq(itineraryItems.wizardSource, "activity"), isNull(itineraryItems.wizardSource)),
+      ),
     )
     .orderBy(asc(itineraryItems.sortOrder));
 

@@ -9,6 +9,7 @@ import {
   accommodationMorningHalfLabel,
   arrivalAccommodationLabel,
   departureAccommodationLabel,
+  namedStayForLabel,
 } from "@/lib/host/setup/accommodation-calendar";
 import { isAccommodationCrossoverDay } from "@/lib/host/setup/transport-corridor";
 import { weekStartMonday } from "@/lib/host/setup/calendar-bounds";
@@ -25,13 +26,17 @@ import {
   type WeekCell,
 } from "./calendar-weeks";
 import { TripOsDayCell } from "./cells/TripOsDayCell";
+import { stayBandStyleForLabel } from "./cells/StayBand";
 import type { CalendarSelection } from "./useCalendarSelection";
 import type { HalfSide } from "@/lib/host/wizard/location-stays";
+import { TripEyebrow } from "../shared/TripEyebrow";
+import { useCalendarInitialScroll } from "./useCalendarScroll";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function InteractiveTripCalendar(props: {
   model: CalendarRenderModel;
+  tripId: string;
   selection: CalendarSelection;
   onDayClick: (iso: string, half?: HalfSide, options?: { transportClick?: boolean }) => boolean;
   onTransportCorridorClick?: (date: string) => void;
@@ -61,6 +66,13 @@ export function InteractiveTripCalendar(props: {
     );
   }, [model.gridStart, model.gridEnd, model.todayIso]);
 
+  useCalendarInitialScroll({
+    scrollRef: props.scrollRef,
+    anchorDate: model.scrollAnchorDate,
+    scrollKey: `${props.tripId}:${model.groupId}:${model.scrollAnchorDate}`,
+    contentReady: weekSections.length > 0,
+  });
+
   const namedStays = model.accommodationStays.filter((s) => s.name?.trim());
 
   function renderCell(cell: WeekCell) {
@@ -68,7 +80,7 @@ export function InteractiveTripCalendar(props: {
       return (
         <div
           key={cell.iso}
-          className="min-h-[5.5rem] border-b border-r border-zinc-100 bg-zinc-50/40"
+          className="min-h-[5.75rem] rounded-xl opacity-40"
           aria-hidden
         />
       );
@@ -120,6 +132,31 @@ export function InteractiveTripCalendar(props: {
       tripContext,
       namedStays,
     );
+    const accommodationLeftColors = accommodationBands.left
+      ? stayBandStyleForLabel(
+          namedStayForLabel(namedStays, accommodationBands.left, primaryCity) ?? {
+            name: accommodationBands.left,
+            cityLabel: primaryCity,
+          },
+        )
+      : null;
+    const accommodationRightColors = accommodationBands.right
+      ? stayBandStyleForLabel(
+          namedStayForLabel(namedStays, accommodationBands.right, secondaryCity) ?? {
+            name: accommodationBands.right,
+            cityLabel: secondaryCity || primaryCity,
+          },
+        )
+      : null;
+    const accommodationSingleColors =
+      dayAccommodationLabel && !accommodationBands.leftOnly && !accommodationBands.rightOnly
+        ? stayBandStyleForLabel(
+            namedStayForLabel(namedStays, dayAccommodationLabel, primaryCity || secondaryCity) ?? {
+              name: dayAccommodationLabel,
+              cityLabel: primaryCity || secondaryCity,
+            },
+          )
+        : null;
 
     return (
       <TripOsDayCell
@@ -131,6 +168,7 @@ export function InteractiveTripCalendar(props: {
         overlayKind={model.overlayMetaByDate.get(cell.iso)}
         isSelectable={isInteractive}
         isHomeEdge={isHomeEdge && !edgePaintable}
+        isToday={cell.iso === model.todayIso}
         travelSegments={travelLayout}
         transitOverlays={transitOverlays}
         accommodationLabel={dayAccommodationLabel}
@@ -143,6 +181,10 @@ export function InteractiveTripCalendar(props: {
         showTransportCorridor={showTransportCorridor}
         activities={model.activitiesByDate.get(cell.iso) ?? []}
         selection={selection}
+        locationColorByKey={model.locationColorByKey}
+        accommodationLeftColors={accommodationLeftColors}
+        accommodationRightColors={accommodationRightColors}
+        accommodationSingleColors={accommodationSingleColors}
         pendingFillHalf={props.pendingFillHalf}
         onDayClick={props.onDayClick}
         onTransportCorridorClick={props.onTransportCorridorClick}
@@ -152,48 +194,48 @@ export function InteractiveTripCalendar(props: {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-white">
-      <div className="shrink-0 border-b border-zinc-200 px-3 py-2">
+      <div className="shrink-0 px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <p className="text-sm font-semibold">Trip calendar</p>
+            <TripEyebrow>Trip calendar</TripEyebrow>
             {props.statusLine ? (
-              <p className="text-xs text-zinc-500">{props.statusLine}</p>
-            ) : null}
+              <p className="mt-1 text-xs text-zinc-500">{props.statusLine}</p>
+            ) : (
+              <p className="mt-1 text-xs text-zinc-400">All days from today — scroll to browse</p>
+            )}
           </div>
           {props.headerAside}
         </div>
       </div>
 
-      <div className="shrink-0 grid grid-cols-7 border-b border-zinc-200 bg-zinc-50">
+      <div className="shrink-0 grid grid-cols-7 gap-1.5 px-3 pb-2">
         {WEEKDAYS.map((d) => (
-          <div key={d} className="px-1 py-1 text-center text-[10px] font-medium text-zinc-500">
+          <div
+            key={d}
+            className="text-center text-[10px] font-medium uppercase tracking-wider text-zinc-400"
+          >
             {d}
           </div>
         ))}
       </div>
 
-      <div ref={props.scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-2">
+      <div
+        ref={props.scrollRef}
+        className="trip-os-calendar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3"
+      >
         {weekSections.map((section) => (
-          <div
-            key={section.key}
-            className={[
-              "mb-1 last:mb-0",
-              section.monthBreakBefore ? "mt-3 border-t border-zinc-200/80 pt-3" : "",
-            ].join(" ")}
-          >
+          <div key={section.key} className="mb-2 last:mb-0">
             {section.monthLabel ? (
-              <p className="mb-1.5 px-2 text-xs font-semibold text-zinc-700">{section.monthLabel}</p>
+              <p className="sticky top-0 z-10 mb-2 bg-white/80 px-1 py-1 text-xs font-semibold tracking-tight text-zinc-700 backdrop-blur-sm">
+                {section.monthLabel}
+              </p>
             ) : null}
-            <div className="grid grid-cols-7">
+            <div className="grid grid-cols-7 gap-1.5">
               {section.cells.map((cell, i) =>
                 cell ? (
                   renderCell(cell)
                 ) : (
-                  <div
-                    key={`pad-${section.key}-${i}`}
-                    className="min-h-[5.5rem] border-b border-r border-zinc-100"
-                    aria-hidden
-                  />
+                  <div key={`pad-${section.key}-${i}`} className="min-h-[5.75rem]" aria-hidden />
                 ),
               )}
             </div>

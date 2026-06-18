@@ -7,6 +7,10 @@ import {
 } from "@/lib/host/wizard/location-stays";
 import { effectiveHotelBandStart } from "@/lib/host/setup/accommodation-calendar";
 import { metroDisplayLabel } from "@/lib/host/setup/metro-display";
+import {
+  resolveArrivalStayCity,
+  resolveDepartureStayCity,
+} from "@/lib/host/setup/resolve-arrival-stay-city";
 import type {
   AccommodationStayDraft,
   DayPlaceDraft,
@@ -335,17 +339,24 @@ export function inferHideOpsForGroupStays(
 export function inferDayPlacesFromIntercityLeg(
   existing: DayPlaceDraft[],
   leg: Pick<IntercityLegDraft, "travelDate" | "intercityFromCity" | "intercityToCity">,
+  options?: { stays?: AccommodationStayDraft[] },
 ): DayPlaceDraft[] {
-  const from = metroDisplayLabel(leg.intercityFromCity.trim());
-  const to = metroDisplayLabel(leg.intercityToCity.trim());
-  if (!from || !to || !leg.travelDate) return existing;
+  const date = leg.travelDate.trim();
+  const stays = options?.stays ?? [];
+  const from = stays.length
+    ? resolveDepartureStayCity(leg.intercityFromCity, stays, date)
+    : metroDisplayLabel(leg.intercityFromCity.trim());
+  const to = stays.length
+    ? resolveArrivalStayCity(leg.intercityToCity, stays, [], date)
+    : metroDisplayLabel(leg.intercityToCity.trim());
+  if (!from || !to || !date) return existing;
 
   const byDate = new Map(existing.map((d) => [d.date, d]));
-  const prev = byDate.get(leg.travelDate);
-  if (prev && hasGroupDayOverride(existing, leg.travelDate)) return existing;
+  const prev = byDate.get(date);
+  if (prev && hasGroupDayOverride(existing, date)) return existing;
 
-  byDate.set(leg.travelDate, {
-    date: leg.travelDate,
+  byDate.set(date, {
+    date,
     primaryCity: from,
     secondaryCity: to,
     primaryShare: TRANSPORT_CORRIDOR_LEFT_SHARE,

@@ -28,6 +28,30 @@ export function stayColor(stay: {
   return `hsl(${stayHue(stay)} 62% 46%)`;
 }
 
+export function stayBandFill(stay: {
+  id?: string;
+  name: string | null;
+  cityLabel: string;
+}): string {
+  return `hsl(${stayHue(stay)} 52% 92%)`;
+}
+
+export function stayBandBorder(stay: {
+  id?: string;
+  name: string | null;
+  cityLabel: string;
+}): string {
+  return `hsl(${stayHue(stay)} 42% 78%)`;
+}
+
+export function stayBandText(stay: {
+  id?: string;
+  name: string | null;
+  cityLabel: string;
+}): string {
+  return `hsl(${stayHue(stay)} 48% 24%)`;
+}
+
 export function stayForNight<T extends AccommodationStayLike>(
   date: string,
   stays: T[],

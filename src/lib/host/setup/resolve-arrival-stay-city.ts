@@ -13,6 +13,35 @@ export function namedStays(stays: AccommodationStayDraft[]): AccommodationStayDr
 }
 
 /**
+ * When leaving from an airport metro, prefer the trip's named stay city
+ * in that metro (e.g. HKT → Patong when Royal Paradise checks out that morning).
+ */
+export function resolveDepartureStayCity(
+  departurePlace: string,
+  stays: AccommodationStayDraft[],
+  travelDate: string,
+): string {
+  const metro = metroDisplayLabel(departurePlace);
+  if (!metro.trim()) return departurePlace.trim();
+
+  const candidates = namedStays(stays).filter((stay) => {
+    const city = stayCityLabel(stay);
+    if (!city || !placesShareMetro(city, metro)) return false;
+    return (
+      stay.checkOutDate === travelDate ||
+      (stay.checkInDate <= travelDate && stay.checkOutDate > travelDate)
+    );
+  });
+
+  if (!candidates.length) return metro;
+
+  const checkout = candidates.find((stay) => stay.checkOutDate === travelDate);
+  if (checkout) return stayCityLabel(checkout) || metro;
+
+  return stayCityLabel(candidates[0]!) || metro;
+}
+
+/**
  * When a flight lands at an airport metro, prefer the trip's named stay city
  * in that metro (e.g. HKT → Patong when Royal Paradise is booked in Patong).
  */

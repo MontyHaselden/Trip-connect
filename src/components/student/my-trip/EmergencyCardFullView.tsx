@@ -1,6 +1,8 @@
 "use client";
 
+import { useStudentOverlay } from "@/components/student/StudentOverlayContext";
 import { resolveEmergencyHelpPhrase } from "@/lib/student/emergency-phrase";
+import { studentOverlayRootClass } from "@/lib/student/overlay-classes";
 
 export type EmergencyAccommodation = {
   name: string | null;
@@ -46,13 +48,14 @@ export function EmergencyCardFullView(props: {
     phraseCategories,
     phrases,
   } = props;
+  const { contained } = useStudentOverlay();
 
   if (!open) return null;
 
   const helpPhrase = resolveEmergencyHelpPhrase(phraseCategories, phrases);
 
   return (
-    <div className="fixed inset-0 z-[80] flex flex-col bg-[var(--student-bg)]">
+    <div className={`${studentOverlayRootClass(contained, { zClass: "z-[80]", align: "full" })} bg-[var(--student-bg)]`}>
       <div className="shrink-0 border-b border-red-200 bg-gradient-to-b from-red-50 to-[var(--student-bg)] px-5 pb-4 pt-[max(env(safe-area-inset-top),1rem)]">
         <div className="flex items-start justify-between gap-3">
           <div>

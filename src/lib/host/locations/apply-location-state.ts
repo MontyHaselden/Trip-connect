@@ -11,6 +11,10 @@ import {
   trips,
 } from "@/lib/db/schema";
 import { shouldDeleteOrphanTransportLeg } from "@/lib/host/setup/transport-leg-sync";
+import {
+  isAccommodationCheckItemTitle,
+  resolveCheckoutActivityTime,
+} from "@/lib/host/import/reconcile-accommodation-stays";
 import { inferTimezoneFromWizardBasics } from "@/lib/geo/resolve-timezone";
 import { nextItemSortOrder } from "@/lib/host/itinerary-queries";
 import { toDbBookingStatus, toDbTransportType } from "@/lib/host/wizard/db-enums";
@@ -24,6 +28,8 @@ import type {
   TransportLegDraft,
 } from "@/lib/host/wizard/types";
 import { normalizeStoredTime } from "@/lib/utils/ai-time";
+
+import { assertValidIsoDate } from "@/lib/utils/iso-date";
 
 import type { TripLocationState } from "./types";
 
@@ -76,6 +82,7 @@ async function ensureDay(
   sortOrder: number,
   tripDates: { startDate: string; endDate: string },
 ): Promise<string> {
+  assertValidIsoDate(day.date, "trip day date");
   const existing = await db
     .select({ id: tripDays.id })
     .from(tripDays)
@@ -389,10 +396,35 @@ function activeDayPlaces(
   });
 }
 
+/** Drop check-in/out timeline rows — stays still paint on the calendar via tripAccommodationStays. */
+export async function purgeAccommodationWizardItineraryItems(tripId: string): Promise<void> {
+  await db
+    .delete(itineraryItems)
+    .where(
+      and(
+        eq(itineraryItems.tripId, tripId),
+        eq(itineraryItems.wizardSource, "accommodation"),
+      ),
+    );
+
+  const activityRows = await db
+    .select({ id: itineraryItems.id, title: itineraryItems.title })
+    .from(itineraryItems)
+    .where(
+      and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.wizardSource, "activity")),
+    );
+
+  for (const row of activityRows) {
+    if (isAccommodationCheckItemTitle(row.title)) {
+      await db.delete(itineraryItems).where(eq(itineraryItems.id, row.id));
+    }
+  }
+}
+
 export async function applyTripLocationState(
   tripId: string,
   state: TripLocationState,
-  options?: { syncTransportItems?: boolean },
+  options?: { syncTransportItems?: boolean; syncAccommodationItems?: boolean },
 ): Promise<{ dayCount: number }> {
   const mainGroupId = await getMainGroupId(tripId);
   const { basics } = state;
@@ -439,6 +471,15 @@ export async function applyTripLocationState(
   );
   await syncAccommodationStays(tripId, mainGroupId, state.accommodationStays);
 
+  const allLegs: Array<{
+    leg: TransportLegDraft;
+    source: "outbound" | "return" | "intercity";
+  }> = [
+    ...state.outboundLegs.map((leg) => ({ leg, source: "outbound" as const })),
+    ...state.returnLegs.map((leg) => ({ leg, source: "return" as const })),
+    ...state.intercityLegs.map((leg) => ({ leg, source: "intercity" as const })),
+  ];
+
   if (options?.syncTransportItems !== false) {
     await db
       .delete(itineraryItems)
@@ -464,23 +505,6 @@ export async function applyTripLocationState(
           eq(itineraryItems.wizardSource, "intercity"),
         ),
       );
-    await db
-      .delete(itineraryItems)
-      .where(
-        and(
-          eq(itineraryItems.tripId, tripId),
-          eq(itineraryItems.wizardSource, "accommodation"),
-        ),
-      );
-
-    const allLegs: Array<{
-      leg: TransportLegDraft;
-      source: "outbound" | "return" | "intercity";
-    }> = [
-      ...state.outboundLegs.map((leg) => ({ leg, source: "outbound" as const })),
-      ...state.returnLegs.map((leg) => ({ leg, source: "return" as const })),
-      ...state.intercityLegs.map((leg) => ({ leg, source: "intercity" as const })),
-    ];
 
     for (const { leg, source } of allLegs) {
       const dayId = dayIdByDate.get(leg.travelDate);
@@ -518,41 +542,65 @@ export async function applyTripLocationState(
         });
       }
     }
+  }
 
-    for (const stay of state.accommodationStays) {
-      const checkInDayId = dayIdByDate.get(stay.checkInDate);
-      if (checkInDayId && stay.name) {
-        await upsertWizardItem({
-          tripId,
-          dayId: checkInDayId,
-          wizardSource: "accommodation",
-          fingerprint: `stay:${stay.id}:checkin`,
-          title: `Check in: ${stay.name}`,
-          startTime: "15:00:00",
-          endTime: null,
-          locationName: stay.name,
-          transportNote: stay.address,
-          bookingStatus: stay.stayType === "not_booked" ? "not_booked" : "booked",
-          category: "hotel",
-        });
-      }
-      const checkOutDayId = dayIdByDate.get(stay.checkOutDate);
-      if (checkOutDayId && stay.name) {
-        await upsertWizardItem({
-          tripId,
-          dayId: checkOutDayId,
-          wizardSource: "accommodation",
-          fingerprint: `stay:${stay.id}:checkout`,
-          title: `Check out: ${stay.name}`,
-          startTime: "10:00:00",
-          endTime: null,
-          locationName: stay.name,
-          transportNote: null,
-          bookingStatus: stay.stayType === "not_booked" ? "not_booked" : "booked",
-          category: "hotel",
-        });
-      }
+  if (options?.syncAccommodationItems !== false) {
+  await db
+    .delete(itineraryItems)
+    .where(
+      and(
+        eq(itineraryItems.tripId, tripId),
+        eq(itineraryItems.wizardSource, "accommodation"),
+      ),
+    );
+
+  const activityRows = await db
+    .select({ id: itineraryItems.id, title: itineraryItems.title })
+    .from(itineraryItems)
+    .where(
+      and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.wizardSource, "activity")),
+    );
+
+  for (const row of activityRows) {
+    if (isAccommodationCheckItemTitle(row.title)) {
+      await db.delete(itineraryItems).where(eq(itineraryItems.id, row.id));
     }
+  }
+
+  for (const stay of state.accommodationStays) {
+    const checkInDayId = dayIdByDate.get(stay.checkInDate);
+    if (checkInDayId && stay.name) {
+      await upsertWizardItem({
+        tripId,
+        dayId: checkInDayId,
+        wizardSource: "accommodation",
+        fingerprint: `stay:${stay.id}:checkin`,
+        title: `Check in: ${stay.name}`,
+        startTime: "15:00:00",
+        endTime: null,
+        locationName: stay.name,
+        transportNote: stay.address,
+        bookingStatus: stay.stayType === "not_booked" ? "not_booked" : "booked",
+        category: "hotel",
+      });
+    }
+    const checkOutDayId = dayIdByDate.get(stay.checkOutDate);
+    if (checkOutDayId && stay.name) {
+      await upsertWizardItem({
+        tripId,
+        dayId: checkOutDayId,
+        wizardSource: "accommodation",
+        fingerprint: `stay:${stay.id}:checkout`,
+        title: `Check out: ${stay.name}`,
+        startTime: resolveCheckoutActivityTime(stay, stay.checkOutDate, allLegs.map((x) => x.leg)),
+        endTime: null,
+        locationName: stay.name,
+        transportNote: null,
+        bookingStatus: stay.stayType === "not_booked" ? "not_booked" : "booked",
+        category: "hotel",
+      });
+    }
+  }
   }
 
   return { dayCount: sorted.length };

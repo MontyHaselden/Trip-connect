@@ -9,9 +9,26 @@ import { parseTripStructureFromDocument } from "@/lib/ai/parse-trip-structure-fr
 import { parseTripOutlineFromDocument } from "@/lib/ai/parse-trip-outline";
 import { db } from "@/lib/db/client";
 import { trips } from "@/lib/db/schema";
-import { applyTripLocationState } from "@/lib/host/locations/apply-location-state";
+import { applyTripLocationState, purgeAccommodationWizardItineraryItems } from "@/lib/host/locations/apply-location-state";
 import { clearTripContent } from "@/lib/host/locations/clear-trip-content";
+import { applyTripSetupState } from "@/lib/host/setup/apply-setup-state";
+import { loadTripSetupState } from "@/lib/host/setup/load-setup-state";
+import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import type { TripLocationState } from "@/lib/host/locations/types";
+import {
+  sanitizeTripOutlineDates,
+  sanitizeTripStructureDates,
+} from "@/lib/host/import/sanitize-imported-dates";
+import {
+  reconcileImportedAccommodationStays,
+} from "@/lib/host/import/reconcile-accommodation-stays";
+import {
+  filterMisplacedHomeDirectionLegs,
+  filterSpuriousAutoTransfers,
+  reconcileImportedDayPlacesWithFlights,
+  sanitizeImportedDayPlaces,
+  sanitizeImportedTransport,
+} from "@/lib/host/import/sanitize-imported-locations";
 import { buildDefaultDayPlaces, syncIntercityLegs } from "@/lib/host/wizard/detect-city-moves";
 import { analyzeImportGaps } from "@/lib/host/wizard/analyze-import-gaps";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
@@ -47,22 +64,26 @@ export async function importTripFromDocumentText(params: {
   emit({ type: "phase", phase: "reading" });
 
   emit({ type: "phase", phase: "planning" });
-  const outline = await parseTripOutlineFromDocument({
-    text: params.text,
-    defaultTimezone: params.defaultTimezone,
-    instructions: params.instructions,
-  });
+  const outline = sanitizeTripOutlineDates(
+    await parseTripOutlineFromDocument({
+      text: params.text,
+      defaultTimezone: params.defaultTimezone,
+      instructions: params.instructions,
+    }),
+  );
 
   await clearTripContent(params.tripId);
 
   emit({ type: "phase", phase: "structure" });
-  const structure = await parseTripStructureFromDocument({
-    text: params.text,
-    startDate: outline.startDate,
-    endDate: outline.endDate,
-    defaultTimezone: outline.timezone,
-    instructions: params.instructions,
-  });
+  const structure = sanitizeTripStructureDates(
+    await parseTripStructureFromDocument({
+      text: params.text,
+      startDate: outline.startDate,
+      endDate: outline.endDate,
+      defaultTimezone: outline.timezone,
+      instructions: params.instructions,
+    }),
+  );
 
   const departureCity =
     structure.departureCity?.trim() || outline.days[0]?.cityLabel || "";
@@ -84,16 +105,69 @@ export async function importTripFromDocumentText(params: {
     );
   }
 
-  const intercityLegs = syncIntercityLegs(dayPlaces, structure.intercityLegs, {
-    outboundLegs: structure.outboundLegs,
-    returnLegs: structure.returnLegs,
-    trip: {
-      startDate: outline.startDate,
-      endDate: outline.endDate,
-      departureCity,
-      returnCity,
-    },
+  dayPlaces = sanitizeImportedDayPlaces(dayPlaces, {
+    departureCity,
+    returnCity,
+    startDate: outline.startDate,
+    endDate: outline.endDate,
   });
+
+  const tripBounds = {
+    startDate: outline.startDate,
+    endDate: outline.endDate,
+    departureCity,
+    returnCity,
+  };
+
+  const outboundLegs = sanitizeImportedTransport(
+    filterMisplacedHomeDirectionLegs(structure.outboundLegs, tripBounds),
+  );
+  const returnLegs = sanitizeImportedTransport(
+    filterMisplacedHomeDirectionLegs(structure.returnLegs, tripBounds),
+  );
+  const structureIntercity = sanitizeImportedTransport(
+    filterMisplacedHomeDirectionLegs(structure.intercityLegs, tripBounds),
+  );
+
+  const planeLegsBeforeSync = [
+    ...outboundLegs,
+    ...returnLegs,
+    ...structureIntercity.filter((leg) => leg.transportType === "plane"),
+  ];
+  dayPlaces = reconcileImportedDayPlacesWithFlights(
+    dayPlaces,
+    planeLegsBeforeSync,
+    structure.accommodationStays,
+  );
+
+  const intercityLegs = sanitizeImportedTransport(
+    filterSpuriousAutoTransfers(
+      syncIntercityLegs(dayPlaces, structureIntercity, {
+        outboundLegs,
+        returnLegs,
+        trip: tripBounds,
+      }),
+      tripBounds,
+      planeLegsBeforeSync,
+    ),
+  );
+
+  const allPlaneLegs = [
+    ...outboundLegs,
+    ...returnLegs,
+    ...intercityLegs.filter((leg) => leg.transportType === "plane"),
+  ];
+  dayPlaces = reconcileImportedDayPlacesWithFlights(
+    dayPlaces,
+    allPlaneLegs,
+    structure.accommodationStays,
+  );
+
+  const allDepartureLegs = [...outboundLegs, ...returnLegs, ...intercityLegs];
+  const accommodationStays = reconcileImportedAccommodationStays(
+    structure.accommodationStays,
+    allDepartureLegs,
+  );
 
   const locationState: TripLocationState = {
     basics: {
@@ -109,10 +183,10 @@ export async function importTripFromDocumentText(params: {
         : [],
     },
     dayPlaces,
-    outboundLegs: structure.outboundLegs,
-    returnLegs: structure.returnLegs,
+    outboundLegs,
+    returnLegs,
     intercityLegs,
-    accommodationStays: structure.accommodationStays,
+    accommodationStays,
   };
 
   await db
@@ -131,7 +205,9 @@ export async function importTripFromDocumentText(params: {
     })
     .where(eq(trips.id, params.tripId));
 
-  await applyTripLocationState(params.tripId, locationState);
+  await applyTripLocationState(params.tripId, locationState, {
+    syncAccommodationItems: false,
+  });
 
   emit({ type: "phase", phase: "structure_applied" });
 
@@ -175,7 +251,8 @@ export async function importTripFromDocumentText(params: {
 
     for (let j = 0; j < items.length; j++) {
       const item = items[j]!;
-      await applyItineraryItem(params.tripId, ensured.dayId, item);
+      const itemId = await applyItineraryItem(params.tripId, ensured.dayId, item);
+      if (!itemId) continue;
       itemsCreated++;
 
       emit({
@@ -194,6 +271,22 @@ export async function importTripFromDocumentText(params: {
       type: "day_complete",
       date: day.date,
       itemCount: items.length,
+    });
+  }
+
+  await applyTripLocationState(params.tripId, locationState, {
+    syncTransportItems: false,
+    syncAccommodationItems: false,
+  });
+
+  await purgeAccommodationWizardItineraryItems(params.tripId);
+
+  const setupState = await loadTripSetupState(params.tripId);
+  if (setupState) {
+    await applyTripSetupState(params.tripId, syncTripBoundsFromContent(setupState), {
+      skipWizardItineraryItems: true,
+      syncTransportItems: false,
+      syncAccommodationItems: false,
     });
   }
 

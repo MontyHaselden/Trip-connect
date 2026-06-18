@@ -13,11 +13,18 @@ import { ensureTripPublishedIfReady } from "@/lib/publish/ensure-published";
 import { normalizeToE164 } from "@/lib/utils/phone";
 import { generateAccessToken } from "@/lib/utils/tokens";
 
-const JoinBodySchema = z.object({
+const ClaimJoinSchema = z.object({
+  participantId: z.string().uuid(),
+  password: z.string().min(8).max(200),
+});
+
+const LegacyJoinSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   phoneNumber: z.string().trim().min(3).max(40),
   password: z.string().min(8).max(200),
 });
+
+const JoinBodySchema = z.union([ClaimJoinSchema, LegacyJoinSchema]);
 
 async function ensureGroupMembership(
   participantId: string,
@@ -40,6 +47,24 @@ async function ensureGroupMembership(
   }
 }
 
+async function finishJoin(
+  trip: { id: string; name: string },
+  participant: { id: string; accessToken: string },
+  resolved: Awaited<ReturnType<typeof resolveInviteCode>>,
+) {
+  const publishedVersion = await ensureTripPublishedIfReady(trip.id);
+  const tripInviteCode = await tripInviteCodeForTripId(trip.id);
+  return NextResponse.json({
+    tripId: trip.id,
+    participantId: participant.id,
+    accessToken: participant.accessToken,
+    tripName: trip.name,
+    publishedVersion,
+    tripInviteCode,
+    joinedGroupId: resolved?.kind === "group" ? resolved.groupId : null,
+  });
+}
+
 export async function POST(
   req: Request,
   ctx: { params: Promise<{ inviteCode: string }> },
@@ -56,8 +81,6 @@ export async function POST(
       );
     }
 
-    const { fullName, phoneNumber, password } = parsed.data;
-
     const resolved = await resolveInviteCode(inviteCode);
     if (!resolved) {
       return NextResponse.json({ error: "Trip not found." }, { status: 404 });
@@ -69,6 +92,59 @@ export async function POST(
       publishedVersion: resolved.publishedVersion,
       defaultCountryCallingCode: resolved.defaultCountryCallingCode,
     };
+
+    if ("participantId" in parsed.data) {
+      const { participantId, password } = parsed.data;
+
+      const slot = await db
+        .select({
+          id: participants.id,
+          accessToken: participants.accessToken,
+          passwordHash: participants.passwordHash,
+          role: participants.role,
+        })
+        .from(participants)
+        .where(
+          and(eq(participants.tripId, trip.id), eq(participants.id, participantId)),
+        )
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+
+      if (!slot) {
+        return NextResponse.json({ error: "Name not found on this trip." }, { status: 404 });
+      }
+
+      if (slot.role === "host") {
+        return NextResponse.json({ error: "Invalid account." }, { status: 400 });
+      }
+
+      if (slot.passwordHash) {
+        return NextResponse.json(
+          { error: "This name is already taken. Use Sign in instead." },
+          { status: 409 },
+        );
+      }
+
+      await db
+        .update(participants)
+        .set({
+          passwordHash: await hashParticipantPassword(password),
+          updatedAt: new Date(),
+        })
+        .where(eq(participants.id, slot.id));
+
+      if (resolved.kind === "group") {
+        await ensureGroupMembership(slot.id, resolved.groupId);
+        await db
+          .update(participants)
+          .set({ joinedViaGroupInviteLinkId: resolved.groupInviteLinkId })
+          .where(eq(participants.id, slot.id));
+      }
+
+      return finishJoin(trip, slot, resolved);
+    }
+
+    const { fullName, phoneNumber, password } = parsed.data;
 
     const phoneE164 = normalizeToE164(
       phoneNumber,
@@ -121,17 +197,7 @@ export async function POST(
           .where(eq(participants.id, existing.id));
       }
 
-      const publishedVersion = await ensureTripPublishedIfReady(trip.id);
-      const tripInviteCode = await tripInviteCodeForTripId(trip.id);
-      return NextResponse.json({
-        tripId: trip.id,
-        participantId: existing.id,
-        accessToken: existing.accessToken,
-        tripName: trip.name,
-        publishedVersion,
-        tripInviteCode,
-        joinedGroupId: resolved.kind === "group" ? resolved.groupId : null,
-      });
+      return finishJoin(trip, existing, resolved);
     }
 
     const token = generateAccessToken();
@@ -162,18 +228,7 @@ export async function POST(
       await ensureGroupMembership(created.id, resolved.groupId);
     }
 
-    const publishedVersion = await ensureTripPublishedIfReady(trip.id);
-    const tripInviteCode = await tripInviteCodeForTripId(trip.id);
-
-    return NextResponse.json({
-      tripId: trip.id,
-      participantId: created.id,
-      accessToken: created.accessToken,
-      tripName: trip.name,
-      publishedVersion,
-      tripInviteCode,
-      joinedGroupId: resolved.kind === "group" ? resolved.groupId : null,
-    });
+    return finishJoin(trip, created, resolved);
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Unexpected error. Please try again.";

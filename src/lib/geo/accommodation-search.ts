@@ -72,6 +72,84 @@ function combineLocalityRegion(locality: string, region: string): string {
   return `${locality}, ${region}`;
 }
 
+/** Maps formal admin / Google labels hosts should avoid on the calendar. */
+export function looksLikeFormalMapsCityLabel(city: string): boolean {
+  const trimmed = city.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes(",")) return true;
+  return /\b(tambon|amphoe|chang wat|changwat|province|prefecture|regency|kabupaten|district)\b/i.test(
+    trimmed,
+  );
+}
+
+const HOTEL_AREA_NAMES = [
+  "Patong",
+  "Kata",
+  "Karon",
+  "Kamala",
+  "Bang Tao",
+  "Rawai",
+  "Chalong",
+  "Seminyak",
+  "Ubud",
+  "Sukhumvit",
+  "Silom",
+  "Siam",
+] as const;
+
+/** Everyday stay label embedded in a hotel name (e.g. Patong in Royal Paradise … Patong Phuket). */
+export function friendlyCityFromHotelName(hotelName: string): string | null {
+  const trimmed = hotelName.trim();
+  if (!trimmed) return null;
+  for (const area of HOTEL_AREA_NAMES) {
+    if (new RegExp(`\\b${area.replace(/\s+/g, "\\s+")}\\b`, "i").test(trimmed)) {
+      return area;
+    }
+  }
+  if (/\bpa\s*tong\b/i.test(trimmed)) return "Patong";
+  return null;
+}
+
+/** Prefer a human stay label when Maps returns formal admin text. */
+export function resolveStayCityOnHotelPick(input: {
+  hotelName: string;
+  mapsCityLabel?: string | null;
+  address?: string | null;
+  existingCity?: string;
+}): string {
+  const fromName = friendlyCityFromHotelName(input.hotelName);
+  const maps = input.mapsCityLabel?.trim() ?? "";
+  const fromAddress = input.address ? inferCityLabelFromAddress(input.address) : null;
+  const inferred = maps || fromAddress || "";
+  const existing = input.existingCity?.trim() ?? "";
+
+  if (fromName) return fromName;
+  if (inferred && !looksLikeFormalMapsCityLabel(inferred)) return inferred;
+  if (existing && !looksLikeFormalMapsCityLabel(existing)) return existing;
+  return inferred || existing;
+}
+
+/** Suggest a friendlier label when the effective city is formal or too broad for the hotel. */
+export function suggestKeepStayCityLabel(input: {
+  hotelName: string;
+  effectiveCity: string;
+}): string | null {
+  const friendly = friendlyCityFromHotelName(input.hotelName);
+  if (!friendly) return null;
+  const effective = input.effectiveCity.trim();
+  if (!effective) return friendly;
+  if (effective.toLowerCase() === friendly.toLowerCase()) return null;
+  if (looksLikeFormalMapsCityLabel(effective)) return friendly;
+  const effectiveShort = effective.split(",")[0]?.trim().toLowerCase() ?? "";
+  if (
+    friendly === "Patong" &&
+    (effectiveShort === "phuket" || effectiveShort.includes("phuket"))
+  ) {
+    return friendly;
+  }
+  return null;
+}
+
 export function accommodationSearchMode(stayType?: StayType): {
   lodgingOnly: boolean;
   querySuffix?: string;

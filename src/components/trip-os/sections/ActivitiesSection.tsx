@@ -8,6 +8,9 @@ import { newId } from "@/lib/host/wizard/types";
 
 import { AsyncButton } from "../shared/AsyncButton";
 import { TripDateInput } from "../shared/TripDateInput";
+import { TripInput, tripFieldClass } from "../shared/TripInput";
+import { TripPrimaryButton } from "../shared/TripPrimaryButton";
+import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 import { tripDatePickerContext } from "../shared/trip-date-picker";
 
 export function ActivitiesSection(props: {
@@ -57,17 +60,20 @@ export function ActivitiesSection(props: {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Activities</h2>
-        <p className="text-sm text-zinc-600">Advanced / bulk edit — things you do on the trip skeleton.</p>
-      </div>
+    <TripSectionShell
+      eyebrow="Advanced"
+      title="Activities"
+      description="Things you do on the trip skeleton."
+    >
       <ul className="space-y-2">
         {props.graph.activities.map((a) => (
-          <li key={a.id} className="flex items-center justify-between rounded-lg border border-zinc-200 p-3">
+          <li
+            key={a.id}
+            className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm"
+          >
             <div>
-              <p className="font-medium">{a.title}</p>
-              <p className="text-sm text-zinc-600">
+              <p className="font-medium text-zinc-900">{a.title}</p>
+              <p className="text-sm text-zinc-500">
                 {a.date}
                 {a.startTime ? ` · ${a.startTime}` : ""}
                 {a.locationName ? ` · ${a.locationName}` : ""}
@@ -81,43 +87,37 @@ export function ActivitiesSection(props: {
                   { type: "removeActivity", groupId: props.groupId, activityId: a.id },
                 ])
               }
-              className="text-sm text-red-700 hover:underline"
+              className="text-sm text-red-600 hover:text-red-700"
             >
               Delete
             </AsyncButton>
           </li>
         ))}
         {!props.graph.activities.length ? (
-          <li className="rounded-lg border border-dashed border-zinc-300 p-4 text-sm text-zinc-500">
+          <li className="rounded-2xl bg-zinc-50/80 px-4 py-6 text-center text-sm text-zinc-500">
             No activities yet.
           </li>
         ) : null}
       </ul>
-      <div className="rounded-xl border border-zinc-200 p-4">
-        <h3 className="text-sm font-semibold">Add activity</h3>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="rounded-lg border px-3 py-2 text-sm sm:col-span-2" />
+      <TripSoftPanel title="Add activity">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <TripInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="sm:col-span-2" />
           <TripDateInput
             value={date}
             onChange={setDate}
             tripStart={datePicker.tripStart}
             tripEnd={datePicker.tripEnd}
             anchorDate={datePicker.anchorDate}
-            className="rounded-lg border px-3 py-2 text-sm"
+            className={tripFieldClass}
           />
-          <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location" className="rounded-lg border px-3 py-2 text-sm" />
-          <input value={start} onChange={(e) => setStart(e.target.value)} placeholder="Start HH:MM" className="rounded-lg border px-3 py-2 text-sm" />
-          <input value={end} onChange={(e) => setEnd(e.target.value)} placeholder="End HH:MM" className="rounded-lg border px-3 py-2 text-sm" />
+          <TripInput value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location" />
+          <TripInput value={start} onChange={(e) => setStart(e.target.value)} placeholder="Start HH:MM" />
+          <TripInput value={end} onChange={(e) => setEnd(e.target.value)} placeholder="End HH:MM" />
         </div>
-        <AsyncButton
-          onClick={() => void addActivity()}
-          loading={props.saving}
-          loadingLabel="Adding…"
-          className="mt-3 rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-        >
-          Add activity
-        </AsyncButton>
-      </div>
-    </div>
+        <TripPrimaryButton onClick={() => void addActivity()} disabled={props.saving} className="mt-4">
+          {props.saving ? "Adding…" : "Add activity"}
+        </TripPrimaryButton>
+      </TripSoftPanel>
+    </TripSectionShell>
   );
 }

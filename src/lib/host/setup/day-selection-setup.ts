@@ -8,6 +8,7 @@ import {
   enumerateDates,
   getEmptyHalf,
   isHalfEmpty,
+  locationsMatch,
   type HalfSide,
 } from "@/lib/host/wizard/location-stays";
 import type { AccommodationStayDraft, DayPlaceDraft } from "@/lib/host/wizard/types";
@@ -20,6 +21,60 @@ export function dayCoveredByNamedStay(stays: AccommodationStayDraft[], date: str
 
 export function stayCoversNight(stay: AccommodationStayDraft, date: string): boolean {
   return Boolean(stay.name?.trim() && stay.checkInDate <= date && stay.checkOutDate > date);
+}
+
+/** Which half of `date` is included in this selection. */
+export function halfForDateInSelection(
+  selection: NightPairSelection,
+  date: string,
+): HalfSide | "full" {
+  const end = selection.rangeEnd || selection.rangeStart;
+  if (selection.rangeStart === end) {
+    return selection.startHalf === "full" ? "full" : selection.startHalf;
+  }
+  if (date === selection.rangeStart) return selection.startHalf;
+  if (date === end) return selection.endHalf;
+  return "full";
+}
+
+/** True when a named stay touches any selected half-day slice — not merely checkout on an unselected morning. */
+export function stayOverlapsSelection(
+  stay: AccommodationStayDraft,
+  selection: NightPairSelection,
+): boolean {
+  if (!stay.name?.trim()) return false;
+  const end = selection.rangeEnd || selection.rangeStart;
+  for (const iso of enumerateDates(selection.rangeStart, end)) {
+    const half = halfForDateInSelection(selection, iso);
+    const linked = stayForHalfSelection([stay], iso, half);
+    if (linked?.id === stay.id) return true;
+  }
+  return false;
+}
+
+/** First stay that overlaps any selected half-day slice. */
+export function stayLinkedToHalfAwareSelection(
+  stays: AccommodationStayDraft[],
+  selection: NightPairSelection,
+): AccommodationStayDraft | null {
+  for (const stay of stays) {
+    if (stayOverlapsSelection(stay, selection)) return stay;
+  }
+  return null;
+}
+
+/** Location label for one selected slice of a day. */
+export function locationLabelForSelectedHalf(
+  day: DayPlaceDraft,
+  half: HalfSide | "full",
+): string {
+  if (half === "full") {
+    const parts: string[] = [];
+    if (day.primaryCity.trim()) parts.push(day.primaryCity.trim());
+    if (day.secondaryCity?.trim()) parts.push(day.secondaryCity.trim());
+    return parts.join(" · ") || "";
+  }
+  return cityOnHalf(day, half).trim();
 }
 
 /** Stay belongs to this selection — not merely a checkout edge from an earlier block. */
@@ -51,7 +106,7 @@ export function stayForHalfSelection(
   const named = stays.filter((s) => s.name?.trim());
   if (half === "full") {
     return (
-      named.find((s) => s.checkInDate <= date && s.checkOutDate >= date) ??
+      named.find((s) => s.checkInDate <= date && s.checkOutDate > date) ??
       named.find((s) => s.checkOutDate === date) ??
       null
     );
@@ -59,52 +114,74 @@ export function stayForHalfSelection(
   if (half === "left") {
     return (
       named.find((s) => s.checkOutDate === date) ??
-      named.find((s) => stayCoversNight(s, date)) ??
+      named.find((s) => s.checkInDate < date && stayCoversNight(s, date)) ??
       null
     );
   }
   return named.find((s) => s.checkInDate === date && s.checkOutDate > date) ?? null;
 }
 
-/** Check-in/out when saving accommodation — does not expand the calendar selection. */
+/** Half-aware check-in/out bounds for a calendar selection (exclusive checkout date). */
+export function stayDateBoundsForSelection(selection: NightPairSelection): {
+  checkIn: string;
+  checkOut: string;
+} {
+  const end = selection.rangeEnd || selection.rangeStart;
+  const singleDay = selection.rangeStart === end;
+
+  if (singleDay) {
+    const half =
+      selection.startHalf === selection.endHalf && selection.startHalf !== "full"
+        ? selection.startHalf
+        : "full";
+    if (half === "right") {
+      return { checkIn: selection.rangeStart, checkOut: addDays(selection.rangeStart, 1) };
+    }
+    if (half === "left") {
+      return { checkIn: addDays(selection.rangeStart, -1), checkOut: selection.rangeStart };
+    }
+    return { checkIn: selection.rangeStart, checkOut: addDays(selection.rangeStart, 1) };
+  }
+
+  let checkIn = selection.rangeStart;
+  if (selection.startHalf === "left") {
+    checkIn = addDays(selection.rangeStart, -1);
+  }
+
+  const checkOut = selection.endHalf === "right" ? addDays(end, 1) : end;
+  return { checkIn, checkOut };
+}
+
+function clampStayDatesToBounds(
+  bounds: { checkIn: string; checkOut: string },
+  existing?: { checkIn: string; checkOut: string } | null,
+): { checkIn: string; checkOut: string } {
+  if (!existing) return bounds;
+
+  let checkIn = existing.checkIn;
+  if (checkIn < bounds.checkIn) checkIn = bounds.checkIn;
+  if (checkIn >= bounds.checkOut) checkIn = bounds.checkIn;
+
+  let checkOut = existing.checkOut;
+  if (checkOut > bounds.checkOut) checkOut = bounds.checkOut;
+  if (checkOut <= checkIn) checkOut = bounds.checkOut;
+
+  return { checkIn, checkOut };
+}
+
+/** Check-in/out when saving accommodation — clamped to selection, never past half-day bounds. */
 export function stayDatesForSelection(
   selection: NightPairSelection,
   existing?: { checkIn: string; checkOut: string } | null,
 ): { checkIn: string; checkOut: string } {
-  const end = selection.rangeEnd || selection.rangeStart;
-  const half =
-    selection.rangeStart === end &&
-    selection.startHalf === selection.endHalf &&
-    selection.startHalf !== "full"
-      ? selection.startHalf
-      : "full";
+  return clampStayDatesToBounds(stayDateBoundsForSelection(selection), existing);
+}
 
-  if (half === "right") {
-    const base = { checkIn: selection.rangeStart, checkOut: addDays(selection.rangeStart, 1) };
-    if (!existing) return base;
-    return {
-      checkIn: existing.checkIn < base.checkIn ? existing.checkIn : base.checkIn,
-      checkOut: existing.checkOut > base.checkOut ? existing.checkOut : base.checkOut,
-    };
-  }
-  if (half === "left") {
-    const base = { checkIn: addDays(selection.rangeStart, -1), checkOut: selection.rangeStart };
-    if (!existing) return base;
-    return {
-      checkIn: existing.checkIn < base.checkIn ? existing.checkIn : base.checkIn,
-      checkOut: existing.checkOut > base.checkOut ? existing.checkOut : base.checkOut,
-    };
-  }
-
-  const selectionCheckout = addDays(end, 1);
-  if (!existing) {
-    return { checkIn: selection.rangeStart, checkOut: selectionCheckout };
-  }
-  return {
-    checkIn: existing.checkIn < selection.rangeStart ? existing.checkIn : selection.rangeStart,
-    checkOut:
-      existing.checkOut > selectionCheckout ? existing.checkOut : selectionCheckout,
-  };
+/** Full selection span when applying a stay across multiple calendar days. */
+export function stayDatesForRangeApply(
+  selection: NightPairSelection,
+): { checkIn: string; checkOut: string } {
+  return stayDateBoundsForSelection(selection);
 }
 
 /** Check-in/out for expanded night-pair selections (e.g. setup board removal). */
@@ -180,4 +257,123 @@ export function selectionNeedsSetup(
     if (emptyHalf) needsAccommodation = true;
   }
   return { needsLocation, needsAccommodation };
+}
+
+export type AccommodationLocationConflict = {
+  rangeStart: string;
+  rangeEnd: string;
+  existingLocation: string;
+  existingAccommodation?: string | null;
+};
+
+function emptyDayPlace(date: string): DayPlaceDraft {
+  return {
+    date,
+    primaryCity: "",
+    secondaryCity: null,
+    primaryShare: 1,
+    dayType: "trip",
+    includeBuffer: false,
+  };
+}
+
+function coalesceLabeledDateRanges(
+  entries: {
+    date: string;
+    location: string;
+    accommodation: string | null;
+  }[],
+): AccommodationLocationConflict[] {
+  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  const out: AccommodationLocationConflict[] = [];
+  let run: {
+    start: string;
+    end: string;
+    location: string;
+    accommodation: string | null;
+  } | null = null;
+
+  for (const { date, location, accommodation } of sorted) {
+    const sameRun =
+      run &&
+      run.location === location &&
+      run.accommodation === accommodation &&
+      addDays(run.end, 1) === date;
+    if (sameRun) {
+      run!.end = date;
+      continue;
+    }
+    if (run) {
+      out.push({
+        rangeStart: run.start,
+        rangeEnd: run.end,
+        existingLocation: run.location,
+        existingAccommodation: run.accommodation,
+      });
+    }
+    run = { start: date, end: date, location, accommodation };
+  }
+
+  if (run) {
+    out.push({
+      rangeStart: run.start,
+      rangeEnd: run.end,
+      existingLocation: run.location,
+      existingAccommodation: run.accommodation,
+    });
+  }
+  return out;
+}
+
+/** Days in a selection whose painted location differs from the accommodation city. */
+export function detectAccommodationLocationConflicts(
+  selection: NightPairSelection,
+  days: DayPlaceDraft[],
+  accommodationCity: string,
+  stays: AccommodationStayDraft[] = [],
+): AccommodationLocationConflict[] {
+  const city = accommodationCity.trim();
+  if (!city) return [];
+
+  const end = selection.rangeEnd || selection.rangeStart;
+  const labeledDates: {
+    date: string;
+    location: string;
+    accommodation: string | null;
+  }[] = [];
+
+  for (const iso of enumerateDates(selection.rangeStart, end)) {
+    const day = days.find((d) => d.date === iso) ?? emptyDayPlace(iso);
+    const half = halfForDateInSelection(selection, iso);
+    const existing = locationLabelForSelectedHalf(day, half).trim();
+    if (!existing) continue;
+    if (locationsMatch(existing, city)) continue;
+    const existingStay = stays.length ? stayForHalfSelection(stays, iso, half) : null;
+    labeledDates.push({
+      date: iso,
+      location: existing,
+      accommodation: existingStay?.name?.trim() || null,
+    });
+  }
+
+  return coalesceLabeledDateRanges(labeledDates);
+}
+
+export function accommodationLocationConflictMessage(
+  accommodationCity: string,
+  conflicts: AccommodationLocationConflict[],
+  formatRange: (start: string, end: string) => string,
+): string {
+  const lines = conflicts.map((c) => {
+    const stay =
+      c.existingAccommodation?.trim() ? ` · ${c.existingAccommodation.trim()}` : "";
+    return `• ${formatRange(c.rangeStart, c.rangeEnd)}: ${c.existingLocation}${stay}`;
+  });
+  return [
+    `The stay city is "${accommodationCity.trim()}", but these days already have different locations:`,
+    "",
+    ...lines,
+    "",
+    "Applying will replace location labels on the selected days with the stay city.",
+  ].join("\n");
 }

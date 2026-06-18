@@ -109,18 +109,22 @@ function dayShowsHubStopover(
 
   if (!day) return false;
 
+  const share = day.primaryShare ?? 1;
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+
+  // Travel crossovers that touch a hub are in-flight connections, not stopovers.
+  if (primary && secondary && share < 0.99) return false;
+
   for (const hub of hubPlaces) {
-    const primary = day.primaryCity.trim();
-    const secondary = day.secondaryCity?.trim() ?? "";
     const matchesHub =
       (primary && (locationsMatch(primary, hub) || placesShareMetro(primary, hub))) ||
       (secondary && (locationsMatch(secondary, hub) || placesShareMetro(secondary, hub)));
 
     if (!matchesHub) continue;
 
-    // Respect manual or stay-driven paint that names the hub before flight inference runs.
-    if (primary && !primary.toLowerCase().includes("airport")) return true;
-    if (secondary && !secondary.toLowerCase().includes("airport")) return true;
+    // Full-day hub paint without a stay = intentional stopover (manual host edit).
+    if (share >= 0.99 && !primary.toLowerCase().includes("airport")) return true;
   }
 
   return false;

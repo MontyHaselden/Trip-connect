@@ -1,4 +1,6 @@
-import { applyStaysToDayPlaces } from "@/lib/host/setup/accommodation-calendar";
+import { applyStaysToDayPlaces, stayCityLabel } from "@/lib/host/setup/accommodation-calendar";
+import { stayDatesForSelection } from "@/lib/host/setup/day-selection-setup";
+import { clearAllLocationInSpan } from "@/lib/trip-engine/paint-day-range";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import {
   groupAccommodationStays,
@@ -11,6 +13,7 @@ import {
   DEFAULT_HALF_SHARE,
   addDays,
   enumerateDates,
+  locationsMatch,
   type HalfSide,
 } from "@/lib/host/wizard/location-stays";
 import type { AccommodationStayDraft, DayPlaceDraft } from "@/lib/host/wizard/types";
@@ -114,6 +117,26 @@ export function splitStaysForRangeRemoval(
   return result;
 }
 
+/** Shorten or split named stays that overlap a new location paint with a different city. */
+export function trimConflictingStaysForLocationPaint(
+  stays: AccommodationStayDraft[],
+  location: string,
+  rangeStart: string,
+  rangeEnd: string,
+): AccommodationStayDraft[] {
+  const end = rangeEnd || rangeStart;
+  const matching = stays.filter(
+    (stay) => stay.name?.trim() && locationsMatch(stayCityLabel(stay), location),
+  );
+  const other = stays.filter((stay) => !stay.name?.trim() || !locationsMatch(stayCityLabel(stay), location));
+  const trimmedNamed = splitStaysForRangeRemoval(
+    other.filter((stay) => stay.name?.trim()),
+    rangeStart,
+    end,
+  );
+  return [...matching, ...trimmedNamed, ...other.filter((stay) => !stay.name?.trim())];
+}
+
 function paintRangeGaps(
   existing: DayPlaceDraft[],
   rangeStart: string,
@@ -151,16 +174,26 @@ function paintRangeGaps(
     }
 
     if (isFirst && !isSingleDay) {
-      const prev = byDate.get(addDays(date, -1));
-      const prevCity = prev ? endingCityOnDay(prev) : "";
-      byDate.set(date, prevCity ? departureEdgeDay(date, prevCity) : emptyDay(date));
+      const prevDate = addDays(date, -1);
+      if (prevDate >= rangeStart) {
+        byDate.set(date, emptyDay(date));
+      } else {
+        const prev = byDate.get(prevDate);
+        const prevCity = prev ? endingCityOnDay(prev) : "";
+        byDate.set(date, prevCity ? departureEdgeDay(date, prevCity) : emptyDay(date));
+      }
       continue;
     }
 
     if (isLast && !isSingleDay) {
-      const next = byDate.get(addDays(date, 1));
-      const nextCity = next ? startingCityOnDay(next) : "";
-      byDate.set(date, nextCity ? arrivalEdgeDay(date, nextCity) : emptyDay(date));
+      const nextDate = addDays(date, 1);
+      if (nextDate <= rangeEnd) {
+        byDate.set(date, emptyDay(date));
+      } else {
+        const next = byDate.get(nextDate);
+        const nextCity = next ? startingCityOnDay(next) : "";
+        byDate.set(date, nextCity ? arrivalEdgeDay(date, nextCity) : emptyDay(date));
+      }
     }
   }
 
@@ -202,14 +235,18 @@ export function removeAccommodationAndCitiesFromRange(
     endHalf?: HalfSide | "full";
   },
 ): TripSetupState {
-  const nightSpan = nightDatesForRemoval({
+  const halfSelection = {
     rangeStart,
     rangeEnd,
     startHalf: options?.startHalf ?? "full",
     endHalf: options?.endHalf ?? "full",
-  });
+  };
+  const nightSpan = nightDatesForRemoval(halfSelection);
+  const locationSpan = stayDatesForSelection(halfSelection);
   rangeStart = nightSpan.rangeStart;
   rangeEnd = nightSpan.rangeEnd;
+  const locationClearStart = locationSpan.checkIn;
+  const locationClearEnd = locationSpan.checkOut;
 
   const isMain = groupId === state.mainGroupId;
   const scopedStays = isMain
@@ -220,13 +257,30 @@ export function removeAccommodationAndCitiesFromRange(
   const existingDays = state.dayPlacesByGroupId[groupId] ?? [];
 
   const daysOutsideRange = existingDays.filter(
-    (d) => d.date < rangeStart || d.date > rangeEnd,
+    (d) => d.date < locationClearStart || d.date > locationClearEnd,
+  );
+  const daysInsideRange = existingDays.filter(
+    (d) => d.date >= locationClearStart && d.date <= locationClearEnd,
   );
   const repaintedOutside = applyStaysToDayPlaces(daysOutsideRange, remainingStays);
-  const withGaps = paintRangeGaps(repaintedOutside, rangeStart, rangeEnd);
+  const hasOverlappingNamedStays = scopedStays.some(
+    (stay) =>
+      stay.name?.trim() &&
+      stay.checkInDate <= rangeEnd &&
+      stay.checkOutDate > rangeStart,
+  );
+  let withGaps: DayPlaceDraft[];
+  if (hasOverlappingNamedStays) {
+    withGaps = paintRangeGaps(repaintedOutside, locationClearStart, locationClearEnd);
+  } else {
+    withGaps = applyStaysToDayPlaces(
+      clearAllLocationInSpan([...repaintedOutside, ...daysInsideRange], halfSelection),
+      remainingStays,
+    );
+  }
 
   const blankedDates = new Set(
-    enumerateDates(rangeStart, rangeEnd).filter((date) => {
+    enumerateDates(locationClearStart, locationClearEnd).filter((date) => {
       const day = withGaps.find((d) => d.date === date);
       return day && !day.primaryCity.trim() && !day.secondaryCity?.trim();
     }),

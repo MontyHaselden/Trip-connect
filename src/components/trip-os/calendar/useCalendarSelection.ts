@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 
 import {
   EMPTY_CALENDAR_SELECTION,
+  expandHalfSelectionToFullDay,
   nextCalendarRangeSelection,
   type CalendarRangeSelection,
 } from "@/lib/host/setup/calendar-range-selection";
@@ -137,14 +138,11 @@ export function useCalendarSelection(props: {
           startHalf: half,
           endHalf: half,
         };
-        const sameHalf =
-          selection.rangeStart === halfSelection.rangeStart &&
-          selection.rangeEnd === halfSelection.rangeEnd &&
-          selection.startHalf === halfSelection.startHalf &&
-          selection.endHalf === halfSelection.endHalf;
-        if (sameHalf) {
-          clearSelection();
-          return false;
+        const expanded = expandHalfSelectionToFullDay(selection, iso, half);
+        if (expanded) {
+          setSelection({ ...expanded, intent: selection.intent });
+          props.onOpenDayView();
+          return true;
         }
         setSelection({ ...halfSelection, intent: selection.intent });
         props.onOpenDayView();
@@ -182,7 +180,7 @@ export function useCalendarSelection(props: {
     ? `Selected ${formatCalendarSelectionLabel(selection)}`
     : props.renderModel?.datesUnset
       ? "All days from today — scroll to browse"
-      : "Click days for a range, or a half on split days for that portion only";
+      : "Click days for a range, or a half on split days — click the same half again for the full travel day";
 
   return {
     selection,

@@ -2,6 +2,9 @@
 
 import type { ReactNode } from "react";
 
+import { useStudentOverlay } from "@/components/student/StudentOverlayContext";
+import { studentOverlayRootClass } from "@/lib/student/overlay-classes";
+
 export function StudentBottomSheet(props: {
   open: boolean;
   onClose: () => void;
@@ -10,11 +13,13 @@ export function StudentBottomSheet(props: {
   maxHeight?: string;
 }) {
   const { open, onClose, title, children, maxHeight = "75dvh" } = props;
+  const { contained } = useStudentOverlay();
+  const sheetMaxHeight = contained ? "72%" : maxHeight;
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center">
+    <div className={studentOverlayRootClass(contained)}>
       <div
         role="presentation"
         onClick={onClose}
@@ -26,7 +31,7 @@ export function StudentBottomSheet(props: {
         </div>
         <div
           className="overflow-y-auto px-5 pb-[max(env(safe-area-inset-bottom),1rem)] pt-2"
-          style={{ maxHeight }}
+          style={{ maxHeight: sheetMaxHeight }}
         >
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-lg font-bold text-[var(--student-text)]">{title}</h2>

@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { DateTime } from "luxon";
 
-import { weekStartMonday, tripCalendarScrollAnchor } from "@/lib/host/setup/calendar-bounds";
-import { effectiveTripBoundsFromState } from "@/lib/host/setup/sync-trip-bounds";
+import { weekStartMonday } from "@/lib/host/setup/calendar-bounds";
 import { setupStateToGraph } from "./adapters";
 import { buildCalendarRenderModel } from "./calendar-render-model";
 import { applyCommands } from "./apply-commands";
@@ -90,11 +89,7 @@ describe("buildCalendarRenderModel", () => {
     ]).graph;
 
     const model = buildCalendarRenderModel(graph);
-    const bounds = effectiveTripBoundsFromState(graph);
-    assert.equal(
-      model.scrollAnchorDate,
-      tripCalendarScrollAnchor(bounds.startDate, bounds.endDate),
-    );
+    assert.equal(model.scrollAnchorDate, "2026-08-26");
     assert.ok(model.activitiesByDate.has("2026-08-26"));
     assert.equal(model.activitiesByDate.get("2026-08-26")?.[0]?.title, "Temple");
     assert.ok(model.days.length > 0);

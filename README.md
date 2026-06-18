@@ -18,6 +18,8 @@ Create `.env.local`:
 | `SESSION_SECRET` | Yes | Long random string for host session HMAC |
 | `OPENAI_API_KEY` | No | AI itinerary import and phrase translation |
 | `OPENAI_MODEL` | No | Defaults to `gpt-4o-mini` |
+| `OPENAI_FIXTURE_DIR` | No | Replay recorded OpenAI JSON responses (no API cost) |
+| `OPENAI_FIXTURE_RECORD` | No | Set to `1` with `OPENAI_FIXTURE_DIR` to record fixtures once |
 | `WEATHER_MODE` | No | `live` (default) or `mock` for demos |
 | `AERODATABOX_API_KEY` | No | [AeroDataBox on API.market](https://api.market/store/aedbx/aerodatabox) — your `x-api-market-key` for flight lookup |
 

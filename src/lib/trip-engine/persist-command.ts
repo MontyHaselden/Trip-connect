@@ -3,12 +3,33 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { entityBookingDetails, groups, trips } from "@/lib/db/schema";
 import { applyTripSetupState } from "@/lib/host/setup/apply-setup-state";
+import { purgeTransportItineraryForRemovedLeg, reconcileTransportItineraryItems } from "@/lib/host/import/transport-itinerary-reconcile";
 import { graphToSetupState } from "./adapters";
 import { applyCommands } from "./apply-commands";
 import { syncActivitiesForTrip } from "./activities-persistence";
 import { normalizeCommand, type TripCommand } from "./commands";
-import { loadTripGraph } from "./load-trip-graph";
+import type { IntercityLegDraft, TransportLegDraft } from "@/lib/host/wizard/types";
 import type { CommandResult, TripEntityGraph } from "./types";
+
+function findTransportLeg(
+  graph: TripEntityGraph,
+  legId: string,
+  bucket?: "outbound" | "return" | "intercity",
+): TransportLegDraft | IntercityLegDraft | undefined {
+  if (bucket === "outbound" || !bucket) {
+    const leg = graph.outboundLegs.find((l) => l.id === legId);
+    if (leg) return leg;
+  }
+  if (bucket === "return" || !bucket) {
+    const leg = graph.returnLegs.find((l) => l.id === legId);
+    if (leg) return leg;
+  }
+  if (bucket === "intercity" || !bucket) {
+    const leg = graph.intercityLegs.find((l) => l.id === legId);
+    if (leg) return leg;
+  }
+  return undefined;
+}
 
 async function persistGroupCommand(tripId: string, command: TripCommand): Promise<void> {
   if (command.type === "createGroup") {
@@ -131,6 +152,18 @@ function groupIdFromCommand(command: TripCommand): string | undefined {
   return undefined;
 }
 
+const TRANSPORT_ITINERARY_SYNC_COMMANDS = new Set<TripCommand["type"]>([
+  "addTransportLeg",
+  "addClassifiedTransportLegs",
+  "updateTransportLeg",
+  "addLeg",
+  "updateLeg",
+]);
+
+function commandsNeedTransportItinerarySync(commands: TripCommand[]): boolean {
+  return commands.some((c) => TRANSPORT_ITINERARY_SYNC_COMMANDS.has(c.type));
+}
+
 /** Apply commands in memory, persist to DB, reload authoritative graph. */
 export async function persistCommands(
   tripId: string,
@@ -138,6 +171,14 @@ export async function persistCommands(
   commands: TripCommand[],
 ): Promise<CommandResult> {
   const normalized = commands.map((c) => normalizeCommand(c as TripCommand & { type: string }));
+
+  for (const command of normalized) {
+    if (command.type === "removeTransportLeg" || command.type === "removeLeg") {
+      const leg = findTransportLeg(graph, command.legId, command.bucket);
+      await purgeTransportItineraryForRemovedLeg(tripId, command.legId, leg);
+    }
+  }
+
   const result = applyCommands(graph, normalized);
 
   for (const command of normalized) {
@@ -162,16 +203,22 @@ export async function persistCommands(
   const stateCommands = normalized.filter((c) => !isMetaCommand(c));
   if (stateCommands.length > 0) {
     const activeGroupId = groupIdFromCommand(stateCommands[0]!) ?? graph.mainGroupId;
+    const syncTransportItems = commandsNeedTransportItinerarySync(stateCommands);
     await applyTripSetupState(tripId, graphToSetupState(result.graph), {
       activeGroupId,
       skipWizardItineraryItems: true,
+      syncTransportItems,
     });
     await syncActivitiesForTrip(tripId, result.graph.activities);
+    await reconcileTransportItineraryItems(tripId, {
+      outboundLegs: result.graph.outboundLegs,
+      returnLegs: result.graph.returnLegs,
+      intercityLegs: result.graph.intercityLegs,
+    });
   }
 
-  const reloaded = await loadTripGraph(tripId);
   return {
-    graph: reloaded ?? result.graph,
+    graph: result.graph,
     warnings: result.warnings,
     conflicts: result.conflicts ?? [],
   };

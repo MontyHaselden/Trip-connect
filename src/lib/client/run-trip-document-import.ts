@@ -5,6 +5,7 @@ export async function runTripDocumentImport(params: {
   file: Blob;
   fileName: string;
   instructions: string | null;
+  documentText?: string | null;
   onProgress?: (event: TripImportProgress) => void;
 }): Promise<
   | {
@@ -17,6 +18,9 @@ export async function runTripDocumentImport(params: {
   form.set("file", params.file, params.fileName);
   if (params.instructions) {
     form.set("instructions", params.instructions);
+  }
+  if (params.documentText?.trim()) {
+    form.set("documentText", params.documentText.trim());
   }
 
   const res = await fetch(`/api/trips/${params.tripId}/import-document`, {

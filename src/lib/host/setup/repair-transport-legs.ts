@@ -132,6 +132,23 @@ export function legsStillNeedingRepair(state: TripSetupState): TransportLegDraft
   return all.filter(legNeedsScheduleRepair);
 }
 
+const TRANSPORT_TYPE_LABELS: Record<TransportLegDraft["transportType"], string> = {
+  unsure: "Travel",
+  plane: "Flight",
+  train: "Train",
+  bus: "Bus",
+  coach: "Coach",
+  ferry: "Ferry",
+  car: "Car",
+  taxi: "Transfer",
+  walking: "Walking",
+  other: "Travel",
+};
+
+export function legTransportTypeLabel(leg: TransportLegDraft): string {
+  return TRANSPORT_TYPE_LABELS[leg.transportType] ?? "Travel";
+}
+
 export function legScheduleSummary(leg: TransportLegDraft): string {
   const dep = leg.travelDate?.trim() ?? "";
   const arr = arrivalDate(leg);

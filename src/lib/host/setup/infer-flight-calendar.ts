@@ -1,3 +1,4 @@
+import { stayCityLabel } from "@/lib/host/setup/accommodation-calendar";
 import { isAirportPlace, placesShareMetro } from "@/lib/geo/airport-codes";
 import {
   chainEndLeg,
@@ -431,6 +432,31 @@ function isAccommodationGapEdgeDay(
   return false;
 }
 
+export function isExplicitHostLocationPaint(
+  day: DayPlaceDraft,
+  namedStays: AccommodationStayDraft[],
+): boolean {
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const share = day.primaryShare ?? 1;
+  if (!primary && !secondary) return false;
+  if (isAirportPlace(primary) || isAirportPlace(secondary)) return false;
+  // Travel crossovers (origin/destination halves) are flight paint, not host gap fill.
+  if (primary && secondary && share < 0.99) return false;
+
+  if (primary && !secondary && share >= 0.99 && !namedStayCoversDate(namedStays, day.date)) {
+    return true;
+  }
+
+  if (secondary && !namedStayCoversDate(namedStays, day.date)) {
+    return !namedStays.some(
+      (stay) => stay.name?.trim() && locationsMatch(stayCityLabel(stay), secondary),
+    );
+  }
+
+  return false;
+}
+
 /** Remove flight-only paint on days no current plane leg touches. */
 export function stripOrphanFlightPaint(
   dayPlaces: DayPlaceDraft[],
@@ -446,6 +472,7 @@ export function stripOrphanFlightPaint(
     .map((day) => {
       if (namedStayCoversDate(namedStays, day.date)) return day;
       if (isAccommodationGapEdgeDay(day, namedStays)) return day;
+      if (isExplicitHostLocationPaint(day, namedStays)) return day;
       if (touched.has(day.date)) return day;
       if (!day.primaryCity.trim() && !day.secondaryCity?.trim()) return day;
       return emptyDay(day.date);

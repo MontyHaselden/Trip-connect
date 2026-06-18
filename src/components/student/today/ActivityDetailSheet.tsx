@@ -1,6 +1,8 @@
 "use client";
 
 import { buildMapsSearchUrl } from "@/lib/utils/maps";
+import { useStudentOverlay } from "@/components/student/StudentOverlayContext";
+import { studentOverlayRootClass } from "@/lib/student/overlay-classes";
 import {
   categoryAccent,
   durationLabel,
@@ -18,6 +20,7 @@ export function ActivityDetailSheet(props: {
   onClose: () => void;
 }) {
   const { item, tripTimezone, mapsEnabled, onClose } = props;
+  const { contained } = useStudentOverlay();
 
   if (!item) return null;
 
@@ -35,7 +38,7 @@ export function ActivityDetailSheet(props: {
   const mapsUrl = mapsQuery ? buildMapsSearchUrl(mapsQuery) : null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center">
+    <div className={studentOverlayRootClass(contained)}>
       <div
         role="presentation"
         onClick={onClose}
@@ -45,7 +48,9 @@ export function ActivityDetailSheet(props: {
         <div className="flex justify-center pt-2 pb-1">
           <span className="h-1 w-10 rounded-full bg-[var(--student-line)]" />
         </div>
-        <div className="max-h-[75dvh] overflow-y-auto px-5 pb-[max(env(safe-area-inset-bottom),1rem)] pt-2">
+        <div
+          className={`overflow-y-auto px-5 pb-[max(env(safe-area-inset-bottom),1rem)] pt-2 ${contained ? "max-h-[75%]" : "max-h-[75dvh]"}`}
+        >
           <div className="mb-4 flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">

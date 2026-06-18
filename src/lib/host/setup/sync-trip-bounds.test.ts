@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { syncTripBoundsFromContent, uncoveredTripDays } from "./sync-trip-bounds";
+import { syncTripBoundsFromContent, uncoveredTripDays, effectiveTripBoundsFromState } from "./sync-trip-bounds";
 import type { TripSetupState } from "./types";
 import { newId } from "@/lib/host/wizard/types";
 
@@ -80,6 +80,24 @@ describe("syncTripBoundsFromContent", () => {
     const next = syncTripBoundsFromContent(baseState());
     assert.equal(next.basics.startDate, "2026-08-20");
     assert.equal(next.basics.endDate, "2026-08-31");
+  });
+});
+
+describe("effectiveTripBoundsFromState", () => {
+  it("does not show stale basics dates after all calendar content is cleared", () => {
+    const cleared = syncTripBoundsFromContent({
+      ...baseState(),
+      dayPlacesByGroupId: { main: [] },
+      outboundLegs: [],
+      returnLegs: [],
+      intercityLegs: [],
+      accommodationStays: [],
+      activities: [],
+    });
+    const bounds = effectiveTripBoundsFromState(cleared);
+    assert.equal(bounds.startDate, "2000-01-01");
+    assert.equal(bounds.endDate, "2000-01-01");
+    assert.equal(bounds.fromContent, false);
   });
 });
 
