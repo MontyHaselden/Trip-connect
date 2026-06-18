@@ -164,6 +164,29 @@ function commandsNeedTransportItinerarySync(commands: TripCommand[]): boolean {
   return commands.some((c) => TRANSPORT_ITINERARY_SYNC_COMMANDS.has(c.type));
 }
 
+function isBasicsOnlyCommand(command: TripCommand): boolean {
+  return command.type === "updateBasics";
+}
+
+async function persistBasicsCommand(tripId: string, basics: TripEntityGraph["basics"]): Promise<void> {
+  const countries = basics.destinationCountries.filter(Boolean).join(", ") || null;
+  await db
+    .update(trips)
+    .set({
+      name: basics.name.trim(),
+      schoolName: basics.schoolName.trim(),
+      startDate: basics.startDate,
+      endDate: basics.endDate,
+      timezone: basics.timezone,
+      departureCity: basics.departureCity || null,
+      returnCity: basics.returnCity || null,
+      defaultDepartureAirport: basics.defaultDepartureAirport?.trim() || null,
+      destinationCountry: countries,
+      updatedAt: new Date(),
+    })
+    .where(eq(trips.id, tripId));
+}
+
 /** Apply commands in memory, persist to DB, reload authoritative graph. */
 export async function persistCommands(
   tripId: string,
@@ -203,18 +226,22 @@ export async function persistCommands(
   const stateCommands = normalized.filter((c) => !isMetaCommand(c));
   if (stateCommands.length > 0) {
     const activeGroupId = groupIdFromCommand(stateCommands[0]!) ?? graph.mainGroupId;
-    const syncTransportItems = commandsNeedTransportItinerarySync(stateCommands);
-    await applyTripSetupState(tripId, graphToSetupState(result.graph), {
-      activeGroupId,
-      skipWizardItineraryItems: true,
-      syncTransportItems,
-    });
-    await syncActivitiesForTrip(tripId, result.graph.activities);
-    await reconcileTransportItineraryItems(tripId, {
-      outboundLegs: result.graph.outboundLegs,
-      returnLegs: result.graph.returnLegs,
-      intercityLegs: result.graph.intercityLegs,
-    });
+    if (stateCommands.every(isBasicsOnlyCommand)) {
+      await persistBasicsCommand(tripId, result.graph.basics);
+    } else {
+      const syncTransportItems = commandsNeedTransportItinerarySync(stateCommands);
+      await applyTripSetupState(tripId, graphToSetupState(result.graph), {
+        activeGroupId,
+        skipWizardItineraryItems: true,
+        syncTransportItems,
+      });
+      await syncActivitiesForTrip(tripId, result.graph.activities);
+      await reconcileTransportItineraryItems(tripId, {
+        outboundLegs: result.graph.outboundLegs,
+        returnLegs: result.graph.returnLegs,
+        intercityLegs: result.graph.intercityLegs,
+      });
+    }
   }
 
   return {

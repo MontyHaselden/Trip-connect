@@ -20,6 +20,7 @@ import type {
 } from "@/lib/trip-engine/types";
 
 import type { TripOsSection } from "../TripOsWorkspace";
+import { EditableTripName } from "../shared/EditableTripName";
 import { WelcomeOverview } from "./WelcomeOverview";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -85,10 +86,11 @@ export function SmartOverview(props: {
     <div className="mx-auto max-w-2xl space-y-10 py-2">
       <div>
         <p className="text-sm font-medium text-violet-600">Overview</p>
-        <input
-          value={props.graph.basics.name}
-          onChange={(e) => props.onUpdateName(e.target.value)}
-          className="mt-2 w-full border-0 bg-transparent text-3xl font-semibold tracking-tight text-zinc-900 focus:outline-none focus:ring-0"
+        <EditableTripName
+          name={props.graph.basics.name}
+          onSave={props.onUpdateName}
+          variant="ghost"
+          className="mt-2"
         />
         <p className="mt-2 text-sm text-zinc-500">{metaLine}</p>
       </div>

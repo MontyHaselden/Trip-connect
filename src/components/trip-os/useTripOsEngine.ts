@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 
 import type { SetupSectionId } from "@/lib/host/setup/types";
 import { deserializeRenderModel } from "@/lib/trip-engine/build-setup-response";
+import { applyCommands } from "@/lib/trip-engine/apply-commands";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 import type {
   CalendarProjection,
@@ -78,6 +79,19 @@ export function useTripOsEngine(tripId: string) {
   const dispatch = useCallback(
     async (commands: TripCommand[]) => {
       if (!data) return false;
+
+      const optimistic = applyCommands(data.graph, commands);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              graph: optimistic.graph,
+              warnings: optimistic.warnings,
+              conflicts: optimistic.conflicts ?? [],
+            }
+          : prev,
+      );
+
       setSaving(true);
       setError(null);
       try {

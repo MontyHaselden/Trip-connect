@@ -74,6 +74,15 @@ function stay(overrides: Partial<ReturnType<typeof baseState>["accommodationStay
 }
 
 describe("trip-engine applyCommands", () => {
+  it("updateBasics changes trip name", () => {
+    const graph = setupStateToGraph("trip-1", baseState());
+    const result = applyCommands(graph, [
+      { type: "updateBasics", basics: { name: "Europe summer 2026" } },
+    ]);
+    assert.equal(result.graph.basics.name, "Europe summer 2026");
+    assert.equal(result.graph.basics.timezone, "Asia/Tokyo");
+  });
+
   it("addStay extends graph", () => {
     const graph = setupStateToGraph("trip-1", baseState());
     const result = applyCommands(graph, [

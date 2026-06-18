@@ -4,8 +4,8 @@ import { tripNameNeedsAttention } from "@/lib/host/setup/trip-naming";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 import { TripActionRow } from "../shared/TripActionRow";
+import { EditableTripName } from "../shared/EditableTripName";
 import { TripEyebrow } from "../shared/TripEyebrow";
-import { TripInput } from "../shared/TripInput";
 import type { TripOsSection } from "../TripOsWorkspace";
 
 export function WelcomeOverview(props: {
@@ -30,10 +30,10 @@ export function WelcomeOverview(props: {
       <div className="relative">
         <TripEyebrow accent>Welcome</TripEyebrow>
 
-        <TripInput
+        <EditableTripName
+          name={props.graph.basics.name}
+          onSave={props.onUpdateName}
           variant="hero"
-          value={props.graph.basics.name}
-          onChange={(e) => props.onUpdateName(e.target.value)}
           placeholder="Name your trip"
           className={needsName ? "text-zinc-400" : ""}
         />
