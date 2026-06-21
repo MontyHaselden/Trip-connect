@@ -359,6 +359,76 @@ export function detectAccommodationLocationConflicts(
   return coalesceLabeledDateRanges(labeledDates);
 }
 
+function normalizeCityToken(label: string): string {
+  const trimmed = label.trim();
+  if (!trimmed) return "";
+  return trimmed.split(",")[0]?.trim() || trimmed;
+}
+
+function bumpCityCount(counts: Map<string, number>, label: string) {
+  const city = normalizeCityToken(label);
+  if (!city || city.toLowerCase() === "tbc") return;
+  counts.set(city, (counts.get(city) ?? 0) + 1);
+}
+
+/** City for hotel search — uses selected calendar halves, not whole-day primaries on travel edges. */
+export function accommodationCityForSelection(
+  selection: NightPairSelection,
+  days: DayPlaceDraft[],
+): string {
+  const end = selection.rangeEnd || selection.rangeStart;
+  const bounds = stayDateBoundsForSelection(selection);
+  const nightCounts = new Map<string, number>();
+
+  for (const iso of enumerateDates(bounds.checkIn, addDays(bounds.checkOut, -1))) {
+    const day = days.find((d) => d.date === iso) ?? emptyDayPlace(iso);
+    const inSelectedRange = iso >= selection.rangeStart && iso <= end;
+    const half = inSelectedRange ? halfForDateInSelection(selection, iso) : "full";
+
+    if (half === "left" || half === "right") {
+      bumpCityCount(nightCounts, cityOnHalf(day, half));
+      continue;
+    }
+
+    const primary = day.primaryCity.trim();
+    const secondary = day.secondaryCity?.trim() ?? "";
+    if (primary && !secondary) {
+      bumpCityCount(nightCounts, primary);
+    } else if (!primary && secondary) {
+      bumpCityCount(nightCounts, secondary);
+    } else if (secondary) {
+      bumpCityCount(nightCounts, secondary);
+    } else if (primary) {
+      bumpCityCount(nightCounts, primary);
+    }
+  }
+
+  if (!nightCounts.size) {
+    for (const iso of enumerateDates(selection.rangeStart, end)) {
+      const day = days.find((d) => d.date === iso) ?? emptyDayPlace(iso);
+      const half = halfForDateInSelection(selection, iso);
+      if (half === "left" || half === "right") {
+        bumpCityCount(nightCounts, cityOnHalf(day, half));
+        continue;
+      }
+      const primary = day.primaryCity.trim();
+      const secondary = day.secondaryCity?.trim() ?? "";
+      if (primary) bumpCityCount(nightCounts, primary);
+      if (secondary) bumpCityCount(nightCounts, secondary);
+    }
+  }
+
+  let best = "";
+  let bestScore = 0;
+  for (const [city, score] of nightCounts) {
+    if (score > bestScore) {
+      best = city;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 export function accommodationLocationConflictMessage(
   accommodationCity: string,
   conflicts: AccommodationLocationConflict[],

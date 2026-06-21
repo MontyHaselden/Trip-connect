@@ -13,6 +13,7 @@ import {
 } from "@/lib/geo/accommodation-search";
 import { stayCityLabel } from "@/lib/host/setup/accommodation-calendar";
 import {
+  accommodationCityForSelection,
   detectAccommodationLocationConflicts,
   halfForDateInSelection,
   locationLabelForSelectedHalf,
@@ -141,7 +142,10 @@ function rangeLocationSummaryHalfAware(
   }
   const meaningful = labels.filter((l) => l !== "Not selected");
   if (!meaningful.length) return "Not selected";
-  const unique = [...new Set(meaningful)];
+  const normalized = meaningful.map((label) =>
+    shortCityName(label.replace(/\s*\(\d+%\)\s*$/, "")),
+  );
+  const unique = [...new Set(normalized.filter(Boolean))];
   if (unique.length === 1) return unique[0]!;
   return "Mixed across days";
 }
@@ -441,9 +445,7 @@ export function DayContextPanel(props: {
       const city =
         linkedStay
           ? stayCityLabel(linkedStay)
-          : projectedInRange.find((d) => d.primaryCity.trim())?.primaryCity.trim() ||
-            projectedInRange.find((d) => d.secondaryCity?.trim())?.secondaryCity?.trim() ||
-            "";
+          : accommodationCityForSelection(selection, daysForConflictCheck);
       const dates = isMultiDayRange
         ? stayDatesForRangeApply(selection)
         : linkedStay
@@ -461,7 +463,7 @@ export function DayContextPanel(props: {
         checkOut: dates.checkOut,
       });
     }
-  }, [editingField, projectedInRange, linkedStay, selection, rangeStart, rangeEnd, legsForSelectedDay, isMultiDayRange]);
+  }, [editingField, projectedInRange, linkedStay, selection, rangeStart, rangeEnd, legsForSelectedDay, isMultiDayRange, daysForConflictCheck]);
 
   if (!rangeStart) {
     return (
@@ -865,9 +867,7 @@ export function DayContextPanel(props: {
               }}
               stayType="hotel"
               countryNames={props.graph.basics.destinationCountries ?? []}
-              cityHint={
-                stayLocationConflicts.length ? undefined : stayDraft.city
-              }
+              cityHint={stayDraft.city || undefined}
               placeholder="Search property on Google Maps…"
               inputClassName={inputClass}
             />

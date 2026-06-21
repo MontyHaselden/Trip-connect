@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  accommodationCityForSelection,
   accommodationLocationConflictMessage,
   detectAccommodationLocationConflicts,
   halfForDateInSelection,
@@ -449,5 +450,32 @@ describe("detectAccommodationLocationConflicts", () => {
       "Queenstown, Otago Region",
     );
     assert.deepEqual(conflicts, []);
+  });
+});
+
+describe("accommodationCityForSelection", () => {
+  it("uses selected halves on travel-edge days, not the unselected primary city", () => {
+    const city = accommodationCityForSelection(
+      {
+        rangeStart: "2026-12-15",
+        rangeEnd: "2026-12-17",
+        startHalf: "right",
+        endHalf: "left",
+      },
+      [
+        day("2026-12-15", {
+          primaryCity: "Hiroshima",
+          secondaryCity: "Kyoto",
+          primaryShare: 0.5,
+        }),
+        day("2026-12-16", { primaryCity: "Kyoto" }),
+        day("2026-12-17", {
+          primaryCity: "Kyoto",
+          secondaryCity: "Osaka",
+          primaryShare: 0.5,
+        }),
+      ],
+    );
+    assert.equal(city, "Kyoto");
   });
 });
