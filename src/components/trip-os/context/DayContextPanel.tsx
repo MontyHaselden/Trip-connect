@@ -680,13 +680,13 @@ export function DayContextPanel(props: {
     await commitStaySave(stayConflictDialog.cityLabel, mergedDates);
   }
 
-  async function removeStay() {
+  function removeStay() {
     if (!linkedStay) return;
     if (!window.confirm("Remove this stay?")) return;
-    const ok = await props.onDispatch([
+    setEditingField(null);
+    void props.onDispatch([
       { type: "removeStay", groupId, stayId: linkedStay.id },
     ]);
-    if (ok) setEditingField(null);
   }
 
   async function addTransportLegs(legs: IntercityLegDraft[]) {

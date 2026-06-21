@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import type { SetupSectionId } from "@/lib/host/setup/types";
 import { deserializeRenderModel } from "@/lib/trip-engine/build-setup-response";
@@ -46,6 +46,17 @@ export function useTripOsEngine(tripId: string) {
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<SetupSectionId>("overview");
   const [activeGroupId, setActiveGroupId] = useState<string>("");
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const activeGroupIdRef = useRef(activeGroupId);
+  activeGroupIdRef.current = activeGroupId;
+  const persistQueueRef = useRef(Promise.resolve(true));
+  const inFlightCountRef = useRef(0);
+
+  const bumpSaving = useCallback((delta: number) => {
+    inFlightCountRef.current += delta;
+    setSaving(inFlightCountRef.current > 0);
+  }, []);
 
   const applyResponse = useCallback((body: SetupEngineResponse & { inviteCode?: string }) => {
     setData((prev) => ({
@@ -96,50 +107,59 @@ export function useTripOsEngine(tripId: string) {
   );
 
   const dispatch = useCallback(
-    async (commands: TripCommand[]) => {
-      if (!data) return false;
+    (commands: TripCommand[]): Promise<boolean> => {
+      if (!dataRef.current) return Promise.resolve(false);
 
-      const optimistic = applyCommands(data.graph, commands);
-      setData((prev) =>
-        prev
-          ? {
-              ...prev,
-              graph: optimistic.graph,
-              warnings: optimistic.warnings,
-              conflicts: optimistic.conflicts ?? [],
-            }
-          : prev,
-      );
+      setData((prev) => {
+        if (!prev) return prev;
+        const optimistic = applyCommands(prev.graph, commands);
+        return {
+          ...prev,
+          graph: optimistic.graph,
+          warnings: optimistic.warnings,
+          conflicts: optimistic.conflicts ?? [],
+        };
+      });
 
-      setSaving(true);
       setError(null);
-      try {
-        const res = await fetch(`/api/trips/${tripId}/setup/commands`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            commands,
-            groupId: activeGroupId || data.graph.mainGroupId,
-          }),
-        });
-        const body = (await res.json().catch(() => ({}))) as {
-          error?: string;
-        } & Partial<SetupEngineResponse>;
-        if (!res.ok) throw new Error(body.error || "Command failed");
-        if (body.graph) {
-          applyResponse(body as SetupEngineResponse);
-        } else {
-          await load(activeGroupId || data.graph.mainGroupId, { silent: true });
+      bumpSaving(1);
+
+      const persist = async (): Promise<boolean> => {
+        const groupId =
+          activeGroupIdRef.current || dataRef.current?.graph.mainGroupId || "";
+        try {
+          const res = await fetch(`/api/trips/${tripId}/setup/commands`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ commands, groupId }),
+          });
+          const body = (await res.json().catch(() => ({}))) as {
+            error?: string;
+          } & Partial<SetupEngineResponse>;
+          if (!res.ok) throw new Error(body.error || "Command failed");
+          if (body.graph) {
+            applyResponse(body as SetupEngineResponse);
+          } else {
+            await load(groupId, { silent: true });
+          }
+          return true;
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Save failed");
+          await load(groupId, { silent: true });
+          return false;
+        } finally {
+          bumpSaving(-1);
         }
-        return true;
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Save failed");
-        return false;
-      } finally {
-        setSaving(false);
-      }
+      };
+
+      const resultPromise = persistQueueRef.current.then(persist, persist);
+      persistQueueRef.current = resultPromise.then(
+        () => true,
+        () => true,
+      );
+      return resultPromise;
     },
-    [tripId, data, activeGroupId, applyResponse, load],
+    [tripId, applyResponse, load, bumpSaving],
   );
 
   const switchGroup = useCallback(

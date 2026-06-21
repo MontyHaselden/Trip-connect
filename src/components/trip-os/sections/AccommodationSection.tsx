@@ -7,7 +7,6 @@ import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 import { newId } from "@/lib/host/wizard/types";
 
-import { AsyncButton } from "../shared/AsyncButton";
 import { TripDateInput } from "../shared/TripDateInput";
 import { TripInput, tripFieldClass } from "../shared/TripInput";
 import { TripPrimaryButton } from "../shared/TripPrimaryButton";
@@ -27,14 +26,13 @@ export function AccommodationSection(props: {
   const [city, setCity] = useState("");
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
-  const [removingStayId, setRemovingStayId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
-  async function addStay() {
+  function addStay() {
     if (!name.trim() || !checkIn || !checkOut) return;
     setAdding(true);
-    try {
-      await props.onDispatch([
+    void props
+      .onDispatch([
         {
           type: "addStay",
           groupId: props.groupId,
@@ -53,23 +51,16 @@ export function AccommodationSection(props: {
             multipleInCity: false,
           },
         },
-      ]);
-      setName("");
-      setCity("");
-      setCheckIn("");
-      setCheckOut("");
-    } finally {
-      setAdding(false);
-    }
+      ])
+      .finally(() => setAdding(false));
+    setName("");
+    setCity("");
+    setCheckIn("");
+    setCheckOut("");
   }
 
-  async function removeStay(stayId: string) {
-    setRemovingStayId(stayId);
-    try {
-      await props.onDispatch([{ type: "removeStay", groupId: props.groupId, stayId }]);
-    } finally {
-      setRemovingStayId(null);
-    }
+  function removeStay(stayId: string) {
+    void props.onDispatch([{ type: "removeStay", groupId: props.groupId, stayId }]);
   }
 
   return (
@@ -90,15 +81,13 @@ export function AccommodationSection(props: {
                 {s.cityLabel} · {s.checkInDate} → {s.checkOutDate}
               </p>
             </div>
-            <AsyncButton
-              loading={removingStayId === s.id}
-              loadingLabel="Removing…"
-              onClick={() => void removeStay(s.id)}
-              disabled={removingStayId !== null && removingStayId !== s.id}
+            <button
+              type="button"
+              onClick={() => removeStay(s.id)}
               className="text-sm text-red-600 hover:text-red-700"
             >
               Delete
-            </AsyncButton>
+            </button>
           </li>
         ))}
         {!stays.length ? (
@@ -128,7 +117,7 @@ export function AccommodationSection(props: {
             className={tripFieldClass}
           />
         </div>
-        <TripPrimaryButton onClick={() => void addStay()} disabled={adding || removingStayId !== null} className="mt-4">
+        <TripPrimaryButton onClick={addStay} disabled={adding} className="mt-4">
           {adding ? "Adding…" : "Add stay"}
         </TripPrimaryButton>
       </TripSoftPanel>
