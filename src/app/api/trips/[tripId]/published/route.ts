@@ -1,16 +1,34 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
-import { participants, publishedTripSnapshots } from "@/lib/db/schema";
-import { ensureTripPublishedIfReady } from "@/lib/publish/ensure-published";
+import { participants } from "@/lib/db/schema";
 import { getPublishedForParticipant } from "@/lib/publish/get-published-for-participant";
+import { eq } from "drizzle-orm";
 
 function getBearerToken(req: Request): string | null {
   const h = req.headers.get("authorization");
   if (!h) return null;
   const m = /^Bearer\s+(.+)$/i.exec(h);
   return m?.[1]?.trim() ?? null;
+}
+
+async function loadParticipant(token: string, tripId: string) {
+  return db
+    .select({ id: participants.id, tripId: participants.tripId })
+    .from(participants)
+    .where(eq(participants.accessToken, token))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+    .then((row) => (row && row.tripId === tripId ? row : null));
+}
+
+function noPayloadResponse(pendingHostUpdate: boolean) {
+  const res = new NextResponse(null, { status: 204 });
+  res.headers.set("X-Trip-Version", "0");
+  if (pendingHostUpdate) {
+    res.headers.set("X-Pending-Host-Update", "1");
+  }
+  return res;
 }
 
 export async function HEAD(
@@ -22,43 +40,17 @@ export async function HEAD(
     if (!token) return new NextResponse(null, { status: 401 });
 
     const { tripId } = await ctx.params;
+    const participant = await loadParticipant(token, tripId);
+    if (!participant) return new NextResponse(null, { status: 401 });
 
-    const participant = await db
-      .select({ id: participants.id, tripId: participants.tripId })
-      .from(participants)
-      .where(eq(participants.accessToken, token))
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
-
-    if (!participant || participant.tripId !== tripId) {
-      return new NextResponse(null, { status: 401 });
+    const result = await getPublishedForParticipant(tripId, participant.id);
+    if (!result) {
+      return noPayloadResponse(true);
     }
-
-    const publishedVersion = await ensureTripPublishedIfReady(tripId);
-
-    if (publishedVersion === 0) {
-      const res = new NextResponse(null, { status: 204 });
-      res.headers.set("X-Trip-Version", "0");
-      return res;
-    }
-
-    const snap = await db
-      .select({ publishedAt: publishedTripSnapshots.publishedAt })
-      .from(publishedTripSnapshots)
-      .where(
-        and(
-          eq(publishedTripSnapshots.tripId, tripId),
-          eq(publishedTripSnapshots.version, publishedVersion),
-        ),
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
 
     const res = new NextResponse(null, { status: 204 });
-    res.headers.set("X-Trip-Version", String(publishedVersion));
-    if (snap?.publishedAt) {
-      res.headers.set("X-Published-At", snap.publishedAt.toISOString());
-    }
+    res.headers.set("X-Trip-Version", String(result.version));
+    res.headers.set("X-Published-At", result.publishedAt.toISOString());
     return res;
   } catch (err) {
     console.error("published HEAD failed", err);
@@ -77,18 +69,8 @@ export async function GET(
     }
 
     const { tripId } = await ctx.params;
-
-    const participant = await db
-      .select({
-        id: participants.id,
-        tripId: participants.tripId,
-      })
-      .from(participants)
-      .where(eq(participants.accessToken, token))
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
-
-    if (!participant || participant.tripId !== tripId) {
+    const participant = await loadParticipant(token, tripId);
+    if (!participant) {
       return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     }
 
@@ -96,7 +78,11 @@ export async function GET(
 
     if (!result) {
       return NextResponse.json(
-        { error: "Trip has not been shared with participants yet." },
+        {
+          error: "pending_host_update",
+          message:
+            "Your organiser has not shared the trip with you yet. Ask them to tap Update participants in Trip OS.",
+        },
         { status: 404 },
       );
     }

@@ -112,6 +112,7 @@ export function JoinLinksSection(props: {
       <TripSoftPanel title="Main trip link">
         <p className="text-sm text-zinc-600">
           Works for anyone on the roster. Share this in your trip info pack or group chat.
+          Only links shown here work — old links from other trips will not.
         </p>
         <div className="mt-3">
           <CopyLinkRow url={tripJoinUrl} />

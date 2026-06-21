@@ -43,6 +43,11 @@ export function TripOsBoard(props: { tripId: string }) {
     }, 300);
   }, []);
 
+  const handleRosterChanged = useCallback(() => {
+    scheduleParticipantPreviewRefresh();
+    void engine.load(undefined, { silent: true });
+  }, [engine.load, scheduleParticipantPreviewRefresh]);
+
   const dispatchWithPreviewRefresh = useCallback(
     async (commands: TripCommand[]) => {
       const ok = await engine.dispatch(commands);
@@ -169,6 +174,7 @@ export function TripOsBoard(props: { tripId: string }) {
           tripId={props.tripId}
           inviteCode={engine.data.inviteCode}
           onParticipantUpdated={() => void engine.load(undefined, { silent: true })}
+          participantUpdateRefreshKey={participantViewRefreshKey}
         />
         <main
           className={[
@@ -208,7 +214,7 @@ export function TripOsBoard(props: { tripId: string }) {
               onDispatch={dispatchWithPreviewRefresh}
               onNavigateSection={handleNavSelect}
               onReload={() => void engine.load(undefined, { silent: true })}
-              onRosterChanged={() => void engine.load(undefined, { silent: true })}
+              onRosterChanged={handleRosterChanged}
               participantViewRefreshKey={participantViewRefreshKey}
               rosterSummary={rosterSummary}
               costLedger={costLedger}

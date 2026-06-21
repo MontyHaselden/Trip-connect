@@ -1,7 +1,11 @@
 "use client";
 
-export function TripNotReady(props: { title: string; hasJoined?: boolean }) {
-  const { title, hasJoined } = props;
+export function TripNotReady(props: {
+  title: string;
+  hasJoined?: boolean;
+  pendingHostUpdate?: boolean;
+}) {
+  const { title, hasJoined, pendingHostUpdate } = props;
 
   return (
     <div className="py-16 text-center">
@@ -12,8 +16,9 @@ export function TripNotReady(props: { title: string; hasJoined?: boolean }) {
             You&apos;ve joined this trip
           </p>
           <p className="mt-2 text-sm text-[var(--student-text-muted)]">
-            Your organiser hasn&apos;t shared the itinerary yet. When they push an
-            update, your trip will appear here automatically.
+            {pendingHostUpdate
+              ? "Your organiser needs to tap Update participants in Trip OS so your screen catches up — then reopen the app."
+              : "Your organiser hasn't shared the itinerary yet. When they push an update, your trip will appear here automatically."}
           </p>
         </>
       ) : (

@@ -57,6 +57,15 @@ export async function syncPublishedTrip(params: {
   const res = await fetch(base, { method: "GET", headers });
   if (res.status === 401) return { status: "unauthorized" };
   if (!res.ok) {
+    if (res.status === 404) {
+      await putMeta({
+        tripId,
+        version: 0,
+        publishedAt: publishedAtHeader,
+        cachedAt: new Date().toISOString(),
+      });
+      return { status: "up_to_date", version: 0, publishedAt: publishedAtHeader };
+    }
     return { status: "error", message: `GET failed (${res.status})` };
   }
 

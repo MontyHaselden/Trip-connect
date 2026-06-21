@@ -50,6 +50,7 @@ export function TripOsNav(props: {
   tripId?: string;
   inviteCode?: string;
   onParticipantUpdated?: () => void;
+  participantUpdateRefreshKey?: number;
 }) {
   const variant = props.variant ?? "board";
   const byId = new Map((props.readiness ?? []).map((r) => [r.id, r]));
@@ -109,6 +110,7 @@ export function TripOsNav(props: {
             inviteCode={props.inviteCode}
             saving={props.saving}
             onUpdated={props.onParticipantUpdated}
+            refreshKey={props.participantUpdateRefreshKey}
           />
         ) : null}
         {variant === "board" && props.onBackHome ? (

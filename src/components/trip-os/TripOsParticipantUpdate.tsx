@@ -23,8 +23,9 @@ export function TripOsParticipantUpdate(props: {
   inviteCode: string;
   saving?: boolean;
   onUpdated?: () => void;
+  refreshKey?: number;
 }) {
-  const { tripId, inviteCode, saving, onUpdated } = props;
+  const { tripId, inviteCode, saving, onUpdated, refreshKey = 0 } = props;
 
   const [preview, setPreview] = useState<UpdatePreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(true);
@@ -61,7 +62,7 @@ export function TripOsParticipantUpdate(props: {
 
   useEffect(() => {
     void loadPreview();
-  }, [loadPreview]);
+  }, [loadPreview, refreshKey]);
 
   useEffect(() => {
     if (saving) return;
@@ -120,7 +121,7 @@ export function TripOsParticipantUpdate(props: {
           <p className="px-1 text-[11px] text-indigo-300/40">Checking for changes…</p>
         ) : neverShared ? (
           <p className="px-1 text-[11px] leading-snug text-indigo-300/50">
-            Share the trip when you&apos;re ready — saves stay private until you update.
+            Students can join now, but won&apos;t see the trip until you update here.
           </p>
         ) : hasPendingChanges ? (
           <p className="px-1 text-[11px] leading-snug text-amber-200/70">
