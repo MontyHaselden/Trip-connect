@@ -13,6 +13,7 @@ const SECTIONS: Array<{ id: TripOsSection; label: string }> = [
   { id: "transport", label: "Transport" },
   { id: "activities", label: "Activities" },
   { id: "participants", label: "Users" },
+  { id: "join-links", label: "Join links" },
   { id: "bookings", label: "Bookings" },
   { id: "finance", label: "Finance" },
   { id: "participant-view", label: "Participant view" },
@@ -67,7 +68,8 @@ export function TripOsNav(props: {
               s.id === "ingest" ||
               s.id === "map" ||
               s.id === "participant-view" ||
-              s.id === "participants"
+              s.id === "participants" ||
+              s.id === "join-links"
                 ? undefined
                 : byId.get(s.id);
             const status = meta?.status ?? "idle";

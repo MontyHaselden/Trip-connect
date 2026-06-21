@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { hostJson } from "@/components/host/shared/host-fetch";
 import type { RosterParticipant, RosterPayload } from "@/components/host/roster/types";
-import { studentAppPath } from "@/lib/mobile/student-app-paths";
-
 import { TripInput } from "../shared/TripInput";
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 
@@ -322,8 +320,6 @@ export function UsersSection(props: { inviteCode: string; onRosterChanged?: () =
     }
   }
 
-  const joinLink = studentAppPath(inviteCode);
-
   return (
     <TripSectionShell
       eyebrow="People"
@@ -378,17 +374,6 @@ export function UsersSection(props: { inviteCode: string; onRosterChanged?: () =
             </button>
           </div>
         ) : null}
-        <p className="mt-2 text-xs text-zinc-500">
-          Join link:{" "}
-          <a
-            href={joinLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-violet-700 hover:underline"
-          >
-            {joinLink}
-          </a>
-        </p>
       </TripSoftPanel>
 
       <div className="flex flex-wrap items-center gap-3">

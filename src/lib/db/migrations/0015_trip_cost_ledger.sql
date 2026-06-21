@@ -27,8 +27,12 @@ CREATE TABLE IF NOT EXISTS "trip_cost_settings" (
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint
 
-ALTER TABLE "trip_cost_settings" ADD CONSTRAINT "trip_cost_settings_trip_id_trips_id_fk"
-  FOREIGN KEY ("trip_id") REFERENCES "public"."trips"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "trip_cost_settings" ADD CONSTRAINT "trip_cost_settings_trip_id_trips_id_fk"
+  FOREIGN KEY ("trip_id") REFERENCES "public"."trips"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
 CREATE TABLE IF NOT EXISTS "cost_line_items" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -50,8 +54,12 @@ CREATE TABLE IF NOT EXISTS "cost_line_items" (
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint
 
-ALTER TABLE "cost_line_items" ADD CONSTRAINT "cost_line_items_trip_id_trips_id_fk"
-  FOREIGN KEY ("trip_id") REFERENCES "public"."trips"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "cost_line_items" ADD CONSTRAINT "cost_line_items_trip_id_trips_id_fk"
+  FOREIGN KEY ("trip_id") REFERENCES "public"."trips"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
 CREATE INDEX IF NOT EXISTS "cost_line_items_trip_idx" ON "cost_line_items" ("trip_id");--> statement-breakpoint
 
@@ -64,11 +72,19 @@ CREATE TABLE IF NOT EXISTS "cost_allocation_overrides" (
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint
 
-ALTER TABLE "cost_allocation_overrides" ADD CONSTRAINT "cost_allocation_overrides_line_item_id_fk"
-  FOREIGN KEY ("line_item_id") REFERENCES "public"."cost_line_items"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "cost_allocation_overrides" ADD CONSTRAINT "cost_allocation_overrides_line_item_id_fk"
+  FOREIGN KEY ("line_item_id") REFERENCES "public"."cost_line_items"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
-ALTER TABLE "cost_allocation_overrides" ADD CONSTRAINT "cost_allocation_overrides_participant_id_fk"
-  FOREIGN KEY ("participant_id") REFERENCES "public"."participants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "cost_allocation_overrides" ADD CONSTRAINT "cost_allocation_overrides_participant_id_fk"
+  FOREIGN KEY ("participant_id") REFERENCES "public"."participants"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
 CREATE UNIQUE INDEX IF NOT EXISTS "cost_allocation_overrides_line_participant_unique"
   ON "cost_allocation_overrides" ("line_item_id", "participant_id");

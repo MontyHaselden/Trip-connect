@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { studentAppPath } from "@/lib/mobile/student-app-paths";
-
 import {
   ParticipantPreviewShell,
   type ParticipantPreviewTab,
@@ -201,8 +199,6 @@ export function ParticipantViewSection(props: {
     [roster, participantId],
   );
 
-  const studentLink = roster?.inviteCode ? studentAppPath(roster.inviteCode) : null;
-
   const groupedOptions = useMemo(() => {
     if (!roster) return [];
     const byGroup = new Map<string, RosterParticipant[]>();
@@ -301,17 +297,6 @@ export function ParticipantViewSection(props: {
               </div>
             ) : null}
           </div>
-
-          {studentLink ? (
-            <a
-              href={studentLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`${toolbarButtonClass()} text-violet-700 hover:bg-violet-50`}
-            >
-              Join link
-            </a>
-          ) : null}
 
           <button
             type="button"

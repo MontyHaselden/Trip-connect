@@ -20,12 +20,13 @@ import { AccommodationSection } from "./sections/AccommodationSection";
 import { ActivitiesSection } from "./sections/ActivitiesSection";
 import { BookingsSection } from "./sections/BookingsSection";
 import { FinanceSection } from "./sections/FinanceSection";
+import { JoinLinksSection } from "./sections/JoinLinksSection";
 import { LocationsSection } from "./sections/LocationsSection";
 import { ParticipantViewSection } from "./sections/ParticipantViewSection";
 import { TransportSection } from "./sections/TransportSection";
 import { UsersSection } from "./sections/UsersSection";
 
-export type TripOsSection = SetupSectionId | "ingest" | "map" | "participant-view";
+export type TripOsSection = SetupSectionId | "ingest" | "map" | "participant-view" | "join-links";
 
 export function TripOsWorkspace(props: {
   section: TripOsSection;
@@ -121,6 +122,8 @@ export function TripOsWorkspace(props: {
       );
     case "participants":
       return <UsersSection inviteCode={inviteCode} onRosterChanged={props.onRosterChanged} />;
+    case "join-links":
+      return <JoinLinksSection inviteCode={inviteCode} graph={graph} />;
     case "bookings":
       return <BookingsSection graph={graph} tripId={tripId} />;
     case "finance":

@@ -12,8 +12,12 @@ CREATE TABLE IF NOT EXISTS "trip_funds" (
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint
 
-ALTER TABLE "trip_funds" ADD CONSTRAINT "trip_funds_trip_id_trips_id_fk"
-  FOREIGN KEY ("trip_id") REFERENCES "public"."trips"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "trip_funds" ADD CONSTRAINT "trip_funds_trip_id_trips_id_fk"
+  FOREIGN KEY ("trip_id") REFERENCES "public"."trips"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
 CREATE INDEX IF NOT EXISTS "trip_funds_trip_idx" ON "trip_funds" ("trip_id");--> statement-breakpoint
 
@@ -30,10 +34,18 @@ CREATE TABLE IF NOT EXISTS "participant_payments" (
   "updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );--> statement-breakpoint
 
-ALTER TABLE "participant_payments" ADD CONSTRAINT "participant_payments_trip_id_fk"
-  FOREIGN KEY ("trip_id") REFERENCES "public"."trips"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "participant_payments" ADD CONSTRAINT "participant_payments_trip_id_fk"
+  FOREIGN KEY ("trip_id") REFERENCES "public"."trips"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
-ALTER TABLE "participant_payments" ADD CONSTRAINT "participant_payments_participant_id_fk"
-  FOREIGN KEY ("participant_id") REFERENCES "public"."participants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "participant_payments" ADD CONSTRAINT "participant_payments_participant_id_fk"
+  FOREIGN KEY ("participant_id") REFERENCES "public"."participants"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 
 CREATE INDEX IF NOT EXISTS "participant_payments_trip_idx" ON "participant_payments" ("trip_id");
