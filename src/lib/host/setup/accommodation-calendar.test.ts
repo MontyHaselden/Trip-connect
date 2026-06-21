@@ -8,6 +8,7 @@ import {
   accommodationMorningHalfLabel,
   arrivalAccommodationLabel,
   coalesceAdjacentNamedStays,
+  corridorDepartureAccommodationLabel,
   departureAccommodationLabel,
   stayCityLabel,
 } from "@/lib/host/setup/accommodation-calendar";
@@ -243,6 +244,35 @@ describe("crossover accommodation labels", () => {
     );
     assert.equal(bands.left, "RIHGA Royal Hotel");
     assert.equal(bands.right, "Kyoto Inn");
+  });
+
+  it("scopes evening check-in to the arrival half on a Hiroshima → Kyoto travel day", () => {
+    const kyotoStay = patongStay({
+      cityLabel: "Kyoto",
+      name: "VIA INN Prime Kyotoeki Hachijoguchi",
+      checkInDate: "2026-12-15",
+      checkOutDate: "2026-12-17",
+    });
+    const acco = accommodationLabelByDate([kyotoStay]);
+    const travelDay = {
+      primaryCity: "Hiroshima",
+      secondaryCity: "Kyoto",
+      primaryShare: 0.4,
+      dayType: "travel" as const,
+    };
+    const bands = accommodationBandsForCalendarDay(
+      "2026-12-15",
+      travelDay,
+      [kyotoStay],
+      acco,
+    );
+    assert.equal(bands.left, null);
+    assert.equal(bands.right, "VIA INN Prime Kyotoeki Hachijoguchi");
+    assert.equal(bands.rightOnly, true);
+    assert.equal(
+      corridorDepartureAccommodationLabel("2026-12-15", travelDay, [kyotoStay], acco),
+      null,
+    );
   });
 });
 

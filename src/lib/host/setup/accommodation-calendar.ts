@@ -198,6 +198,37 @@ function scopeAccommodationBandsToLocationHalf(
   return { left, right };
 }
 
+function isSplitLocationDay(
+  day: Pick<DayPlaceDraft, "primaryCity" | "secondaryCity" | "primaryShare">,
+): boolean {
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const share = day.primaryShare ?? 1;
+  return Boolean(primary && secondary && share < 1);
+}
+
+/** Departure-side hotel on a transfer corridor — never bleed evening check-in across the whole day. */
+export function corridorDepartureAccommodationLabel(
+  iso: string,
+  day: Pick<DayPlaceDraft, "primaryCity" | "secondaryCity" | "primaryShare" | "dayType">,
+  stays: AccommodationStayDraft[],
+  accoByDate: Map<string, string>,
+): string | null {
+  if (day.dayType === "buffer") return null;
+  const primary = day.primaryCity.trim();
+  if (!primary) return null;
+
+  const fromDeparture = departureAccommodationLabel(iso, primary, stays);
+  if (fromDeparture) return fromDeparture;
+
+  if (!isSplitLocationDay(day)) {
+    const fromDate = accoByDate.get(iso);
+    if (fromDate) return fromDate;
+  }
+
+  return accommodationMorningHalfLabel(iso, stays);
+}
+
 /** Hotel bands per half — supports checkout morning + same-day check-in. */
 export function accommodationBandsForCalendarDay(
   iso: string,
@@ -261,6 +292,15 @@ export function accommodationBandsForCalendarDay(
   );
   if (checkoutStay && bands.left && !bands.right && !checkInSameDay) {
     return { ...bands, leftOnly: true };
+  }
+
+  if (isSplitLocationDay(day)) {
+    if (bands.right && !bands.left) {
+      return { ...bands, rightOnly: true };
+    }
+    if (bands.left && !bands.right) {
+      return { ...bands, leftOnly: true };
+    }
   }
 
   return bands;

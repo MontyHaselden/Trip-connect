@@ -6,9 +6,8 @@ import { DateTime } from "luxon";
 import {
   accommodationBandsForCalendarDay,
   accommodationLabelForCalendarDay,
-  accommodationMorningHalfLabel,
   arrivalAccommodationLabel,
-  departureAccommodationLabel,
+  corridorDepartureAccommodationLabel,
   namedStayForLabel,
 } from "@/lib/host/setup/accommodation-calendar";
 import { isAccommodationCrossoverDay } from "@/lib/host/setup/transport-corridor";
@@ -90,10 +89,7 @@ export function InteractiveTripCalendar(props: {
     const primaryCity = day.primaryCity.trim();
     const secondaryCity = day.secondaryCity?.trim() ?? "";
     const corridorDepartureAcco = namedStays.length
-      ? departureAccommodationLabel(cell.iso, primaryCity, namedStays) ??
-        model.accommodationByDate.get(cell.iso) ??
-        accommodationMorningHalfLabel(cell.iso, namedStays) ??
-        null
+      ? corridorDepartureAccommodationLabel(cell.iso, day, namedStays, model.accommodationByDate)
       : model.accommodationByDate.get(cell.iso) ?? null;
     const corridorArrivalAcco = namedStays.length
       ? arrivalAccommodationLabel(cell.iso, secondaryCity, namedStays)
