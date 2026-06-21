@@ -45,6 +45,7 @@ export async function searchGoogleAddresses(params: {
   cityHint?: string;
   limit?: number;
   lodgingOnly?: boolean;
+  locationBias?: { lat: number; lng: number; radiusMeters: number };
 }): Promise<AddressSuggestion[]> {
   const key = apiKey();
   const q = params.query.trim();
@@ -62,6 +63,17 @@ export async function searchGoogleAddresses(params: {
   }
   if (params.countryCodes?.length) {
     body.includedRegionCodes = params.countryCodes.map((c) => c.toUpperCase());
+  }
+  if (params.locationBias) {
+    body.locationBias = {
+      circle: {
+        center: {
+          latitude: params.locationBias.lat,
+          longitude: params.locationBias.lng,
+        },
+        radius: params.locationBias.radiusMeters,
+      },
+    };
   }
 
   try {
@@ -140,7 +152,13 @@ export function cityLabelFromAddressComponents(
 
 export async function getGooglePlaceDetails(
   placeId: string,
-): Promise<{ address: string; name: string | null; cityLabel: string | null } | null> {
+): Promise<{
+  address: string;
+  name: string | null;
+  cityLabel: string | null;
+  lat: number | null;
+  lng: number | null;
+} | null> {
   const key = apiKey();
   if (!key || !placeId.trim()) return null;
 
@@ -150,7 +168,8 @@ export async function getGooglePlaceDetails(
       {
         headers: {
           "X-Goog-Api-Key": key,
-          "X-Goog-FieldMask": "formattedAddress,displayName,addressComponents",
+          "X-Goog-FieldMask":
+          "formattedAddress,displayName,addressComponents,location",
         },
         next: { revalidate: 86400 },
       },
@@ -162,6 +181,7 @@ export async function getGooglePlaceDetails(
       formattedAddress?: string;
       displayName?: { text?: string };
       addressComponents?: AddressComponent[];
+      location?: { latitude?: number; longitude?: number };
     };
 
     const address = data.formattedAddress?.trim();
@@ -173,6 +193,8 @@ export async function getGooglePlaceDetails(
       address,
       name: data.displayName?.text?.trim() ?? null,
       cityLabel,
+      lat: data.location?.latitude ?? null,
+      lng: data.location?.longitude ?? null,
     };
   } catch {
     return null;

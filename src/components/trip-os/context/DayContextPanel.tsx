@@ -266,6 +266,9 @@ export function DayContextPanel(props: {
     name: string;
     city: string;
     address: string | null;
+    googlePlaceId: string | null;
+    latitude: number | null;
+    longitude: number | null;
     checkIn: string;
     checkOut: string;
   } | null>(null);
@@ -459,6 +462,9 @@ export function DayContextPanel(props: {
         name: linkedStay?.name?.trim() || "",
         city,
         address: linkedStay?.address ?? null,
+        googlePlaceId: linkedStay?.googlePlaceId ?? null,
+        latitude: linkedStay?.latitude ?? null,
+        longitude: linkedStay?.longitude ?? null,
         checkIn: dates.checkIn,
         checkOut: dates.checkOut,
       });
@@ -536,6 +542,9 @@ export function DayContextPanel(props: {
       name: stayDraft.name.trim(),
       cityLabel,
       address: stayDraft.address,
+      googlePlaceId: stayDraft.googlePlaceId,
+      latitude: stayDraft.latitude,
+      longitude: stayDraft.longitude,
       checkInDate: mergedDates.checkIn,
       checkOutDate: mergedDates.checkOut,
     };
@@ -863,11 +872,14 @@ export function DayContextPanel(props: {
             <HotelNamePicker
               value={stayDraft.name}
               onChange={(name) => setStayDraft({ ...stayDraft, name })}
-              onSelectHotel={({ name, address, cityLabel }) => {
+              onSelectHotel={({ name, address, cityLabel, placeId, lat, lng }) => {
                 setStayDraft({
                   ...stayDraft,
                   name,
                   address: address || null,
+                  googlePlaceId: placeId ?? null,
+                  latitude: lat ?? null,
+                  longitude: lng ?? null,
                   city: resolveStayCityOnHotelPick({
                     hotelName: name,
                     mapsCityLabel: cityLabel,
@@ -878,7 +890,7 @@ export function DayContextPanel(props: {
               }}
               stayType="hotel"
               countryNames={props.graph.basics.destinationCountries ?? []}
-              cityHint={stayDraft.city || undefined}
+              stayCity={stayDraftCityLabel(stayDraft) || undefined}
               placeholder="Search property on Google Maps…"
               inputClassName={inputClass}
             />

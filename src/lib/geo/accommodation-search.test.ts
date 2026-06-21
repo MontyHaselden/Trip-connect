@@ -58,6 +58,17 @@ describe("resolveStayCityOnHotelPick", () => {
       "Patong",
     );
   });
+
+  it("keeps trip stay city when maps resolves to same metro", () => {
+    assert.equal(
+      resolveStayCityOnHotelPick({
+        hotelName: "Narita View Hotel",
+        mapsCityLabel: "Narita, Chiba",
+        existingCity: "Tokyo",
+      }),
+      "Tokyo",
+    );
+  });
 });
 
 describe("suggestKeepStayCityLabel", () => {

@@ -114,6 +114,9 @@ export type AccommodationStayDraft = EntityVisibilityDraft & LayerEntityDraft & 
   url: string | null;
   address: string | null;
   phone: string | null;
+  googlePlaceId?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   checkInDate: string;
   checkOutDate: string;
   notes: string | null;

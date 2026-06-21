@@ -1,3 +1,5 @@
+import { placesShareMetro } from "@/lib/geo/airport-codes";
+import { locationsMatch } from "@/lib/host/wizard/location-stays";
 import type { StayType } from "@/lib/host/wizard/types";
 
 const PLACEHOLDER_CITIES = new Set(["tbc", "unknown", ""]);
@@ -124,6 +126,13 @@ export function resolveStayCityOnHotelPick(input: {
   const existing = input.existingCity?.trim() ?? "";
 
   if (fromName) return fromName;
+
+  if (existing && inferred) {
+    if (locationsMatch(existing, inferred) || placesShareMetro(existing, inferred)) {
+      return existing;
+    }
+  }
+
   if (inferred && !looksLikeFormalMapsCityLabel(inferred)) return inferred;
   if (existing && !looksLikeFormalMapsCityLabel(existing)) return existing;
   return inferred || existing;

@@ -62,16 +62,23 @@ export function AccommodationStayForm({
             <HotelNamePicker
               value={stay.name ?? ""}
               onChange={(name) => patch({ name: name || null })}
-              onSelectHotel={({ name, address, cityLabel: pickedCity }) => {
+              onSelectHotel={({ name, address, cityLabel: pickedCity, placeId, lat, lng }) => {
                 const cityLabel =
                   pickedCity?.trim() ||
                   inferCityLabelFromAddress(address) ||
                   stay.cityLabel;
-                patch({ name, address, cityLabel });
+                patch({
+                  name,
+                  address,
+                  cityLabel,
+                  googlePlaceId: placeId ?? null,
+                  latitude: lat ?? null,
+                  longitude: lng ?? null,
+                });
               }}
               stayType={stay.stayType}
               countryNames={countryNames}
-              cityHint={effectiveCity}
+              stayCity={effectiveCity}
               inputClassName={inputClass}
             />
           </div>

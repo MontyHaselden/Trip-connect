@@ -26,6 +26,7 @@ export function AutocompleteField({
   onSelectOption,
   onBlur,
   emptyMessage = "No matches found",
+  emptyHint,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -39,6 +40,7 @@ export function AutocompleteField({
   onSelectOption?: (option: AutocompleteOption) => void;
   onBlur?: () => void;
   emptyMessage?: string;
+  emptyHint?: string;
 }) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -150,7 +152,12 @@ export function AutocompleteField({
         {loading ? (
           <li className="px-3 py-2.5 text-xs text-zinc-500">Searching…</li>
         ) : showEmpty ? (
-          <li className="px-3 py-2.5 text-xs text-zinc-500">{emptyMessage}</li>
+          <li className="px-3 py-2.5 text-xs text-zinc-500">
+            <span className="block">{emptyMessage}</span>
+            {emptyHint ? (
+              <span className="mt-1 block text-zinc-400">{emptyHint}</span>
+            ) : null}
+          </li>
         ) : (
           options.map((opt, i) => (
             <li key={opt.id} role="option" aria-selected={i === activeIndex}>

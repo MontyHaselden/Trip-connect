@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { searchAddresses } from "@/lib/geo/address-search";
+import { searchLodging } from "@/lib/geo/address-search";
 import { getGooglePlaceDetails } from "@/lib/geo/google-places";
 
 export const runtime = "nodejs";
@@ -10,6 +10,7 @@ const SearchSchema = z.object({
   q: z.string().trim().min(2).max(160),
   countries: z.string().optional(),
   city: z.string().trim().max(120).optional(),
+  stayCity: z.string().trim().max(120).optional(),
   lodging: z.enum(["1", "true"]).optional(),
 });
 
@@ -39,6 +40,7 @@ export async function GET(req: Request) {
     q: url.searchParams.get("q") ?? "",
     countries: url.searchParams.get("countries") ?? undefined,
     city: url.searchParams.get("city") ?? undefined,
+    stayCity: url.searchParams.get("stayCity") ?? undefined,
     lodging: url.searchParams.get("lodging") ?? undefined,
   });
 
@@ -50,13 +52,14 @@ export async function GET(req: Request) {
     ? parsed.data.countries.split(",").filter(Boolean)
     : undefined;
 
-  const suggestions = await searchAddresses({
+  const stayCity = parsed.data.stayCity ?? parsed.data.city ?? "";
+  const { suggestions, meta } = await searchLodging({
     query: parsed.data.q,
+    stayCity,
     countryCodes,
-    cityHint: parsed.data.city,
     lodgingOnly: parsed.data.lodging === "1" || parsed.data.lodging === "true",
     limit: 10,
   });
 
-  return NextResponse.json({ suggestions });
+  return NextResponse.json({ suggestions, meta });
 }
