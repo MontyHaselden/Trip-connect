@@ -13,6 +13,22 @@ import { loadCostLedgerProjection } from "@/lib/trip-engine/cost-ledger/index";
 import { loadRosterSummary } from "@/lib/trip-engine/roster-summary";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 
+function isAccommodationOnlyCommands(commands: TripCommand[]): boolean {
+  return (
+    commands.length > 0 &&
+    commands.every((c) =>
+      [
+        "addStay",
+        "updateStay",
+        "removeStay",
+        "paintDayRange",
+        "setDayPlaces",
+        "clearDayRange",
+      ].includes(c.type),
+    )
+  );
+}
+
 async function handleCommands(
   tripId: string,
   commands: TripCommand[],
@@ -23,10 +39,13 @@ async function handleCommands(
   if (!graph) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
   const result = await persistCommands(tripId, graph, commands);
-  const [rosterSummary, costLedger] = await Promise.all([
-    loadRosterSummary(tripId),
-    loadCostLedgerProjection(tripId, result.graph).catch(() => null),
-  ]);
+  const lightweight = isAccommodationOnlyCommands(commands);
+  const [rosterSummary, costLedger] = lightweight
+    ? [undefined, undefined]
+    : await Promise.all([
+        loadRosterSummary(tripId),
+        loadCostLedgerProjection(tripId, result.graph).catch(() => null),
+      ]);
   const response = buildSetupEngineResponse(result.graph, {
     groupId: groupId ?? graph.mainGroupId,
     inviteCode,

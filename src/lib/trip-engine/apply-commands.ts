@@ -41,6 +41,19 @@ function ok(graph: TripEntityGraph, warnings: EngineWarning[] = []): CommandResu
   return { graph: { ...graph, tripId: graph.tripId }, warnings, conflicts: [] };
 }
 
+function dropUnnamedStaysOverlappingNamed(
+  stays: TripEntityGraph["accommodationStays"],
+  incoming: TripEntityGraph["accommodationStays"][number],
+): TripEntityGraph["accommodationStays"] {
+  if (!incoming.name?.trim()) return stays;
+  return stays.filter((stay) => {
+    if (stay.name?.trim()) return true;
+    const overlaps =
+      stay.checkInDate < incoming.checkOutDate && incoming.checkInDate < stay.checkOutDate;
+    return !overlaps;
+  });
+}
+
 function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandResult {
   const command = normalizeCommand(raw as TripCommand & { type: string });
   const warnings: EngineWarning[] = [];
@@ -77,8 +90,9 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
     case "addStay": {
       const groupId = command.groupId;
       const stay = { ...command.stay, originGroupId: command.stay.originGroupId ?? groupId };
+      const withoutOrphans = dropUnnamedStaysOverlappingNamed(graph.accommodationStays, stay);
       const next = applySetupAccommodationChange(
-        { ...graph, accommodationStays: [...graph.accommodationStays, stay] },
+        { ...graph, accommodationStays: [...withoutOrphans, stay] },
         groupId,
       );
       return ok(mergeGraphState(graph, next), warnings);

@@ -553,12 +553,22 @@ export function DayContextPanel(props: {
             return !p.primaryCity.trim();
           });
     if (needsLocationPaint && cityLabel && !isReplacingStay) {
-      if (splitTravelDay && rangeStart) {
-        const existing = dayPlacesForGroup(graph, groupId);
-        const projected = projectedInRange[0];
+      const checkInProjected = projectedInRange.find((d) => d.date === rangeStart);
+      const checkInDepartureCity = checkInProjected?.primaryCity.trim() ?? "";
+      const preserveTravelDayOnCheckIn = Boolean(
+        startHalf === "right" &&
+          rangeStart &&
+          checkInDepartureCity &&
+          !locationsMatch(checkInDepartureCity, cityLabel),
+      );
+      if ((splitTravelDay || preserveTravelDayOnCheckIn) && rangeStart) {
+        const projected = checkInProjected ?? projectedInRange[0];
         const updatedDay = {
           date: rangeStart,
-          primaryCity: projected?.primaryCity.trim() || departureDraft.trim() || graph.basics.departureCity,
+          primaryCity:
+            projected?.primaryCity.trim() ||
+            departureDraft.trim() ||
+            graph.basics.departureCity,
           secondaryCity: cityLabel,
           primaryShare: projected?.primaryShare ?? 0.5,
           dayType: projected?.dayType ?? ("trip" as const),

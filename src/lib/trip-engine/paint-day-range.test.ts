@@ -51,6 +51,31 @@ describe("applyHalfDayPaint", () => {
     assert.equal(out.find((d) => d.date === "2026-07-16")?.primaryShare, 0.5);
     assert.equal(out.find((d) => d.date === "2026-07-17"), undefined);
   });
+
+  it("preserves a travel-day departure city when painting from the second half", () => {
+    const days = [
+      {
+        date: "2026-12-15",
+        primaryCity: "Hiroshima",
+        secondaryCity: "Kyoto",
+        primaryShare: 0.5,
+        dayType: "travel" as const,
+        includeBuffer: false,
+      },
+    ];
+    const out = paintLocationDayRange(
+      days,
+      "2026-12-15",
+      "2026-12-17",
+      "Kyoto",
+      "right",
+      "left",
+    );
+    const dec15 = out.find((d) => d.date === "2026-12-15");
+    assert.equal(dec15?.primaryCity, "Hiroshima");
+    assert.equal(dec15?.secondaryCity, "Kyoto");
+    assert.equal(dec15?.primaryShare, 0.5);
+  });
 });
 
 describe("clearAllLocationInSpan", () => {

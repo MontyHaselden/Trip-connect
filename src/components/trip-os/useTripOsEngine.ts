@@ -48,17 +48,20 @@ export function useTripOsEngine(tripId: string) {
   const [activeGroupId, setActiveGroupId] = useState<string>("");
 
   const applyResponse = useCallback((body: SetupEngineResponse & { inviteCode?: string }) => {
-    setData({
+    setData((prev) => ({
       graph: body.graph,
       calendarProjection: deserializeProjection(body.calendarProjection),
       calendarRenderModel: deserializeRenderModel(body.calendarRenderModel),
       readiness: body.readiness,
       warnings: body.warnings,
       conflicts: body.conflicts,
-      inviteCode: body.inviteCode ?? "",
-      rosterSummary: body.rosterSummary ?? { participants: [], groups: [], rooms: [] },
-      costLedger: body.costLedger ?? null,
-    });
+      inviteCode: body.inviteCode ?? prev?.inviteCode ?? "",
+      rosterSummary:
+        body.rosterSummary ??
+        prev?.rosterSummary ??
+        { participants: [], groups: [], rooms: [] },
+      costLedger: body.costLedger !== undefined ? body.costLedger : (prev?.costLedger ?? null),
+    }));
     setActiveGroupId((current) => current || body.graph.mainGroupId);
   }, []);
 

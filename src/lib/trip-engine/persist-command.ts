@@ -158,6 +158,21 @@ function groupIdFromCommand(command: TripCommand): string | undefined {
   return undefined;
 }
 
+function isAccommodationCalendarCommand(command: TripCommand): boolean {
+  return (
+    command.type === "addStay" ||
+    command.type === "updateStay" ||
+    command.type === "removeStay" ||
+    command.type === "paintDayRange" ||
+    command.type === "setDayPlaces" ||
+    command.type === "clearDayRange"
+  );
+}
+
+function isAccommodationOnlyBatch(commands: TripCommand[]): boolean {
+  return commands.length > 0 && commands.every(isAccommodationCalendarCommand);
+}
+
 const TRANSPORT_ITINERARY_SYNC_COMMANDS = new Set<TripCommand["type"]>([
   "addTransportLeg",
   "addClassifiedTransportLegs",
@@ -260,18 +275,21 @@ export async function persistCommands(
     if (stateCommands.every(isBasicsOnlyCommand)) {
       await persistBasicsCommand(tripId, result.graph.basics);
     } else {
+      const accommodationOnly = isAccommodationOnlyBatch(stateCommands);
       const syncTransportItems = commandsNeedTransportItinerarySync(stateCommands);
       await applyTripSetupState(tripId, graphToSetupState(result.graph), {
         activeGroupId,
         skipWizardItineraryItems: true,
         syncTransportItems,
       });
-      await syncActivitiesForTrip(tripId, result.graph.activities);
-      await reconcileTransportItineraryItems(tripId, {
-        outboundLegs: result.graph.outboundLegs,
-        returnLegs: result.graph.returnLegs,
-        intercityLegs: result.graph.intercityLegs,
-      });
+      if (!accommodationOnly) {
+        await syncActivitiesForTrip(tripId, result.graph.activities);
+        await reconcileTransportItineraryItems(tripId, {
+          outboundLegs: result.graph.outboundLegs,
+          returnLegs: result.graph.returnLegs,
+          intercityLegs: result.graph.intercityLegs,
+        });
+      }
     }
   }
 

@@ -362,9 +362,28 @@ export function paintLocationDayRange(
     name: "__location_paint__",
   };
 
+  const originals = new Map(days.map((d) => [d.date, d]));
   let result = clearLocationSpillAfterCheckout(days, checkOut, loc);
   result = inferDayPlacesFromStay(result, syntheticStay);
   result = normalizeInteriorStayDays(result, [syntheticStay]);
+  result = applyHalfDayPaint(result, rangeStart, end, loc, startHalf, endHalf);
+
+  if (startHalf === "right") {
+    const departure = originals.get(rangeStart)?.primaryCity.trim();
+    if (departure && !locationsMatch(departure, loc)) {
+      result = result.map((day) =>
+        day.date === rangeStart
+          ? {
+              ...day,
+              primaryCity: departure,
+              secondaryCity: day.secondaryCity?.trim() || loc,
+              primaryShare: DEFAULT_HALF_SHARE,
+              dayType: originals.get(rangeStart)?.dayType ?? day.dayType,
+            }
+          : day,
+      );
+    }
+  }
 
   return result.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim());
 }
