@@ -10,6 +10,7 @@ import {
   wirePwaHead,
 } from "@/lib/mobile/wire-pwa-head";
 import {
+  clearTripSession,
   getStoredTripSession,
   redirectToStudentApp,
   studentAppPath,
@@ -37,7 +38,13 @@ export function StudentAppRoot(props: {
 
     const session = getStoredTripSession();
     if (session?.inviteCode && session.inviteCode !== inviteCode) {
-      redirectToStudentApp(session.inviteCode);
+      clearTripSession();
+      setPhase("join");
+      return;
+    }
+    if (session?.tripId && session.tripId !== tripId) {
+      clearTripSession();
+      setPhase("join");
       return;
     }
     if (session?.accessToken && session.inviteCode === inviteCode) {

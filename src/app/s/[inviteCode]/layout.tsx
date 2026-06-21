@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 
 import { StudentAppRoot } from "@/components/student/StudentAppRoot";
+import { StudentInvalidInvite } from "@/components/student/StudentInvalidInvite";
 import { loadTripByAnyInviteCode } from "@/lib/join/load-trip-by-invite";
 import { plusJakartaSans } from "@/lib/fonts/student-font";
 import { buildTripManifestHref } from "@/lib/mobile/wire-pwa-head";
@@ -38,7 +38,13 @@ export default async function StudentAppLayout(props: {
 }) {
   const { inviteCode } = await props.params;
   const trip = await loadTripByAnyInviteCode(inviteCode);
-  if (!trip) notFound();
+  if (!trip) {
+    return (
+      <div className={`${plusJakartaSans.variable} student-app min-h-dvh`}>
+        <StudentInvalidInvite attemptedCode={inviteCode} />
+      </div>
+    );
+  }
 
   return (
     <div className={`${plusJakartaSans.variable} student-app min-h-dvh`}>

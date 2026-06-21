@@ -145,6 +145,15 @@ export function TripAppShell({
       return;
     }
 
+    if (
+      inviteCode &&
+      storedInvite &&
+      storedInvite !== inviteCode &&
+      storedTripId !== tripId
+    ) {
+      return;
+    }
+
     if (resolvedInvite && !pathname.startsWith(`/s/${resolvedInvite}`)) {
       const suffix = pathname.includes("/my-trip") ? "/my-trip" : "";
       const search = typeof window !== "undefined" ? window.location.search : "";
