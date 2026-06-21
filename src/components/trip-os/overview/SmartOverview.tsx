@@ -12,7 +12,6 @@ import { effectiveTripBoundsFromState } from "@/lib/host/setup/sync-trip-bounds"
 import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import { computeLogisticsPrompts } from "@/lib/trip-engine/logistics-prompts";
 import type {
-  CostLedgerProjection,
   EngineConflict,
   EngineSectionReadiness,
   EngineWarning,
@@ -20,6 +19,7 @@ import type {
   RosterSummary,
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
+import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 
 import type { TripOsSection } from "../TripOsWorkspace";
 import { EditableTripName } from "../shared/EditableTripName";

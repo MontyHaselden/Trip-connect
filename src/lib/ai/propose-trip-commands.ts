@@ -97,8 +97,14 @@ function repairTripCommands(
     const cmdGroup = command.groupId || groupId;
     const existing = dayPlacesForGroup(graph, cmdGroup);
     const incoming = command.days
-      .filter((day): day is Partial<DayPlaceDraft> & { date: string } => Boolean(day?.date))
-      .map(sanitizeDayPlaceDraft);
+      .filter((day) => Boolean(day?.date))
+      .map((day) =>
+        sanitizeDayPlaceDraft({
+          ...day,
+          date: day.date,
+          primaryCity: day.primaryCity ?? "",
+        }),
+      );
     return {
       ...command,
       groupId: cmdGroup,

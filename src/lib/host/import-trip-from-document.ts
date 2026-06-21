@@ -41,6 +41,7 @@ import {
 import { buildDefaultDayPlaces, syncIntercityLegs } from "@/lib/host/wizard/detect-city-moves";
 import { analyzeImportGaps } from "@/lib/host/wizard/analyze-import-gaps";
 import { applyCommandBatch } from "@/lib/trip-engine/apply-command-batch";
+import type { TripCommand } from "@/lib/trip-engine/commands";
 import { loadTripGraph } from "@/lib/trip-engine/load-graph";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
 import type { TripImportProgress } from "@/types/trip-import-progress";
@@ -327,7 +328,7 @@ export async function importTripFromDocumentText(params: {
 
   let fillProposal: {
     assistantReply: string;
-    proposedCommands: unknown[];
+    proposedCommands: TripCommand[];
     commandSummaries: string[];
   } | null = null;
   if (calendarGaps.unpaintedDates.length) {

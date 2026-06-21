@@ -1542,7 +1542,7 @@ export function LocationStayCalendar({
             corridorDepartureAcco={corridorDepartureAcco}
             corridorArrivalAcco={corridorArrivalAcco}
             onSelect={(half, options) => onDayClick?.(iso, half, options)}
-            accommodationLabel={dayAccommodationLabel}
+            accommodationLabel={dayAccommodationLabel ?? undefined}
             showAvailabilityDots={showAvailabilityDots}
             onTransportCorridorClick={
               onTransportCorridorClick ? () => onTransportCorridorClick(iso) : undefined

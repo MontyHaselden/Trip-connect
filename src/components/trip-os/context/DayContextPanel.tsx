@@ -778,7 +778,7 @@ export function DayContextPanel(props: {
             label="Transport"
             value={transportSummary}
             action={legsInRange.length ? "Edit" : "Add"}
-            highlight={splitTravelDay && legsInRange.length === 0}
+            highlight={Boolean(splitTravelDay && legsInRange.length === 0)}
             onAction={() => setEditingField("transport")}
           />
         </ul>

@@ -135,13 +135,20 @@ export function isOvernightHubSecondaryOnDepartureDay(
   return false;
 }
 
-export function arrivalDate(leg: TransportLegDraft): string {
+type LegTiming = {
+  travelDate?: string | null;
+  arrivalDate?: string | null;
+  departureTime?: string | null;
+  arrivalTime?: string | null;
+};
+
+export function arrivalDate(leg: LegTiming): string {
   const travelDate = leg.travelDate?.trim() ?? "";
   if (leg.arrivalDate?.trim()) return leg.arrivalDate.trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(travelDate)) return travelDate;
 
-  const dep = parseMinutes(leg.departureTime);
-  const arr = parseMinutes(leg.arrivalTime);
+  const dep = parseMinutes(leg.departureTime ?? null);
+  const arr = parseMinutes(leg.arrivalTime ?? null);
   if (dep !== null && arr !== null && arr < dep) {
     return addDays(travelDate, 1);
   }

@@ -40,7 +40,7 @@ async function main() {
       await db.insert(participants).values({
         tripId: trip.id,
         fullName: `Smoke Student ${i + 1}`,
-        phoneNumberE164: generatePlaceholderPhone(trip.id, `smoke-${i}`),
+        phoneNumberE164: generatePlaceholderPhone(),
         role: "student",
         inCostSplit: true,
         accessToken: generateAccessToken(),

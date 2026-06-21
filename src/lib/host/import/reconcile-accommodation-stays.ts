@@ -17,7 +17,7 @@ function addDays(iso: string, delta: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function legDepartsFromStayCity(leg: TransportLike, stay: AccommodationStayDraft): boolean {
+function legDepartsFromStayCity(leg: TransportLike, stay: Pick<AccommodationStayDraft, "cityLabel">): boolean {
   const fromCity = leg.fromCity?.trim() ?? "";
   const fromStation = leg.fromStation?.trim() ?? "";
   if (fromCity && locationsMatch(fromCity, stay.cityLabel)) return true;

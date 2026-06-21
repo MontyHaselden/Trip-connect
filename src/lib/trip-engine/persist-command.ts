@@ -162,8 +162,7 @@ const TRANSPORT_ITINERARY_SYNC_COMMANDS = new Set<TripCommand["type"]>([
   "addTransportLeg",
   "addClassifiedTransportLegs",
   "updateTransportLeg",
-  "addLeg",
-  "updateLeg",
+  "removeTransportLeg",
 ]);
 
 function commandsNeedTransportItinerarySync(commands: TripCommand[]): boolean {
@@ -201,8 +200,14 @@ function repairCommandsForPersist(
     if (command.type !== "setDayPlaces") return command;
     const existing = dayPlacesForGroup(graph, command.groupId);
     const incoming = command.days
-      .filter((day): day is Partial<DayPlaceDraft> & { date: string } => Boolean(day?.date))
-      .map(sanitizeDayPlaceDraft);
+      .filter((day) => Boolean(day?.date))
+      .map((day) =>
+        sanitizeDayPlaceDraft({
+          ...day,
+          date: day.date,
+          primaryCity: day.primaryCity ?? "",
+        }),
+      );
     return {
       ...command,
       days: mergeSetDayPlacesDays(existing, incoming),
@@ -222,7 +227,7 @@ export async function persistCommands(
   );
 
   for (const command of normalized) {
-    if (command.type === "removeTransportLeg" || command.type === "removeLeg") {
+    if (command.type === "removeTransportLeg") {
       const leg = findTransportLeg(graph, command.legId, command.bucket);
       await purgeTransportItineraryForRemovedLeg(tripId, command.legId, leg);
     }

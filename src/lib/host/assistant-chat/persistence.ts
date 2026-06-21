@@ -3,7 +3,6 @@ import { z } from "zod";
 
 import { db } from "@/lib/db/client";
 import { tripAssistantSessions } from "@/lib/db/schema";
-import type { TripCommand } from "@/lib/trip-engine/commands";
 
 const StoredMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -17,9 +16,7 @@ const StoredMessageSchema = z.object({
   applied: z.boolean().optional(),
 });
 
-export type StoredAssistantMessage = z.infer<typeof StoredMessageSchema> & {
-  proposedCommands?: TripCommand[];
-};
+export type StoredAssistantMessage = z.infer<typeof StoredMessageSchema>;
 
 const SessionSchema = z.object({
   messages: z.array(StoredMessageSchema).max(80),

@@ -222,7 +222,7 @@ export function AiChatPanel(props: {
       });
       if (!result.ok) throw new Error(result.error);
 
-      const stats = result.stats;
+      const stats = result.result.stats;
       const reply = stats
         ? `Imported your document. Added ${stats.daysCreated} day(s), updated ${stats.daysUpdated}, created ${stats.itemsCreated} activity item(s). Check the preview.`
         : "Imported your document. Check the preview on the right.";

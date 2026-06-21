@@ -1,9 +1,11 @@
 import { reconcileTripShellState } from "@/lib/host/setup/reconcile-trip-shell";
+import { graphToSetupState, setupStateToGraph } from "./adapters";
 import { buildCalendarRenderModel } from "./calendar-render-model";
 import { detectGraphConflicts } from "./conflicts";
 import { computeReadiness } from "./compute-readiness";
 import { projectCalendar } from "./project-calendar";
-import type { CalendarRenderModel, CostLedgerProjection, SetupEngineResponse, TripEntityGraph } from "./types";
+import type { CalendarRenderModel, SetupEngineResponse, TripEntityGraph } from "./types";
+import type { CostLedgerProjection } from "./cost-ledger/types";
 import type { RosterSummary } from "./types";
 
 function serializeRenderModel(model: CalendarRenderModel) {
@@ -27,7 +29,10 @@ export function buildSetupEngineResponse(
     costLedger?: CostLedgerProjection | null;
   },
 ): SetupEngineResponse {
-  const reconciled = reconcileTripShellState(graph);
+  const reconciled = setupStateToGraph(
+    graph.tripId,
+    reconcileTripShellState(graphToSetupState(graph)),
+  );
   const groupId = options?.groupId ?? reconciled.mainGroupId;
   const calendarProjection = projectCalendar(reconciled, { groupId });
   const calendarRenderModel = buildCalendarRenderModel(reconciled, { groupId });

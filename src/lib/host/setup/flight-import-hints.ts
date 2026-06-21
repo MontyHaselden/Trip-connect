@@ -220,11 +220,10 @@ export function scoreFlightChainForTrip(
 export function arrivalDateFromLookup(leg: FlightLookupResult): string {
   const explicit = leg.arrivalDate?.trim();
   if (explicit) return explicit;
-  const draft = {
+  return arrivalDate({
     travelDate: leg.travelDate ?? "",
     arrivalDate: leg.arrivalDate,
     departureTime: leg.departureTime,
     arrivalTime: leg.arrivalTime,
-  };
-  return arrivalDate(draft);
+  });
 }
