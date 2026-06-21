@@ -864,7 +864,10 @@ export function DayContextPanel(props: {
                 });
               }}
               stayType="hotel"
-              cityHint={stayDraft.city}
+              countryNames={props.graph.basics.destinationCountries ?? []}
+              cityHint={
+                stayLocationConflicts.length ? undefined : stayDraft.city
+              }
               placeholder="Search property on Google Maps…"
               inputClassName={inputClass}
             />

@@ -5,6 +5,7 @@ import {
   friendlyCityFromHotelName,
   inferCityLabelFromAddress,
   looksLikeFormalMapsCityLabel,
+  resolveLodgingSearchQuery,
   resolveStayCityOnHotelPick,
   suggestKeepStayCityLabel,
 } from "./accommodation-search";
@@ -95,5 +96,21 @@ describe("looksLikeFormalMapsCityLabel", () => {
   it("flags amphoe and comma-separated labels", () => {
     assert.equal(looksLikeFormalMapsCityLabel("Amphoe Kathu, Chang Wat Phuket"), true);
     assert.equal(looksLikeFormalMapsCityLabel("Patong"), false);
+  });
+});
+
+describe("resolveLodgingSearchQuery", () => {
+  it("splits trailing city from hotel name when it conflicts with hint", () => {
+    assert.deepEqual(resolveLodgingSearchQuery("THE KNOT HIROSHIMA", "Tottori"), {
+      query: "THE KNOT",
+      cityHint: "HIROSHIMA",
+    });
+  });
+
+  it("keeps query when trailing token matches city hint", () => {
+    assert.deepEqual(resolveLodgingSearchQuery("Hilton Hiroshima", "Hiroshima"), {
+      query: "Hilton Hiroshima",
+      cityHint: "Hiroshima",
+    });
   });
 });

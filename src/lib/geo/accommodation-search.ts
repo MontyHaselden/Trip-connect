@@ -194,3 +194,43 @@ export function accommodationSearchMode(stayType?: StayType): {
       };
   }
 }
+
+const LODGING_STOP_WORDS = /^(hotel|hotels|inn|hostel|resort|the|a|an)$/i;
+
+/** Split trailing city tokens out of hotel names like "The Knot Hiroshima". */
+export function resolveLodgingSearchQuery(
+  query: string,
+  cityHint?: string,
+): { query: string; cityHint?: string } {
+  const trimmed = query.trim();
+  const sanitizedHint = sanitizeCityHint(cityHint);
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+
+  if (tokens.length < 2) {
+    return { query: trimmed, cityHint: sanitizedHint };
+  }
+
+  const last = tokens[tokens.length - 1]!;
+  const lastLower = last.toLowerCase();
+  const hintCity = sanitizedHint?.split(",")[0]?.trim().toLowerCase();
+
+  if (
+    last.length >= 3 &&
+    !LODGING_STOP_WORDS.test(last) &&
+    !/^\d/.test(last)
+  ) {
+    const namePart = tokens.slice(0, -1).join(" ").trim();
+    if (namePart.length >= 2) {
+      const sameAsHint =
+        hintCity &&
+        (hintCity === lastLower ||
+          hintCity.includes(lastLower) ||
+          lastLower.includes(hintCity));
+      if (!sameAsHint) {
+        return { query: namePart, cityHint: last };
+      }
+    }
+  }
+
+  return { query: trimmed, cityHint: sanitizedHint };
+}
