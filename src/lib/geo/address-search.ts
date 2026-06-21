@@ -129,6 +129,13 @@ export async function searchAddresses(params: {
     { query: params.query.trim(), cityHint: undefined },
   ];
 
+  if (/^the\s+/i.test(resolved.query)) {
+    attempts.push({
+      query: resolved.query.replace(/^the\s+/i, "").trim(),
+      cityHint: resolved.cityHint,
+    });
+  }
+
   const seen = new Set<string>();
   const out: AddressSuggestion[] = [];
 

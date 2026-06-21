@@ -107,9 +107,20 @@ describe("resolveLodgingSearchQuery", () => {
     });
   });
 
-  it("keeps query when trailing token matches city hint", () => {
-    assert.deepEqual(resolveLodgingSearchQuery("Hilton Hiroshima", "Hiroshima"), {
-      query: "Hilton Hiroshima",
+  it("still splits when trailing city matches the calendar hint", () => {
+    assert.deepEqual(resolveLodgingSearchQuery("THE KNOT HIROSHIMA", "Hiroshima"), {
+      query: "THE KNOT",
+      cityHint: "Hiroshima",
+    });
+    assert.deepEqual(resolveLodgingSearchQuery("The knot hiroshima", "Hiroshima"), {
+      query: "The knot",
+      cityHint: "Hiroshima",
+    });
+  });
+
+  it("keeps single-token queries unchanged", () => {
+    assert.deepEqual(resolveLodgingSearchQuery("Hilton", "Hiroshima"), {
+      query: "Hilton",
       cityHint: "Hiroshima",
     });
   });

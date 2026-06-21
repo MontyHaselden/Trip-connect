@@ -226,9 +226,12 @@ export function resolveLodgingSearchQuery(
         (hintCity === lastLower ||
           hintCity.includes(lastLower) ||
           lastLower.includes(hintCity));
-      if (!sameAsHint) {
-        return { query: namePart, cityHint: last };
-      }
+
+      // Search the property name in the trailing city — even when it matches the hint.
+      return {
+        query: namePart,
+        cityHint: sameAsHint ? sanitizedHint : last,
+      };
     }
   }
 
