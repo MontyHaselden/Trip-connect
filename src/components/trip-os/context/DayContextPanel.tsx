@@ -574,6 +574,7 @@ export function DayContextPanel(props: {
           dayType: projected?.dayType ?? ("trip" as const),
           includeBuffer: false,
         };
+        const existing = dayPlacesForGroup(graph, groupId);
         const days = existing.some((d) => d.date === rangeStart)
           ? existing.map((d) => (d.date === rangeStart ? { ...d, ...updatedDay } : d))
           : [...existing, updatedDay];
