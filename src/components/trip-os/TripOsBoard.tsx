@@ -56,7 +56,7 @@ export function TripOsBoard(props: { tripId: string }) {
 
   useEffect(() => {
     void engine.load();
-  }, [engine.load]);
+  }, [props.tripId]); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only initial load
 
   const groupId = engine.activeGroupId || engine.data?.graph.mainGroupId || "";
   const renderModel = engine.data?.calendarRenderModel ?? null;
@@ -81,19 +81,49 @@ export function TripOsBoard(props: { tripId: string }) {
       if (section === "participant-view") {
         setParticipantViewRefreshKey((k) => k + 1);
       }
+      if (section === "finance") {
+        void engine.load(undefined, { silent: true });
+      }
     },
-    [calendar],
+    [calendar, engine.load],
   );
 
-  if (engine.loading || !engine.data) {
+  if (!engine.data && engine.loading) {
     return (
-      <div className="flex h-dvh items-center justify-center">
-        <p className="text-sm text-zinc-600">Loading trip engine…</p>
+      <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <TripOsNav
+            activeSection={activeSection}
+            onSelect={handleNavSelect}
+            onBackHome={() => router.push(tripOsHomePath())}
+            saving={engine.refreshing}
+          />
+          <main className="flex min-h-0 flex-1 items-center justify-center">
+            <p className="text-sm text-zinc-600">Loading trip engine…</p>
+          </main>
+        </div>
       </div>
     );
   }
 
-  const { graph, calendarProjection, calendarRenderModel, readiness, warnings, conflicts } =
+  if (!engine.data) {
+    return (
+      <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <TripOsNav
+            activeSection={activeSection}
+            onSelect={handleNavSelect}
+            onBackHome={() => router.push(tripOsHomePath())}
+          />
+          <main className="flex min-h-0 flex-1 items-center justify-center">
+            <p className="text-sm text-red-600">{engine.error || "Failed to load trip."}</p>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  const { graph, calendarProjection, calendarRenderModel, readiness, warnings, conflicts, rosterSummary, costLedger } =
     engine.data;
   const activeGroupId = engine.activeGroupId || graph.mainGroupId;
   const calmNav = isTripWelcomeState(graphToSetupState(graph));
@@ -102,6 +132,9 @@ export function TripOsBoard(props: { tripId: string }) {
     calendar.selection.rangeStart
       ? (calendarProjection.days.find((d) => d.date === calendar.selection.rangeStart) ?? null)
       : null;
+
+  const hideCalendar = activeSection === "finance" || activeSection === "participant-view";
+  const fullWidthMain = hideCalendar;
 
   const groupSelector = (
     <select
@@ -129,15 +162,18 @@ export function TripOsBoard(props: { tripId: string }) {
           activeSection={activeSection}
           onSelect={handleNavSelect}
           onBackHome={() => router.push(tripOsHomePath())}
-          saving={engine.saving}
+          saving={engine.saving || engine.refreshing}
           calmNav={calmNav}
         />
         <main
           className={[
-            "trip-os-workspace min-w-0 flex-1 px-8 py-8",
-            activeSection === "ingest" && middleView === "section"
+            "trip-os-workspace min-w-0 flex-1",
+            fullWidthMain
+              ? "flex min-h-0 flex-col overflow-hidden p-0"
+              : "overflow-y-auto px-8 py-8",
+            activeSection === "ingest" && middleView === "section" && !fullWidthMain
               ? "flex min-h-0 flex-col overflow-hidden"
-              : "overflow-y-auto",
+              : "",
           ].join(" ")}
         >
           {middleView === "day" && calendar.selection.rangeStart ? (
@@ -166,11 +202,16 @@ export function TripOsBoard(props: { tripId: string }) {
               saving={engine.saving}
               onDispatch={dispatchWithPreviewRefresh}
               onNavigateSection={handleNavSelect}
-              onReload={() => void engine.load()}
+              onReload={() => void engine.load(undefined, { silent: true })}
+              onRosterChanged={() => void engine.load(undefined, { silent: true })}
               participantViewRefreshKey={participantViewRefreshKey}
+              rosterSummary={rosterSummary}
+              costLedger={costLedger}
+              onCostsAction={engine.patchCosts}
             />
           )}
         </main>
+        {!hideCalendar ? (
         <aside className="flex min-h-0 w-[min(42rem,48vw)] min-w-[320px] shrink-0 flex-col overflow-hidden bg-white shadow-[inset_1px_0_0_0_rgb(0_0_0/0.04)]">
           <InteractiveTripCalendar
             tripId={props.tripId}
@@ -186,6 +227,7 @@ export function TripOsBoard(props: { tripId: string }) {
             statusLine={calendar.statusLine}
           />
         </aside>
+        ) : null}
       </div>
     </div>
   );

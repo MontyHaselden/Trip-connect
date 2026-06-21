@@ -2,7 +2,7 @@ import { placesShareMetro } from "@/lib/geo/airport-codes";
 import { collectFlightConnectionChains } from "@/lib/host/setup/flight-connection-chains";
 import { metroDisplayLabel } from "@/lib/host/setup/metro-display";
 import { inferDayPlacesFromFlightLegs } from "@/lib/host/setup/infer-flight-calendar";
-import { locationsMatch, inferStaysFromDayPlaces, enumerateDates } from "@/lib/host/wizard/location-stays";
+import { locationsMatch, inferStaysFromDayPlaces, enumerateDates, addDays } from "@/lib/host/wizard/location-stays";
 import type {
   AccommodationStayDraft,
   DayPlaceDraft,
@@ -393,11 +393,216 @@ export function fillGapsBetweenLocationStays(
           primaryShare: 1,
           dayType: day.dayType === "buffer" ? "buffer" : "trip",
         });
-      } else if (primary && locationsMatch(primary, city) && !secondary && (day.primaryShare ?? 1) < 1) {
-        byDate.set(date, { ...day, primaryShare: 1, dayType: "trip" });
       }
     }
   }
 
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function isLocationAnchor(day: DayPlaceDraft): boolean {
+  if (day.secondaryCity?.trim()) return false;
+  return Boolean(day.primaryCity.trim());
+}
+
+function ensureTripDayShells(
+  dayPlaces: DayPlaceDraft[],
+  startDate: string,
+  endDate: string,
+): DayPlaceDraft[] {
+  const byDate = new Map(dayPlaces.map((d) => [d.date, { ...d }]));
+  for (const date of enumerateDates(startDate, endDate)) {
+    if (!byDate.has(date)) {
+      byDate.set(date, emptyImportedDay(date));
+    }
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function isEmptyPaintDay(day: DayPlaceDraft): boolean {
+  if (day.dayType === "travel" && day.secondaryCity?.trim()) return false;
+  return !day.primaryCity.trim() && !day.secondaryCity?.trim();
+}
+
+function travelDestinationCity(day: DayPlaceDraft): string | null {
+  if (day.dayType !== "travel") return null;
+  return day.secondaryCity?.trim() || null;
+}
+
+function paintEmptyDay(day: DayPlaceDraft, city: string): DayPlaceDraft {
+  return {
+    ...day,
+    primaryCity: city,
+    secondaryCity: null,
+    primaryShare: 1,
+    dayType: day.dayType === "buffer" ? "buffer" : "trip",
+  };
+}
+
+function extendAnchorStays(
+  byDate: Map<string, DayPlaceDraft>,
+  anchors: DayPlaceDraft[],
+  bounds: { startDate: string; endDate: string },
+): void {
+  for (let i = 0; i < anchors.length; i++) {
+    const anchor = anchors[i]!;
+    const city = anchor.primaryCity.trim();
+    if (!city) continue;
+
+    const nextAnchor = anchors[i + 1];
+    const extendEnd =
+      nextAnchor && nextAnchor.date > anchor.date
+        ? addDays(nextAnchor.date, -1)
+        : bounds.endDate;
+    if (extendEnd < anchor.date) continue;
+
+    for (const date of enumerateDates(anchor.date, extendEnd)) {
+      const day = byDate.get(date);
+      if (!day) continue;
+
+      if (!isEmptyPaintDay(day)) {
+        const travelDest = travelDestinationCity(day);
+        if (travelDest && !locationsMatch(travelDest, city)) break;
+        continue;
+      }
+
+      byDate.set(date, paintEmptyDay(day, city));
+    }
+  }
+}
+
+function backfillBeforeAnchors(
+  byDate: Map<string, DayPlaceDraft>,
+  anchors: DayPlaceDraft[],
+  bounds: { startDate: string },
+): void {
+  for (const anchor of anchors) {
+    const city = anchor.primaryCity.trim();
+    if (!city) continue;
+
+    for (let back = 1; back <= 4; back++) {
+      const date = addDays(anchor.date, -back);
+      if (date < bounds.startDate) break;
+
+      const day = byDate.get(date);
+      if (!day) continue;
+      if (!isEmptyPaintDay(day)) {
+        const travelDest = travelDestinationCity(day);
+        if (travelDest && locationsMatch(travelDest, city)) continue;
+        break;
+      }
+
+      byDate.set(date, paintEmptyDay(day, city));
+    }
+  }
+}
+
+function forwardFillFromTravelDays(
+  byDate: Map<string, DayPlaceDraft>,
+  shells: DayPlaceDraft[],
+  anchors: DayPlaceDraft[],
+  bounds: { endDate: string },
+): void {
+  for (const day of shells) {
+    const dest = travelDestinationCity(day);
+    if (!dest) continue;
+
+    const matchingAnchor = anchors.find(
+      (anchor) => anchor.date > day.date && locationsMatch(anchor.primaryCity, dest),
+    );
+    const extendEndFromAnchor = matchingAnchor
+      ? addDays(matchingAnchor.date, -1)
+      : bounds.endDate;
+    const extendEndFromDeparture = findStayExtensionEnd(dest, day.date, shells, bounds.endDate);
+    const extendEnd =
+      extendEndFromDeparture < extendEndFromAnchor
+        ? extendEndFromDeparture
+        : extendEndFromAnchor;
+    if (extendEnd <= day.date) continue;
+
+    for (const date of enumerateDates(addDays(day.date, 1), extendEnd)) {
+      const target = byDate.get(date);
+      if (!target) continue;
+      if (!isEmptyPaintDay(target)) break;
+      byDate.set(date, paintEmptyDay(target, dest));
+    }
+  }
+}
+
+/** Last date still in `city` after arriving on `afterDate` (before the next move away). */
+function findStayExtensionEnd(
+  city: string,
+  afterDate: string,
+  shells: DayPlaceDraft[],
+  endDate: string,
+): string {
+  const sorted = shells
+    .filter((d) => d.date > afterDate)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  for (const d of sorted) {
+    const primary = d.primaryCity.trim();
+    const secondary = d.secondaryCity?.trim() ?? "";
+
+    if (d.dayType === "travel" && primary && secondary) {
+      if (locationsMatch(primary, city)) {
+        return addDays(d.date, -1);
+      }
+      continue;
+    }
+
+    if (isLocationAnchor(d) && !locationsMatch(primary, city)) {
+      return addDays(d.date, -1);
+    }
+  }
+
+  return endDate;
+}
+
+function paintEmptyDaysFromAccommodation(
+  byDate: Map<string, DayPlaceDraft>,
+  stays: AccommodationStayDraft[],
+): void {
+  for (const stay of stays) {
+    const city = stay.cityLabel.trim();
+    if (!city) continue;
+
+    const lastNight = addDays(stay.checkOutDate, -1);
+    if (lastNight < stay.checkInDate) continue;
+
+    for (const date of enumerateDates(stay.checkInDate, lastNight)) {
+      const day = byDate.get(date);
+      if (!day || !isEmptyPaintDay(day)) continue;
+      byDate.set(date, paintEmptyDay(day, city));
+    }
+  }
+}
+
+/**
+ * Extend sparse arrival-only anchors across missing calendar days until the next city.
+ * Then run stay-aware gap fill for partial / half-day paints.
+ */
+export function fillSparseCalendarAnchors(
+  dayPlaces: DayPlaceDraft[],
+  bounds: {
+    startDate: string;
+    endDate: string;
+    departureCity: string;
+    returnCity: string;
+  },
+  accommodations: AccommodationStayDraft[] = [],
+): DayPlaceDraft[] {
+  const shells = ensureTripDayShells(dayPlaces, bounds.startDate, bounds.endDate);
+  const byDate = new Map(shells.map((d) => [d.date, { ...d }]));
+  const anchors = shells.filter(isLocationAnchor).sort((a, b) => a.date.localeCompare(b.date));
+
+  extendAnchorStays(byDate, anchors, bounds);
+  backfillBeforeAnchors(byDate, anchors, bounds);
+  forwardFillFromTravelDays(byDate, shells, anchors, bounds);
+  paintEmptyDaysFromAccommodation(byDate, accommodations);
+
+  return fillGapsBetweenLocationStays(
+    [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    bounds,
+  );
 }

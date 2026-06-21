@@ -31,6 +31,21 @@ export type PublishSummary = {
   viewerRoomDetailsEnabled: boolean;
 };
 
+export type RosterSummaryParticipant = {
+  id: string;
+  fullName: string;
+  role: string;
+  inCostSplit: boolean;
+  groupIds: string[];
+  roomId: string | null;
+};
+
+export type RosterSummary = {
+  participants: RosterSummaryParticipant[];
+  groups: Array<{ id: string; name: string }>;
+  rooms: Array<{ id: string; roomName: string }>;
+};
+
 /** Authoritative server graph — mirrors persisted entities. */
 export type TripEntityGraph = TripSetupState & {
   tripId: string;
@@ -153,8 +168,9 @@ export type CalendarRenderModel = {
   /** Trip-scoped location colors — distinct slots per city on this trip. */
   locationColorByKey: Map<string, LocationPaletteSwatch>;
   scrollAnchorDate: string;
-  /** First selectable/rendered day — never before today in trip timezone. */
+  /** Today in trip timezone — used for highlighting only. */
   todayIso: string;
+  /** First selectable day in the rendered grid (trip start when the trip includes past days). */
   interactionStart: string;
 };
 
@@ -166,6 +182,8 @@ export type SetupEngineResponse = {
   warnings: EngineWarning[];
   conflicts: EngineConflict[];
   inviteCode?: string;
+  rosterSummary?: RosterSummary;
+  costLedger?: import("./cost-ledger/types").CostLedgerProjection;
 };
 
 export type {

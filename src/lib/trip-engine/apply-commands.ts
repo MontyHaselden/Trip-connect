@@ -11,6 +11,11 @@ import {
 } from "@/lib/host/setup/remove-accommodation-range";
 import { mergeAccommodationStays } from "@/lib/host/setup/entity-scope";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
+import {
+  applyTripDateRange,
+  shiftTripByMonths,
+  shiftTripDates,
+} from "@/lib/host/setup/set-trip-date-range";
 import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import { paintLocationDayRange } from "./paint-day-range";
 import { normalizeCommand, type TripCommand } from "./commands";
@@ -51,6 +56,22 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         },
         warnings,
       );
+    }
+
+    case "setTripDateRange": {
+      const next = applyTripDateRange(graph, {
+        startDate: command.startDate,
+        endDate: command.endDate,
+      });
+      return ok(mergeGraphState(graph, next), warnings);
+    }
+
+    case "shiftTripDates": {
+      const next =
+        command.deltaMonths != null && command.deltaMonths !== 0
+          ? shiftTripByMonths(graph, command.deltaMonths)
+          : shiftTripDates(graph, command.deltaDays ?? 0);
+      return ok(mergeGraphState(graph, next), warnings);
     }
 
     case "addStay": {

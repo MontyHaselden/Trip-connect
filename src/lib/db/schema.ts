@@ -128,6 +128,29 @@ export const tripDayType = pgEnum("trip_day_type", [
   "return",
 ]);
 
+export const costLineCategory = pgEnum("cost_line_category", [
+  "flights",
+  "transport",
+  "insurance",
+  "accommodation",
+  "meals",
+  "activities",
+  "other",
+]);
+
+export const costAllocationRuleType = pgEnum("cost_allocation_rule_type", [
+  "equal_cost_participants",
+  "equal_group",
+  "assign_one",
+  "manual",
+]);
+
+export const supplierPaymentStatus = pgEnum("supplier_payment_status", [
+  "estimated",
+  "invoiced",
+  "paid",
+]);
+
 export const bookingStatus = pgEnum("booking_status", [
   "booked",
   "not_booked",
@@ -338,6 +361,146 @@ export const aiChangeProposals = pgTable(
   },
   (p) => ({
     tripStatusIdx: index("ai_change_proposals_trip_status_idx").on(p.tripId, p.status),
+  }),
+);
+
+export const tripAssistantSessions = pgTable("trip_assistant_sessions", {
+  tripId: uuid("trip_id")
+    .primaryKey()
+    .references(() => trips.id, { onDelete: "cascade" }),
+  messagesJson: jsonb("messages_json").notNull().default([]),
+  sourceText: text("source_text"),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const tripCostSettings = pgTable("trip_cost_settings", {
+  tripId: uuid("trip_id")
+    .primaryKey()
+    .references(() => trips.id, { onDelete: "cascade" }),
+  baseCurrency: text("base_currency").notNull().default("NZD"),
+  foreignCurrency: text("foreign_currency"),
+  exchangeRate: numeric("exchange_rate", { precision: 12, scale: 6 }),
+  exchangeRateDate: date("exchange_rate_date"),
+  exchangeRateManual: boolean("exchange_rate_manual").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const costLineItems = pgTable(
+  "cost_line_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    sortOrder: integer("sort_order").notNull().default(0),
+    category: costLineCategory("category").notNull(),
+    description: text("description").notNull(),
+    notes: text("notes"),
+    totalAmountCents: integer("total_amount_cents").notNull().default(0),
+    currency: text("currency").notNull().default("NZD"),
+    quantity: numeric("quantity", { precision: 10, scale: 2 }),
+    allocationRuleType: costAllocationRuleType("allocation_rule_type")
+      .notNull()
+      .default("equal_cost_participants"),
+    allocationRulePayload: jsonb("allocation_rule_payload").notNull().default({}),
+    linkedStayId: uuid("linked_stay_id"),
+    linkedTransportLegId: uuid("linked_transport_leg_id"),
+    linkedActivityId: uuid("linked_activity_id"),
+    supplierPaymentStatus: supplierPaymentStatus("supplier_payment_status"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tripIdx: index("cost_line_items_trip_idx").on(t.tripId),
+  }),
+);
+
+export const costAllocationOverrides = pgTable(
+  "cost_allocation_overrides",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    lineItemId: uuid("line_item_id")
+      .notNull()
+      .references(() => costLineItems.id, { onDelete: "cascade" }),
+    participantId: uuid("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    amountCents: integer("amount_cents").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    lineParticipantUnique: uniqueIndex("cost_allocation_overrides_line_participant_unique").on(
+      t.lineItemId,
+      t.participantId,
+    ),
+  }),
+);
+
+export const tripFunds = pgTable(
+  "trip_funds",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull().default("NZD"),
+    allocationRuleType: costAllocationRuleType("allocation_rule_type")
+      .notNull()
+      .default("equal_cost_participants"),
+    allocationRulePayload: jsonb("allocation_rule_payload").notNull().default({}),
+    sortOrder: integer("sort_order").notNull().default(0),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tripIdx: index("trip_funds_trip_idx").on(t.tripId),
+  }),
+);
+
+export const participantPayments = pgTable(
+  "participant_payments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    participantId: uuid("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "cascade" }),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull().default("NZD"),
+    paidAt: date("paid_at").notNull(),
+    label: text("label").notNull().default("deposit"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tripIdx: index("participant_payments_trip_idx").on(t.tripId),
   }),
 );
 
@@ -621,6 +784,7 @@ export const participants = pgTable(
     accessToken: text("access_token").notNull(),
     passwordHash: text("password_hash"),
     joinedViaGroupInviteLinkId: uuid("joined_via_group_invite_link_id"),
+    inCostSplit: boolean("in_cost_split").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

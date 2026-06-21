@@ -12,15 +12,18 @@ import { effectiveTripBoundsFromState } from "@/lib/host/setup/sync-trip-bounds"
 import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import { computeLogisticsPrompts } from "@/lib/trip-engine/logistics-prompts";
 import type {
+  CostLedgerProjection,
   EngineConflict,
   EngineSectionReadiness,
   EngineWarning,
   ProjectedDay,
+  RosterSummary,
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
 
 import type { TripOsSection } from "../TripOsWorkspace";
 import { EditableTripName } from "../shared/EditableTripName";
+import { OverviewFinancePanel } from "../finance/OverviewFinancePanel";
 import { WelcomeOverview } from "./WelcomeOverview";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -46,6 +49,8 @@ export function SmartOverview(props: {
   selectedDay: ProjectedDay | null;
   warnings: EngineWarning[];
   conflicts: EngineConflict[];
+  costLedger?: CostLedgerProjection | null;
+  rosterSummary?: RosterSummary;
   onUpdateName: (name: string) => void;
   onNavigateSection?: (section: TripOsSection) => void;
 }) {
@@ -110,6 +115,12 @@ export function SmartOverview(props: {
           </ul>
         </section>
       ) : null}
+
+      <OverviewFinancePanel
+        costLedger={props.costLedger ?? null}
+        roster={props.rosterSummary ?? { participants: [], groups: [], rooms: [] }}
+        onNavigateSection={props.onNavigateSection}
+      />
 
       {suggestions.length ? (
         <section>

@@ -98,10 +98,20 @@ export function resolveCalendarScrollAnchor(input: CalendarScrollAnchorInput): s
   return input.fallbackAnchor?.trim() || todayIso(input.timezone);
 }
 
-/** Scroll target that exists in the Trip OS grid (days before today are not rendered). */
+/** Scroll target for the Trip OS grid. */
 export function visibleCalendarScrollAnchor(input: CalendarScrollAnchorInput): string {
   const target = resolveCalendarScrollAnchor(input);
   const today = todayIso(input.timezone);
+
+  if (!tripDatesAreUnset(input.startDate, input.endDate)) {
+    if (input.endDate < today) {
+      return input.startDate;
+    }
+    if (input.startDate < today) {
+      return target;
+    }
+  }
+
   if (target >= today) return target;
 
   const dates = collectContentDates(input).sort();
@@ -168,7 +178,7 @@ export type CalendarGridFromTodayInput = {
   activityDates?: string[];
 };
 
-/** Scroll grid from today's week through trip padding — never renders days before todayIso. */
+/** Host calendar grid — full padded scroll range when trip dates are set; new trips start at today. */
 export function calendarGridFromToday(input: CalendarGridFromTodayInput): {
   gridStart: string;
   gridEnd: string;
@@ -203,19 +213,20 @@ export function calendarGridFromToday(input: CalendarGridFromTodayInput): {
   const todayMonday = weekStartMonday(DateTime.fromISO(today));
   const scrollMonday = weekStartMonday(DateTime.fromISO(rawGrid.gridStart));
   const datesSet = !tripDatesAreUnset(input.startDate, input.endDate);
-  // Future trips: grid from today's week so hosts can scroll forward from now to trip dates.
-  // Past / in-progress trips: never render weeks before today.
+
   const gridStart = datesSet
-    ? todayMonday.toISODate()!
+    ? rawGrid.gridStart
     : todayMonday > scrollMonday
       ? todayMonday.toISODate()!
       : rawGrid.gridStart;
+
+  const interactionStart = datesSet ? rawGrid.gridStart : today;
 
   return {
     gridStart,
     gridEnd: rawGrid.gridEnd,
     todayIso: today,
-    interactionStart: today,
+    interactionStart,
     scrollAnchorDate,
   };
 }

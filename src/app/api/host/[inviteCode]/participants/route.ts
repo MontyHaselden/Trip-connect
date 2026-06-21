@@ -22,6 +22,7 @@ const CreateParticipantSchema = z.object({
   role: z.enum(["student", "helper", "teacher", "host"]).default("student"),
   roomId: z.string().uuid().nullable().optional(),
   groupIds: z.array(z.string().uuid()).optional(),
+  inCostSplit: z.boolean().optional(),
 });
 
 export async function POST(
@@ -73,6 +74,7 @@ export async function POST(
         fullName: parsed.data.fullName,
         phoneNumberE164: phoneE164,
         role: parsed.data.role,
+        inCostSplit: parsed.data.inCostSplit ?? true,
         accessToken: generateAccessToken(),
       })
       .returning();
@@ -95,6 +97,7 @@ export async function POST(
       phoneNumberE164: created.phoneNumberE164,
       role: created.role,
       hasPassword: false,
+      inCostSplit: created.inCostSplit,
       roomId: parsed.data.roomId ?? null,
       groupIds: parsed.data.groupIds ?? [],
     });

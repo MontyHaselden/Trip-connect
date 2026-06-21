@@ -12,6 +12,8 @@ import {
   loadTripGraph,
   serializeSetupResponse,
 } from "@/lib/trip-engine";
+import { loadCostLedgerProjection } from "@/lib/trip-engine/cost-ledger/index";
+import { loadRosterSummary } from "@/lib/trip-engine/roster-summary";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
 export async function GET(
@@ -46,9 +48,15 @@ export async function GET(
     const groupId = url.searchParams.get("groupId") ?? graph.mainGroupId;
 
     if (engine) {
+      const [rosterSummary, costLedger] = await Promise.all([
+        loadRosterSummary(tripId),
+        loadCostLedgerProjection(tripId, graph).catch(() => null),
+      ]);
       const response = buildSetupEngineResponse(graph, {
         groupId,
         inviteCode: trip.inviteCode,
+        rosterSummary,
+        costLedger,
       });
       return NextResponse.json(serializeSetupResponse(response));
     }

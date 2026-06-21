@@ -8,9 +8,20 @@ import { hostApiError } from "@/lib/host/api-errors";
 import { nextGroupSortOrder } from "@/lib/host/roster-queries";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
 
+const GROUP_TYPES = [
+  "activity",
+  "bus",
+  "week",
+  "route",
+  "split_travel",
+  "accommodation",
+  "staff_helper",
+  "other",
+] as const;
+
 const CreateGroupSchema = z.object({
   name: z.string().trim().min(1).max(200),
-  type: z.enum(["activity", "bus", "week", "other"]),
+  type: z.enum(GROUP_TYPES),
   description: z.string().trim().max(500).nullable().optional(),
 });
 

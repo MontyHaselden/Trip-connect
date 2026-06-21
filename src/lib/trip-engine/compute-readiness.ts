@@ -8,6 +8,8 @@ import type {
   EngineSectionReadiness,
   TripEntityGraph,
 } from "./types";
+import type { CostLedgerProjection } from "./cost-ledger/types";
+import { hasUnbalancedLines } from "./cost-ledger/project";
 import { detectGraphConflicts } from "./conflicts";
 import { allLegs } from "./selectors";
 
@@ -20,6 +22,7 @@ const SECTION_LABELS: Record<SetupSectionId, string> = {
   groups: "Groups",
   participants: "Participants",
   bookings: "Bookings & references",
+  finance: "Finance",
   emergency: "Emergency",
   photos_viewers: "Photos & viewers",
   publish: "Publish",
@@ -49,6 +52,7 @@ function legBookingStatus(status: string): EngineReadinessStatus {
 export function computeReadiness(
   graph: TripEntityGraph,
   projection: CalendarProjection,
+  costLedger?: CostLedgerProjection | null,
 ): EngineSectionReadiness[] {
   const conflicts = detectGraphConflicts(graph, projection);
   const blocking = conflicts.filter((c) => c.severity === "blocking");
@@ -111,6 +115,14 @@ export function computeReadiness(
       ? "warning"
       : "complete";
 
+  const costs: EngineReadinessStatus = !costLedger
+    ? "idle"
+    : costLedger.lineItems.length === 0
+      ? "warning"
+      : hasUnbalancedLines(costLedger)
+        ? "warning"
+        : "complete";
+
   const rows: Array<{ id: SetupSectionId; status: EngineReadinessStatus; message?: string }> = [
     { id: "overview", status: overview },
     {
@@ -130,6 +142,14 @@ export function computeReadiness(
     {
       id: "bookings",
       status: bookingWarnings ? "warning" : graph.bookingsSummary.length ? "complete" : "warning",
+    },
+    {
+      id: "finance",
+      status: costs,
+      message:
+        costLedger && hasUnbalancedLines(costLedger)
+          ? "Some cost lines do not balance"
+          : undefined,
     },
     { id: "emergency", status: emergency },
     { id: "photos_viewers", status: "idle" },

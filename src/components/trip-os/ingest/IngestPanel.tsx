@@ -3,7 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 
 import { runImportChat, type ImportChatTurn } from "@/lib/client/run-import-chat";
+import {
+  clearAssistantChat,
+  loadAssistantChat,
+  saveAssistantChat,
+} from "@/lib/client/assistant-chat-session";
+import { runTripChat } from "@/lib/client/run-trip-chat";
 import { runTripDocumentImport } from "@/lib/client/run-trip-document-import";
+import { tripBuildPhaseComplete } from "@/lib/client/trip-build-phase";
+import { isImageUploadFile, isItineraryDocumentFile } from "@/lib/documents/is-image-upload";
+import type { TripCommand } from "@/lib/trip-engine/commands";
 import type { TripImportProgress } from "@/types/trip-import-progress";
 
 import { AsyncButton } from "../shared/AsyncButton";
@@ -11,10 +20,20 @@ import { TripPrimaryButton } from "../shared/TripPrimaryButton";
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 
 const EXAMPLE_PROMPTS = [
-  "Build this Europe trip starting Tuesday 16 July 2026.",
-  "This is last year's booklet — shift all dates to July 2026.",
-  "Import the attached PDF. Flights and hotels are on pages 2–5.",
+  "Fill in the gaps on the calendar.",
+  "Clear everything and start over.",
+  "We're in Paris from the 22nd to the 25th — extend the stay.",
+  "Add a Louvre visit on 2026-07-23 at 10:00.",
 ] as const;
+
+function looksLikeItineraryPaste(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const lines = trimmed.split("\n").filter((line) => line.trim().length > 0);
+  if (lines.length >= 4) return true;
+  if (trimmed.length > 400) return true;
+  return /\b\d{4}-\d{2}-\d{2}\b/.test(trimmed) && lines.length >= 2 && trimmed.length > 120;
+}
 
 const textareaClass =
   "w-full resize-none rounded-2xl border-0 bg-zinc-100 px-4 py-3 text-sm leading-relaxed text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
@@ -88,22 +107,85 @@ function renderAssistantText(text: string) {
   });
 }
 
+function looksLikeTripEditRequest(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return /\b(remove|clear|delete|reset|start\s+over|fill|fix|move|change|wrong|calendar|leg|stay|activity|transport|everything|all|wipe|undo|still\s+there|gap|tokyo|kyoto|extend|trim|shift)\b/i.test(
+    trimmed,
+  );
+}
+
 export function IngestPanel(props: {
   tripId: string;
+  groupId: string;
   timezone: string;
+  calendarHasPaint: boolean;
   onReload: () => void;
+  onDispatch: (commands: TripCommand[]) => Promise<boolean>;
 }) {
   const [messages, setMessages] = useState<ImportChatTurn[]>([]);
   const [draftText, setDraftText] = useState("");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
+  const [documentFileName, setDocumentFileName] = useState<string | null>(null);
   const [sourceText, setSourceText] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState<TripImportProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [applyingCommands, setApplyingCommands] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadAssistantChat(props.tripId).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        const buildComplete = tripBuildPhaseComplete(result.session.messages);
+        const skipDocumentState = buildComplete || props.calendarHasPaint;
+        setMessages(result.session.messages);
+        setSourceText(skipDocumentState ? "" : result.session.sourceText);
+        if (skipDocumentState) {
+          setDocumentFileName(null);
+          if (result.session.sourceText.trim()) {
+            void saveAssistantChat(props.tripId, {
+              messages: result.session.messages,
+              sourceText: "",
+            });
+          }
+        } else {
+          const lastAttachment = [...result.session.messages]
+            .reverse()
+            .find((message) => message.role === "user" && message.attachedFileName);
+          if (lastAttachment?.attachedFileName) {
+            setDocumentFileName(lastAttachment.attachedFileName);
+          } else if (result.session.sourceText.trim()) {
+            setDocumentFileName("Attached document");
+          }
+        }
+      }
+      setSessionLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.tripId, props.calendarHasPaint]);
+
+  async function persistSession(
+    nextMessages: ImportChatTurn[],
+    nextSourceText = sourceText,
+  ) {
+    const result = await saveAssistantChat(props.tripId, {
+      messages: nextMessages,
+      sourceText: nextSourceText,
+    });
+    if (!result.ok) {
+      setError(result.error);
+    }
+  }
 
   useEffect(() => {
     function preventBrowserFileDrop(e: DragEvent) {
@@ -116,6 +198,12 @@ export function IngestPanel(props: {
       window.removeEventListener("drop", preventBrowserFileDrop);
     };
   }, []);
+
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages, chatBusy]);
 
   function attachFile(file: File | null) {
     setAttachedFile(file);
@@ -133,29 +221,127 @@ export function IngestPanel(props: {
     if (file) attachFile(file);
   }
 
-  const hasSource = Boolean(importFile || sourceText.trim() || draftText.trim());
-  const canSend = Boolean(draftText.trim() || attachedFile) && !chatBusy && !importing;
+  const hasSource = Boolean(
+    importFile ||
+      attachedFile ||
+      (!tripBuildPhaseComplete(messages) && sourceText.trim()) ||
+      draftText.trim(),
+  );
+  const canSend =
+    Boolean(draftText.trim() || attachedFile) && !chatBusy && !importing && !applyingCommands;
+
+  function inImportPrepFlow(): boolean {
+    if (tripBuildPhaseComplete(messages) || props.calendarHasPaint) return false;
+    return (
+      sourceText.trim().length > 0 ||
+      messages.some((message) => message.readyToImport !== undefined)
+    );
+  }
+
+  function shouldUseImportChat(trimmed: string): boolean {
+    const file = attachedFile ?? importFile;
+    if (props.calendarHasPaint) {
+      if (looksLikeTripEditRequest(trimmed)) return false;
+      if (file && isImageUploadFile(file)) return false;
+      if (file && isItineraryDocumentFile(file)) {
+        if (looksLikeItineraryPaste(trimmed)) return true;
+        if (/\b(import|replace|re-import|upload|from scratch)\b/i.test(trimmed)) return true;
+        return false;
+      }
+      return false;
+    }
+    if (file) return true;
+    if (looksLikeItineraryPaste(trimmed)) return true;
+    return inImportPrepFlow();
+  }
+
+  function clearAttachedDocument() {
+    attachFile(null);
+    setImportFile(null);
+    setDocumentFileName(null);
+  }
+
+  function assistantFallbackReply(): string {
+    return "I wasn't able to work that out just now. Tell me the dates, cities, or activities you want changed — I'll propose changes for you to confirm.";
+  }
+
+  async function applyProposedCommands(commands: TripCommand[], messageIndex: number) {
+    if (!commands.length || applyingCommands) return;
+    setApplyingCommands(true);
+    setError(null);
+    try {
+      const ok = await props.onDispatch(commands);
+      if (!ok) throw new Error("Could not apply changes.");
+
+      const updatedMessages: ImportChatTurn[] = messages.map((message, index) =>
+        index === messageIndex
+          ? { ...message, applied: true, proposedCommands: undefined }
+          : message,
+      );
+      const withFollowUp: ImportChatTurn[] = [
+        ...updatedMessages,
+        {
+          role: "assistant",
+          text: "Applied — check the calendar on the right. If anything still looks off, tell me which dates or cities to fix.",
+        },
+      ];
+      setMessages(withFollowUp);
+      await persistSession(withFollowUp);
+      props.onReload();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not apply changes.";
+      const withFollowUp: ImportChatTurn[] = [
+        ...messages,
+        {
+          role: "assistant",
+          text: `I couldn't apply those changes (${msg}). Tell me what to adjust and I'll propose a new set of changes.`,
+        },
+      ];
+      setMessages(withFollowUp);
+      await persistSession(withFollowUp);
+    } finally {
+      setApplyingCommands(false);
+    }
+  }
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
     if (!trimmed && !attachedFile) return;
 
-    const userLine =
-      trimmed ||
-      (attachedFile ? `Please review ${attachedFile.name} and help me import it.` : "");
-    const chatUserLine = trimmed ? summarizeUserMessage(trimmed) : userLine;
-    const nextSourceText = [sourceText, trimmed].filter(Boolean).join("\n\n").trim();
-    if (trimmed) setSourceText(nextSourceText);
-
     const fileForChat = attachedFile ?? importFile;
+    const useImport = shouldUseImportChat(trimmed);
+    const fileNameForTurn = attachedFile?.name ?? importFile?.name ?? documentFileName ?? undefined;
+
     if (attachedFile) {
       setImportFile(attachedFile);
+      setDocumentFileName(attachedFile.name);
       attachFile(null);
+    }
+
+    const chatUserLine = (() => {
+      if (fileForChat && trimmed) {
+        return `📎 ${fileForChat.name} — ${summarizeUserMessage(trimmed)}`;
+      }
+      if (fileForChat) return `Attached ${fileForChat.name}`;
+      return trimmed;
+    })();
+
+    const nextSourceText =
+      useImport && trimmed && !fileForChat && !sourceText.trim()
+        ? [sourceText, trimmed].filter(Boolean).join("\n\n").trim()
+        : sourceText;
+    if (useImport && trimmed && !fileForChat && !sourceText.trim()) {
+      setSourceText(nextSourceText);
     }
 
     const nextMessages: ImportChatTurn[] = [
       ...messages,
-      { role: "user", text: chatUserLine, fullText: trimmed || undefined },
+      {
+        role: "user",
+        text: chatUserLine,
+        fullText: trimmed || undefined,
+        attachedFileName: fileNameForTurn,
+      },
     ];
     setMessages(nextMessages);
     setDraftText("");
@@ -163,32 +349,123 @@ export function IngestPanel(props: {
     setError(null);
 
     try {
-      const result = await runImportChat({
-        tripId: props.tripId,
-        messages: nextMessages.map((message) => ({
-          role: message.role,
-          text:
-            message.role === "user" && message.fullText
-              ? message.fullText
-              : message.text,
-        })),
-        pastedText: nextSourceText,
-        file: fileForChat,
-      });
-      if (!result.ok) throw new Error(result.error);
+      let finalMessages: ImportChatTurn[] = nextMessages;
 
-      const { status, assistantReply, importInstructions } = result.result;
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          text: assistantReply,
-          readyToImport: status === "ready_to_import",
-          importInstructions: importInstructions ?? null,
-        },
-      ]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Chat failed");
+      if (useImport) {
+        const result = await runImportChat({
+          tripId: props.tripId,
+          messages: nextMessages.map((message) => ({
+            role: message.role,
+            text:
+              message.role === "user" && message.fullText
+                ? message.fullText
+                : message.text,
+          })),
+          pastedText: nextSourceText || sourceText,
+          file: fileForChat,
+        });
+        if (!result.ok) {
+          finalMessages = [
+            ...nextMessages,
+            { role: "assistant", text: result.error || assistantFallbackReply() },
+          ];
+          setMessages(finalMessages);
+          await persistSession(finalMessages, nextSourceText || sourceText);
+        } else {
+        const {
+          status,
+          assistantReply,
+          importInstructions,
+          sourceText: persistedSource,
+          proposedCommands,
+          commandSummaries,
+          warnings,
+        } = result.result;
+        if (persistedSource?.trim()) {
+          setSourceText(persistedSource);
+        }
+        if (result.result.attachedFileName) {
+          setDocumentFileName(result.result.attachedFileName);
+        }
+        const warningNote =
+          warnings && warnings.length > 0
+            ? `\n\nNote: ${warnings.slice(0, 2).join(" ")}`
+            : "";
+        finalMessages = [
+          ...nextMessages,
+          {
+            role: "assistant",
+            text: `${assistantReply}${warningNote}`,
+            readyToImport: status === "ready_to_import",
+            importInstructions: importInstructions ?? null,
+            proposedCommands:
+              proposedCommands && proposedCommands.length > 0 ? proposedCommands : undefined,
+            commandSummaries,
+          },
+        ];
+        setMessages(finalMessages);
+        await persistSession(
+          finalMessages,
+          persistedSource?.trim() || nextSourceText || sourceText,
+        );
+        }
+      } else {
+        const result = await runTripChat({
+          tripId: props.tripId,
+          groupId: props.groupId,
+          messages: nextMessages.map((message) => ({
+            role: message.role,
+            text:
+              message.role === "user" && message.fullText
+                ? message.fullText
+                : message.text,
+          })),
+        });
+        if (!result.ok) {
+          finalMessages = [
+            ...nextMessages,
+            { role: "assistant", text: result.error || assistantFallbackReply() },
+          ];
+          setMessages(finalMessages);
+        } else {
+        const {
+          assistantReply,
+          needsClarification,
+          proposedCommands,
+          commandSummaries,
+          warnings,
+        } = result.result;
+
+        const warningNote =
+          warnings.length > 0 ? `\n\nNote: ${warnings.slice(0, 2).join(" ")}` : "";
+
+        finalMessages = [
+          ...nextMessages,
+          {
+            role: "assistant",
+            text: `${assistantReply}${warningNote}`,
+            proposedCommands:
+              !needsClarification && proposedCommands.length > 0
+                ? proposedCommands
+                : undefined,
+            commandSummaries:
+              commandSummaries.length > 0 ? commandSummaries : undefined,
+          },
+        ];
+        setMessages(finalMessages);
+        }
+      }
+
+      if (!useImport) {
+        await persistSession(finalMessages, nextSourceText);
+      }
+    } catch {
+      const finalMessages: ImportChatTurn[] = [
+        ...nextMessages,
+        { role: "assistant", text: assistantFallbackReply() },
+      ];
+      setMessages(finalMessages);
+      await persistSession(finalMessages, nextSourceText);
     } finally {
       setChatBusy(false);
     }
@@ -223,17 +500,48 @@ export function IngestPanel(props: {
       });
       if (!result.ok) throw new Error(result.error);
 
-      setMessages((prev) => [
-        ...prev,
+      const { stats, postImportMessage, fillProposal } = result.result;
+      let importMessages: ImportChatTurn[] = [
+        ...messages,
         {
           role: "assistant",
-          text: `Imported successfully — ${result.stats.itemsCreated} activity item(s) added. Your calendar should now reflect the trip.`,
+          text:
+            postImportMessage ??
+            `Imported successfully — ${stats.itemsCreated} activity item(s) added. Check the calendar and tell me if any dates, legs, or stays look wrong.`,
+          proposedCommands: fillProposal?.proposedCommands,
+          commandSummaries: fillProposal?.commandSummaries,
         },
-      ]);
+      ];
+
+      if (fillProposal?.proposedCommands?.length) {
+        const applied = await props.onDispatch(fillProposal.proposedCommands);
+        if (applied) {
+          importMessages = importMessages.map((message, index) =>
+            index === importMessages.length - 1
+              ? { ...message, applied: true, proposedCommands: undefined }
+              : message,
+          );
+          importMessages = [
+            ...importMessages,
+            {
+              role: "assistant",
+              text: "I filled the empty calendar days between your city stays automatically. Tell me what still looks wrong, or ask what to tackle next.",
+            },
+          ];
+        }
+      }
+
+      setMessages(importMessages);
       setSourceText("");
       setImportFile(null);
+      setDocumentFileName(null);
       attachFile(null);
-      props.onReload();
+      await persistSession(importMessages, "");
+      try {
+        props.onReload();
+      } catch {
+        // Import succeeded; calendar refresh is best-effort.
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed");
     } finally {
@@ -246,24 +554,46 @@ export function IngestPanel(props: {
     .reverse()
     .find((message) => message.role === "assistant" && message.readyToImport);
 
+  const latestPendingApplyIndex = (() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (
+        message?.role === "assistant" &&
+        message.proposedCommands?.length &&
+        !message.applied
+      ) {
+        return index;
+      }
+    }
+    return -1;
+  })();
+  const latestPendingApply =
+    latestPendingApplyIndex >= 0 ? messages[latestPendingApplyIndex] : null;
+
   return (
     <TripSectionShell
       eyebrow="Ingestion"
       title="AI / Import"
-      description="Chat with the importer — it will ask for missing dates before building your trip."
+      description="Chat with Trip OS — change the calendar, add activities, or import an itinerary. You confirm before anything is saved."
       fill
     >
       <TripSoftPanel
-        title="Import assistant"
+        title="Trip assistant"
         className="flex h-full min-h-0 flex-col"
       >
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
-            {messages.length === 0 ? (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div
+            ref={messagesScrollRef}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1"
+          >
+            {!sessionLoaded ? (
+              <p className="text-sm text-zinc-500">Loading conversation…</p>
+            ) : messages.length === 0 ? (
               <div className="space-y-3">
                 <p className="text-sm text-zinc-600">
-                  Paste your itinerary, drop a PDF, or describe the trip. If dates are unclear
-                  (no month or year), I&apos;ll ask before importing.
+                  Ask me to change the trip, fill calendar gaps, or add activities. Paste a full
+                  itinerary or drop a PDF when you want to import from scratch — I&apos;ll ask for
+                  missing dates first.
                 </p>
                 <div className="space-y-2">
                   <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
@@ -302,6 +632,24 @@ export function IngestPanel(props: {
                         <UserMessageBody text={message.fullText ?? message.text} />
                       )}
                     </div>
+                    {message.role === "assistant" && message.proposedCommands?.length ? (
+                      <div className="mt-3 space-y-2">
+                        {message.commandSummaries?.length ? (
+                          <ul className="list-inside list-disc text-xs text-zinc-700">
+                            {message.commandSummaries.map((summary, summaryIndex) => (
+                              <li key={summaryIndex}>{summary}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        {message.applied ? (
+                          <p className="text-xs font-medium text-emerald-700">Applied</p>
+                        ) : index === latestPendingApplyIndex ? (
+                          <p className="text-xs text-zinc-500">
+                            Use <span className="font-medium">Apply changes</span> below to confirm.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {message.role === "assistant" && message.readyToImport ? (
                       <AsyncButton
                         onClick={() => void runImport(message.importInstructions ?? null)}
@@ -323,19 +671,54 @@ export function IngestPanel(props: {
           </div>
 
           <div className="mt-3 shrink-0 space-y-3 border-t border-zinc-200/80 pt-3">
-          {attachedFile ? (
-            <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-950">
-              <span className="truncate font-medium">{attachedFile.name}</span>
-              <button
-                type="button"
-                onClick={() => attachFile(null)}
+          {latestPendingApply?.proposedCommands?.length ? (
+            <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3">
+              {latestPendingApply.commandSummaries?.length ? (
+                <ul className="mb-3 list-inside list-disc text-xs text-violet-950">
+                  {latestPendingApply.commandSummaries.map((summary, summaryIndex) => (
+                    <li key={summaryIndex}>{summary}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <AsyncButton
+                onClick={() =>
+                  void applyProposedCommands(
+                    latestPendingApply.proposedCommands!,
+                    latestPendingApplyIndex,
+                  )
+                }
+                loading={applyingCommands}
+                loadingLabel="Applying…"
                 disabled={chatBusy || importing}
-                className="shrink-0 text-xs font-medium text-violet-700 hover:underline"
+                className="inline-flex h-10 w-full items-center justify-center rounded-full bg-violet-600 px-5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
               >
-                Remove
-              </button>
+                Apply changes
+              </AsyncButton>
             </div>
           ) : null}
+          {(() => {
+            const activeFile = attachedFile ?? importFile;
+            const label = activeFile?.name ?? documentFileName;
+            const showChip =
+              label && (!tripBuildPhaseComplete(messages) || activeFile);
+            if (!showChip) return null;
+            return (
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-950">
+                <span className="truncate font-medium">
+                  📎 {label}
+                  {sourceText.trim() && !activeFile ? " · saved for this chat" : ""}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => clearAttachedDocument()}
+                  disabled={chatBusy || importing}
+                  className="shrink-0 text-xs font-medium text-violet-700 hover:underline"
+                >
+                  Remove
+                </button>
+              </div>
+            );
+          })()}
 
           <div
             onDragOver={(e) => {
@@ -359,7 +742,7 @@ export function IngestPanel(props: {
             <textarea
               value={draftText}
               onChange={(e) => setDraftText(e.target.value)}
-              placeholder="Paste itinerary rows, add clarifications, or ask questions…"
+              placeholder="Attach a file and add a comment, paste an itinerary, or ask to change the trip…"
               rows={4}
               disabled={chatBusy || importing}
               className={textareaClass}
@@ -405,10 +788,12 @@ export function IngestPanel(props: {
               <button
                 type="button"
                 onClick={() => {
+                  void clearAssistantChat(props.tripId);
                   setMessages([]);
                   setDraftText("");
                   setSourceText("");
                   setImportFile(null);
+                  setDocumentFileName(null);
                   attachFile(null);
                   setError(null);
                   setProgress(null);

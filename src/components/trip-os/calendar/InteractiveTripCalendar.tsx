@@ -61,10 +61,8 @@ export function InteractiveTripCalendar(props: {
     const rangeStart = weekStartMonday(first);
     const rangeEnd = weekStartMonday(last).plus({ days: 6 });
     const weeks = buildScrollWeeks(rangeStart, rangeEnd);
-    return planCalendarWeekSections(weeks).filter((section) =>
-      section.cells.some((cell) => cell && cell.iso >= model.todayIso),
-    );
-  }, [model.gridStart, model.gridEnd, model.todayIso]);
+    return planCalendarWeekSections(weeks);
+  }, [model.gridStart, model.gridEnd]);
 
   useCalendarInitialScroll({
     scrollRef: props.scrollRef,
@@ -76,16 +74,6 @@ export function InteractiveTripCalendar(props: {
   const namedStays = model.accommodationStays.filter((s) => s.name?.trim());
 
   function renderCell(cell: WeekCell) {
-    if (cell.iso < model.todayIso) {
-      return (
-        <div
-          key={cell.iso}
-          className="min-h-[5.75rem] rounded-xl opacity-40"
-          aria-hidden
-        />
-      );
-    }
-
     const day = dayByDate.get(cell.iso) ?? emptyGridDay(cell.iso);
     const travelLayout = model.travelLayoutsByDate.get(cell.iso);
     const transitOverlays = model.transitByDate.get(cell.iso) ?? [];
@@ -201,7 +189,7 @@ export function InteractiveTripCalendar(props: {
             {props.statusLine ? (
               <p className="mt-1 text-xs text-zinc-500">{props.statusLine}</p>
             ) : (
-              <p className="mt-1 text-xs text-zinc-400">All days from today — scroll to browse</p>
+              <p className="mt-1 text-xs text-zinc-400">Scroll to browse the full trip</p>
             )}
           </div>
           {props.headerAside}

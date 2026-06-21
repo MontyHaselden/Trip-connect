@@ -3,7 +3,8 @@ import { buildCalendarRenderModel } from "./calendar-render-model";
 import { detectGraphConflicts } from "./conflicts";
 import { computeReadiness } from "./compute-readiness";
 import { projectCalendar } from "./project-calendar";
-import type { CalendarRenderModel, SetupEngineResponse, TripEntityGraph } from "./types";
+import type { CalendarRenderModel, CostLedgerProjection, SetupEngineResponse, TripEntityGraph } from "./types";
+import type { RosterSummary } from "./types";
 
 function serializeRenderModel(model: CalendarRenderModel) {
   return {
@@ -19,13 +20,18 @@ function serializeRenderModel(model: CalendarRenderModel) {
 
 export function buildSetupEngineResponse(
   graph: TripEntityGraph,
-  options?: { groupId?: string; inviteCode?: string },
+  options?: {
+    groupId?: string;
+    inviteCode?: string;
+    rosterSummary?: RosterSummary;
+    costLedger?: CostLedgerProjection | null;
+  },
 ): SetupEngineResponse {
   const reconciled = reconcileTripShellState(graph);
   const groupId = options?.groupId ?? reconciled.mainGroupId;
   const calendarProjection = projectCalendar(reconciled, { groupId });
   const calendarRenderModel = buildCalendarRenderModel(reconciled, { groupId });
-  const readiness = computeReadiness(reconciled, calendarProjection);
+  const readiness = computeReadiness(reconciled, calendarProjection, options?.costLedger);
   const conflicts = detectGraphConflicts(reconciled, calendarProjection, groupId);
 
   return {
@@ -36,6 +42,8 @@ export function buildSetupEngineResponse(
     warnings: [],
     conflicts,
     inviteCode: options?.inviteCode,
+    rosterSummary: options?.rosterSummary,
+    costLedger: options?.costLedger ?? undefined,
   };
 }
 

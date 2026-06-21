@@ -2,20 +2,24 @@
 
 import type { SetupSectionId } from "@/lib/host/setup/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
+import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import type {
   EngineConflict,
   EngineSectionReadiness,
   EngineWarning,
   ProjectedDay,
+  RosterSummary,
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
 
 import { IngestPanel } from "./ingest/IngestPanel";
 import { MapView } from "./map/MapView";
 import { SmartOverview } from "./overview/SmartOverview";
+import { calendarHasPaint } from "@/lib/trip-engine/calendar-has-paint";
 import { AccommodationSection } from "./sections/AccommodationSection";
 import { ActivitiesSection } from "./sections/ActivitiesSection";
 import { BookingsSection } from "./sections/BookingsSection";
+import { FinanceSection } from "./sections/FinanceSection";
 import { LocationsSection } from "./sections/LocationsSection";
 import { ParticipantViewSection } from "./sections/ParticipantViewSection";
 import { TransportSection } from "./sections/TransportSection";
@@ -36,8 +40,12 @@ export function TripOsWorkspace(props: {
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
   onNavigateSection: (section: TripOsSection) => void;
   onReload: () => void;
+  onRosterChanged?: () => void;
   saving?: boolean;
   participantViewRefreshKey?: number;
+  rosterSummary?: RosterSummary;
+  costLedger?: CostLedgerProjection | null;
+  onCostsAction?: (payload: Record<string, unknown>) => Promise<boolean>;
 }) {
   const { graph, groupId, tripId, inviteCode, onDispatch, saving } = props;
 
@@ -50,6 +58,8 @@ export function TripOsWorkspace(props: {
           selectedDay={props.selectedDay}
           warnings={props.warnings}
           conflicts={props.conflicts}
+          costLedger={props.costLedger ?? null}
+          rosterSummary={props.rosterSummary}
           onUpdateName={(name) => void onDispatch([{ type: "updateBasics", basics: { name } }])}
           onNavigateSection={(s) => props.onNavigateSection(s as TripOsSection)}
         />
@@ -59,8 +69,11 @@ export function TripOsWorkspace(props: {
         <div className="flex min-h-0 flex-1 flex-col">
           <IngestPanel
             tripId={tripId}
+            groupId={groupId}
             timezone={graph.basics.timezone}
+            calendarHasPaint={calendarHasPaint(graph, groupId)}
             onReload={props.onReload}
+            onDispatch={onDispatch}
           />
         </div>
       );
@@ -107,9 +120,20 @@ export function TripOsWorkspace(props: {
         />
       );
     case "participants":
-      return <UsersSection inviteCode={inviteCode} />;
+      return <UsersSection inviteCode={inviteCode} onRosterChanged={props.onRosterChanged} />;
     case "bookings":
       return <BookingsSection graph={graph} tripId={tripId} />;
+    case "finance":
+      return (
+        <FinanceSection
+          roster={props.rosterSummary ?? { participants: [], groups: [], rooms: [] }}
+          costLedger={props.costLedger ?? null}
+          onFinanceAction={async (payload) =>
+            props.onCostsAction ? props.onCostsAction(payload) : false
+          }
+          saving={saving}
+        />
+      );
     case "participant-view":
       return (
         <ParticipantViewSection

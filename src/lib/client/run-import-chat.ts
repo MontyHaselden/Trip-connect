@@ -1,11 +1,26 @@
-import type { ImportReadinessResult } from "@/lib/ai/assess-import-readiness";
+import type { ImportReadinessResult as ServerImportReadinessResult } from "@/lib/ai/assess-import-readiness";
+
+import type { TripCommand } from "@/lib/trip-engine/commands";
 
 export type ImportChatTurn = {
   role: "user" | "assistant";
   text: string;
   fullText?: string;
+  attachedFileName?: string;
   readyToImport?: boolean;
   importInstructions?: string | null;
+  proposedCommands?: TripCommand[];
+  commandSummaries?: string[];
+  applied?: boolean;
+};
+
+export type ImportReadinessResult = ServerImportReadinessResult & {
+  /** Extracted itinerary text persisted for follow-up messages without re-uploading. */
+  sourceText?: string;
+  attachedFileName?: string | null;
+  proposedCommands?: TripCommand[];
+  commandSummaries?: string[];
+  warnings?: string[];
 };
 
 export async function runImportChat(params: {
@@ -29,10 +44,16 @@ export async function runImportChat(params: {
   });
 
   const body = await res.json().catch(() => ({}));
+  if (typeof body.assistantReply === "string") {
+    return { ok: true, result: body as ImportReadinessResult };
+  }
   if (!res.ok) {
     return {
       ok: false,
-      error: typeof body.error === "string" ? body.error : "Could not reach import assistant.",
+      error:
+        typeof body.error === "string"
+          ? body.error
+          : "I couldn't reach the import assistant just now — try sending that again.",
     };
   }
 

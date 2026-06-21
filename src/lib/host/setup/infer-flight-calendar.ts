@@ -246,9 +246,48 @@ function paintTimedCrossoverDay(
   fromCity: string,
   toCity: string,
   departureShare: number,
+  departureTime?: string | null,
 ): DayPlaceDraft {
+  const left = departureDayCityEndShare(
+    departureTime ?? null,
+    Math.min(Math.max(departureShare, 0.05), 0.95),
+  );
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+
+  if (primary && secondary) {
+    if (locationsMatch(primary, fromCity) && locationsMatch(secondary, toCity)) {
+      return { ...day, primaryShare: left, dayType: day.dayType === "buffer" ? "buffer" : "trip" };
+    }
+    if (locationsMatch(primary, fromCity)) {
+      return {
+        ...day,
+        secondaryCity: toCity,
+        primaryShare: left,
+        dayType: day.dayType === "buffer" ? "buffer" : "trip",
+      };
+    }
+    return day;
+  }
+
+  if (
+    primary &&
+    (locationsMatch(primary, fromCity) ||
+      locationsMatch(primary, toCity) ||
+      !isAirportPlace(primary))
+  ) {
+    return {
+      ...day,
+      primaryCity: fromCity,
+      secondaryCity: toCity,
+      primaryShare: left,
+      dayType: day.dayType === "buffer" ? "buffer" : "trip",
+      includeBuffer: false,
+    };
+  }
+
   if (dayHasStayPaint(day)) return day;
-  const left = Math.min(Math.max(departureShare, 0.05), 0.95);
+
   return {
     ...day,
     primaryCity: fromCity,
@@ -282,11 +321,13 @@ function applyConnectionChainPaint(
 
   const { connectionDate, sameDay } = chain;
   const day = byDate.get(connectionDate) ?? emptyDay(connectionDate);
-  if (dayHasStayPaint(day)) return;
 
   if (sameDay) {
     const depShare = flightTimeShare(first.departureTime, CROSSOVER_LEFT);
-    byDate.set(connectionDate, paintTimedCrossoverDay(day, origin, dest, depShare));
+    byDate.set(
+      connectionDate,
+      paintTimedCrossoverDay(day, origin, dest, depShare, first.departureTime),
+    );
     return;
   }
 
@@ -357,7 +398,7 @@ function applyLegPaint(
     !shouldSkipLegPaintOnDate(leg, dep, chain)
   ) {
     const day = byDate.get(dep) ?? emptyDay(dep);
-    byDate.set(dep, paintTimedCrossoverDay(day, origin, dest, depShare));
+    byDate.set(dep, paintTimedCrossoverDay(day, origin, dest, depShare, leg.departureTime));
     return;
   }
 

@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
+import { sanitizeDayType } from "@/lib/trip-engine/sanitize-day-place";
 import {
   groupDayPlaces,
   groupOverlayOps,
@@ -82,7 +83,7 @@ async function syncGroupDayPlaces(
       primaryCity: day.primaryCity,
       secondaryCity: day.secondaryCity,
       primaryShare: String(day.primaryShare ?? 1),
-      dayType: day.dayType,
+      dayType: sanitizeDayType(day.dayType),
       calendarLabel: travelCalendarLabel(day),
       weatherLocationQuery: day.primaryCity.trim() || null,
       updatedAt: new Date(),

@@ -14,6 +14,7 @@ const SECTIONS: Array<{ id: TripOsSection; label: string }> = [
   { id: "activities", label: "Activities" },
   { id: "participants", label: "Users" },
   { id: "bookings", label: "Bookings" },
+  { id: "finance", label: "Finance" },
   { id: "participant-view", label: "Participant view" },
 ];
 

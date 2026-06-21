@@ -4,6 +4,7 @@ export type RosterParticipant = {
   phoneNumberE164: string;
   role: "student" | "helper" | "teacher" | "host";
   hasPassword?: boolean;
+  inCostSplit: boolean;
   roomId: string | null;
   groupIds: string[];
 };

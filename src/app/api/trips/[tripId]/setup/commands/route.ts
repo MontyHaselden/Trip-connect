@@ -9,19 +9,29 @@ import {
   persistCommands,
   serializeSetupResponse,
 } from "@/lib/trip-engine";
+import { loadCostLedgerProjection } from "@/lib/trip-engine/cost-ledger/index";
+import { loadRosterSummary } from "@/lib/trip-engine/roster-summary";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 
 async function handleCommands(
   tripId: string,
   commands: TripCommand[],
   groupId?: string,
+  inviteCode?: string,
 ) {
   const graph = await loadTripGraph(tripId);
   if (!graph) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
   const result = await persistCommands(tripId, graph, commands);
+  const [rosterSummary, costLedger] = await Promise.all([
+    loadRosterSummary(tripId),
+    loadCostLedgerProjection(tripId, result.graph).catch(() => null),
+  ]);
   const response = buildSetupEngineResponse(result.graph, {
     groupId: groupId ?? graph.mainGroupId,
+    inviteCode,
+    rosterSummary,
+    costLedger,
   });
 
   return NextResponse.json(
@@ -51,7 +61,7 @@ export async function PATCH(
       return NextResponse.json({ error: "No commands provided." }, { status: 400 });
     }
 
-    return await handleCommands(tripId, commands, groupId);
+    return await handleCommands(tripId, commands, groupId, trip.inviteCode);
   } catch (err) {
     return hostApiError(err);
   }

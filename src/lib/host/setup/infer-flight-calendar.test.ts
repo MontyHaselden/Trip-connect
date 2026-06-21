@@ -275,6 +275,76 @@ describe("inferDayPlacesFromFlightLegs", () => {
     assert.ok(Math.abs((sep5?.primaryShare ?? 0) - 16 / 24 - 25 / 1440) < 0.02);
   });
 
+  it("upgrades gap-filled full days into same-day crossover halves", () => {
+    const gapFilled = [
+      {
+        date: "2026-06-28",
+        primaryCity: "Venice",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+      {
+        date: "2026-07-03",
+        primaryCity: "Palma, Mallorca",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+    ];
+
+    const legs = [
+      {
+        id: newId(),
+        transportType: "plane" as const,
+        bookingStatus: "not_booked" as const,
+        travelDate: "2026-06-28",
+        arrivalDate: "2026-06-28",
+        departureTime: "12:45",
+        arrivalTime: "14:40",
+        fromCity: "Venice",
+        toCity: "Palma airport",
+        fromStation: null,
+        toStation: null,
+        operator: "Ryanair",
+        referenceNumber: null,
+        flightNumber: null,
+        notes: null,
+      },
+      {
+        id: newId(),
+        transportType: "plane" as const,
+        bookingStatus: "not_booked" as const,
+        travelDate: "2026-07-03",
+        arrivalDate: "2026-07-03",
+        departureTime: "16:00",
+        arrivalTime: "17:30",
+        fromCity: "Palma, Mallorca",
+        toCity: "Bristol",
+        fromStation: null,
+        toStation: null,
+        operator: "Ryanair",
+        referenceNumber: null,
+        flightNumber: null,
+        notes: null,
+      },
+    ];
+
+    const painted = inferDayPlacesFromFlightLegs(gapFilled, legs);
+    const jun28 = painted.find((d) => d.date === "2026-06-28");
+    const jul3 = painted.find((d) => d.date === "2026-07-03");
+
+    assert.equal(jun28?.primaryCity, "Venice");
+    assert.ok(jun28?.secondaryCity?.toLowerCase().includes("palma"));
+    assert.ok(Math.abs((jun28?.primaryShare ?? 0) - 12.75 / 24) < 0.03);
+
+    assert.ok(jul3?.primaryCity.toLowerCase().includes("palma"));
+    assert.equal(jul3?.secondaryCity, "Bristol");
+    assert.ok(Math.abs((jul3?.primaryShare ?? 0) - 16 / 24) < 0.03);
+  });
+
   it("clears flight paint when the leg is removed", () => {
     const leg = {
       id: newId(),

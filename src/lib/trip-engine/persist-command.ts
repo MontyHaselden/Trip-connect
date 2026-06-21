@@ -8,6 +8,12 @@ import { graphToSetupState } from "./adapters";
 import { applyCommands } from "./apply-commands";
 import { syncActivitiesForTrip } from "./activities-persistence";
 import { normalizeCommand, type TripCommand } from "./commands";
+import { dayPlacesForGroup } from "./selectors";
+import {
+  mergeSetDayPlacesDays,
+  sanitizeDayPlaceDraft,
+} from "./sanitize-day-place";
+import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import type { IntercityLegDraft, TransportLegDraft } from "@/lib/host/wizard/types";
 import type { CommandResult, TripEntityGraph } from "./types";
 
@@ -187,13 +193,33 @@ async function persistBasicsCommand(tripId: string, basics: TripEntityGraph["bas
     .where(eq(trips.id, tripId));
 }
 
+function repairCommandsForPersist(
+  commands: TripCommand[],
+  graph: TripEntityGraph,
+): TripCommand[] {
+  return commands.map((command) => {
+    if (command.type !== "setDayPlaces") return command;
+    const existing = dayPlacesForGroup(graph, command.groupId);
+    const incoming = command.days
+      .filter((day): day is Partial<DayPlaceDraft> & { date: string } => Boolean(day?.date))
+      .map(sanitizeDayPlaceDraft);
+    return {
+      ...command,
+      days: mergeSetDayPlacesDays(existing, incoming),
+    };
+  });
+}
+
 /** Apply commands in memory, persist to DB, reload authoritative graph. */
 export async function persistCommands(
   tripId: string,
   graph: TripEntityGraph,
   commands: TripCommand[],
 ): Promise<CommandResult> {
-  const normalized = commands.map((c) => normalizeCommand(c as TripCommand & { type: string }));
+  const normalized = repairCommandsForPersist(
+    commands.map((c) => normalizeCommand(c as TripCommand & { type: string })),
+    graph,
+  );
 
   for (const command of normalized) {
     if (command.type === "removeTransportLeg" || command.type === "removeLeg") {

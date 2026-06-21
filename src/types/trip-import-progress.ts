@@ -43,5 +43,16 @@ export type TripImportProgress =
         timezone: string;
       };
       gaps?: ImportGap[];
+      filledDayCount?: number;
+      calendarGaps?: {
+        unpaintedDates: string[];
+        missingTransport: Array<{ date: string; fromCity: string; toCity: string }>;
+      };
+      postImportMessage?: string;
+      fillProposal?: {
+        assistantReply: string;
+        proposedCommands: import("@/lib/trip-engine/commands").TripCommand[];
+        commandSummaries: string[];
+      } | null;
     }
   | { type: "error"; error: string };

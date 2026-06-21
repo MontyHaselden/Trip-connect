@@ -54,6 +54,7 @@ export async function loadRoster(tripId: string) {
       phoneNumberE164: p.phoneNumberE164,
       role: p.role,
       hasPassword: Boolean(p.passwordHash),
+      inCostSplit: p.inCostSplit ?? true,
       roomId: roomByParticipant.get(p.id) ?? null,
       groupIds: groupsByParticipant.get(p.id) ?? [],
     })),

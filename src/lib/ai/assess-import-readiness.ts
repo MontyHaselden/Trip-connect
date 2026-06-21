@@ -82,7 +82,9 @@ Rules:
 - inferredStartDate / inferredEndDate: ISO dates when ready; otherwise null.
 - Today is ${today} (${params.defaultTimezone}). Current year: ${currentYear}.
 - If the host said a weekday + day + month, verify it is a real calendar date in the chosen year before marking ready.
-- Do not invent hotels, flights, or activities — only resolve scheduling context.
+- If the host attached a document and added a comment in the conversation (e.g. corrected dates), combine both when deciding readiness — the file is the itinerary, the comment is scheduling context.
+- If the host asks what to do next, how to proceed, or similar while a document is loaded, explain clearly: clarify dates if still ambiguous, or tell them to press **Import trip** when dates are resolved. Do not tell them to re-paste the document.
+- Do not ask whether you have the file if itinerary text is already present below.
 - No markdown in JSON strings except **bold** in assistantReply is allowed.`;
 
   const user = `Conversation so far:

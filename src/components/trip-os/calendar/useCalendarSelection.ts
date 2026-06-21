@@ -179,7 +179,7 @@ export function useCalendarSelection(props: {
   const statusLine = selection.rangeStart
     ? `Selected ${formatCalendarSelectionLabel(selection)}`
     : props.renderModel?.datesUnset
-      ? "All days from today — scroll to browse"
+      ? "Scroll to browse and paint days"
       : "Click days for a range, or a half on split days — click the same half again for the full travel day";
 
   return {

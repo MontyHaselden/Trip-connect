@@ -6,12 +6,14 @@ import type { SetupSectionId } from "@/lib/host/setup/types";
 import { deserializeRenderModel } from "@/lib/trip-engine/build-setup-response";
 import { applyCommands } from "@/lib/trip-engine/apply-commands";
 import type { TripCommand } from "@/lib/trip-engine/commands";
+import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import type {
   CalendarProjection,
   CalendarRenderModel,
   EngineConflict,
   EngineSectionReadiness,
   EngineWarning,
+  RosterSummary,
   SetupEngineResponse,
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
@@ -24,6 +26,8 @@ type EngineState = {
   warnings: EngineWarning[];
   conflicts: EngineConflict[];
   inviteCode: string;
+  rosterSummary: RosterSummary;
+  costLedger: CostLedgerProjection | null;
 };
 
 function deserializeProjection(raw: SetupEngineResponse["calendarProjection"]): CalendarProjection {
@@ -37,6 +41,7 @@ function deserializeProjection(raw: SetupEngineResponse["calendarProjection"]): 
 export function useTripOsEngine(tripId: string) {
   const [data, setData] = useState<EngineState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<SetupSectionId>("overview");
@@ -51,13 +56,20 @@ export function useTripOsEngine(tripId: string) {
       warnings: body.warnings,
       conflicts: body.conflicts,
       inviteCode: body.inviteCode ?? "",
+      rosterSummary: body.rosterSummary ?? { participants: [], groups: [], rooms: [] },
+      costLedger: body.costLedger ?? null,
     });
     setActiveGroupId((current) => current || body.graph.mainGroupId);
   }, []);
 
   const load = useCallback(
-    async (groupId?: string) => {
-      setLoading(true);
+    async (groupId?: string, options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (silent) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
       try {
         const gid = groupId ?? activeGroupId;
@@ -70,7 +82,11 @@ export function useTripOsEngine(tripId: string) {
       } catch (e) {
         setError(e instanceof Error ? e.message : "Load failed");
       } finally {
-        setLoading(false);
+        if (silent) {
+          setRefreshing(false);
+        } else {
+          setLoading(false);
+        }
       }
     },
     [tripId, activeGroupId, applyResponse],
@@ -107,8 +123,11 @@ export function useTripOsEngine(tripId: string) {
           error?: string;
         } & Partial<SetupEngineResponse>;
         if (!res.ok) throw new Error(body.error || "Command failed");
-        if (!body.graph) throw new Error("Server returned an incomplete response.");
-        applyResponse(body as SetupEngineResponse);
+        if (body.graph) {
+          applyResponse(body as SetupEngineResponse);
+        } else {
+          await load(activeGroupId || data.graph.mainGroupId, { silent: true });
+        }
         return true;
       } catch (e) {
         setError(e instanceof Error ? e.message : "Save failed");
@@ -117,20 +136,52 @@ export function useTripOsEngine(tripId: string) {
         setSaving(false);
       }
     },
-    [tripId, data, activeGroupId, applyResponse],
+    [tripId, data, activeGroupId, applyResponse, load],
   );
 
   const switchGroup = useCallback(
     async (groupId: string) => {
       setActiveGroupId(groupId);
-      await load(groupId);
+      await load(groupId, { silent: Boolean(data) });
     },
-    [load],
+    [load, data],
+  );
+
+  const patchCosts = useCallback(
+    async (payload: Record<string, unknown>) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/trips/${tripId}/costs`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          costLedger?: CostLedgerProjection;
+        };
+        if (!res.ok) throw new Error(body.error || "Costs update failed");
+        if (body.costLedger) {
+          setData((prev) => (prev ? { ...prev, costLedger: body.costLedger! } : prev));
+        } else {
+          await load(activeGroupId || data?.graph.mainGroupId, { silent: true });
+        }
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Costs update failed");
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [tripId, activeGroupId, data?.graph.mainGroupId, load],
   );
 
   return {
     data,
     loading,
+    refreshing,
     saving,
     error,
     activeSection,
@@ -139,5 +190,6 @@ export function useTripOsEngine(tripId: string) {
     load,
     dispatch,
     switchGroup,
+    patchCosts,
   };
 }

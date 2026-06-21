@@ -146,7 +146,7 @@ describe("resolveCalendarScrollAnchor", () => {
 });
 
 describe("visibleCalendarScrollAnchor", () => {
-  it("uses first on-trip content on or after today when earlier content is not rendered", () => {
+  it("uses earliest on-trip content when the trip includes past days", () => {
     const anchor = visibleCalendarScrollAnchor({
       startDate: "2026-01-01",
       endDate: "2026-12-31",
@@ -169,7 +169,7 @@ describe("visibleCalendarScrollAnchor", () => {
       ],
       fallbackAnchor: "2026-06-17",
     });
-    assert.equal(anchor, "2026-08-01");
+    assert.equal(anchor, "2026-01-10");
   });
 });
 
@@ -194,13 +194,15 @@ describe("calendarGridFromToday", () => {
     assert.ok(!result.gridStart.startsWith("1999"));
   });
 
-  it("anchors scroll on today when the trip is entirely in the past", () => {
+  it("anchors scroll on trip start when the trip is entirely in the past", () => {
     const result = calendarGridFromToday({
       startDate: "2024-01-01",
       endDate: "2024-01-14",
       timezone: "UTC",
     });
-    assert.equal(result.scrollAnchorDate, result.todayIso);
+    assert.equal(result.scrollAnchorDate, "2024-01-01");
+    assert.ok(result.gridStart <= "2024-01-01");
+    assert.equal(result.interactionStart, result.gridStart);
   });
 
   it("anchors scroll on the first content day of a future trip", () => {
@@ -212,24 +214,24 @@ describe("calendarGridFromToday", () => {
     assert.equal(result.scrollAnchorDate, "2026-08-23");
   });
 
-  it("clamps grid start when trip started in the past", () => {
+  it("includes past weeks when the trip started before today", () => {
     const result = calendarGridFromToday({
       startDate: "2024-01-01",
       endDate: "2024-01-14",
       timezone: "UTC",
     });
-    const todayMonday = weekStartMonday(DateTime.fromISO(result.todayIso)).toISODate()!;
-    assert.ok(result.gridStart >= todayMonday);
+    assert.ok(result.gridStart < result.todayIso);
+    assert.equal(result.interactionStart, result.gridStart);
   });
 
-  it("starts grid at today's week for a future trip", () => {
+  it("includes padded weeks before a future trip start", () => {
     const result = calendarGridFromToday({
       startDate: "2026-11-29",
       endDate: "2026-12-17",
       timezone: "UTC",
     });
-    const todayMonday = weekStartMonday(DateTime.fromISO(result.todayIso)).toISODate()!;
-    assert.equal(result.gridStart, todayMonday);
+    assert.ok(result.gridStart < "2026-11-29");
     assert.ok(result.gridEnd >= "2026-12-17");
+    assert.equal(result.interactionStart, result.gridStart);
   });
 });

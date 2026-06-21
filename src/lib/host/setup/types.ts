@@ -49,6 +49,7 @@ export type SetupSectionId =
   | "groups"
   | "participants"
   | "bookings"
+  | "finance"
   | "emergency"
   | "photos_viewers"
   | "publish";

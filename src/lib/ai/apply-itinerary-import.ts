@@ -14,6 +14,7 @@ import {
 import { syncTripDatesFromDays } from "@/lib/host/trip-dates";
 import { toDbBookingStatus } from "@/lib/host/wizard/db-enums";
 import { assertValidIsoDate } from "@/lib/utils/iso-date";
+import { normalizeStoredTime } from "@/lib/utils/ai-time";
 
 type ImportDay = z.infer<typeof ImportDaySchema>;
 type ImportItem = z.infer<typeof ImportItemSchema>;

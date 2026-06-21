@@ -22,6 +22,7 @@ const PatchParticipantSchema = z.object({
   role: z.enum(["student", "helper", "teacher", "host"]).optional(),
   roomId: z.string().uuid().nullable().optional(),
   groupIds: z.array(z.string().uuid()).optional(),
+  inCostSplit: z.boolean().optional(),
 });
 
 export async function PATCH(
@@ -80,6 +81,7 @@ export async function PATCH(
         fullName: parsed.data.fullName ?? existing.fullName,
         phoneNumberE164: phoneE164,
         role: parsed.data.role ?? existing.role,
+        inCostSplit: parsed.data.inCostSplit ?? existing.inCostSplit,
         updatedAt: new Date(),
       })
       .where(eq(participants.id, participantId));

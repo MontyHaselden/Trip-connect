@@ -185,6 +185,20 @@ export type SetViewerSettingsCommand = {
   viewerRoomDetailsEnabled?: boolean;
 };
 
+/** Trim or set trip window — calendar paint is kept; everything else follows in one shot. */
+export type SetTripDateRangeCommand = {
+  type: "setTripDateRange";
+  startDate: string;
+  endDate: string;
+};
+
+/** Shift all dated trip content by N days or whole months (negative = earlier). */
+export type ShiftTripDatesCommand = {
+  type: "shiftTripDates";
+  deltaDays?: number;
+  deltaMonths?: number;
+};
+
 export type AddOverlayOpCommand = AddGroupDayOverrideCommand & { type: "addOverlayOp" };
 export type RemoveOverlayOpCommand = RemoveGroupDayOverrideCommand & { type: "removeOverlayOp" };
 
@@ -212,7 +226,9 @@ export type TripCommand =
   | UpdateBookingDetailsCommand
   | SetBookingStatusCommand
   | SetEmergencyInfoCommand
-  | SetViewerSettingsCommand;
+  | SetViewerSettingsCommand
+  | SetTripDateRangeCommand
+  | ShiftTripDatesCommand;
 
 /** Normalize legacy command type strings to canonical forms. */
 export function normalizeCommand(command: { type: string } & Record<string, unknown>): TripCommand {

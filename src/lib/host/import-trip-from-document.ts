@@ -26,14 +26,22 @@ import {
 import {
   filterMisplacedHomeDirectionLegs,
   filterSpuriousAutoTransfers,
-  fillGapsBetweenLocationStays,
+  fillSparseCalendarAnchors,
   mergeImportedDayPlacesWithOutline,
   reconcileImportedDayPlacesWithFlights,
   sanitizeImportedDayPlaces,
   sanitizeImportedTransport,
 } from "@/lib/host/import/sanitize-imported-locations";
+import { buildFillGapsProposal } from "@/lib/ai/trip-chat-deterministic";
+import {
+  formatPostImportAssistantMessage,
+  reconcileImportedSetupState,
+  summarizeSetupCalendarGaps,
+} from "@/lib/host/import/post-import-reconcile";
 import { buildDefaultDayPlaces, syncIntercityLegs } from "@/lib/host/wizard/detect-city-moves";
 import { analyzeImportGaps } from "@/lib/host/wizard/analyze-import-gaps";
+import { applyCommandBatch } from "@/lib/trip-engine/apply-command-batch";
+import { loadTripGraph } from "@/lib/trip-engine/load-graph";
 import { maybeAutoPublish } from "@/lib/publish/maybe-auto-publish";
 import type { TripImportProgress } from "@/types/trip-import-progress";
 
@@ -100,12 +108,16 @@ export async function importTripFromDocumentText(params: {
     endDate: outline.endDate,
   });
 
-  dayPlaces = fillGapsBetweenLocationStays(dayPlaces, {
-    startDate: outline.startDate,
-    endDate: outline.endDate,
-    departureCity,
-    returnCity,
-  });
+  dayPlaces = fillSparseCalendarAnchors(
+    dayPlaces,
+    {
+      startDate: outline.startDate,
+      endDate: outline.endDate,
+      departureCity,
+      returnCity,
+    },
+    structure.accommodationStays,
+  );
 
   const tripBounds = {
     startDate: outline.startDate,
@@ -284,13 +296,26 @@ export async function importTripFromDocumentText(params: {
 
   await purgeAccommodationWizardItineraryItems(params.tripId);
 
+  let filledDayCount = 0;
+  let calendarGaps = {
+    unpaintedDates: [] as string[],
+    missingTransport: [] as Array<{ date: string; fromCity: string; toCity: string }>,
+  };
+
   const setupState = await loadTripSetupState(params.tripId);
   if (setupState) {
-    await applyTripSetupState(params.tripId, syncTripBoundsFromContent(setupState), {
-      skipWizardItineraryItems: true,
-      syncTransportItems: false,
-      syncAccommodationItems: false,
-    });
+    const reconciled = reconcileImportedSetupState(setupState);
+    filledDayCount = reconciled.filledDayCount;
+    calendarGaps = summarizeSetupCalendarGaps(reconciled.state);
+    await applyTripSetupState(
+      params.tripId,
+      syncTripBoundsFromContent(reconciled.state),
+      {
+        skipWizardItineraryItems: true,
+        syncTransportItems: true,
+        syncAccommodationItems: false,
+      },
+    );
   }
 
   await maybeAutoPublish(params.tripId);
@@ -298,6 +323,28 @@ export async function importTripFromDocumentText(params: {
   const gaps = await analyzeImportGaps(params.tripId);
   if (gaps.length) {
     emit({ type: "gaps", gaps });
+  }
+
+  let fillProposal: {
+    assistantReply: string;
+    proposedCommands: unknown[];
+    commandSummaries: string[];
+  } | null = null;
+  if (calendarGaps.unpaintedDates.length) {
+    const graph = await loadTripGraph(params.tripId);
+    if (graph) {
+      const proposal = buildFillGapsProposal(graph, graph.mainGroupId);
+      if (proposal.proposedCommands.length) {
+        const dryRun = applyCommandBatch(graph, proposal.proposedCommands);
+        if (!dryRun.conflicts.some((c) => c.severity === "blocking")) {
+          fillProposal = {
+            assistantReply: proposal.assistantReply,
+            proposedCommands: proposal.proposedCommands,
+            commandSummaries: proposal.commandSummaries,
+          };
+        }
+      }
+    }
   }
 
   const result = {
@@ -310,6 +357,15 @@ export async function importTripFromDocumentText(params: {
       timezone: outline.timezone,
     },
     gaps,
+    filledDayCount,
+    calendarGaps,
+    postImportMessage: formatPostImportAssistantMessage({
+      itemsCreated,
+      filledDayCount,
+      calendarGaps,
+      importGapMessages: gaps.map((gap) => gap.message),
+    }),
+    fillProposal,
   };
 
   emit({ type: "done", ...result });

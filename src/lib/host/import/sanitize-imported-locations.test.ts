@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   dedupeTransportLegs,
   fillGapsBetweenLocationStays,
+  fillSparseCalendarAnchors,
   filterInvalidTransportLegs,
   filterMisplacedHomeDirectionLegs,
   mergeImportedDayPlacesWithOutline,
@@ -89,6 +90,39 @@ describe("mergeImportedDayPlacesWithOutline", () => {
     assert.equal(filled.find((d) => d.date === "2026-07-18")?.primaryCity, "London");
     assert.equal(filled.find((d) => d.date === "2026-07-19")?.primaryCity, "London");
     assert.equal(filled.find((d) => d.date === "2026-07-17")?.dayType, "travel");
+  });
+});
+
+describe("fillSparseCalendarAnchors", () => {
+  it("fills empty days between arrival in a city and departure travel from that city", () => {
+    const places: DayPlaceDraft[] = [
+      day("2026-12-16", "Kyoto"),
+      day("2026-12-17", "Kyoto"),
+      day("2026-12-18", "Kyoto"),
+      day("2026-12-19", "Kyoto", {
+        secondaryCity: "Tokyo",
+        primaryShare: 0.5,
+        dayType: "travel",
+      }),
+      day("2026-12-20", ""),
+      day("2026-12-21", ""),
+      day("2026-12-22", "Tokyo", {
+        secondaryCity: "Christchurch",
+        primaryShare: 0.5,
+        dayType: "travel",
+      }),
+    ];
+
+    const filled = fillSparseCalendarAnchors(places, {
+      startDate: "2026-12-16",
+      endDate: "2026-12-22",
+      departureCity: "Christchurch",
+      returnCity: "Christchurch",
+    });
+
+    assert.equal(filled.find((d) => d.date === "2026-12-20")?.primaryCity, "Tokyo");
+    assert.equal(filled.find((d) => d.date === "2026-12-21")?.primaryCity, "Tokyo");
+    assert.equal(filled.find((d) => d.date === "2026-12-22")?.dayType, "travel");
   });
 });
 

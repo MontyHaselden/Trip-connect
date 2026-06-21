@@ -22,16 +22,26 @@ export function TripSectionShell(props: {
           <p className="mt-1.5 text-sm text-zinc-500">{props.description}</p>
         ) : null}
       </div>
-      <div className={props.fill ? "min-h-0 flex-1" : undefined}>{props.children}</div>
+      <div className={props.fill ? "flex min-h-0 flex-1 flex-col" : undefined}>{props.children}</div>
     </div>
   );
 }
 
 export function TripSoftPanel(props: { title?: string; children: React.ReactNode; className?: string }) {
+  const fillLayout = props.className?.includes("flex");
   return (
     <div className={["rounded-2xl bg-zinc-50/80 p-5", props.className ?? ""].join(" ")}>
-      {props.title ? <h3 className="text-sm font-semibold text-zinc-900">{props.title}</h3> : null}
-      <div className={[props.title ? "mt-3" : undefined, "min-h-0"].filter(Boolean).join(" ")}>
+      {props.title ? (
+        <h3 className="shrink-0 text-sm font-semibold text-zinc-900">{props.title}</h3>
+      ) : null}
+      <div
+        className={[
+          props.title ? "mt-3" : undefined,
+          fillLayout ? "flex min-h-0 flex-1 flex-col" : "min-h-0",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         {props.children}
       </div>
     </div>

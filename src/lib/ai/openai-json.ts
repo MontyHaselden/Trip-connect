@@ -4,9 +4,15 @@ import {
   writeOpenAiFixture,
 } from "@/lib/ai/openai-fixtures";
 
+export type OpenAiChatTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 async function callOpenAiApi(params: {
   system: string;
-  user: string;
+  user?: string;
+  messages?: OpenAiChatTurn[];
   temperature?: number;
 }): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -15,6 +21,15 @@ async function callOpenAiApi(params: {
   }
 
   const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+  const apiMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+    { role: "system", content: params.system },
+  ];
+  if (params.messages?.length) {
+    apiMessages.push(...params.messages);
+  } else if (params.user) {
+    apiMessages.push({ role: "user", content: params.user });
+  }
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -25,10 +40,7 @@ async function callOpenAiApi(params: {
       model,
       temperature: params.temperature ?? 0.2,
       response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: params.system },
-        { role: "user", content: params.user },
-      ],
+      messages: apiMessages,
     }),
   });
 
@@ -47,12 +59,16 @@ async function callOpenAiApi(params: {
 
 export async function completeOpenAiJson(params: {
   system: string;
-  user: string;
+  user?: string;
+  messages?: OpenAiChatTurn[];
   temperature?: number;
 }): Promise<string> {
   const fixtureDir = process.env.OPENAI_FIXTURE_DIR?.trim();
+  const fixtureUser = params.messages?.length
+    ? JSON.stringify(params.messages)
+    : params.user ?? "";
   if (fixtureDir) {
-    const key = openAiFixtureKey(params.system, params.user);
+    const key = openAiFixtureKey(params.system, fixtureUser);
     const cached = readOpenAiFixture(fixtureDir, key);
     if (cached) return cached;
 
