@@ -230,9 +230,13 @@ export function SmartOverview(props: {
 
       {props.graph.publishSummary.publishedVersion > 0 ? (
         <p className="text-sm text-emerald-700">
-          Published v{props.graph.publishSummary.publishedVersion}
+          Students see v{props.graph.publishSummary.publishedVersion}
         </p>
-      ) : null}
+      ) : (
+        <p className="text-sm text-amber-700">
+          Not shared with participants yet — use Update participants in the sidebar.
+        </p>
+      )}
     </div>
   );
 }

@@ -62,7 +62,7 @@ function PreviewStatusBanner(props: {
   if (publishedVersion === 0) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-        Previewing your current trip — students see a not-ready screen until you publish.
+        Previewing your saved trip — students see this after you tap Update participants in the sidebar.
       </div>
     );
   }
@@ -78,7 +78,7 @@ function PreviewStatusBanner(props: {
   if (preview.staleVsPublished) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-        Draft has unpublished changes — students still see the last published version.
+        You have newer saves — students still see the last update until you push changes.
       </div>
     );
   }

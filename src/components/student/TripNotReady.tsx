@@ -12,8 +12,8 @@ export function TripNotReady(props: { title: string; hasJoined?: boolean }) {
             You&apos;ve joined this trip
           </p>
           <p className="mt-2 text-sm text-[var(--student-text-muted)]">
-            Your organiser is still building the itinerary. Once published, your trip
-            will appear here automatically.
+            Your organiser hasn&apos;t shared the itinerary yet. When they push an
+            update, your trip will appear here automatically.
           </p>
         </>
       ) : (

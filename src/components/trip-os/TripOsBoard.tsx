@@ -97,6 +97,7 @@ export function TripOsBoard(props: { tripId: string }) {
             onSelect={handleNavSelect}
             onBackHome={() => router.push(tripOsHomePath())}
             saving={engine.refreshing}
+            tripId={props.tripId}
           />
           <main className="flex min-h-0 flex-1 items-center justify-center">
             <p className="text-sm text-zinc-600">Loading trip engine…</p>
@@ -114,6 +115,7 @@ export function TripOsBoard(props: { tripId: string }) {
             activeSection={activeSection}
             onSelect={handleNavSelect}
             onBackHome={() => router.push(tripOsHomePath())}
+            tripId={props.tripId}
           />
           <main className="flex min-h-0 flex-1 items-center justify-center">
             <p className="text-sm text-red-600">{engine.error || "Failed to load trip."}</p>
@@ -164,6 +166,9 @@ export function TripOsBoard(props: { tripId: string }) {
           onBackHome={() => router.push(tripOsHomePath())}
           saving={engine.saving || engine.refreshing}
           calmNav={calmNav}
+          tripId={props.tripId}
+          inviteCode={engine.data.inviteCode}
+          onParticipantUpdated={() => void engine.load(undefined, { silent: true })}
         />
         <main
           className={[

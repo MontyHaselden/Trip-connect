@@ -96,7 +96,7 @@ export async function GET(
 
     if (!result) {
       return NextResponse.json(
-        { error: "Trip has not been published yet." },
+        { error: "Trip has not been shared with participants yet." },
         { status: 404 },
       );
     }

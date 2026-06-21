@@ -3,6 +3,7 @@
 import type { EngineReadinessStatus, EngineSectionReadiness } from "@/lib/trip-engine/types";
 
 import type { TripOsSection } from "./TripOsWorkspace";
+import { TripOsParticipantUpdate } from "./TripOsParticipantUpdate";
 
 const SECTIONS: Array<{ id: TripOsSection; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -46,6 +47,9 @@ export function TripOsNav(props: {
   calmNav?: boolean;
   variant?: "board" | "list";
   backLabel?: string;
+  tripId?: string;
+  inviteCode?: string;
+  onParticipantUpdated?: () => void;
 }) {
   const variant = props.variant ?? "board";
   const byId = new Map((props.readiness ?? []).map((r) => [r.id, r]));
@@ -99,6 +103,14 @@ export function TripOsNav(props: {
       )}
 
       <div className="px-3 pb-4 pt-2">
+        {variant === "board" && props.tripId && props.inviteCode ? (
+          <TripOsParticipantUpdate
+            tripId={props.tripId}
+            inviteCode={props.inviteCode}
+            saving={props.saving}
+            onUpdated={props.onParticipantUpdated}
+          />
+        ) : null}
         {variant === "board" && props.onBackHome ? (
           <button
             type="button"
