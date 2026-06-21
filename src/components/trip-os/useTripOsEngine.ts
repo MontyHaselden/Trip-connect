@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import type { SetupSectionId } from "@/lib/host/setup/types";
-import { deserializeRenderModel } from "@/lib/trip-engine/build-setup-response";
+import { deriveEngineViewFromGraph, deserializeRenderModel } from "@/lib/trip-engine/build-setup-response";
 import { applyCommands } from "@/lib/trip-engine/apply-commands";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
@@ -113,11 +113,19 @@ export function useTripOsEngine(tripId: string) {
       setData((prev) => {
         if (!prev) return prev;
         const optimistic = applyCommands(prev.graph, commands);
+        const groupId = activeGroupIdRef.current || prev.graph.mainGroupId;
+        const view = deriveEngineViewFromGraph(optimistic.graph, {
+          groupId,
+          costLedger: prev.costLedger,
+        });
         return {
           ...prev,
-          graph: optimistic.graph,
+          graph: view.graph,
+          calendarProjection: view.calendarProjection,
+          calendarRenderModel: view.calendarRenderModel,
+          readiness: view.readiness,
+          conflicts: view.conflicts,
           warnings: optimistic.warnings,
-          conflicts: optimistic.conflicts ?? [],
         };
       });
 

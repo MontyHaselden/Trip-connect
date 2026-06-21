@@ -20,15 +20,14 @@ function serializeRenderModel(model: CalendarRenderModel) {
   };
 }
 
-export function buildSetupEngineResponse(
+/** Rebuild calendar projection/render model after an in-memory graph change (optimistic UI). */
+export function deriveEngineViewFromGraph(
   graph: TripEntityGraph,
   options?: {
     groupId?: string;
-    inviteCode?: string;
-    rosterSummary?: RosterSummary;
     costLedger?: CostLedgerProjection | null;
   },
-): SetupEngineResponse {
+) {
   const reconciled = setupStateToGraph(
     graph.tripId,
     reconcileTripShellState(graphToSetupState(graph)),
@@ -44,8 +43,31 @@ export function buildSetupEngineResponse(
     calendarProjection,
     calendarRenderModel,
     readiness,
-    warnings: [],
     conflicts,
+  };
+}
+
+export function buildSetupEngineResponse(
+  graph: TripEntityGraph,
+  options?: {
+    groupId?: string;
+    inviteCode?: string;
+    rosterSummary?: RosterSummary;
+    costLedger?: CostLedgerProjection | null;
+  },
+): SetupEngineResponse {
+  const view = deriveEngineViewFromGraph(graph, {
+    groupId: options?.groupId,
+    costLedger: options?.costLedger,
+  });
+
+  return {
+    graph: view.graph,
+    calendarProjection: view.calendarProjection,
+    calendarRenderModel: view.calendarRenderModel,
+    readiness: view.readiness,
+    warnings: [],
+    conflicts: view.conflicts,
     inviteCode: options?.inviteCode,
     rosterSummary: options?.rosterSummary,
     costLedger: options?.costLedger ?? undefined,
