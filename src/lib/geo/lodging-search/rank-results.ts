@@ -8,6 +8,29 @@ import type { LodgingMatchTier, LodgingSearchResult } from "./types";
 
 const STOP_WORDS = /^(the|a|an|hotel|hotels|inn|hostel|resort)$/i;
 
+const COUNTRY_LABELS = new Set([
+  "japan",
+  "thailand",
+  "australia",
+  "new zealand",
+  "united states",
+  "united kingdom",
+  "singapore",
+  "indonesia",
+  "vietnam",
+  "cambodia",
+  "malaysia",
+  "france",
+  "italy",
+  "spain",
+  "germany",
+  "china",
+  "south korea",
+  "korea",
+  "taiwan",
+  "philippines",
+]);
+
 function normalize(value: string): string {
   return value
     .trim()
@@ -33,16 +56,71 @@ function nameSimilarity(query: string, label: string): number {
   return matched.length / qTokens.length;
 }
 
+/** Google secondary text is often "Country, City, Ward, …" — not "City, Region". */
+export function cityFromSecondarySublabel(sublabel: string): string | null {
+  const parts = sublabel
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!parts.length) return null;
+
+  let working = [...parts];
+  const lastLower = working[working.length - 1]?.toLowerCase() ?? "";
+  if (COUNTRY_LABELS.has(lastLower)) {
+    working = working.slice(0, -1);
+  }
+
+  const firstLower = working[0]?.toLowerCase() ?? "";
+  if (COUNTRY_LABELS.has(firstLower) && working.length >= 2) {
+    return working[1]!;
+  }
+
+  for (let i = 0; i < working.length; i++) {
+    const part = working[i]!;
+    if (/^(ward|district|prefecture|city|county|province)$/i.test(part) && i > 0) {
+      return working[i - 1]!;
+    }
+    if (/\b(ward|district|prefecture)\b/i.test(part) && i > 0) {
+      return working[i - 1]!;
+    }
+  }
+
+  const first = working[0] ?? "";
+  if (first && !/^\d/.test(first) && !looksLikeStreetPart(first)) {
+    return first;
+  }
+
+  return working.find((part) => !looksLikeStreetPart(part) && !/^\d/.test(part)) ?? null;
+}
+
+function looksLikeStreetPart(part: string): boolean {
+  return /^\d/.test(part) || /(chome|chōme|street|road|rd|ave|avenue|soi)/i.test(part);
+}
+
 export function candidateCityLabel(candidate: AddressSuggestion): string {
   if (candidate.sublabel?.trim()) {
-    const first = candidate.sublabel.split(",")[0]?.trim();
-    if (first) return first;
+    const fromSecondary = cityFromSecondarySublabel(candidate.sublabel);
+    if (fromSecondary) return fromSecondary;
   }
   if (candidate.address?.trim()) {
     const fromAddress = inferCityLabelFromAddress(candidate.address);
     if (fromAddress) return fromAddress.split(",")[0]?.trim() ?? fromAddress;
+
+    const parts = candidate.address.split(",").map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      if (/prefecture$/i.test(part)) {
+        const city = part.replace(/\s*prefecture$/i, "").trim();
+        if (city) return city;
+      }
+    }
   }
   return "";
+}
+
+function labelMentionsStayCity(label: string, stayCity: string): boolean {
+  const stayToken = stayCity.split(",")[0]?.trim().toLowerCase() ?? "";
+  if (!stayToken || stayToken.length < 3) return false;
+  return normalize(label).includes(normalize(stayToken));
 }
 
 export function candidateMatchesStayCity(
@@ -55,6 +133,8 @@ export function candidateMatchesStayCity(
 
   if (locationsMatch(resolved, stay)) return "exact";
   if (placesShareMetro(resolved, stay)) return "metro";
+  if (labelMentionsStayCity(candidate.label, stay)) return "exact";
+  if (candidate.address && labelMentionsStayCity(candidate.address, stay)) return "exact";
   return null;
 }
 

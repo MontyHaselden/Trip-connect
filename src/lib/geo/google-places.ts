@@ -125,6 +125,100 @@ export async function searchGoogleAddresses(params: {
   }
 }
 
+type GoogleTextSearchResponse = {
+  places?: Array<{
+    id?: string;
+    displayName?: { text?: string };
+    formattedAddress?: string;
+    location?: { latitude?: number; longitude?: number };
+  }>;
+};
+
+/** Text Search finds some lodging properties that Autocomplete omits. */
+export async function searchGoogleTextPlaces(params: {
+  query: string;
+  countryCodes?: string[];
+  limit?: number;
+  lodgingOnly?: boolean;
+  locationBias?: { lat: number; lng: number; radiusMeters: number };
+}): Promise<AddressSuggestion[]> {
+  const key = apiKey();
+  const q = params.query.trim();
+  if (!key || q.length < 2) return [];
+
+  const body: Record<string, unknown> = {
+    textQuery: q,
+    languageCode: "en",
+  };
+  if (params.lodgingOnly) {
+    body.includedType = "lodging";
+  }
+  if (params.countryCodes?.length) {
+    body.regionCode = params.countryCodes[0]!.toUpperCase();
+  }
+  if (params.locationBias) {
+    body.locationBias = {
+      circle: {
+        center: {
+          latitude: params.locationBias.lat,
+          longitude: params.locationBias.lng,
+        },
+        radius: params.locationBias.radiusMeters,
+      },
+    };
+  }
+
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location",
+      },
+      body: JSON.stringify(body),
+      next: { revalidate: 3600 },
+    });
+
+    if (!res.ok) return [];
+
+    const data = (await res.json()) as GoogleTextSearchResponse;
+    const out: AddressSuggestion[] = [];
+    const seen = new Set<string>();
+
+    for (const place of data.places ?? []) {
+      const label = place.displayName?.text?.trim();
+      if (!label) continue;
+
+      const placeId = place.id?.startsWith("places/")
+        ? place.id.slice("places/".length)
+        : place.id;
+      const address = place.formattedAddress?.trim();
+      const keyLabel = label.toLowerCase();
+      if (seen.has(keyLabel)) continue;
+      seen.add(keyLabel);
+
+      const sublabel = address
+        ? address.split(",").slice(1, 3).join(", ").trim() || undefined
+        : undefined;
+
+      out.push({
+        id: placeId ?? `google-text-${keyLabel}`,
+        label,
+        sublabel,
+        address,
+        name: label,
+        placeId,
+        source: "google",
+      });
+    }
+
+    return out.slice(0, params.limit ?? 10);
+  } catch {
+    return [];
+  }
+}
+
 type AddressComponent = {
   longText?: string;
   shortText?: string;

@@ -28,6 +28,25 @@ describe("candidateMatchesStayCity", () => {
     assert.equal(tier, "exact");
   });
 
+  it("matches Google Japan secondary text (Country, City, Ward)", () => {
+    const tier = candidateMatchesStayCity(
+      suggestion({
+        label: "THE KNOT HIROSHIMA（ザ ノット 広島）",
+        sublabel: "Japan, Hiroshima, Naka Ward, Otemachi, 3 Chome−1−1",
+      }),
+      "Hiroshima",
+    );
+    assert.equal(tier, "exact");
+  });
+
+  it("matches when property name includes the stay city", () => {
+    const tier = candidateMatchesStayCity(
+      suggestion({ label: "THE KNOT HIROSHIMA", sublabel: "Japan, Naka Ward" }),
+      "Hiroshima",
+    );
+    assert.equal(tier, "exact");
+  });
+
   it("matches metro areas like NRT and Tokyo", () => {
     const tier = candidateMatchesStayCity(
       suggestion({ label: "Narita Airport Hotel", sublabel: "Narita, Chiba" }),
@@ -68,6 +87,7 @@ describe("rankAndFilterLodgingResults", () => {
 
     assert.equal(widened, false);
     assert.equal(results[0]?.label, "THE KNOT HIROSHIMA");
+    assert.equal(results[0]?.matchTier, "exact");
     assert.equal(results.length, 1);
   });
 

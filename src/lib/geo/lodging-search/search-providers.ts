@@ -1,5 +1,5 @@
 import type { AddressSuggestion } from "@/lib/geo/google-places";
-import { searchGoogleAddresses } from "@/lib/geo/google-places";
+import { searchGoogleAddresses, searchGoogleTextPlaces } from "@/lib/geo/google-places";
 
 type NominatimRow = {
   place_id: number;
@@ -98,6 +98,24 @@ async function searchNominatimAddresses(params: {
   }
 }
 
+function mergeAddressSuggestions(
+  batches: AddressSuggestion[],
+  limit = 10,
+): AddressSuggestion[] {
+  const seen = new Set<string>();
+  const out: AddressSuggestion[] = [];
+
+  for (const row of batches) {
+    const dedupe = (row.placeId ?? row.label).toLowerCase();
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    out.push(row);
+    if (out.length >= limit) break;
+  }
+
+  return out;
+}
+
 export async function runLodgingProviderSearch(params: {
   query: string;
   countryCodes?: string[];
@@ -106,7 +124,20 @@ export async function runLodgingProviderSearch(params: {
   lodgingOnly?: boolean;
   locationBias?: { lat: number; lng: number; radiusMeters: number };
 }): Promise<AddressSuggestion[]> {
-  const google = await searchGoogleAddresses(params);
-  if (google.length) return google;
-  return searchNominatimAddresses(params);
+  const cityPart = params.cityHint?.split(",")[0]?.trim() ?? params.cityHint?.trim();
+  const textQuery = cityPart ? `${params.query.trim()} ${cityPart}` : params.query.trim();
+
+  const [autocomplete, textSearch, nominatim] = await Promise.all([
+    searchGoogleAddresses(params),
+    searchGoogleTextPlaces({
+      query: textQuery,
+      countryCodes: params.countryCodes,
+      lodgingOnly: params.lodgingOnly,
+      locationBias: params.locationBias,
+      limit: params.limit,
+    }),
+    searchNominatimAddresses(params),
+  ]);
+
+  return mergeAddressSuggestions([...autocomplete, ...textSearch, ...nominatim], params.limit);
 }

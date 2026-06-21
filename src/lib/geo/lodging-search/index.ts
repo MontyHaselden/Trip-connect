@@ -22,6 +22,7 @@ export { planLodgingQueryAttempts, plannerHints } from "./query-planner";
 export {
   candidateCityLabel,
   candidateMatchesStayCity,
+  cityFromSecondarySublabel,
   mapToTripCityVocabulary,
   rankAndFilterLodgingResults,
 } from "./rank-results";
