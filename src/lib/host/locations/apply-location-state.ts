@@ -11,6 +11,7 @@ import {
   trips,
 } from "@/lib/db/schema";
 import { shouldDeleteOrphanTransportLeg } from "@/lib/host/setup/transport-leg-sync";
+import { encodeTransportLegNotes } from "@/lib/host/setup/transport-leg-notes";
 import {
   isAccommodationCheckItemTitle,
   resolveCheckoutActivityTime,
@@ -128,6 +129,25 @@ async function ensureDay(
   return created.id;
 }
 
+/** Upsert only the given trip_days rows (no wizard items, timezone inference, or transport sync). */
+export async function syncTripDaysPatch(
+  tripId: string,
+  daysToSync: DayPlaceDraft[],
+  basics: TripLocationState["basics"],
+  allDaysForSort?: DayPlaceDraft[],
+): Promise<void> {
+  if (!daysToSync.length) return;
+  const sortSource = allDaysForSort ?? daysToSync;
+  const sorted = [...sortSource].sort((a, b) => a.date.localeCompare(b.date));
+  const sortOrderByDate = new Map(sorted.map((d, i) => [d.date, i] as const));
+  const tripDates = { startDate: basics.startDate, endDate: basics.endDate };
+
+  for (const day of daysToSync) {
+    const sortOrder = sortOrderByDate.get(day.date) ?? 0;
+    await ensureDay(tripId, day, sortOrder, tripDates);
+  }
+}
+
 async function upsertWizardItem(params: {
   tripId: string;
   dayId: string;
@@ -212,7 +232,7 @@ function legToRow(
     operator: leg.operator,
     referenceNumber: leg.referenceNumber,
     flightNumber: leg.flightNumber,
-    notes: leg.notes,
+    notes: encodeTransportLegNotes(leg as { notes: string | null; surfaceOnly?: boolean }),
     intercityFromCity: null as string | null,
     intercityToCity: null as string | null,
     sortOrder: 0,
@@ -291,7 +311,7 @@ export async function syncTransportLegsTable(
   }
 }
 
-async function syncAccommodationStays(
+export async function syncAccommodationStays(
   tripId: string,
   mainGroupId: string | null,
   stays: AccommodationStayDraft[],

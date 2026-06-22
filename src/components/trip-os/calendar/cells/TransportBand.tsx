@@ -220,60 +220,18 @@ export function TransportBand(props: {
       {showTransportCorridor && primary && secondary ? (
         <>
           <div
-            className="absolute inset-y-0 left-0 z-[8] flex flex-col overflow-hidden"
-            style={{ width: `${TRANSPORT_CORRIDOR_LEFT_SHARE * 100}%` }}
+            className="absolute inset-y-0 left-0 z-[8] flex flex-col overflow-hidden px-1 pb-1 pt-4"
+            style={{ width: `${TRANSPORT_CORRIDOR_LEFT_SHARE * 100}%`, backgroundColor: tripLocationColor(primary, locationColorByKey) }}
+            title={primary}
           >
-            <div
-              className="relative h-3/4 min-h-0 shrink-0 px-1 pb-1 pt-4"
-              style={{ backgroundColor: tripLocationColor(primary, locationColorByKey) }}
-              title={primary}
+            <span
+              className="absolute bottom-1 left-1 truncate text-[9px] font-semibold leading-tight"
+              style={{ color: tripLocationTextColor(primary, locationColorByKey), maxWidth: "calc(100% - 0.25rem)" }}
             >
-              <span
-                className="absolute bottom-1 left-1 truncate text-[9px] font-semibold leading-tight"
-                style={{ color: tripLocationTextColor(primary, locationColorByKey), maxWidth: "calc(100% - 0.25rem)" }}
-              >
-                {corridorAbbrev(primary)}
-              </span>
-            </div>
-            <div
-              className={[
-                "relative h-1/4 min-h-0 shrink-0 px-1",
-                corridorDepartureAcco && !corridorDepartureAccoColors
-                  ? "border-t border-violet-300/70 bg-violet-100"
-                  : corridorDepartureAcco
-                    ? "border-t"
-                    : "",
-              ].join(" ")}
-              style={
-                corridorDepartureAcco && corridorDepartureAccoColors
-                  ? {
-                      backgroundColor: corridorDepartureAccoColors.fill,
-                      borderTopColor: corridorDepartureAccoColors.border,
-                    }
-                  : corridorDepartureAcco
-                    ? undefined
-                    : { backgroundColor: tripLocationColor(primary, locationColorByKey) }
-              }
-              title={corridorDepartureAcco ?? undefined}
-            >
-              {corridorDepartureAcco ? (
-                <span
-                  className={[
-                    "absolute bottom-0.5 left-1 truncate text-[8px] font-semibold leading-tight",
-                    corridorDepartureAccoColors ? "" : "text-violet-950",
-                  ].join(" ")}
-                  style={
-                    corridorDepartureAccoColors
-                      ? { color: corridorDepartureAccoColors.text }
-                      : undefined
-                  }
-                >
-                  {corridorAbbrev(corridorDepartureAcco)}
-                </span>
-              ) : null}
-            </div>
+              {corridorAbbrev(primary)}
+            </span>
           </div>
-          {onTransportCorridorClick ? (
+          {onTransportCorridorClick && TRANSPORT_CORRIDOR_WIDTH > 0 ? (
             <button
               type="button"
               className="absolute inset-y-0 z-[18] flex cursor-pointer flex-col items-center justify-center border-x-2 border-indigo-400/70 bg-zinc-200/95 hover:bg-zinc-300"
@@ -296,58 +254,16 @@ export function TransportBand(props: {
             </button>
           ) : null}
           <div
-            className="absolute inset-y-0 right-0 z-[8] flex flex-col overflow-hidden"
-            style={{ width: `${DEFAULT_HALF_SHARE * 100}%` }}
+            className="absolute inset-y-0 right-0 z-[8] flex flex-col overflow-hidden px-1 pb-1 pt-4"
+            style={{ width: `${DEFAULT_HALF_SHARE * 100}%`, backgroundColor: tripLocationColor(secondary, locationColorByKey) }}
+            title={secondary}
           >
-            <div
-              className="relative h-3/4 min-h-0 shrink-0 px-1 pb-1 pt-4"
-              style={{ backgroundColor: tripLocationColor(secondary, locationColorByKey) }}
-              title={secondary}
+            <span
+              className="absolute bottom-1 right-1 truncate text-right text-[9px] font-semibold leading-tight"
+              style={{ color: tripLocationTextColor(secondary, locationColorByKey), maxWidth: "calc(100% - 0.25rem)" }}
             >
-              <span
-                className="absolute bottom-1 right-1 truncate text-right text-[9px] font-semibold leading-tight"
-                style={{ color: tripLocationTextColor(secondary, locationColorByKey), maxWidth: "calc(100% - 0.25rem)" }}
-              >
-                {corridorAbbrev(secondary)}
-              </span>
-            </div>
-            <div
-              className={[
-                "relative h-1/4 min-h-0 shrink-0 px-1",
-                corridorArrivalAcco && !corridorArrivalAccoColors
-                  ? "border-t border-violet-300/70 bg-violet-100"
-                  : corridorArrivalAcco
-                    ? "border-t"
-                    : "",
-              ].join(" ")}
-              style={
-                corridorArrivalAcco && corridorArrivalAccoColors
-                  ? {
-                      backgroundColor: corridorArrivalAccoColors.fill,
-                      borderTopColor: corridorArrivalAccoColors.border,
-                    }
-                  : corridorArrivalAcco
-                    ? undefined
-                    : { backgroundColor: tripLocationColor(secondary, locationColorByKey) }
-              }
-              title={corridorArrivalAcco ?? undefined}
-            >
-              {corridorArrivalAcco ? (
-                <span
-                  className={[
-                    "absolute bottom-0.5 right-1 truncate text-right text-[8px] font-semibold leading-tight",
-                    corridorArrivalAccoColors ? "" : "text-violet-950",
-                  ].join(" ")}
-                  style={
-                    corridorArrivalAccoColors
-                      ? { color: corridorArrivalAccoColors.text }
-                      : undefined
-                  }
-                >
-                  {corridorAbbrev(corridorArrivalAcco)}
-                </span>
-              ) : null}
-            </div>
+              {corridorAbbrev(secondary)}
+            </span>
           </div>
         </>
       ) : null}

@@ -3,52 +3,37 @@
 import { useMemo, useState } from "react";
 
 import { emptyCostLedgerProjection } from "@/lib/trip-engine/cost-ledger/empty-projection";
-import type { CostLedgerProjection, CostLineItemDraft } from "@/lib/trip-engine/cost-ledger/types";
+import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import { formatMoney, parseMoneyInput } from "@/lib/trip-engine/cost-ledger/format-money";
 import type { RosterSummary } from "@/lib/trip-engine/types";
 
 import { CostLineDrawer, type CostLineFormValues } from "../costs/CostLineDrawer";
 import { FinanceSpreadsheet } from "../finance/FinanceSpreadsheet";
+import { linePayload, patchLinePayload } from "../finance/finance-line-patch";
 
 type FinanceAction =
   | { action: "updateSettings"; settings: Record<string, unknown> }
   | { action: "addLine"; line: Record<string, unknown> }
   | { action: "updateLine"; lineId: string; line: Record<string, unknown> }
   | { action: "deleteLine"; lineId: string }
+  | { action: "dismissAndDeleteLine"; lineId: string }
+  | { action: "removeLineFromTrip"; lineId: string }
   | { action: "deleteEmptyLines" }
   | { action: "addFund"; fund: Record<string, unknown> }
   | { action: "deleteFund"; fundId: string }
   | { action: "addPayment"; payment: Record<string, unknown> }
   | { action: "deletePayment"; paymentId: string };
 
-function linePayload(values: CostLineFormValues): Record<string, unknown> {
-  const payload: Record<string, unknown> = {
-    category: values.category,
-    description: values.description,
-    notes: values.notes || null,
-    totalAmountCents: values.totalAmountCents,
-    currency: values.currency,
-    quantity: values.quantity,
-    allocationRuleType: values.allocationRuleType,
-    allocationRulePayload: {},
-  };
-  if (values.allocationRuleType === "equal_group" && values.groupId) {
-    payload.allocationRulePayload = { groupId: values.groupId };
-  }
-  if (values.allocationRuleType === "assign_one" && values.participantId) {
-    payload.allocationRulePayload = { participantId: values.participantId };
-  }
-  return payload;
-}
+import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 export function FinanceSection(props: {
   roster: RosterSummary;
+  graph?: TripEntityGraph | null;
   costLedger: CostLedgerProjection | null;
   onFinanceAction: (payload: FinanceAction) => Promise<boolean>;
   saving?: boolean;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editingLine, setEditingLine] = useState<CostLineItemDraft | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showEmptyLines, setShowEmptyLines] = useState(true);
   const [bottomTab, setBottomTab] = useState<"funds" | "payments">("funds");
@@ -90,29 +75,22 @@ export function FinanceSection(props: {
   const hasRoster = costSplitParticipants.length > 0;
 
   function openAddDrawer() {
-    setEditingLine(null);
     setDrawerOpen(true);
   }
 
-  function openEditDrawer(line: CostLineItemDraft) {
-    setEditingLine(line);
-    setDrawerOpen(true);
+  async function patchLine(lineId: string, patch: Partial<CostLineFormValues>) {
+    const line = ledgerForGrid.lineItems.find((l) => l.id === lineId);
+    if (!line) return;
+    await props.onFinanceAction({
+      action: "updateLine",
+      lineId,
+      line: patchLinePayload(line, patch),
+    });
   }
 
   async function saveLine(values: CostLineFormValues) {
     const payload = linePayload(values);
-    if (values.lineId) {
-      await props.onFinanceAction({ action: "updateLine", lineId: values.lineId, line: payload });
-    } else {
-      await props.onFinanceAction({ action: "addLine", line: payload });
-    }
-  }
-
-  async function deleteLine(lineId: string) {
-    if (!confirm("Delete this row?")) return;
-    await props.onFinanceAction({ action: "deleteLine", lineId });
-    setDrawerOpen(false);
-    setEditingLine(null);
+    await props.onFinanceAction({ action: "addLine", line: payload });
   }
 
   async function clearEmptyLines() {
@@ -174,8 +152,18 @@ export function FinanceSection(props: {
           <FinanceSpreadsheet
             costLedger={ledgerForGrid}
             roster={props.roster}
+            graph={props.graph}
             showEmptyLines={showEmptyLines}
-            onEditLine={openEditDrawer}
+            onPatchLine={(lineId, patch) => void patchLine(lineId, patch)}
+            onDismissLine={async (lineId) => {
+              await props.onFinanceAction({ action: "dismissAndDeleteLine", lineId });
+            }}
+            onDeleteLine={async (lineId) => {
+              await props.onFinanceAction({ action: "deleteLine", lineId });
+            }}
+            onRemoveLineFromTrip={async (lineId) => {
+              await props.onFinanceAction({ action: "removeLineFromTrip", lineId });
+            }}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
@@ -264,13 +252,8 @@ export function FinanceSection(props: {
         open={drawerOpen}
         roster={props.roster}
         baseCurrency={settings.baseCurrency}
-        editingLine={editingLine}
-        onClose={() => {
-          setDrawerOpen(false);
-          setEditingLine(null);
-        }}
+        onClose={() => setDrawerOpen(false)}
         onSave={saveLine}
-        onDelete={deleteLine}
       />
     </div>
   );

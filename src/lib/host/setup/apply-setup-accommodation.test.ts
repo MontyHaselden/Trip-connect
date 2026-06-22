@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { applySetupAccommodationChange } from "./apply-setup-accommodation";
+import { unallocateLegsForStayRange } from "./transport-allocation";
 import { TRANSPORT_CORRIDOR_LEFT_SHARE } from "./transport-corridor";
 import type { TripSetupState } from "./types";
 import type { AccommodationStayDraft } from "@/lib/host/wizard/types";
@@ -95,5 +96,77 @@ describe("applySetupAccommodationChange", () => {
     assert.equal(dec15?.primaryCity, "Hiroshima");
     assert.equal(dec15?.secondaryCity, "Kyoto");
     assert.equal(dec15?.primaryShare, TRANSPORT_CORRIDOR_LEFT_SHARE);
+  });
+
+  it("replaces a transport travel day when applying a stay with replaceLocationLabels", () => {
+    const kagoshimaStay = (): AccommodationStayDraft => ({
+      id: "kagoshima-hotel",
+      cityLabel: "Kagoshima",
+      stayType: "hotel",
+      name: "Kagoshima Hotel",
+      url: null,
+      address: null,
+      phone: null,
+      checkInDate: "2026-12-06",
+      checkOutDate: "2026-12-13",
+      notes: null,
+      isHomestayGroup: false,
+      multipleInCity: false,
+      originGroupId: "main",
+    });
+
+    const state: TripSetupState = {
+      ...baseState(),
+      dayPlacesByGroupId: {
+        main: [
+          {
+            date: "2026-12-13",
+            primaryCity: "Tottori",
+            secondaryCity: "Hiroshima",
+            primaryShare: TRANSPORT_CORRIDOR_LEFT_SHARE,
+            dayType: "travel",
+            includeBuffer: false,
+          },
+        ],
+      },
+      intercityLegs: [
+        {
+          id: "leg-tottori-hiroshima",
+          legKind: "city_change",
+          transportType: "train",
+          bookingStatus: "not_booked",
+          travelDate: "2026-12-13",
+          departureTime: null,
+          arrivalTime: null,
+          fromCity: "Tottori",
+          toCity: "Hiroshima",
+          fromStation: null,
+          toStation: null,
+          operator: null,
+          referenceNumber: null,
+          flightNumber: null,
+          notes: null,
+          intercityFromCity: "Tottori",
+          intercityToCity: "Hiroshima",
+          originGroupId: "main",
+          sourceEntityId: null,
+        },
+      ],
+      accommodationStays: [kagoshimaStay()],
+    };
+
+    const detached = unallocateLegsForStayRange(state, "main", kagoshimaStay());
+    assert.equal(detached.intercityLegs[0]?.surfaceOnly, true);
+
+    const next = applySetupAccommodationChange(detached, "main", {
+      replaceStayIds: new Set(["kagoshima-hotel"]),
+    });
+    const dec13 = next.dayPlacesByGroupId.main?.find((d) => d.date === "2026-12-13");
+    assert.ok(dec13);
+    assert.ok(
+      dec13!.primaryCity.toLowerCase().includes("kagoshima") ||
+        (dec13!.secondaryCity?.toLowerCase().includes("kagoshima") ?? false),
+    );
+    assert.ok(!dec13!.primaryCity.toLowerCase().includes("tottori"));
   });
 });

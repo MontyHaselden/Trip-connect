@@ -2,6 +2,7 @@ import { placesShareMetro } from "@/lib/geo/airport-codes";
 import { inferCityLabelFromAddress } from "@/lib/geo/accommodation-search";
 import { metroDisplayLabel } from "@/lib/host/setup/infer-flight-calendar";
 import { inferDayPlacesFromStay, normalizeInteriorStayDays } from "@/lib/host/setup-inference";
+import { fillAccommodationInteriorGaps } from "@/lib/host/setup/fill-accommodation-gaps";
 import { inferStaysFromDayPlaces, getEmptyHalf, locationsMatch } from "@/lib/host/wizard/location-stays";
 import { arrivalDate, isLateArrival } from "@/lib/host/wizard/transport-day-placement";
 import type { AccommodationStayDraft, DayPlaceDraft, TransportLegDraft } from "@/lib/host/wizard/types";
@@ -430,5 +431,5 @@ export function applyStaysToDayPlaces(
       replaceExisting ? { replaceExisting: true } : undefined,
     );
   }
-  return normalizeInteriorStayDays(result, stays);
+  return fillAccommodationInteriorGaps(normalizeInteriorStayDays(result, stays), stays);
 }

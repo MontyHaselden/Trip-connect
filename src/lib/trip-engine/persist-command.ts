@@ -2,12 +2,19 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { entityBookingDetails, groups, trips } from "@/lib/db/schema";
-import { applyTripSetupState } from "@/lib/host/setup/apply-setup-state";
+import { applyTripSetupState, persistResetGroupFromMain } from "@/lib/host/setup/apply-setup-state";
+import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import { purgeTransportItineraryForRemovedLeg, reconcileTransportItineraryItems } from "@/lib/host/import/transport-itinerary-reconcile";
 import { graphToSetupState } from "./adapters";
 import { applyCommands } from "./apply-commands";
 import { syncActivitiesForTrip } from "./activities-persistence";
+import { loadTripGraph } from "./load-trip-graph";
 import { normalizeCommand, type TripCommand } from "./commands";
+import {
+  deleteCostLinesForActivity,
+  deleteCostLinesForStay,
+  deleteCostLinesForTransportLeg,
+} from "./cost-ledger/cost-line-cascade";
 import { dayPlacesForGroup } from "./selectors";
 import {
   mergeSetDayPlacesDays,
@@ -37,7 +44,11 @@ function findTransportLeg(
   return undefined;
 }
 
-async function persistGroupCommand(tripId: string, command: TripCommand): Promise<void> {
+async function persistGroupCommand(
+  tripId: string,
+  command: TripCommand,
+  graphAfter?: TripEntityGraph,
+): Promise<void> {
   if (command.type === "createGroup") {
     const maxSort = await db
       .select({ sortOrder: groups.sortOrder })
@@ -47,13 +58,81 @@ async function persistGroupCommand(tripId: string, command: TripCommand): Promis
       .then((rows) => rows[rows.length - 1]?.sortOrder ?? 0);
 
     await db.insert(groups).values({
+      ...(command.id ? { id: command.id } : {}),
       tripId,
       name: command.name,
       type: command.groupType as (typeof groups.$inferInsert)["type"],
       description: command.description ?? null,
       sortOrder: maxSort + 1,
       isMain: false,
+      inheritMode: command.inheritMode ?? null,
+      personalForParticipantId: command.personalForParticipantId ?? null,
     });
+    return;
+  }
+
+  if (command.type === "setGroupInheritMode") {
+    await db
+      .update(groups)
+      .set({ inheritMode: command.mode })
+      .where(and(eq(groups.tripId, tripId), eq(groups.id, command.groupId)));
+    return;
+  }
+
+  if (command.type === "ensurePersonalGroup") {
+    const graphGroup = graphAfter?.groups.find(
+      (g) => g.personalForParticipantId === command.participantId && !g.isMain,
+    );
+    const existing = await db
+      .select({ id: groups.id })
+      .from(groups)
+      .where(
+        and(
+          eq(groups.tripId, tripId),
+          eq(groups.personalForParticipantId, command.participantId),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    if (existing) {
+      await db
+        .update(groups)
+        .set({ inheritMode: command.mode })
+        .where(eq(groups.id, existing.id));
+      return;
+    }
+
+    const maxSort = await db
+      .select({ sortOrder: groups.sortOrder })
+      .from(groups)
+      .where(eq(groups.tripId, tripId))
+      .orderBy(asc(groups.sortOrder))
+      .then((rows) => rows[rows.length - 1]?.sortOrder ?? 0);
+
+    const groupId = graphGroup?.id;
+    const [created] = await db
+      .insert(groups)
+      .values({
+        ...(groupId ? { id: groupId } : {}),
+        tripId,
+        name: command.participantName,
+        type: "split_travel",
+        description: null,
+        sortOrder: maxSort + 1,
+        isMain: false,
+        inheritMode: command.mode,
+        personalForParticipantId: command.participantId,
+      })
+      .returning({ id: groups.id });
+
+    if (created) {
+      const { participantGroups } = await import("@/lib/db/schema");
+      await db
+        .insert(participantGroups)
+        .values({ participantId: command.participantId, groupId: created.id })
+        .onConflictDoNothing();
+    }
     return;
   }
 
@@ -141,9 +220,15 @@ async function persistTripMetaCommand(tripId: string, command: TripCommand): Pro
   }
 }
 
+function isResetGroupFromMainCommand(command: TripCommand): boolean {
+  return command.type === "resetGroupFromMain";
+}
+
 function isMetaCommand(command: TripCommand): boolean {
   return (
     command.type === "createGroup" ||
+    command.type === "setGroupInheritMode" ||
+    command.type === "ensurePersonalGroup" ||
     command.type === "updateGroup" ||
     command.type === "deleteGroup" ||
     command.type === "addBookingDetails" ||
@@ -155,6 +240,14 @@ function isMetaCommand(command: TripCommand): boolean {
 
 function groupIdFromCommand(command: TripCommand): string | undefined {
   if ("groupId" in command && typeof command.groupId === "string") return command.groupId;
+  return undefined;
+}
+
+export function groupIdFromCommands(commands: TripCommand[]): string | undefined {
+  for (const command of commands) {
+    const groupId = groupIdFromCommand(command);
+    if (groupId) return groupId;
+  }
   return undefined;
 }
 
@@ -186,6 +279,42 @@ function commandsNeedTransportItinerarySync(commands: TripCommand[]): boolean {
 
 function isBasicsOnlyCommand(command: TripCommand): boolean {
   return command.type === "updateBasics";
+}
+
+function isDayPlacesOnlyCommand(command: TripCommand): boolean {
+  return command.type === "paintDayRange" || command.type === "setDayPlaces";
+}
+
+function isDayPlacesOnlyBatch(commands: TripCommand[]): boolean {
+  return commands.length > 0 && commands.every(isDayPlacesOnlyCommand);
+}
+
+function isAccommodationStayCommand(command: TripCommand): boolean {
+  return (
+    command.type === "addStay" ||
+    command.type === "updateStay" ||
+    command.type === "removeStay"
+  );
+}
+
+function isAccommodationStayBatch(commands: TripCommand[]): boolean {
+  return commands.length > 0 && commands.every(isAccommodationStayCommand);
+}
+
+function affectedDatesFromCommands(commands: TripCommand[]): string[] {
+  const dates = new Set<string>();
+  for (const command of commands) {
+    if (command.type === "setDayPlaces") {
+      for (const day of command.days) {
+        if (day.date) dates.add(day.date);
+      }
+    } else if (command.type === "paintDayRange") {
+      for (const iso of enumerateDates(command.rangeStart, command.rangeEnd || command.rangeStart)) {
+        dates.add(iso);
+      }
+    }
+  }
+  return [...dates];
 }
 
 async function persistBasicsCommand(tripId: string, basics: TripEntityGraph["basics"]): Promise<void> {
@@ -245,19 +374,34 @@ export async function persistCommands(
     if (command.type === "removeTransportLeg") {
       const leg = findTransportLeg(graph, command.legId, command.bucket);
       await purgeTransportItineraryForRemovedLeg(tripId, command.legId, leg);
+      await deleteCostLinesForTransportLeg(tripId, command.legId);
+    }
+    if (command.type === "removeStay") {
+      await deleteCostLinesForStay(tripId, command.stayId);
+    }
+    if (command.type === "removeActivity") {
+      await deleteCostLinesForActivity(tripId, command.activityId);
     }
   }
 
   const result = applyCommands(graph, normalized);
 
   for (const command of normalized) {
+    if (command.type === "resetGroupFromMain") {
+      await persistResetGroupFromMain(tripId, command.groupId);
+    }
+  }
+
+  for (const command of normalized) {
     if (isMetaCommand(command)) {
       if (
         command.type === "createGroup" ||
+        command.type === "setGroupInheritMode" ||
+        command.type === "ensurePersonalGroup" ||
         command.type === "updateGroup" ||
         command.type === "deleteGroup"
       ) {
-        await persistGroupCommand(tripId, command);
+        await persistGroupCommand(tripId, command, result.graph);
       } else if (
         command.type === "addBookingDetails" ||
         command.type === "updateBookingDetails"
@@ -269,11 +413,25 @@ export async function persistCommands(
     }
   }
 
-  const stateCommands = normalized.filter((c) => !isMetaCommand(c));
+  const stateCommands = normalized.filter(
+    (c) => !isMetaCommand(c) && !isResetGroupFromMainCommand(c),
+  );
   if (stateCommands.length > 0) {
     const activeGroupId = groupIdFromCommand(stateCommands[0]!) ?? graph.mainGroupId;
     if (stateCommands.every(isBasicsOnlyCommand)) {
       await persistBasicsCommand(tripId, result.graph.basics);
+    } else if (isDayPlacesOnlyBatch(stateCommands)) {
+      await applyTripSetupState(tripId, graphToSetupState(result.graph), {
+        activeGroupId,
+        persistMode: "dayPlaces",
+        syncMainAccommodationStays: stateCommands.some((c) => c.type === "paintDayRange"),
+        affectedDates: affectedDatesFromCommands(stateCommands),
+      });
+    } else if (isAccommodationStayBatch(stateCommands)) {
+      await applyTripSetupState(tripId, graphToSetupState(result.graph), {
+        activeGroupId,
+        persistMode: "accommodation",
+      });
     } else {
       const accommodationOnly = isAccommodationOnlyBatch(stateCommands);
       const syncTransportItems = commandsNeedTransportItinerarySync(stateCommands);
@@ -281,6 +439,7 @@ export async function persistCommands(
         activeGroupId,
         skipWizardItineraryItems: true,
         syncTransportItems,
+        syncAccommodationItems: false,
       });
       if (!accommodationOnly) {
         await syncActivitiesForTrip(tripId, result.graph.activities);
@@ -290,6 +449,17 @@ export async function persistCommands(
           intercityLegs: result.graph.intercityLegs,
         });
       }
+    }
+  }
+
+  if (normalized.some(isResetGroupFromMainCommand)) {
+    const reloaded = await loadTripGraph(tripId);
+    if (reloaded) {
+      return {
+        graph: reloaded,
+        warnings: result.warnings,
+        conflicts: result.conflicts ?? [],
+      };
     }
   }
 

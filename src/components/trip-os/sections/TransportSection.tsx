@@ -71,38 +71,77 @@ export function TransportSection(props: {
     }
   }
 
+  async function toggleSurfaceOnly(leg: IntercityLegDraft) {
+    await props.onDispatch([
+      {
+        type: "updateTransportLeg",
+        groupId: props.groupId,
+        bucket: "intercity",
+        legId: leg.id,
+        patch: { surfaceOnly: !leg.surfaceOnly },
+      },
+    ]);
+  }
+
   return (
     <TripSectionShell
       eyebrow="Advanced"
       title="Transport"
-      description="Flights, trains, and intercity legs."
+      description="Flights, trains, and intercity legs. Legs can be allocated to the calendar or kept unallocated until the days match."
     >
       <ul className="space-y-2">
-        {all.map((leg) => (
+        {all.map((leg) => {
+          const intercity = leg as IntercityLegDraft;
+          const isIntercity = props.graph.intercityLegs.some((x) => x.id === leg.id);
+          return (
           <li
             key={leg.id}
-            className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm"
+            className="rounded-2xl bg-white px-4 py-3 shadow-sm"
           >
+            <div className="flex items-start justify-between gap-3">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">
                   {legTransportTypeLabel(leg)}
                 </span>
                 <p className="font-medium text-zinc-900">{legRouteLabel(leg)}</p>
+                {isIntercity && intercity.surfaceOnly ? (
+                  <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800">
+                    Not allocated
+                  </span>
+                ) : isIntercity ? (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                    Allocated
+                  </span>
+                ) : null}
               </div>
               <p className="mt-0.5 text-sm text-zinc-500">{legScheduleSummary(leg)}</p>
+              {isIntercity ? (
+                <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-zinc-600">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(intercity.surfaceOnly)}
+                    onChange={() => void toggleSurfaceOnly(intercity)}
+                    disabled={props.saving}
+                    className="rounded border-zinc-300"
+                  />
+                  Not allocated — keep in transport only (no calendar placement)
+                </label>
+              ) : null}
             </div>
             <AsyncButton
               loading={removingLegId === leg.id}
               loadingLabel="Removing…"
               onClick={() => void removeLeg(leg.id)}
               disabled={removingLegId !== null && removingLegId !== leg.id}
-              className="text-sm text-red-600 hover:text-red-700"
+              className="shrink-0 text-sm text-red-600 hover:text-red-700"
             >
               Delete
             </AsyncButton>
+            </div>
           </li>
-        ))}
+          );
+        })}
         {!all.length ? (
           <li className="rounded-2xl bg-zinc-50/80 px-4 py-6 text-center text-sm text-zinc-500">
             No transport legs yet.

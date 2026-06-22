@@ -1,63 +1,50 @@
 import {
   tripLocationColor,
   tripLocationTextColor,
-  DEFAULT_HALF_SHARE,
   type LocationPaletteSwatch,
 } from "@/lib/host/wizard/location-stays";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
-import type { OverlayMeta } from "@/lib/trip-engine/types";
 
 import { corridorAbbrev, shortCity } from "./calendar-cell-labels";
 
 export function LocationBand(props: {
   day: DayPlaceDraft;
-  baseDay?: DayPlaceDraft | null;
-  overlayKind?: OverlayMeta;
   displayShare: number;
   showStayPaint: boolean;
-  cityPaintHeight: string;
+  cityPaintTop?: string;
+  /** Height for the left / primary-only segment (defaults to cityPaintHeight). */
+  leftCityPaintHeight?: string;
+  /** Height for the right / secondary segment (defaults to cityPaintHeight). */
+  rightCityPaintHeight?: string;
+  /** Fallback when per-side heights are omitted. */
+  cityPaintHeight?: string;
   locationColorByKey?: Map<string, LocationPaletteSwatch>;
 }) {
-  const { day, baseDay, overlayKind, displayShare, showStayPaint, cityPaintHeight, locationColorByKey } =
-    props;
+  const {
+    day,
+    displayShare,
+    showStayPaint,
+    cityPaintTop = "0",
+    cityPaintHeight = "100%",
+    leftCityPaintHeight,
+    rightCityPaintHeight,
+    locationColorByKey,
+  } = props;
+  const leftHeight = leftCityPaintHeight ?? cityPaintHeight;
+  const rightHeight = rightCityPaintHeight ?? cityPaintHeight;
   const primary = day.primaryCity.trim();
   const secondary = day.secondaryCity?.trim() ?? "";
-  const isSplit = Boolean(primary && (secondary || (day.primaryShare ?? 1) < 1));
 
   if (!showStayPaint) return null;
 
   return (
     <>
-      {baseDay?.primaryCity.trim() ? (
-        <div
-          className={[
-            "pointer-events-none absolute inset-0 z-[5] rounded-xl border border-dashed border-zinc-300/70",
-            overlayKind === "inherit" ? "opacity-35" : "opacity-25",
-          ].join(" ")}
-          aria-hidden
-        >
-          <div
-            className="absolute inset-y-0 left-0 flex items-end overflow-hidden px-1.5 pb-1.5 pt-6"
-            style={{
-              width: `${(baseDay.primaryShare ?? 1) * 100}%`,
-              backgroundColor: tripLocationColor(baseDay.primaryCity, locationColorByKey),
-            }}
-          >
-            <span
-              className="truncate text-[10px] font-medium text-zinc-600"
-              title={baseDay.primaryCity}
-            >
-              {shortCity(baseDay.primaryCity)}
-            </span>
-          </div>
-        </div>
-      ) : null}
-
       {primary && !secondary ? (
         <div
-          className="absolute left-0 top-0 flex items-end overflow-hidden px-1.5 pb-1 pt-4"
+          className="absolute left-0 flex items-end overflow-hidden px-1.5 pb-1 pt-4"
           style={{
-            height: cityPaintHeight,
+            top: cityPaintTop,
+            height: leftHeight,
             width: `${displayShare * 100}%`,
             backgroundColor: tripLocationColor(primary, locationColorByKey),
           }}
@@ -74,9 +61,10 @@ export function LocationBand(props: {
 
       {!primary && secondary ? (
         <div
-          className="absolute right-0 top-0 flex items-end justify-end overflow-hidden px-1.5 pb-1 pt-4"
+          className="absolute right-0 flex items-end justify-end overflow-hidden px-1.5 pb-1 pt-4"
           style={{
-            height: cityPaintHeight,
+            top: cityPaintTop,
+            height: rightHeight,
             width: `${(1 - displayShare) * 100}%`,
             backgroundColor: tripLocationColor(secondary, locationColorByKey),
           }}
@@ -94,8 +82,10 @@ export function LocationBand(props: {
       {primary && secondary ? (
         <>
           <div
-            className="absolute inset-y-0 left-0 z-[8] flex items-end overflow-hidden px-1 pb-1 pt-5"
+            className="absolute left-0 z-[8] flex items-end overflow-hidden px-1 pb-1 pt-5"
             style={{
+              top: cityPaintTop,
+              height: leftHeight,
               width: `${displayShare * 100}%`,
               backgroundColor: tripLocationColor(primary, locationColorByKey),
             }}
@@ -109,9 +99,11 @@ export function LocationBand(props: {
             </span>
           </div>
           <div
-            className="absolute inset-y-0 right-0 z-[8] flex items-end justify-end overflow-hidden px-1 pb-1 pt-5"
+            className="absolute right-0 z-[8] flex items-end justify-end overflow-hidden px-1 pb-1 pt-5"
             style={{
-              width: `${DEFAULT_HALF_SHARE * 100}%`,
+              top: cityPaintTop,
+              height: rightHeight,
+              width: `${(1 - displayShare) * 100}%`,
               backgroundColor: tripLocationColor(secondary, locationColorByKey),
             }}
             title={secondary}
@@ -123,13 +115,6 @@ export function LocationBand(props: {
               {corridorAbbrev(secondary)}
             </span>
           </div>
-          {isSplit ? (
-            <div
-              className="pointer-events-none absolute inset-y-0 z-[9] w-px bg-zinc-400/80"
-              style={{ left: `${displayShare * 100}%` }}
-              aria-hidden
-            />
-          ) : null}
         </>
       ) : null}
     </>

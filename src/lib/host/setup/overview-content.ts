@@ -140,8 +140,8 @@ export function buildWelcomeSuggestions(state: TripSetupState): OverviewNextStep
       id: "transport",
       title: "Flights and transfers (when ready)",
       detail:
-        "Add outbound, return, and between-city legs once you know how the group is travelling.",
-      section: "transport",
+        "Select travel days on the calendar and add legs — you will see Depart for Tokyo style labels on the grid.",
+      section: "locations",
     },
   ];
 
@@ -206,8 +206,9 @@ export function buildOverviewNextSteps(state: TripSetupState): OverviewNextStep[
     steps.push({
       id: "transport",
       title: "Transportation",
-      detail: "Lock in how the group gets there and back — plane, train, bus, ferry, or other.",
-      section: "transport",
+      detail:
+        "Select travel days on the calendar and add how the group moves — Depart for… labels appear on the grid.",
+      section: "locations",
     });
   }
 

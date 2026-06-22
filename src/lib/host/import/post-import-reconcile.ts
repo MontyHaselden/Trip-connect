@@ -1,3 +1,7 @@
+import {
+  normalizeAccommodationStayCities,
+  normalizeDayPlacesAirports,
+} from "@/lib/host/setup/canonical-stay-city";
 import { alignAccommodationStaysToLocationStays } from "@/lib/host/setup/accommodation-calendar";
 import { reconcileImportedAccommodationStays } from "@/lib/host/import/reconcile-accommodation-stays";
 import {
@@ -111,12 +115,22 @@ export function reconcileImportedSetupState(state: TripSetupState): {
     });
   }
 
+  dayPlaces = normalizeDayPlacesAirports(dayPlaces, {
+    stays: state.accommodationStays,
+    planeLegs,
+  });
+
   // Paint travel splits from flights, then infer empty days between arrival and departure.
   dayPlaces = reconcileImportedDayPlacesWithFlights(
     dayPlaces,
     planeLegs,
     state.accommodationStays,
   );
+
+  dayPlaces = normalizeDayPlacesAirports(dayPlaces, {
+    stays: state.accommodationStays,
+    planeLegs,
+  });
 
   dayPlaces = fillSparseCalendarAnchors(
     dayPlaces,
@@ -135,6 +149,10 @@ export function reconcileImportedSetupState(state: TripSetupState): {
     state.accommodationStays,
     allDepartureLegs,
   );
+  accommodationStays = normalizeAccommodationStayCities(accommodationStays, {
+    dayPlaces,
+    planeLegs,
+  });
   accommodationStays = alignAccommodationStaysToLocationStays(
     accommodationStays,
     dayPlaces,

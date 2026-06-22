@@ -18,6 +18,8 @@ export type AddStayCommand = {
   type: "addStay";
   groupId: string;
   stay: AccommodationStayDraft;
+  /** When true, repaint location labels in the stay date range and detach conflicting transport corridors. */
+  replaceLocationLabels?: boolean;
 };
 
 export type UpdateStayCommand = {
@@ -25,6 +27,8 @@ export type UpdateStayCommand = {
   groupId: string;
   stayId: string;
   patch: Partial<AccommodationStayDraft>;
+  /** When true, repaint location labels in the stay date range and detach conflicting transport corridors. */
+  replaceLocationLabels?: boolean;
 };
 
 export type RemoveStayCommand = {
@@ -117,9 +121,25 @@ export type RemoveActivityCommand = {
 
 export type CreateGroupCommand = {
   type: "createGroup";
+  id?: string;
   name: string;
   groupType: string;
   description?: string | null;
+  inheritMode?: "overlay" | "independent" | null;
+  personalForParticipantId?: string | null;
+};
+
+export type SetGroupInheritModeCommand = {
+  type: "setGroupInheritMode";
+  groupId: string;
+  mode: "overlay" | "independent";
+};
+
+export type EnsurePersonalGroupCommand = {
+  type: "ensurePersonalGroup";
+  participantId: string;
+  participantName: string;
+  mode: "overlay" | "independent";
 };
 
 export type UpdateGroupCommand = {
@@ -132,6 +152,12 @@ export type UpdateGroupCommand = {
 
 export type DeleteGroupCommand = {
   type: "deleteGroup";
+  groupId: string;
+};
+
+/** Drop a subgroup/personal plan's overrides so it inherits the main group trip again. */
+export type ResetGroupFromMainCommand = {
+  type: "resetGroupFromMain";
   groupId: string;
 };
 
@@ -218,8 +244,11 @@ export type TripCommand =
   | UpdateActivityCommand
   | RemoveActivityCommand
   | CreateGroupCommand
+  | SetGroupInheritModeCommand
+  | EnsurePersonalGroupCommand
   | UpdateGroupCommand
   | DeleteGroupCommand
+  | ResetGroupFromMainCommand
   | AddGroupDayOverrideCommand
   | RemoveGroupDayOverrideCommand
   | AddBookingDetailsCommand

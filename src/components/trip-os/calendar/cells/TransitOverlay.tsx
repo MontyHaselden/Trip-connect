@@ -1,19 +1,38 @@
 import type { TransitOverlay as TransitOverlayType } from "@/lib/host/wizard/transport-day-placement";
 
-export function TransitOverlay(props: { overlays: TransitOverlayType[] }) {
+export const TRANSIT_BAR_HEIGHT = "1.375rem";
+
+function primaryOverlayLabel(overlays: TransitOverlayType[]): string {
+  const departure = overlays.find((overlay) => overlay.label.startsWith("Depart for "));
+  if (departure) return departure.label;
+  const arrival = overlays.find((overlay) => overlay.label.startsWith("Arrive in "));
+  if (arrival) return arrival.label;
+  return overlays[0]!.label;
+}
+
+/** Full-width grey transport strip at the top of a travel day cell. */
+export function TransitOverlay(props: {
+  overlays: TransitOverlayType[];
+  onTransitClick?: () => void;
+}) {
   if (!props.overlays.length) return null;
 
+  const label = primaryOverlayLabel(props.overlays);
+
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-5 z-[12] flex flex-col gap-0.5 px-1">
-      {props.overlays.map((overlay, i) => (
-        <span
-          key={`transit-${i}`}
-          className="truncate rounded bg-indigo-100/90 px-1 py-0.5 text-center text-[8px] font-semibold text-indigo-900"
-          title={overlay.label}
-        >
-          {overlay.label}
-        </span>
-      ))}
-    </div>
+    <button
+      type="button"
+      className="absolute inset-x-0 top-0 z-[12] flex items-center justify-center overflow-hidden border-b-2 border-indigo-400/55 bg-zinc-300/90 px-1 hover:bg-zinc-400/90"
+      style={{ height: TRANSIT_BAR_HEIGHT }}
+      title={label}
+      onClick={(e) => {
+        e.stopPropagation();
+        props.onTransitClick?.();
+      }}
+    >
+      <span className="truncate text-[8px] font-semibold leading-tight text-zinc-700">
+        {label}
+      </span>
+    </button>
   );
 }

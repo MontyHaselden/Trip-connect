@@ -30,6 +30,7 @@ function rowToActivity(
     hostNote: string | null;
     audienceType: ActivityDraft["audienceType"];
     audienceId: string | null;
+    originGroupId: string | null;
     category: ActivityDraft["category"] | null;
     bookingStatus: string | null;
     isTimeTbc: boolean;
@@ -55,6 +56,7 @@ function rowToActivity(
     description: row.hostNote,
     audienceType: row.audienceType,
     audienceId: row.audienceId,
+    originGroupId: row.originGroupId,
     bookingStatus:
       row.bookingStatus === "booked"
         ? "booked"
@@ -131,6 +133,7 @@ export async function syncActivitiesForTrip(
       hostNote: act.description,
       audienceType: act.audienceType,
       audienceId: act.audienceId,
+      originGroupId: act.originGroupId ?? null,
       category: act.category,
       sortOrder,
       bookingStatus: toDbBookingStatus(act.bookingStatus),

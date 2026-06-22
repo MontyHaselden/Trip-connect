@@ -45,6 +45,7 @@ export const STAY_TYPES = [
   "hotel",
   "hostel",
   "homestay",
+  "campground",
   "multiple_hosts",
   "multiple_hotels",
   "not_booked",
@@ -94,6 +95,8 @@ export type TransportLegDraft = EntityVisibilityDraft & LayerEntityDraft & {
   referenceNumber: string | null;
   flightNumber: string | null;
   notes: string | null;
+  /** When true, leg is kept in transport data but does not paint the group calendar. */
+  surfaceOnly?: boolean;
 };
 
 export type DayPlaceDraft = {
@@ -138,8 +141,6 @@ export type IntercityLegDraft = TransportLegDraft & {
   travelDate: string;
   legKind?: IntercityLegKind;
   anchorLegId?: string | null;
-  /** Airport-to-hotel gaps: todo in transport UI only — no calendar corridor. */
-  surfaceOnly?: boolean;
 };
 
 export type ActivityDraft = {
@@ -160,6 +161,7 @@ export type ActivityDraft = {
   description: string | null;
   audienceType: AudienceType;
   audienceId: string | null;
+  originGroupId?: string | null;
   bookingStatus: BookingStatus;
 };
 

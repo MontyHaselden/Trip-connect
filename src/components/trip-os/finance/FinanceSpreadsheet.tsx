@@ -2,17 +2,19 @@
 
 import { Fragment, useMemo, useState } from "react";
 
-import type {
-  CostLedgerProjection,
-  CostLineItemDraft,
-} from "@/lib/trip-engine/cost-ledger/types";
+import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
+import {
+  buildParticipantPresenceMap,
+  lineDateSpanLabel,
+  presenceHintForLine,
+} from "@/lib/trip-engine/cost-ledger/presence";
+import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import {
   COST_CATEGORIES,
   COST_CATEGORY_LABELS,
   type CostLineCategory,
 } from "@/lib/trip-engine/cost-ledger/types";
 import {
-  allocationRuleLabel,
   buildGroupColumns,
   formatLineTotal,
   participantHeaderLabel,
@@ -21,6 +23,17 @@ import {
 } from "@/lib/trip-engine/cost-ledger/display-utils";
 import { formatMoney, convertToBaseCents } from "@/lib/trip-engine/cost-ledger/format-money";
 import type { RosterSummary } from "@/lib/trip-engine/types";
+
+import type { CostLineFormValues } from "../costs/CostLineDrawer";
+import { FinanceDeleteModal } from "./FinanceDeleteModal";
+import type { CostLineItemDraft } from "@/lib/trip-engine/cost-ledger/types";
+import {
+  FinanceAmountCell,
+  FinanceDescriptionCell,
+  FinanceQtyCell,
+  FinanceRuleCell,
+  type OpenCell,
+} from "./FinanceCellEditors";
 
 type GridView = "total" | "group" | "person";
 
@@ -87,11 +100,24 @@ const tdTextClass = "border border-zinc-300 px-2 py-1 text-[11px] text-zinc-800"
 export function FinanceSpreadsheet(props: {
   costLedger: CostLedgerProjection;
   roster: RosterSummary;
+  graph?: TripEntityGraph | null;
   showEmptyLines: boolean;
-  onEditLine: (line: CostLineItemDraft) => void;
+  onPatchLine: (lineId: string, patch: Partial<CostLineFormValues>) => void;
+  onDismissLine?: (lineId: string) => Promise<void>;
+  onDeleteLine?: (lineId: string) => Promise<void>;
+  onRemoveLineFromTrip?: (lineId: string) => Promise<void>;
 }) {
   const [view, setView] = useState<GridView>("total");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  const [openCell, setOpenCell] = useState<OpenCell>(null);
+  const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set());
+  const [pendingDeleteLines, setPendingDeleteLines] = useState<CostLineItemDraft[] | null>(null);
+
+  const presence = useMemo(
+    () =>
+      props.graph ? buildParticipantPresenceMap(props.graph, props.roster) : undefined,
+    [props.graph, props.roster],
+  );
 
   const pool = useMemo(
     () => props.roster.participants.filter((p) => p.inCostSplit && p.role !== "host"),
@@ -117,6 +143,59 @@ export function FinanceSpreadsheet(props: {
   }, [props.costLedger.lineItems, props.showEmptyLines]);
 
   const emptyCount = props.costLedger.lineItems.filter((l) => l.totalAmountCents === 0).length;
+
+  const selectableLineIds = useMemo(
+    () => visibleLines.map((line) => line.id),
+    [visibleLines],
+  );
+
+  const allVisibleSelected =
+    selectableLineIds.length > 0 &&
+    selectableLineIds.every((id) => selectedLineIds.has(id));
+
+  function toggleLineSelection(lineId: string) {
+    setSelectedLineIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId);
+      else next.add(lineId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible() {
+    setSelectedLineIds((prev) => {
+      if (allVisibleSelected) return new Set();
+      return new Set(selectableLineIds);
+    });
+  }
+
+  function openDeleteSelected() {
+    const lines = visibleLines.filter((line) => selectedLineIds.has(line.id));
+    if (!lines.length) return;
+    setPendingDeleteLines(lines);
+  }
+
+  async function confirmFinanceOnlyDelete(lines: CostLineItemDraft[]) {
+    for (const line of lines) {
+      const linked = Boolean(
+        line.linkedStayId || line.linkedTransportLegId || line.linkedActivityId,
+      );
+      if (linked && props.onDismissLine) await props.onDismissLine(line.id);
+      else if (props.onDeleteLine) await props.onDeleteLine(line.id);
+    }
+    setSelectedLineIds(new Set());
+  }
+
+  async function confirmRemoveFromTrip(lines: CostLineItemDraft[]) {
+    for (const line of lines) {
+      const linked = Boolean(
+        line.linkedStayId || line.linkedTransportLegId || line.linkedActivityId,
+      );
+      if (linked && props.onRemoveLineFromTrip) await props.onRemoveLineFromTrip(line.id);
+      else if (props.onDeleteLine) await props.onDeleteLine(line.id);
+    }
+    setSelectedLineIds(new Set());
+  }
 
   const linesByCategory = useMemo(() => {
     const grouped = new Map<CostLineCategory, CostLineItemDraft[]>();
@@ -165,14 +244,32 @@ export function FinanceSpreadsheet(props: {
         {!props.showEmptyLines && emptyCount > 0 ? (
           <span className="text-[11px] text-zinc-500">{emptyCount} empty rows hidden</span>
         ) : null}
+        <button
+          type="button"
+          disabled={selectedLineIds.size === 0}
+          onClick={openDeleteSelected}
+          className="ml-auto rounded border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-800 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
+        >
+          Delete selected{selectedLineIds.size > 0 ? ` (${selectedLineIds.size})` : ""}
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-zinc-200/50 p-2">
         <table className="w-max min-w-full border-collapse bg-white text-left shadow-sm">
           <thead className="sticky top-0 z-20">
             <tr>
-              <th className={`${thClass} sticky left-0 z-30 w-10 bg-zinc-200 text-center`} />
-              <th className={`${thClass} sticky left-10 z-30 min-w-[14rem] bg-zinc-200`}>
+              <th className={`${thClass} sticky left-0 z-30 w-12 bg-zinc-200 text-center`}>
+                <span className="sr-only">Select rows</span>
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  disabled={selectableLineIds.length === 0}
+                  onChange={toggleSelectAllVisible}
+                  className="rounded border-zinc-400"
+                  aria-label="Select all visible rows"
+                />
+              </th>
+              <th className={`${thClass} sticky left-12 z-30 min-w-[14rem] bg-zinc-200`}>
                 Description
               </th>
               <th className={`${thClass} w-12 bg-zinc-200 text-center`}>Qty</th>
@@ -199,7 +296,7 @@ export function FinanceSpreadsheet(props: {
             {visibleLines.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length + 6}
+                  colSpan={columns.length + 5}
                   className="border border-zinc-300 px-4 py-8 text-center text-[11px] text-zinc-500"
                 >
                   {columns.length === 0
@@ -241,50 +338,116 @@ export function FinanceSpreadsheet(props: {
                       );
                       const totalDisplay = formatLineTotal(line, settings);
                       const isEmpty = line.totalAmountCents === 0;
+                      const lineAlloc = props.costLedger.lineAllocations.find(
+                        (l) => l.lineItemId === line.id,
+                      );
+                      const eligible = new Set(lineAlloc?.eligibleParticipantIds ?? []);
+                      const presenceHint =
+                        props.graph && presence
+                          ? presenceHintForLine(line, props.graph, props.roster, presence)
+                          : null;
+                      const spanLabel =
+                        props.graph ? lineDateSpanLabel(line, props.graph) : null;
+                      const linked = Boolean(
+                        line.linkedStayId ||
+                          line.linkedTransportLegId ||
+                          line.linkedActivityId,
+                      );
+
+                      if (
+                        view === "person" &&
+                        selectedPersonId &&
+                        eligible.size > 0 &&
+                        !eligible.has(selectedPersonId)
+                      ) {
+                        return null;
+                      }
 
                       return (
                         <tr
                           key={line.id}
-                          onClick={() => props.onEditLine(line)}
                           className={[
-                            "cursor-pointer hover:bg-sky-50/80",
-                            isEmpty ? "text-zinc-400" : "",
+                            isEmpty ? "text-zinc-400" : "hover:bg-zinc-50/50",
+                            selectedLineIds.has(line.id) ? "bg-violet-50/40" : "",
                           ].join(" ")}
                         >
                           <td
                             className={`${tdClass} sticky left-0 z-10 bg-inherit text-center text-zinc-400`}
                           >
-                            {rowNumber}
+                            <div className="flex flex-col items-center gap-0.5">
+                              <input
+                                type="checkbox"
+                                checked={selectedLineIds.has(line.id)}
+                                onChange={() => toggleLineSelection(line.id)}
+                                className="rounded border-zinc-400"
+                                aria-label={`Select row ${rowNumber}`}
+                              />
+                              <span className="text-[10px] leading-none">{rowNumber}</span>
+                            </div>
                           </td>
                           <td
-                            className={`${tdTextClass} sticky left-10 z-10 max-w-[18rem] bg-inherit font-medium`}
+                            className={`${tdTextClass} sticky left-12 z-10 max-w-[18rem] bg-inherit`}
                           >
-                            <span className="line-clamp-2" title={line.description}>
-                              {line.description}
-                            </span>
-                          </td>
-                          <td className={`${tdClass} text-center`}>{line.quantity ?? ""}</td>
-                          <td className={tdClass}>
-                            <div>{totalDisplay.primary}</div>
-                            {totalDisplay.secondary ? (
-                              <div className="text-[9px] text-zinc-500">{totalDisplay.secondary}</div>
+                            <FinanceDescriptionCell
+                              line={line}
+                              openCell={openCell}
+                              setOpenCell={setOpenCell}
+                              onPatch={props.onPatchLine}
+                            />
+                            {spanLabel || presenceHint ? (
+                              <p className="mt-0.5 truncate text-[9px] text-zinc-400">
+                                {[spanLabel, presenceHint].filter(Boolean).join(" · ")}
+                              </p>
+                            ) : null}
+                            {linked ? (
+                              <span className="mt-0.5 inline-block rounded bg-zinc-100 px-1 text-[8px] text-zinc-500">
+                                linked
+                              </span>
                             ) : null}
                           </td>
+                          <td className={`${tdClass} text-center`}>
+                            <FinanceQtyCell
+                              line={line}
+                              openCell={openCell}
+                              setOpenCell={setOpenCell}
+                              onPatch={props.onPatchLine}
+                            />
+                          </td>
+                          <td className={tdClass}>
+                            <FinanceAmountCell
+                              line={line}
+                              displayPrimary={totalDisplay.primary}
+                              displaySecondary={totalDisplay.secondary}
+                              openCell={openCell}
+                              setOpenCell={setOpenCell}
+                              onPatch={props.onPatchLine}
+                            />
+                          </td>
                           <td className={`${tdTextClass} max-w-[6rem] text-zinc-600`}>
-                            {allocationRuleLabel(
-                              line.allocationRuleType,
-                              line.allocationRulePayload,
-                              props.roster,
-                            )}
+                            <FinanceRuleCell
+                              line={line}
+                              roster={props.roster}
+                              openCell={openCell}
+                              setOpenCell={setOpenCell}
+                              onPatch={props.onPatchLine}
+                            />
                           </td>
                           {columns.map((col) => {
-                            const amount = cellAmount(col, alloc, line.currency, settings);
+                            const participantId =
+                              col.kind === "participant" ? col.participant.id : null;
+                            const ineligible =
+                              participantId &&
+                              eligible.size > 0 &&
+                              !eligible.has(participantId);
+                            const amount = ineligible
+                              ? null
+                              : cellAmount(col, alloc, line.currency, settings);
                             return (
                               <td
                                 key={col.kind === "group" ? col.group.id : col.participant.id}
-                                className={`${tdClass} text-right`}
+                                className={`${tdClass} text-right ${ineligible ? "text-zinc-300" : ""}`}
                               >
-                                {amount != null
+                                {ineligible ? "—" : amount != null
                                   ? formatMoney(amount, settings.baseCurrency)
                                   : ""}
                               </td>
@@ -304,7 +467,7 @@ export function FinanceSpreadsheet(props: {
                     })}
                     <tr className="bg-zinc-50 font-semibold">
                       <td className={`${tdClass} sticky left-0 z-10 bg-zinc-50`} />
-                      <td className={`${tdTextClass} sticky left-10 z-10 bg-zinc-50`}>Subtotal</td>
+                      <td className={`${tdTextClass} sticky left-12 z-10 bg-zinc-50`}>Subtotal</td>
                       <td className={tdClass} />
                       <td className={tdClass}>
                         {formatMoney(categorySubtotal, settings.baseCurrency)}
@@ -318,13 +481,14 @@ export function FinanceSpreadsheet(props: {
             {columns.length > 0 ? (
               <tr className="bg-violet-50 font-bold">
                 <td className={`${tdClass} sticky left-0 z-10 bg-violet-50`} />
-                <td className={`${tdTextClass} sticky left-10 z-10 bg-violet-50`}>
+                <td className={`${tdTextClass} sticky left-12 z-10 bg-violet-50`}>
                   Gross per person
                 </td>
                 <td className={`${tdClass} bg-violet-50`} />
                 <td className={`${tdClass} bg-violet-50`}>
                   {formatMoney(props.costLedger.tripGrossCents, settings.baseCurrency)}
                 </td>
+                <td className={`${tdClass} bg-violet-50`} />
                 <td className={`${tdClass} bg-violet-50`} />
                 {columns.map((col) => {
                   let gross = 0;
@@ -355,6 +519,25 @@ export function FinanceSpreadsheet(props: {
           </tbody>
         </table>
       </div>
+
+      {pendingDeleteLines?.length ? (
+        <FinanceDeleteModal
+          lines={pendingDeleteLines}
+          onCancel={() => setPendingDeleteLines(null)}
+          onFinanceOnly={async () => {
+            const lines = pendingDeleteLines;
+            setPendingDeleteLines(null);
+            if (!lines?.length) return;
+            await confirmFinanceOnlyDelete(lines);
+          }}
+          onRemoveFromTrip={async () => {
+            const lines = pendingDeleteLines;
+            setPendingDeleteLines(null);
+            if (!lines?.length) return;
+            await confirmRemoveFromTrip(lines);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

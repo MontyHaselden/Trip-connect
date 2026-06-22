@@ -5,8 +5,10 @@ import { sanitizeDayType } from "@/lib/trip-engine/sanitize-day-place";
 import {
   groupDayPlaces,
   groupOverlayOps,
+  itineraryItems,
   tripAccommodationStays,
   tripTransportLegs,
+  groups,
 } from "@/lib/db/schema";
 import {
   inferDayPlacesFromIntercityLeg,
@@ -15,6 +17,8 @@ import {
 } from "@/lib/host/setup-inference";
 import {
   applyTripLocationState,
+  syncAccommodationStays,
+  syncTripDaysPatch,
   syncTransportLegsTable,
 } from "@/lib/host/locations/apply-location-state";
 import { reconcileImportedAccommodationStays } from "@/lib/host/import/reconcile-accommodation-stays";
@@ -25,6 +29,7 @@ import type {
   DayPlaceDraft,
   IntercityLegDraft,
 } from "@/lib/host/wizard/types";
+import { normalizeDayShare } from "@/lib/host/wizard/location-stays";
 
 import { mainAccommodationStays, mainIntercityLegs, mainTransportLegs } from "./entity-scope";
 import type { GroupOverlayOpDraft, TripSetupState } from "./types";
@@ -82,7 +87,7 @@ async function syncGroupDayPlaces(
       date: day.date,
       primaryCity: day.primaryCity,
       secondaryCity: day.secondaryCity,
-      primaryShare: String(day.primaryShare ?? 1),
+      primaryShare: String(normalizeDayShare(day.primaryShare)),
       dayType: sanitizeDayType(day.dayType),
       calendarLabel: travelCalendarLabel(day),
       weatherLocationQuery: day.primaryCity.trim() || null,
@@ -301,6 +306,7 @@ function applyGroupInference(
     dayPlaces = inferDayPlacesFromStay(dayPlaces, stay, { replaceExisting: true });
   }
   for (const leg of groupLegs) {
+    if (leg.surfaceOnly) continue;
     dayPlaces = inferDayPlacesFromIntercityLeg(dayPlaces, leg, { stays: groupStays });
   }
 
@@ -321,6 +327,8 @@ function applyGroupInference(
   };
 }
 
+export type TripSetupPersistMode = "full" | "dayPlaces" | "accommodation";
+
 export async function applyTripSetupState(
   tripId: string,
   state: TripSetupState,
@@ -329,12 +337,52 @@ export async function applyTripSetupState(
     skipWizardItineraryItems?: boolean;
     syncTransportItems?: boolean;
     syncAccommodationItems?: boolean;
+    persistMode?: TripSetupPersistMode;
+    syncMainAccommodationStays?: boolean;
+    affectedDates?: string[];
   },
 ): Promise<{ dayCount: number }> {
+  const persistMode = options?.persistMode ?? "full";
   const activeGroupId = options?.activeGroupId ?? state.mainGroupId;
   const inferred = applyGroupInference(state, activeGroupId);
   const activeDays = inferred.dayPlacesByGroupId[activeGroupId] ?? [];
   const main = mainTransportLegs(inferred);
+
+  if (persistMode !== "full") {
+    await syncGroupDayPlaces(tripId, activeGroupId, activeDays);
+    await syncOverlayOps(tripId, inferred.overlayOps);
+
+    if (activeGroupId === state.mainGroupId) {
+      const affected = options?.affectedDates;
+      const daysToPatch = affected?.length
+        ? activeDays.filter((d) => affected.includes(d.date))
+        : activeDays;
+      await syncTripDaysPatch(tripId, daysToPatch, inferred.basics, activeDays);
+
+      if (
+        persistMode === "accommodation" ||
+        (persistMode === "dayPlaces" && options?.syncMainAccommodationStays)
+      ) {
+        const allDepartureLegs = [
+          ...main.outboundLegs,
+          ...main.returnLegs,
+          ...main.intercityLegs,
+        ];
+        const accommodationStays = reconcileImportedAccommodationStays(
+          main.accommodationStays,
+          allDepartureLegs,
+        );
+        await syncAccommodationStays(tripId, state.mainGroupId, accommodationStays);
+      }
+    } else if (persistMode === "accommodation") {
+      const groupStays = inferred.accommodationStays.filter(
+        (s) => s.originGroupId === activeGroupId,
+      );
+      await syncGroupAccommodationStays(tripId, activeGroupId, groupStays);
+    }
+
+    return { dayCount: activeDays.length };
+  }
 
   // Always sync main transport so removed legs are purged from Neon even when
   // saving from a subgroup context or before other group-scoped writes run.
@@ -385,4 +433,33 @@ export async function applyTripSetupState(
   await syncGroupAccommodationStays(tripId, activeGroupId, groupStays);
 
   return { dayCount: activeDays.length };
+}
+
+/** Drop a subgroup/personal plan's overrides in DB without touching main group data. */
+export async function persistResetGroupFromMain(
+  tripId: string,
+  groupId: string,
+): Promise<void> {
+  await syncGroupDayPlaces(tripId, groupId, []);
+  await syncGroupIntercityLegs(tripId, groupId, []);
+  await syncGroupAccommodationStays(tripId, groupId, []);
+
+  await db
+    .delete(groupOverlayOps)
+    .where(and(eq(groupOverlayOps.tripId, tripId), eq(groupOverlayOps.groupId, groupId)));
+
+  await db
+    .delete(itineraryItems)
+    .where(
+      and(
+        eq(itineraryItems.tripId, tripId),
+        eq(itineraryItems.originGroupId, groupId),
+        eq(itineraryItems.wizardSource, "activity"),
+      ),
+    );
+
+  await db
+    .update(groups)
+    .set({ inheritMode: null })
+    .where(and(eq(groups.tripId, tripId), eq(groups.id, groupId)));
 }

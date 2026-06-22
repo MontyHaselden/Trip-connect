@@ -13,6 +13,10 @@ import { applyTripLocationState, purgeAccommodationWizardItineraryItems } from "
 import { clearTripContent } from "@/lib/host/locations/clear-trip-content";
 import { applyTripSetupState } from "@/lib/host/setup/apply-setup-state";
 import { loadTripSetupState } from "@/lib/host/setup/load-setup-state";
+import {
+  normalizeAccommodationStayCities,
+  normalizeDayPlacesAirports,
+} from "@/lib/host/setup/canonical-stay-city";
 import { alignAccommodationStaysToLocationStays } from "@/lib/host/setup/accommodation-calendar";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import type { TripLocationState } from "@/lib/host/locations/types";
@@ -109,6 +113,14 @@ export async function importTripFromDocumentText(params: {
     endDate: outline.endDate,
   });
 
+  let accommodationStays = normalizeAccommodationStayCities(structure.accommodationStays, {
+    dayPlaces,
+  });
+
+  dayPlaces = normalizeDayPlacesAirports(dayPlaces, {
+    stays: accommodationStays,
+  });
+
   dayPlaces = fillSparseCalendarAnchors(
     dayPlaces,
     {
@@ -117,7 +129,7 @@ export async function importTripFromDocumentText(params: {
       departureCity,
       returnCity,
     },
-    structure.accommodationStays,
+    accommodationStays,
   );
 
   const tripBounds = {
@@ -145,8 +157,13 @@ export async function importTripFromDocumentText(params: {
   dayPlaces = reconcileImportedDayPlacesWithFlights(
     dayPlaces,
     planeLegsBeforeSync,
-    structure.accommodationStays,
+    accommodationStays,
   );
+
+  dayPlaces = normalizeDayPlacesAirports(dayPlaces, {
+    stays: accommodationStays,
+    planeLegs: planeLegsBeforeSync,
+  });
 
   const intercityLegs = sanitizeImportedTransport(
     filterSpuriousAutoTransfers(
@@ -168,14 +185,23 @@ export async function importTripFromDocumentText(params: {
   dayPlaces = reconcileImportedDayPlacesWithFlights(
     dayPlaces,
     allPlaneLegs,
-    structure.accommodationStays,
+    accommodationStays,
   );
 
+  dayPlaces = normalizeDayPlacesAirports(dayPlaces, {
+    stays: accommodationStays,
+    planeLegs: allPlaneLegs,
+  });
+
   const allDepartureLegs = [...outboundLegs, ...returnLegs, ...intercityLegs];
-  let accommodationStays = reconcileImportedAccommodationStays(
-    structure.accommodationStays,
+  accommodationStays = reconcileImportedAccommodationStays(
+    accommodationStays,
     allDepartureLegs,
   );
+  accommodationStays = normalizeAccommodationStayCities(accommodationStays, {
+    dayPlaces,
+    planeLegs: allPlaneLegs,
+  });
   accommodationStays = alignAccommodationStaysToLocationStays(
     accommodationStays,
     dayPlaces,

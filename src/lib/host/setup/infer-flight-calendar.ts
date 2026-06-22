@@ -26,7 +26,7 @@ import type {
   TransportLegDraft,
 } from "@/lib/host/wizard/types";
 
-const CROSSOVER_LEFT = 0.25;
+const CROSSOVER_LEFT = 0.5;
 
 export { metroDisplayLabel } from "@/lib/host/setup/metro-display";
 

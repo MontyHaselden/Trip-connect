@@ -2,7 +2,7 @@ import { calendarGridFromToday } from "@/lib/host/setup/calendar-bounds";
 import { deriveCalendarState } from "@/lib/host/setup/derive-calendar";
 import { effectiveTripBoundsFromState } from "@/lib/host/setup/sync-trip-bounds";
 import { tripDatesAreUnset } from "@/lib/host/trip-date-display";
-import { enumerateDates } from "@/lib/host/wizard/location-stays";
+import { enumerateDates, normalizeDayShare } from "@/lib/host/wizard/location-stays";
 import {
   buildTripLocationColorMap,
   collectOrderedTripLocationNames,
@@ -15,6 +15,9 @@ import {
 } from "@/lib/host/wizard/transport-day-placement";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import { projectCalendar, type ProjectCalendarOptions } from "./project-calendar";
+import { participantInheritsMainCalendar } from "./person-lens";
+import { activitiesForGroup } from "./selectors";
+import { resolveDisplayDayPlaces } from "./resolve-display-day-places";
 import type {
   ActivityMarker,
   CalendarRenderModel,
@@ -23,23 +26,34 @@ import type {
   TripEntityGraph,
 } from "./types";
 import { dayPlacesForGroup, namedStays } from "./selectors";
-import { calendarDotActivitiesForDate } from "./calendar-activity-dots";
+import { activityToMarker, filterCalendarDotActivities } from "./calendar-activity-dots";
 
 function projectedToDayPlace(day: ProjectedDay): DayPlaceDraft {
   return {
     date: day.date,
     primaryCity: day.primaryCity,
     secondaryCity: day.secondaryCity,
-    primaryShare: day.primaryShare,
+    primaryShare: normalizeDayShare(day.primaryShare),
     dayType: day.dayType,
     includeBuffer: false,
   };
 }
 
-function buildActivitiesByDate(graph: TripEntityGraph, dates: string[]): Map<string, ActivityMarker[]> {
+function buildActivitiesByDate(
+  graph: TripEntityGraph,
+  dates: string[],
+  groupId: string,
+): Map<string, ActivityMarker[]> {
+  const activities = participantInheritsMainCalendar(graph, groupId)
+    ? activitiesForGroup(graph, graph.mainGroupId)
+    : activitiesForGroup(graph, groupId);
   const map = new Map<string, ActivityMarker[]>();
   for (const date of dates) {
-    const markers = calendarDotActivitiesForDate(graph.activities, date);
+    const onDate = activities.filter((a) => {
+      const end = a.endDate?.trim() || a.date;
+      return a.date <= date && date <= end;
+    });
+    const markers = filterCalendarDotActivities(onDate).map(activityToMarker);
     if (markers.length) map.set(date, markers);
   }
   return map;
@@ -90,14 +104,16 @@ export function buildCalendarRenderModel(
     },
     gridStart,
     gridEnd,
-    overlayStoredLocationGaps: options?.overlayStoredLocationGaps ?? groupId === graph.mainGroupId,
+    overlayStoredLocationGaps: false,
   });
+
+  const displayDays = resolveDisplayDayPlaces(storedDays, derived.dayPlaces, gridStart, gridEnd);
 
   const transportDraft = {
     outboundLegs: graph.outboundLegs,
     returnLegs: graph.returnLegs,
     intercityLegs: graph.intercityLegs,
-    dayPlaces: derived.dayPlaces,
+    dayPlaces: displayDays,
   };
   const tripContext = {
     startDate: bounds.startDate,
@@ -113,34 +129,16 @@ export function buildCalendarRenderModel(
   const allDates = enumerateDates(gridStart, gridEnd);
   const days = projection.days.map(projectedToDayPlace);
 
-  let baseDays: DayPlaceDraft[] | undefined;
   const overlayMetaByDate = new Map<string, OverlayMeta>();
   for (const pd of projection.days) {
     overlayMetaByDate.set(pd.date, pd.overlayMeta);
   }
 
-  if (groupId !== graph.mainGroupId) {
-    const mainProj = projectCalendar(graph, {
-      groupId: graph.mainGroupId,
-      gridStart,
-      gridEnd,
-      overlayStoredLocationGaps: true,
-    });
-    baseDays = mainProj.days.map(projectedToDayPlace);
-  }
-
-  const segmentCities: string[] = [];
-  for (const segments of travelLayouts.values()) {
-    for (const segment of segments) {
-      if (segment.kind === "city") segmentCities.push(segment.city);
-    }
-  }
   const locationColorByKey = buildTripLocationColorMap(
     collectOrderedTripLocationNames({
       days,
       departureCity: graph.basics.departureCity,
       returnCity: graph.basics.returnCity,
-      segmentCities,
     }),
   );
 
@@ -154,14 +152,15 @@ export function buildCalendarRenderModel(
     returnCity: graph.basics.returnCity,
     datesUnset,
     days,
-    baseDays,
     overlayMetaByDate,
     travelLayoutsByDate: travelLayouts,
     transitByDate: transitOverlays,
     accommodationByDate: derived.accommodationByDate,
-    accommodationStays: namedStays(graph, groupId),
+    accommodationStays: participantInheritsMainCalendar(graph, groupId)
+      ? namedStays(graph, graph.mainGroupId)
+      : namedStays(graph, groupId),
     boundaries: derived.boundaries,
-    activitiesByDate: buildActivitiesByDate(graph, allDates),
+    activitiesByDate: buildActivitiesByDate(graph, allDates, groupId),
     projectedDays: projection.days,
     locationColorByKey,
     scrollAnchorDate: gridMeta.scrollAnchorDate,

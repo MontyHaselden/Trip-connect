@@ -9,10 +9,11 @@ import {
   usesGoogleMapsSearch,
 } from "@/lib/geo/accommodation-search";
 import {
-  STAY_TYPES,
-  type AccommodationStayDraft,
-  type StayType,
-} from "@/lib/host/wizard/types";
+  defaultHomestayGroupForType,
+  PICKABLE_STAY_TYPES,
+  stayTypeLabel,
+} from "@/lib/host/accommodation/stay-type-labels";
+import type { AccommodationStayDraft, StayType } from "@/lib/host/wizard/types";
 
 const inputClass =
   "h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm shadow-sm transition focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-100";
@@ -44,12 +45,18 @@ export function AccommodationStayForm({
         <span className="font-medium text-zinc-700">Type</span>
         <select
           value={stay.stayType}
-          onChange={(e) => patch({ stayType: e.target.value as StayType })}
+          onChange={(e) => {
+            const nextType = e.target.value as StayType;
+            patch({
+              stayType: nextType,
+              isHomestayGroup: defaultHomestayGroupForType(nextType),
+            });
+          }}
           className={`mt-1.5 ${inputClass}`}
         >
-          {STAY_TYPES.filter((t) => t !== "not_booked").map((t) => (
+          {PICKABLE_STAY_TYPES.map((t) => (
             <option key={t} value={t}>
-              {t.replace(/_/g, " ")}
+              {stayTypeLabel(t)}
             </option>
           ))}
         </select>

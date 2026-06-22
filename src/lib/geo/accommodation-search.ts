@@ -187,6 +187,13 @@ export function accommodationSearchMode(stayType?: StayType): {
         fieldLabel: "Hotels",
         placeholder: "Search hotels…",
       };
+    case "campground":
+      return {
+        lodgingOnly: false,
+        querySuffix: "campground",
+        fieldLabel: "Campground",
+        placeholder: "Search campgrounds…",
+      };
     case "other":
       return {
         lodgingOnly: false,

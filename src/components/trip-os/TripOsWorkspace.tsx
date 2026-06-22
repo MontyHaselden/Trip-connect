@@ -22,8 +22,8 @@ import { BookingsSection } from "./sections/BookingsSection";
 import { FinanceSection } from "./sections/FinanceSection";
 import { JoinLinksSection } from "./sections/JoinLinksSection";
 import { LocationsSection } from "./sections/LocationsSection";
-import { ParticipantViewSection } from "./sections/ParticipantViewSection";
 import { TransportSection } from "./sections/TransportSection";
+import { ParticipantViewSection } from "./sections/ParticipantViewSection";
 import { UsersSection } from "./sections/UsersSection";
 
 export type TripOsSection = SetupSectionId | "ingest" | "map" | "participant-view" | "join-links";
@@ -90,9 +90,9 @@ export function TripOsWorkspace(props: {
           onDispatch={onDispatch}
         />
       );
-    case "accommodation":
+    case "transport":
       return (
-        <AccommodationSection
+        <TransportSection
           graph={graph}
           groupId={groupId}
           selectedDate={props.selectedDay?.date ?? null}
@@ -100,11 +100,13 @@ export function TripOsWorkspace(props: {
           onDispatch={onDispatch}
         />
       );
-    case "transport":
+    case "accommodation":
       return (
-        <TransportSection
+        <AccommodationSection
           graph={graph}
           groupId={groupId}
+          tripId={tripId}
+          rosterSummary={props.rosterSummary}
           selectedDate={props.selectedDay?.date ?? null}
           saving={saving}
           onDispatch={onDispatch}
@@ -130,6 +132,7 @@ export function TripOsWorkspace(props: {
       return (
         <FinanceSection
           roster={props.rosterSummary ?? { participants: [], groups: [], rooms: [] }}
+          graph={graph}
           costLedger={props.costLedger ?? null}
           onFinanceAction={async (payload) =>
             props.onCostsAction ? props.onCostsAction(payload) : false

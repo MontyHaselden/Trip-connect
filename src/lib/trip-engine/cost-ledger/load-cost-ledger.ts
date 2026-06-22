@@ -47,6 +47,7 @@ function mapLine(row: typeof costLineItems.$inferSelect): CostLineItemDraft {
     linkedStayId: row.linkedStayId,
     linkedTransportLegId: row.linkedTransportLegId,
     linkedActivityId: row.linkedActivityId,
+    scope: row.scope ?? "presence",
     supplierPaymentStatus: row.supplierPaymentStatus,
   };
 }

@@ -10,6 +10,7 @@ import {
   hasUncoveredTripDays,
   locationColor,
   locationPaletteKey,
+  LOCATION_PALETTE_SIZE,
   mergeStaysWithNewRange,
   tripLocationColor,
 } from "@/lib/host/wizard/location-stays";
@@ -249,6 +250,7 @@ describe("locationColor", () => {
 
 describe("buildTripLocationColorMap", () => {
   it("gives each Japan itinerary city a distinct color", () => {
+    assert.equal(LOCATION_PALETTE_SIZE, 12);
     const cities = [
       "Minato City, Tokyo",
       "Oita",
@@ -256,6 +258,10 @@ describe("buildTripLocationColorMap", () => {
       "Hiroshima",
       "Kyoto",
       "Tokyo",
+      "Narita",
+      "Tottori",
+      "Christchurch",
+      "Osaka",
     ];
     const map = buildTripLocationColorMap(cities);
     const colors = cities.map((city) => tripLocationColor(city, map));

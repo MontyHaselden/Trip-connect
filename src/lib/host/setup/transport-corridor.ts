@@ -6,23 +6,23 @@ import { isLocationCrossover, type TripPlaceContext } from "@/lib/host/setup/hom
 import { addDays } from "@/lib/host/wizard/location-stays";
 import type { AccommodationStayDraft, DayPlaceDraft } from "@/lib/host/wizard/types";
 
-/** Transfer day: 40% departure · 20% transport · 40% arrival. */
-export const TRANSPORT_CORRIDOR_LEFT_SHARE = 0.4;
-export const TRANSPORT_CORRIDOR_WIDTH = 0.2;
-export const TRANSPORT_CORRIDOR_RIGHT_START = 0.6;
+/** Transfer day: half departure city · half arrival city (travel label in overlay). */
+export const TRANSPORT_CORRIDOR_LEFT_SHARE = 0.5;
+export const TRANSPORT_CORRIDOR_WIDTH = 0;
+export const TRANSPORT_CORRIDOR_RIGHT_START = 0.5;
 
 /** Wider band for multi-leg / same-day travel stacks on departure days. */
-export const TRANSPORT_STACK_WIDTH = 0.32;
-export const TRANSPORT_STACK_LEFT_SHARE = 0.5 - TRANSPORT_STACK_WIDTH / 2;
-export const TRANSPORT_STACK_RIGHT_START = 0.5 + TRANSPORT_STACK_WIDTH / 2;
+export const TRANSPORT_STACK_WIDTH = 0.5;
+export const TRANSPORT_STACK_LEFT_SHARE = 0.25;
+export const TRANSPORT_STACK_RIGHT_START = 0.75;
 
-/** Major travel day: ¼ origin color · ½ flight stack · ¼ destination color. */
-export const MAJOR_TRAVEL_ORIGIN_END = 0.25;
-export const MAJOR_TRAVEL_TRANSIT_START = 0.25;
-export const MAJOR_TRAVEL_TRANSIT_END = 0.75;
-export const MAJOR_TRAVEL_DEST_START = 0.75;
-export const MAJOR_TRAVEL_DEST_SLICE = 0.25;
-export const MAJOR_TRAVEL_ORIGIN_MIN = 0.15;
+/** Travel day: half origin · half destination (transit label in overlay). */
+export const MAJOR_TRAVEL_ORIGIN_END = 0.5;
+export const MAJOR_TRAVEL_TRANSIT_START = 0.5;
+export const MAJOR_TRAVEL_TRANSIT_END = 0.5;
+export const MAJOR_TRAVEL_DEST_START = 0.5;
+export const MAJOR_TRAVEL_DEST_SLICE = 0.5;
+export const MAJOR_TRAVEL_ORIGIN_MIN = 0.5;
 
 /** @deprecated Use TRANSPORT_CORRIDOR_LEFT_SHARE */
 export const TRANSPORT_CORRIDOR_SHARE = TRANSPORT_CORRIDOR_LEFT_SHARE;

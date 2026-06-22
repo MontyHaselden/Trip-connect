@@ -9,10 +9,10 @@ import {
 } from "@/lib/db/schema";
 import { ensureMainGroupForTrip } from "@/lib/groups/main-group";
 import { loadTripLocationState } from "@/lib/host/locations/trip-location-state";
-import { applySetupAccommodationChange } from "@/lib/host/setup/apply-setup-accommodation";
-import { applySetupTransportChange } from "@/lib/host/setup/apply-setup-transport";
 import { repairTransportLegsFromLookup } from "@/lib/host/setup/repair-transport-legs";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
+import { applyTripSetupState } from "@/lib/host/setup/apply-setup-state";
+import { repairMisplacedSecondaryHalfDays } from "@/lib/trip-engine/sanitize-day-place";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
 import type { GroupOverlayOpDraft, SetupGroup, TripSetupState } from "./types";
@@ -67,6 +67,8 @@ export async function loadTripSetupState(tripId: string): Promise<TripSetupState
       description: groups.description,
       sortOrder: groups.sortOrder,
       isMain: groups.isMain,
+      inheritMode: groups.inheritMode,
+      personalForParticipantId: groups.personalForParticipantId,
     })
     .from(groups)
     .where(eq(groups.tripId, tripId))
@@ -111,6 +113,11 @@ export async function loadTripSetupState(tripId: string): Promise<TripSetupState
     description: g.description,
     sortOrder: g.sortOrder,
     isMain: g.isMain,
+    inheritMode:
+      g.inheritMode === "overlay" || g.inheritMode === "independent"
+        ? g.inheritMode
+        : null,
+    personalForParticipantId: g.personalForParticipantId,
   }));
 
   const overlayOps: GroupOverlayOpDraft[] = opRows.map((o) => ({
@@ -149,27 +156,40 @@ export async function loadTripSetupState(tripId: string): Promise<TripSetupState
     overlayOps,
   };
 
-  const hasNamedStays = loaded.accommodationStays.some((s) => s.name?.trim());
   const hasTransport =
     loaded.outboundLegs.length > 0 ||
     loaded.returnLegs.length > 0 ||
     loaded.intercityLegs.length > 0;
 
-  if (hasNamedStays || hasTransport) {
-    let withTransport = loaded;
-    if (hasTransport) {
-      const repairedLegs = await repairTransportLegsFromLookup(loaded);
-      withTransport = { ...loaded, ...repairedLegs };
-    }
-    const withStays = hasNamedStays
-      ? applySetupAccommodationChange(withTransport, withTransport.mainGroupId)
-      : withTransport;
-    return applySetupTransportChange(withStays, {
-      outboundLegs: withStays.outboundLegs,
-      returnLegs: withStays.returnLegs,
-      intercityLegs: withStays.intercityLegs,
+  let state = loaded;
+  if (hasTransport) {
+    const repairedLegs = await repairTransportLegsFromLookup(loaded);
+    state = { ...loaded, ...repairedLegs };
+  }
+
+  const mainDays = state.dayPlacesByGroupId[state.mainGroupId] ?? [];
+  const repairedMainDays = repairMisplacedSecondaryHalfDays(
+    mainDays,
+    state.accommodationStays,
+  );
+
+  const repairedState = syncTripBoundsFromContent({
+    ...state,
+    dayPlacesByGroupId: {
+      ...state.dayPlacesByGroupId,
+      [state.mainGroupId]: repairedMainDays,
+    },
+  });
+
+  const mainDaysChanged =
+    JSON.stringify(repairedMainDays) !== JSON.stringify(mainDays);
+  if (mainDaysChanged) {
+    await applyTripSetupState(tripId, repairedState, {
+      activeGroupId: state.mainGroupId,
+      persistMode: "dayPlaces",
+      skipWizardItineraryItems: true,
     });
   }
 
-  return syncTripBoundsFromContent(loaded);
+  return repairedState;
 }

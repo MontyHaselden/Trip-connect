@@ -1,24 +1,44 @@
-import type { RosterSummary } from "../types";
+import type { RosterSummary, TripEntityGraph } from "../types";
 
+import {
+  buildParticipantPresenceMap,
+  eligibleParticipantIdsForLine,
+  type ParticipantPresenceMap,
+} from "./presence";
 import type {
   AllocatableItem,
   CostAllocationOverrideDraft,
   CostAllocationRulePayload,
   CostAllocationRuleType,
+  CostLineItemDraft,
 } from "./types";
 
 export function costSplitParticipants(roster: RosterSummary): RosterSummary["participants"] {
   return roster.participants.filter((p) => p.inCostSplit && p.role !== "host");
 }
 
+export type AllocationContext = {
+  graph?: TripEntityGraph;
+  presence?: ParticipantPresenceMap;
+};
+
 export function participantsForRule(
   roster: RosterSummary,
   ruleType: CostAllocationRuleType,
   payload: CostAllocationRulePayload,
+  line?: CostLineItemDraft,
+  ctx: AllocationContext = {},
 ): RosterSummary["participants"] {
   const pool = costSplitParticipants(roster);
+
+  if (ruleType === "equal_present" && line && ctx.graph && ctx.presence) {
+    const ids = eligibleParticipantIdsForLine(line, ctx.graph, roster, ctx.presence);
+    return pool.filter((p) => ids.includes(p.id));
+  }
+
   switch (ruleType) {
     case "equal_cost_participants":
+    case "equal_present":
       return pool;
     case "equal_group": {
       const groupId = payload.groupId?.trim();
@@ -55,10 +75,17 @@ export function splitAmountEvenly(totalCents: number, participantIds: string[]):
 }
 
 export function computeItemAllocations(
-  item: AllocatableItem,
+  item: AllocatableItem & Partial<CostLineItemDraft>,
   roster: RosterSummary,
   overrides: CostAllocationOverrideDraft[],
-): { allocations: Record<string, number>; balanced: boolean } {
+  ctx: AllocationContext = {},
+): {
+  allocations: Record<string, number>;
+  eligibleParticipantIds: string[];
+  balanced: boolean;
+} {
+  const line = item as CostLineItemDraft;
+
   if (item.allocationRuleType === "manual") {
     const itemOverrides = overrides.filter((o) => o.lineItemId === item.id);
     const allocations = Object.fromEntries(
@@ -67,22 +94,40 @@ export function computeItemAllocations(
     const allocatedTotal = Object.values(allocations).reduce((sum, n) => sum + n, 0);
     return {
       allocations,
+      eligibleParticipantIds: Object.keys(allocations),
       balanced: allocatedTotal === item.totalAmountCents,
     };
   }
 
-  const targets = participantsForRule(
+  let targets = participantsForRule(
     roster,
     item.allocationRuleType,
     item.allocationRulePayload,
+    line.id ? line : undefined,
+    ctx,
   );
+
+  if (
+    item.allocationRuleType === "equal_present" &&
+    line &&
+    ctx.graph &&
+    ctx.presence
+  ) {
+    const eligibleIds = eligibleParticipantIdsForLine(line, ctx.graph, roster, ctx.presence);
+    targets = targets.filter((p) => eligibleIds.includes(p.id));
+  }
+
+  const eligibleParticipantIds = targets.map((p) => p.id);
   const allocations = splitAmountEvenly(
     item.totalAmountCents,
-    targets.map((p) => p.id),
+    eligibleParticipantIds,
   );
   const allocatedTotal = Object.values(allocations).reduce((sum, n) => sum + n, 0);
   return {
     allocations,
+    eligibleParticipantIds,
     balanced: allocatedTotal === item.totalAmountCents,
   };
 }
+
+export { buildParticipantPresenceMap, eligibleParticipantIdsForLine };

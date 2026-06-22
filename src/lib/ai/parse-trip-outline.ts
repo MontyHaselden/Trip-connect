@@ -56,6 +56,7 @@ Return ONLY valid JSON with this shape:
 Rules:
 - First decide the full trip duration: startDate, endDate, and every calendar day in the trip.
 - List one entry per day in chronological order. Include travel/rest days with a cityLabel even if no activities yet.
+- cityLabel is where the group stays that day — never an airport name (use Tokyo not Haneda/Narita; airports go in transport legs only).
 - Do NOT include activity items — only day dates, city labels, and optional summaries.
 - Infer school name, timezone, destination country, and destination language when possible.
 - Every day date must fall within startDate and endDate.

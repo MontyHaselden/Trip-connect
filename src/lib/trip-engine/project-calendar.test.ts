@@ -64,13 +64,62 @@ describe("projectCalendar", () => {
     assert.ok(projection.days.length > 0);
   });
 
-  it("is deterministic for same input", () => {
-    const graph = setupStateToGraph("trip-1", stateWithStay());
-    const a = projectCalendar(graph);
-    const b = projectCalendar(graph);
+  it("personal group following main matches main day paint", () => {
+    const graph = setupStateToGraph("trip-1", {
+      ...stateWithStay(),
+      groups: [
+        {
+          id: "g1",
+          name: "Main",
+          type: "main",
+          description: null,
+          sortOrder: 0,
+          isMain: true,
+          inheritMode: null,
+          personalForParticipantId: null,
+        },
+        {
+          id: "g-personal",
+          name: "Amanda",
+          type: "split_travel",
+          description: null,
+          sortOrder: 1,
+          isMain: false,
+          inheritMode: null,
+          personalForParticipantId: "p-amanda",
+        },
+      ],
+      dayPlacesByGroupId: {
+        g1: [
+          {
+            date: "2026-08-29",
+            primaryCity: "Tokyo",
+            secondaryCity: "Osaka",
+            primaryShare: 0.5,
+            dayType: "travel",
+            includeBuffer: false,
+          },
+        ],
+        "g-personal": [],
+      },
+    });
+
+    const main = projectCalendar(graph, { groupId: "g1" });
+    const personal = projectCalendar(graph, { groupId: "g-personal" });
+
     assert.deepEqual(
-      a.days.map((d) => d.date),
-      b.days.map((d) => d.date),
+      personal.days.map((d) => ({
+        date: d.date,
+        primaryCity: d.primaryCity,
+        secondaryCity: d.secondaryCity,
+        primaryShare: d.primaryShare,
+      })),
+      main.days.map((d) => ({
+        date: d.date,
+        primaryCity: d.primaryCity,
+        secondaryCity: d.secondaryCity,
+        primaryShare: d.primaryShare,
+      })),
     );
   });
 });

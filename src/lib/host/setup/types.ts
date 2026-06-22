@@ -14,6 +14,8 @@ export type SetupGroup = {
   description: string | null;
   sortOrder: number;
   isMain: boolean;
+  inheritMode?: "overlay" | "independent" | null;
+  personalForParticipantId?: string | null;
 };
 
 export type GroupOverlayOpDraft = {

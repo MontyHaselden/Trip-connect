@@ -2,156 +2,102 @@
 
 import { useRef } from "react";
 
-import { clickHitsTransitSegment } from "@/lib/host/setup/transport-block-selection";
-import { isAirportPlace } from "@/lib/geo/airport-codes";
+import { canonicalStayCity } from "@/lib/host/setup/canonical-stay-city";
 import {
+  DEFAULT_HALF_SHARE,
   halfFromClickX,
   isSplitDay,
+  normalizeDayShare,
   type HalfSide,
+  type LocationPaletteSwatch,
 } from "@/lib/host/wizard/location-stays";
-import {
-  hasAfternoonDepartureTravel,
-  mergeTravelWithPaintedStay,
-  stayCityPaintShareForDay,
-  travelLayoutBlocksPainting,
-  travelLayoutMorningPaintEnd,
-  rightHalfSelectionBounds,
-  travelLayoutPaintStart,
-  travelLayoutSummary,
-  type CalendarDaySegment,
-  type TransitOverlay as TransitOverlayType,
-} from "@/lib/host/wizard/transport-day-placement";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
-import type { ActivityMarker, OverlayMeta } from "@/lib/trip-engine/types";
-import type { LocationPaletteSwatch } from "@/lib/host/wizard/location-stays";
+import type { ActivityMarker } from "@/lib/trip-engine/types";
 
 import type { CalendarSelection } from "../useCalendarSelection";
 import { ActivityChips } from "./ActivityChips";
 import { LocationBand } from "./LocationBand";
-import { StayBand } from "./StayBand";
-
-type StayBandStyle = {
-  fill: string;
-  border: string;
-  text: string;
-};
-import { TransportBand } from "./TransportBand";
-import { TransitOverlay } from "./TransitOverlay";
+import { StayBand, stayBandStyleForCity } from "./StayBand";
 
 export function TripOsDayCell(props: {
   iso: string;
   dayNum: number;
   day: DayPlaceDraft;
-  baseDay?: DayPlaceDraft | null;
-  overlayKind?: OverlayMeta;
+  tripDayPlaces?: DayPlaceDraft[];
   isSelectable: boolean;
   isHomeEdge: boolean;
-  travelSegments?: CalendarDaySegment[];
-  transitOverlays: TransitOverlayType[];
   accommodationLabel?: string | null;
   accommodationLeftLabel?: string | null;
   accommodationRightLabel?: string | null;
   accommodationLeftOnly?: boolean;
   accommodationRightOnly?: boolean;
-  corridorDepartureAcco?: string | null;
-  corridorArrivalAcco?: string | null;
-  showTransportCorridor: boolean;
   activities: ActivityMarker[];
   selection: CalendarSelection;
   locationColorByKey?: Map<string, LocationPaletteSwatch>;
-  accommodationLeftColors?: StayBandStyle | null;
-  accommodationRightColors?: StayBandStyle | null;
-  accommodationSingleColors?: StayBandStyle | null;
   pendingFillHalf: (iso: string) => HalfSide | "full" | null;
-  onDayClick: (iso: string, half?: HalfSide, options?: { transportClick?: boolean }) => boolean;
+  onDayClick: (iso: string, half?: HalfSide) => boolean;
   isToday?: boolean;
-  onTransportCorridorClick?: (iso: string) => void;
 }) {
   const cellRef = useRef<HTMLDivElement>(null);
   const { iso, day, selection } = props;
 
-  const primaryRaw = day.primaryCity.trim();
-  const secondaryRaw = day.secondaryCity?.trim() ?? "";
-  const primary = primaryRaw && !isAirportPlace(primaryRaw) ? primaryRaw : "";
-  const secondary = secondaryRaw && !isAirportPlace(secondaryRaw) ? secondaryRaw : "";
-  const share = day.primaryShare ?? 1;
+  const stayCtx = { dayPlaces: props.tripDayPlaces ?? [day], date: iso };
+  const primary = day.primaryCity.trim()
+    ? canonicalStayCity(day.primaryCity, stayCtx)
+    : "";
+  const secondary = day.secondaryCity?.trim()
+    ? canonicalStayCity(day.secondaryCity, stayCtx)
+    : "";
+  const displayShare = normalizeDayShare(day.primaryShare ?? 1);
 
   const isInPendingRange =
     Boolean(selection.rangeStart) &&
     iso >= selection.rangeStart! &&
     iso <= (selection.rangeEnd || selection.rangeStart!);
 
-  const hasTravelLayout = Boolean(props.travelSegments?.length);
-  const hasFullStayDay = Boolean(primary) && !secondary && share >= 1;
-  const activeTravelSegments = hasFullStayDay ? undefined : props.travelSegments;
-  const { segments: displayTravelSegments, hideMergedStayCity } = mergeTravelWithPaintedStay(
-    activeTravelSegments,
-    day,
-  );
-  const layoutSegments = displayTravelSegments ?? activeTravelSegments;
-  const displayShare = stayCityPaintShareForDay(day, layoutSegments);
-  const travelPaintStart = travelLayoutPaintStart(layoutSegments);
-  const travelMorningEnd = travelLayoutMorningPaintEnd(layoutSegments);
-  const travelBlocksPainting = travelLayoutBlocksPainting(layoutSegments);
-  const showStayPaint =
-    props.showTransportCorridor || (!travelBlocksPainting && !hideMergedStayCity);
-  const hasAfternoonTravelPaint =
-    hasTravelLayout && travelPaintStart > 0 && travelPaintStart < 1;
-  const hasAfternoonDepartureOnly =
-    hasTravelLayout && hasAfternoonDepartureTravel(layoutSegments);
-  const hasMorningTravelPaint =
-    hasTravelLayout && travelMorningEnd > 0 && travelMorningEnd < 1;
-  const hasPartialTravelPaint =
-    hasAfternoonTravelPaint || hasMorningTravelPaint || hasAfternoonDepartureOnly;
+  const showStayPaint = Boolean(primary || secondary);
 
   const pendingFillHalf = props.pendingFillHalf(iso);
-  const resolvedFillHalf: HalfSide | "full" | null =
-    pendingFillHalf === "full" && hasAfternoonTravelPaint
-      ? "right"
-      : pendingFillHalf === "full" && hasMorningTravelPaint
-        ? "left"
-        : pendingFillHalf === "full" && hasAfternoonDepartureOnly
-          ? "left"
-          : pendingFillHalf;
+  const resolvedFillHalf = pendingFillHalf;
 
-  const hasAccommodationBand = Boolean(
-    props.accommodationLabel?.trim() ||
-      props.accommodationLeftLabel?.trim() ||
-      props.accommodationRightLabel?.trim(),
+  const leftHasAccommodation = Boolean(props.accommodationLeftLabel?.trim());
+  const rightHasAccommodation = Boolean(props.accommodationRightLabel?.trim());
+  const fullDayAccommodation = Boolean(
+    props.accommodationLabel?.trim() &&
+      !props.accommodationLeftOnly &&
+      !props.accommodationRightOnly,
   );
-  const cityPaintHeight = hasAccommodationBand ? "75%" : "100%";
+  const leftCityPaintHeight =
+    leftHasAccommodation || fullDayAccommodation ? "75%" : "100%";
+  const rightCityPaintHeight =
+    rightHasAccommodation || fullDayAccommodation ? "75%" : "100%";
+  const locationSplit =
+    Boolean(primary && secondary) ||
+    (Boolean(primary) && isSplitDay(day) && displayShare < 0.99);
   const isBuffer = day.dayType === "buffer";
   const isHalfPending =
     isInPendingRange && (resolvedFillHalf === "left" || resolvedFillHalf === "right");
-  const travelSummary = travelLayoutSummary(displayTravelSegments ?? props.travelSegments);
   const halfSelectionDivider =
-    isSplitDay(day) && displayShare < 0.99 ? displayShare : 0.5;
+    isSplitDay(day) && displayShare < 0.99 ? displayShare : DEFAULT_HALF_SHARE;
 
-  const rightSelectionBounds =
-    resolvedFillHalf === "right"
-      ? rightHalfSelectionBounds(day, layoutSegments)
+  const accommodationLeftColors = primary
+    ? stayBandStyleForCity(primary, props.locationColorByKey)
+    : null;
+  const accommodationRightColors = secondary
+    ? stayBandStyleForCity(secondary, props.locationColorByKey)
+    : null;
+  const accommodationSingleColors =
+    primary || secondary
+      ? stayBandStyleForCity(primary || secondary, props.locationColorByKey)
       : null;
-  const leftPendingWidth =
-    resolvedFillHalf === "left" && hasMorningTravelPaint && !primary
-      ? travelMorningEnd
-      : resolvedFillHalf === "left" && hasAfternoonDepartureOnly && !primary
-        ? 0.5
-        : halfSelectionDivider;
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!props.isSelectable) return;
-    const rect = cellRef.current?.getBoundingClientRect();
-    if (rect && layoutSegments?.length) {
-      const ratio = (e.clientX - rect.left) / rect.width;
-      if (clickHitsTransitSegment(ratio, layoutSegments)) {
-        props.onDayClick(iso, undefined, { transportClick: true });
-        return;
-      }
-    }
     if (!isSplitDay(day)) {
       props.onDayClick(iso);
       return;
     }
+    const rect = cellRef.current?.getBoundingClientRect();
     if (!rect) {
       props.onDayClick(iso);
       return;
@@ -159,13 +105,17 @@ export function TripOsDayCell(props: {
     props.onDayClick(iso, halfFromClickX(e.clientX, rect, day));
   }
 
-  const selectedFullDay =
-    isInPendingRange && !isHalfPending && !hasPartialTravelPaint;
+  const selectedFullDay = isInPendingRange && !isHalfPending;
   const selectedHalfDay = isHalfPending;
   const dayNumSelected = isInPendingRange && !isHalfPending;
 
+  const title =
+    primary && secondary
+      ? `${primary} / ${secondary}`
+      : primary || secondary || undefined;
+
   return (
-    <div className="flex min-h-[5.75rem] flex-col p-0.5">
+    <div className="flex min-h-[5.75rem] flex-col p-0.5" data-calendar-day-cell={iso}>
       <div className="flex shrink-0 justify-center pt-1">
         <span
           className={[
@@ -207,67 +157,57 @@ export function TripOsDayCell(props: {
         }}
         role="button"
         tabIndex={props.isSelectable ? 0 : -1}
-        title={travelSummary || undefined}
+        title={title}
       >
         {selectedHalfDay ? (
           <div
             className="pointer-events-none absolute inset-y-0 z-[20] rounded-lg border-2 border-violet-500/90 bg-violet-500/10"
             style={
-              resolvedFillHalf === "right" && rightSelectionBounds
+              resolvedFillHalf === "right"
                 ? {
-                    left: `${rightSelectionBounds.start * 100}%`,
-                    width: `${rightSelectionBounds.width * 100}%`,
+                    left: `${displayShare * 100}%`,
+                    width: `${(1 - displayShare) * 100}%`,
                   }
-                : { left: 0, width: `${leftPendingWidth * 100}%` }
+                : { left: 0, width: `${halfSelectionDivider * 100}%` }
             }
             aria-hidden
           />
         ) : null}
 
-        <TransportBand
-          segments={layoutSegments}
-          showTransportCorridor={props.showTransportCorridor}
-          primary={primary}
-          secondary={secondary}
-          corridorDepartureAcco={props.corridorDepartureAcco}
-          corridorArrivalAcco={props.corridorArrivalAcco}
-          corridorDepartureAccoColors={props.accommodationLeftColors}
-          corridorArrivalAccoColors={props.accommodationRightColors}
-          locationColorByKey={props.locationColorByKey}
-          onTransportCorridorClick={
-            props.onTransportCorridorClick
-              ? () => props.onTransportCorridorClick!(iso)
-              : undefined
-          }
-          onTransitClick={() => props.onDayClick(iso, undefined, { transportClick: true })}
-        />
-
         <LocationBand
-          day={day}
-          baseDay={props.baseDay}
-          overlayKind={props.overlayKind}
+          day={{
+            ...day,
+            primaryCity: primary,
+            secondaryCity: secondary || null,
+          }}
           displayShare={displayShare}
-          showStayPaint={showStayPaint && !props.showTransportCorridor}
-          cityPaintHeight={cityPaintHeight}
+          showStayPaint={showStayPaint}
+          leftCityPaintHeight={leftCityPaintHeight}
+          rightCityPaintHeight={rightCityPaintHeight}
           locationColorByKey={props.locationColorByKey}
         />
 
-        <TransitOverlay overlays={props.transitOverlays} />
-        {!props.showTransportCorridor ? (
-          <StayBand
-            label={props.accommodationLabel}
-            leftLabel={props.accommodationLeftLabel}
-            rightLabel={props.accommodationRightLabel}
-            leftOnly={props.accommodationLeftOnly}
-            rightOnly={props.accommodationRightOnly}
-            displayShare={displayShare}
-            primary={primary}
-            secondary={secondary}
-            leftColors={props.accommodationLeftColors}
-            rightColors={props.accommodationRightColors}
-            singleColors={props.accommodationSingleColors}
+        {locationSplit ? (
+          <div
+            className="pointer-events-none absolute inset-y-0 z-[11] w-px bg-zinc-400/80"
+            style={{ left: `${displayShare * 100}%` }}
+            aria-hidden
           />
         ) : null}
+
+        <StayBand
+          label={props.accommodationLabel}
+          leftLabel={props.accommodationLeftLabel}
+          rightLabel={props.accommodationRightLabel}
+          leftOnly={props.accommodationLeftOnly}
+          rightOnly={props.accommodationRightOnly}
+          displayShare={displayShare}
+          primary={primary}
+          secondary={secondary}
+          leftColors={accommodationLeftColors}
+          rightColors={accommodationRightColors}
+          singleColors={accommodationSingleColors}
+        />
         <ActivityChips activities={props.activities} />
       </div>
     </div>

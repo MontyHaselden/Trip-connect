@@ -141,9 +141,12 @@ export const costLineCategory = pgEnum("cost_line_category", [
 export const costAllocationRuleType = pgEnum("cost_allocation_rule_type", [
   "equal_cost_participants",
   "equal_group",
+  "equal_present",
   "assign_one",
   "manual",
 ]);
+
+export const costLineScope = pgEnum("cost_line_scope", ["presence", "trip_wide"]);
 
 export const supplierPaymentStatus = pgEnum("supplier_payment_status", [
   "estimated",
@@ -187,6 +190,7 @@ export const accommodationStayType = pgEnum("accommodation_stay_type", [
   "hotel",
   "hostel",
   "homestay",
+  "campground",
   "multiple_hosts",
   "multiple_hotels",
   "not_booked",
@@ -410,6 +414,7 @@ export const costLineItems = pgTable(
     linkedStayId: uuid("linked_stay_id"),
     linkedTransportLegId: uuid("linked_transport_leg_id"),
     linkedActivityId: uuid("linked_activity_id"),
+    scope: costLineScope("scope").notNull().default("presence"),
     supplierPaymentStatus: supplierPaymentStatus("supplier_payment_status"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -877,12 +882,38 @@ export const groups = pgTable(
     description: text("description"),
     sortOrder: integer("sort_order").notNull().default(0),
     isMain: boolean("is_main").notNull().default(false),
+    inheritMode: text("inherit_mode"),
+    personalForParticipantId: uuid("personal_for_participant_id").references(
+      () => participants.id,
+      { onDelete: "set null" },
+    ),
   },
   (g) => ({
     tripSortIndex: index("groups_trip_id_sort_order_idx").on(
       g.tripId,
       g.sortOrder,
     ),
+    personalParticipantIdx: index("groups_personal_participant_idx").on(
+      g.personalForParticipantId,
+    ),
+  }),
+);
+
+export const tripFinanceDismissals = pgTable(
+  "trip_finance_dismissals",
+  {
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.tripId, t.entityType, t.entityId] }),
+    tripIdx: index("trip_finance_dismissals_trip_idx").on(t.tripId),
   }),
 );
 

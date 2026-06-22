@@ -11,6 +11,8 @@ import type {
 } from "./types";
 import { activitiesOnDate, dayPlacesForGroup, namedStays } from "./selectors";
 import { filterCalendarDotActivities, activityToMarker } from "./calendar-activity-dots";
+import { resolveDisplayDayPlaces } from "./resolve-display-day-places";
+import { participantInheritsMainCalendar } from "./person-lens";
 
 export type ProjectCalendarOptions = {
   groupId?: string;
@@ -58,6 +60,26 @@ export function projectCalendar(
   const bounds = effectiveTripBoundsFromState(graph);
   const gridStart = options?.gridStart ?? bounds.startDate;
   const gridEnd = options?.gridEnd ?? bounds.endDate;
+
+  if (groupId !== graph.mainGroupId && participantInheritsMainCalendar(graph, groupId)) {
+    const main = projectCalendar(graph, {
+      ...options,
+      groupId: graph.mainGroupId,
+      gridStart,
+      gridEnd,
+    });
+    if (groupId === graph.mainGroupId) return main;
+    return {
+      ...main,
+      groupId,
+      days: main.days.map((day) => ({
+        ...day,
+        groupId,
+        overlayMeta: "inherit" as const,
+      })),
+    };
+  }
+
   const storedDays = dayPlacesForGroup(graph, groupId);
   const stays = namedStays(graph, groupId);
 
@@ -78,14 +100,16 @@ export function projectCalendar(
     },
     gridStart,
     gridEnd,
-    overlayStoredLocationGaps: options?.overlayStoredLocationGaps ?? groupId === graph.mainGroupId,
+    overlayStoredLocationGaps: false,
   });
+
+  const displayDays = resolveDisplayDayPlaces(storedDays, derived.dayPlaces, gridStart, gridEnd);
 
   const transportDraft = {
     outboundLegs: graph.outboundLegs,
     returnLegs: graph.returnLegs,
     intercityLegs: graph.intercityLegs,
-    dayPlaces: derived.dayPlaces,
+    dayPlaces: displayDays,
   };
   const tripContext = {
     startDate: bounds.startDate,
@@ -97,7 +121,7 @@ export function projectCalendar(
     stays: graph.accommodationStays,
   });
 
-  const baseDays: ProjectedDay[] = derived.dayPlaces.map((day) => {
+  const baseDays: ProjectedDay[] = displayDays.map((day) => {
     const transportOverlays: TransportOverlay[] = [];
     const layouts = travelLayouts.get(day.date) ?? [];
     for (const layout of layouts) {

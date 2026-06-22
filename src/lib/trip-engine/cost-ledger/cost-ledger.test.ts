@@ -89,6 +89,7 @@ describe("projectCostLedger", () => {
           linkedStayId: null,
           linkedTransportLegId: null,
           linkedActivityId: null,
+          scope: "trip_wide",
           supplierPaymentStatus: null,
         },
       ],

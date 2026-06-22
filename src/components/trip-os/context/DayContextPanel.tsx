@@ -6,11 +6,21 @@ import { DateTime } from "luxon";
 import { HotelNamePicker } from "@/components/geo/HotelNamePicker";
 import { PlacePicker } from "@/components/geo/PlacePicker";
 import {
+  accommodationSearchMode,
   inferCityLabelFromAddress,
   looksLikeFormalMapsCityLabel,
   resolveStayCityOnHotelPick,
   suggestKeepStayCityLabel,
 } from "@/lib/geo/accommodation-search";
+import {
+  defaultHomestayGroupForType,
+  PICKABLE_STAY_TYPES,
+  stayTypeLabel,
+} from "@/lib/host/accommodation/stay-type-labels";
+import {
+  homestayFamilyStays,
+  homestayPeriodStays,
+} from "@/lib/host/accommodation/homestay-helpers";
 import { stayCityLabel } from "@/lib/host/setup/accommodation-calendar";
 import {
   accommodationCityForSelection,
@@ -40,12 +50,14 @@ import type {
   AccommodationStayDraft,
   DayPlaceDraft,
   IntercityLegDraft,
+  StayType,
   TransportLegDraft,
 } from "@/lib/host/wizard/types";
 import type {
   CalendarRenderModel,
   EngineConflict,
   ProjectedDay,
+  RosterSummary,
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
 import { newId } from "@/lib/host/wizard/types";
@@ -54,8 +66,9 @@ import { daysInSelection, type CalendarSelection } from "../calendar/useCalendar
 import { AsyncButton } from "../shared/AsyncButton";
 import { AccommodationLocationConflictDialog } from "./AccommodationLocationConflictDialog";
 import { DayOverviewActivities } from "./DayOverviewActivities";
+import { AddHomestaysModal } from "../homestay/AddHomestaysModal";
 import { FlightLegQuickForm } from "../shared/FlightLegQuickForm";
-import { tripFieldClass } from "../shared/TripInput";
+import { tripFieldClass, TripInput } from "../shared/TripInput";
 import { TripDateInput } from "../shared/TripDateInput";
 import { tripDatePickerContext } from "../shared/trip-date-picker";
 
@@ -164,7 +177,7 @@ function rangeAccommodationSummaryHalfAware(
   const unique = [...new Set(labels)];
   if (unique.length === 1) return unique[0]!;
   if (unique.length > 1) return "Mixed across days";
-  return "No hotel in this range";
+  return "No stay in this range";
 }
 
 function isSplitTravelDay(
@@ -181,8 +194,7 @@ function isSplitTravelDay(
 function formatLocationSlice(city: string, share: number): string {
   const label = shortCityName(city);
   if (share >= 0.99) return label;
-  const pct = Math.round(share * 100);
-  return `${label} (${pct}%)`;
+  return `${label} (half day)`;
 }
 
 function splitDayTransitionSummary(left: string | undefined, right: string | undefined): string | null {
@@ -227,14 +239,17 @@ function stayDraftCityLabel(draft: {
 }
 
 export function DayContextPanel(props: {
+  tripId: string;
   graph: TripEntityGraph;
   groupId: string;
   model: CalendarRenderModel;
   selection: CalendarSelection;
   conflicts: EngineConflict[];
+  rosterSummary?: RosterSummary;
   saving?: boolean;
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
   onClearSelection: () => void;
+  onReload?: () => void;
   error?: string | null;
 }) {
   const { selection, model, graph, groupId } = props;
@@ -271,13 +286,47 @@ export function DayContextPanel(props: {
     longitude: number | null;
     checkIn: string;
     checkOut: string;
+    stayType: StayType;
+    isHomestayGroup: boolean;
   } | null>(null);
   const [stayConflictDialog, setStayConflictDialog] = useState<{
     cityLabel: string;
     conflicts: AccommodationLocationConflict[];
   } | null>(null);
+  const [homestaysModalOpen, setHomestaysModalOpen] = useState(false);
+  const [homestaysModalContext, setHomestaysModalContext] = useState<{
+    cityLabel: string;
+    checkIn: string;
+    checkOut: string;
+  } | null>(null);
 
   const groupStays = useMemo(() => staysForGroup(graph, groupId), [graph, groupId]);
+
+  const homestayPeriodInRange = useMemo(() => {
+    if (!rangeStart) return null;
+    const end = rangeEnd || rangeStart;
+    return (
+      homestayPeriodStays(groupStays).find(
+        (s) => s.checkInDate <= end && s.checkOutDate > rangeStart,
+      ) ?? null
+    );
+  }, [groupStays, rangeStart, rangeEnd]);
+
+  const homestayFamiliesInRange = useMemo(() => {
+    if (!rangeStart) return [];
+    const end = rangeEnd || rangeStart;
+    return homestayFamilyStays(groupStays).filter(
+      (s) => s.checkInDate <= end && s.checkOutDate > rangeStart,
+    );
+  }, [groupStays, rangeStart, rangeEnd]);
+
+  const homestayStudents = useMemo(
+    () => (props.rosterSummary?.participants ?? []).filter((p) => p.role === "student"),
+    [props.rosterSummary?.participants],
+  );
+
+  const isGroupHomestayDraft =
+    stayDraft?.stayType === "homestay" && Boolean(stayDraft.isHomestayGroup);
 
   const rangeConflicts = useMemo(() => {
     if (!rangeStart) return [];
@@ -467,6 +516,8 @@ export function DayContextPanel(props: {
         longitude: linkedStay?.longitude ?? null,
         checkIn: dates.checkIn,
         checkOut: dates.checkOut,
+        stayType: linkedStay?.stayType ?? "hotel",
+        isHomestayGroup: linkedStay?.isHomestayGroup ?? false,
       });
     }
   }, [editingField, projectedInRange, linkedStay, selection, rangeStart, rangeEnd, legsForSelectedDay, isMultiDayRange, daysForConflictCheck]);
@@ -485,7 +536,7 @@ export function DayContextPanel(props: {
       ? `Apply to all ${dayCount} days`
       : "Save";
 
-  async function saveLocation() {
+  function saveLocation() {
     setActionError(null);
 
     if (splitTravelDay && rangeStart) {
@@ -506,9 +557,8 @@ export function DayContextPanel(props: {
       const days = existing.some((d) => d.date === rangeStart)
         ? existing.map((d) => (d.date === rangeStart ? { ...d, ...updatedDay } : d))
         : [...existing, updatedDay];
-      const ok = await props.onDispatch([{ type: "setDayPlaces", groupId, days }]);
-      if (ok) setEditingField(null);
-      else setActionError(props.error || "Could not save location.");
+      void props.onDispatch([{ type: "setDayPlaces", groupId, days }]);
+      setEditingField(null);
       return;
     }
 
@@ -516,7 +566,7 @@ export function DayContextPanel(props: {
       setActionError("Enter a city or region.");
       return;
     }
-    const ok = await props.onDispatch([
+    void props.onDispatch([
       {
         type: "paintDayRange",
         groupId,
@@ -527,19 +577,26 @@ export function DayContextPanel(props: {
         endHalf,
       },
     ]);
-    if (ok) setEditingField(null);
-    else setActionError(props.error || "Could not save location.");
+    setEditingField(null);
   }
 
-  async function commitStaySave(cityLabel: string, mergedDates: { checkIn: string; checkOut: string }) {
+  async function commitStaySave(
+    cityLabel: string,
+    mergedDates: { checkIn: string; checkOut: string },
+    options?: { replaceLocationLabels?: boolean },
+  ) {
     if (!stayDraft) return;
     const isReplacingStay = Boolean(
       linkedStay &&
         (linkedStay.name?.trim() !== stayDraft.name.trim() ||
           !locationsMatch(stayCityLabel(linkedStay), cityLabel)),
     );
+    const isGroupHomestayPeriod =
+      stayDraft.stayType === "homestay" && stayDraft.isHomestayGroup;
     const payload = {
-      name: stayDraft.name.trim(),
+      name: isGroupHomestayPeriod
+        ? stayDraft.name.trim() || `Homestays · ${cityLabel}`
+        : stayDraft.name.trim(),
       cityLabel,
       address: stayDraft.address,
       googlePlaceId: stayDraft.googlePlaceId,
@@ -547,6 +604,9 @@ export function DayContextPanel(props: {
       longitude: stayDraft.longitude,
       checkInDate: mergedDates.checkIn,
       checkOutDate: mergedDates.checkOut,
+      stayType: stayDraft.stayType,
+      isHomestayGroup: stayDraft.isHomestayGroup,
+      multipleInCity: stayDraft.stayType === "homestay" && stayDraft.isHomestayGroup,
     };
     const commands: TripCommand[] = [];
     const needsLocationPaint =
@@ -605,14 +665,12 @@ export function DayContextPanel(props: {
       commands.push({
         type: "addStay",
         groupId,
+        replaceLocationLabels: options?.replaceLocationLabels,
         stay: {
           id: newId(),
-          stayType: "hotel",
           url: null,
           phone: null,
           notes: null,
-          isHomestayGroup: false,
-          multipleInCity: false,
           ...payload,
         },
       });
@@ -621,20 +679,19 @@ export function DayContextPanel(props: {
         type: "updateStay",
         groupId,
         stayId: stayDraft.id,
+        replaceLocationLabels: options?.replaceLocationLabels,
         patch: payload,
       });
     } else {
       commands.push({
         type: "addStay",
         groupId,
+        replaceLocationLabels: options?.replaceLocationLabels,
         stay: {
           id: newId(),
-          stayType: "hotel",
           url: null,
           phone: null,
           notes: null,
-          isHomestayGroup: false,
-          multipleInCity: false,
           ...payload,
         },
       });
@@ -642,7 +699,17 @@ export function DayContextPanel(props: {
     const ok = await props.onDispatch(commands);
     if (ok) {
       setStayConflictDialog(null);
-      setEditingField(null);
+      if (isGroupHomestayPeriod) {
+        setHomestaysModalContext({
+          cityLabel,
+          checkIn: mergedDates.checkIn,
+          checkOut: mergedDates.checkOut,
+        });
+        setHomestaysModalOpen(true);
+        setEditingField(null);
+      } else {
+        setEditingField(null);
+      }
     } else {
       setActionError(props.error || "Could not save stay.");
     }
@@ -650,8 +717,18 @@ export function DayContextPanel(props: {
 
   async function saveStay() {
     setActionError(null);
-    if (!stayDraft?.name.trim() || !stayDraft.checkIn || !stayDraft.checkOut) {
-      setActionError("Hotel name and check-in/out dates are required.");
+    if (!stayDraft?.checkIn || !stayDraft.checkOut) {
+      setActionError("Check-in and check-out dates are required.");
+      return;
+    }
+    const isGroupHomestay =
+      stayDraft.stayType === "homestay" && stayDraft.isHomestayGroup;
+    if (!isGroupHomestay && !stayDraft.name.trim()) {
+      setActionError("Property name and check-in/out dates are required.");
+      return;
+    }
+    if (isGroupHomestay && !stayDraftCityLabel(stayDraft).trim()) {
+      setActionError("Enter a stay city for the homestay period.");
       return;
     }
     const mergedDates = isMultiDayRange
@@ -686,7 +763,9 @@ export function DayContextPanel(props: {
           checkIn: stayDraft.checkIn,
           checkOut: stayDraft.checkOut,
         });
-    await commitStaySave(stayConflictDialog.cityLabel, mergedDates);
+    await commitStaySave(stayConflictDialog.cityLabel, mergedDates, {
+      replaceLocationLabels: true,
+    });
   }
 
   function removeStay() {
@@ -746,6 +825,23 @@ export function DayContextPanel(props: {
         ? `${dayCount} days selected`
         : null;
 
+  function openHomestaysModal() {
+    const cityLabel =
+      (homestayPeriodInRange ? stayCityLabel(homestayPeriodInRange) : "") ||
+      (stayDraft ? stayDraftCityLabel(stayDraft) : "") ||
+      accommodationCityForSelection(selection, daysForConflictCheck);
+    const checkIn =
+      homestayPeriodInRange?.checkInDate ||
+      stayDraft?.checkIn ||
+      stayDatesForRangeApply(selection).checkIn;
+    const checkOut =
+      homestayPeriodInRange?.checkOutDate ||
+      stayDraft?.checkOut ||
+      stayDatesForRangeApply(selection).checkOut;
+    setHomestaysModalContext({ cityLabel, checkIn, checkOut });
+    setHomestaysModalOpen(true);
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-6 py-2">
       <div className="flex items-start justify-between gap-3">
@@ -766,6 +862,13 @@ export function DayContextPanel(props: {
       {props.error || actionError ? (
         <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
           {actionError || props.error}
+        </p>
+      ) : null}
+
+      {groupId !== graph.mainGroupId ? (
+        <p className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm leading-relaxed text-violet-950">
+          You&apos;re editing a participant or subgroup plan — not the whole group. Switch the
+          calendar back to <span className="font-medium">Whole group</span> to edit the main trip.
         </p>
       ) : null}
 
@@ -793,7 +896,7 @@ export function DayContextPanel(props: {
             label="Stay"
             value={accommodationSummary}
             action={hasStay ? "Edit" : "Add"}
-            highlight={!hasStay && accommodationSummary === "No hotel in this range"}
+            highlight={!hasStay && accommodationSummary === "No stay in this range"}
             onAction={() => setEditingField("accommodation")}
           />
           <OverviewLine
@@ -805,6 +908,48 @@ export function DayContextPanel(props: {
           />
         </ul>
       </section>
+
+      {homestayPeriodInRange ? (
+        <section className="rounded-2xl border border-zinc-200/80 bg-gradient-to-b from-violet-50/40 to-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-600">
+                Host families
+              </h3>
+              <p className="mt-1 text-sm text-zinc-600">
+                {homestayPeriodInRange.name || "Homestays"} ·{" "}
+                {homestayPeriodInRange.checkInDate} → {homestayPeriodInRange.checkOutDate}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openHomestaysModal}
+              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-zinc-800"
+            >
+              Add homestays
+            </button>
+          </div>
+          {homestayFamiliesInRange.length ? (
+            <ul className="mt-4 space-y-2">
+              {homestayFamiliesInRange.map((family) => (
+                <li
+                  key={family.id}
+                  className="rounded-xl border border-zinc-200/80 bg-white px-4 py-3 text-sm"
+                >
+                  <p className="font-medium text-zinc-900">{family.name}</p>
+                  {family.address ? (
+                    <p className="mt-0.5 text-zinc-600">{family.address}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-zinc-500">
+              No host families yet — add them to assign students.
+            </p>
+          )}
+        </section>
+      ) : null}
 
       {editingField === "location" ? (
         <SectionEditorPanel label="Location" onClose={() => setEditingField(null)}>
@@ -849,8 +994,6 @@ export function DayContextPanel(props: {
           <div className="flex gap-2">
             <AsyncButton
               onClick={() => void saveLocation()}
-              loading={props.saving}
-              loadingLabel="Saving…"
               className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
             >
               {applyLabel} location
@@ -869,31 +1012,98 @@ export function DayContextPanel(props: {
       {editingField === "accommodation" && stayDraft ? (
         <SectionEditorPanel label="Accommodation" onClose={() => setEditingField(null)}>
           <div className="space-y-2">
-            <HotelNamePicker
-              value={stayDraft.name}
-              onChange={(name) => setStayDraft({ ...stayDraft, name })}
-              onSelectHotel={({ name, address, cityLabel, placeId, lat, lng }) => {
-                setStayDraft({
-                  ...stayDraft,
-                  name,
-                  address: address || null,
-                  googlePlaceId: placeId ?? null,
-                  latitude: lat ?? null,
-                  longitude: lng ?? null,
-                  city: resolveStayCityOnHotelPick({
-                    hotelName: name,
-                    mapsCityLabel: cityLabel,
-                    address,
-                    existingCity: stayDraft.city,
-                  }),
-                });
-              }}
-              stayType="hotel"
-              countryNames={props.graph.basics.destinationCountries ?? []}
-              stayCity={stayDraftCityLabel(stayDraft) || undefined}
-              placeholder="Search property on Google Maps…"
-              inputClassName={inputClass}
-            />
+            <label className="block space-y-1.5">
+              <span className="text-xs text-zinc-500">Type</span>
+              <select
+                value={stayDraft.stayType}
+                onChange={(e) => {
+                  const stayType = e.target.value as StayType;
+                  setStayDraft({
+                    ...stayDraft,
+                    stayType,
+                    isHomestayGroup: defaultHomestayGroupForType(stayType),
+                  });
+                }}
+                className={inputClass}
+              >
+                {PICKABLE_STAY_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {stayTypeLabel(t)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {isGroupHomestayDraft ? (
+              <>
+                <label className="block space-y-1.5">
+                  <span className="text-xs text-zinc-500">Period label (optional)</span>
+                  <TripInput
+                    value={stayDraft.name}
+                    onChange={(e) => setStayDraft({ ...stayDraft, name: e.target.value })}
+                    placeholder={`Homestays · ${stayDraft.city.trim() || "city"}`}
+                    className={inputClass}
+                  />
+                </label>
+                <div className="rounded-2xl border border-violet-200/70 bg-violet-50/50 px-4 py-4">
+                  <p className="text-sm leading-relaxed text-zinc-700">
+                    Save the homestay period on the calendar first. You&apos;ll then add each host
+                    family and assign students in a quick popup.
+                  </p>
+                  {homestayPeriodInRange ? (
+                    <button
+                      type="button"
+                      onClick={openHomestaysModal}
+                      className="mt-3 rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                    >
+                      Add homestays
+                    </button>
+                  ) : null}
+                  {homestayFamiliesInRange.length ? (
+                    <ul className="mt-3 space-y-1.5 border-t border-violet-200/60 pt-3">
+                      {homestayFamiliesInRange.map((family) => (
+                        <li key={family.id} className="text-sm text-zinc-800">
+                          <span className="font-medium">{family.name}</span>
+                          {family.address ? (
+                            <span className="text-zinc-500"> · {family.address}</span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <label className="block space-y-1.5">
+                <span className="text-xs text-zinc-500">
+                  {accommodationSearchMode(stayDraft.stayType).fieldLabel}
+                </span>
+                <HotelNamePicker
+                  value={stayDraft.name}
+                  onChange={(name) => setStayDraft({ ...stayDraft, name })}
+                  onSelectHotel={({ name, address, cityLabel, placeId, lat, lng }) => {
+                    setStayDraft({
+                      ...stayDraft,
+                      name,
+                      address: address || null,
+                      googlePlaceId: placeId ?? null,
+                      latitude: lat ?? null,
+                      longitude: lng ?? null,
+                      city: resolveStayCityOnHotelPick({
+                        hotelName: name,
+                        mapsCityLabel: cityLabel,
+                        address,
+                        existingCity: stayDraft.city,
+                      }),
+                    });
+                  }}
+                  stayType={stayDraft.stayType}
+                  countryNames={props.graph.basics.destinationCountries ?? []}
+                  stayCity={stayDraftCityLabel(stayDraft) || undefined}
+                  placeholder={accommodationSearchMode(stayDraft.stayType).placeholder}
+                  inputClassName={inputClass}
+                />
+              </label>
+            )}
             <label className="block space-y-1.5">
               <span className="text-xs text-zinc-500">Stay city (calendar label)</span>
               <PlacePicker
@@ -969,6 +1179,19 @@ export function DayContextPanel(props: {
                 />
               </label>
             </div>
+            {stayDraft.stayType === "homestay" ? (
+              <label className="flex items-center gap-2 text-sm text-zinc-700">
+                <input
+                  type="checkbox"
+                  checked={stayDraft.isHomestayGroup}
+                  onChange={(e) =>
+                    setStayDraft({ ...stayDraft, isHomestayGroup: e.target.checked })
+                  }
+                  className="rounded border-zinc-300"
+                />
+                Each student stays with a different host family
+              </label>
+            ) : null}
             <p className="text-xs text-zinc-500">
               {linkedStay && linkedStay.checkInDate > rangeStart
                 ? `Saving merges with your existing stay (check-in moves to ${stayDraft?.checkIn}).`
@@ -981,8 +1204,6 @@ export function DayContextPanel(props: {
             <div className="flex flex-wrap gap-2">
               <AsyncButton
                 onClick={() => void saveStay()}
-                loading={props.saving}
-                loadingLabel="Saving…"
                 className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
               >
                 {applyLabel} stay
@@ -1092,6 +1313,22 @@ export function DayContextPanel(props: {
           );
           setStayConflictDialog({ cityLabel, conflicts });
         }}
+      />
+
+      <AddHomestaysModal
+        open={homestaysModalOpen}
+        onClose={() => {
+          setHomestaysModalOpen(false);
+          setHomestaysModalContext(null);
+        }}
+        tripId={props.tripId}
+        groupId={groupId}
+        cityLabel={homestaysModalContext?.cityLabel ?? ""}
+        checkIn={homestaysModalContext?.checkIn ?? ""}
+        checkOut={homestaysModalContext?.checkOut ?? ""}
+        students={homestayStudents}
+        onDispatch={props.onDispatch}
+        onSaved={() => props.onReload?.()}
       />
     </div>
   );

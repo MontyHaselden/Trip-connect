@@ -1,3 +1,4 @@
+import { dayConflictsWithLegCorridor } from "@/lib/host/setup/transport-leg-corridor";
 import { TRANSPORT_CORRIDOR_LEFT_SHARE } from "@/lib/host/setup/transport-corridor";
 import {
   DEFAULT_HALF_SHARE,
@@ -90,17 +91,11 @@ export function clearStayCityFromDay(day: DayPlaceDraft, city: string): DayPlace
   return emptyDay(day.date);
 }
 
-/** Merge to a full day when the same city already occupies the other half. */
+/** Merge to a full day only when the same city explicitly occupies both halves. */
 function mergeSameCityHalves(day: DayPlaceDraft, city: string): DayPlaceDraft | null {
   const primary = day.primaryCity.trim();
   const secondary = day.secondaryCity?.trim() ?? "";
   if (primary && citiesMatch(primary, city) && secondary && citiesMatch(secondary, city)) {
-    return { ...day, primaryCity: city, secondaryCity: null, primaryShare: 1, dayType: "trip" };
-  }
-  if (primary && citiesMatch(primary, city) && !secondary) {
-    return { ...day, primaryCity: city, secondaryCity: null, primaryShare: 1, dayType: "trip" };
-  }
-  if (secondary && citiesMatch(secondary, city) && !primary) {
     return { ...day, primaryCity: city, secondaryCity: null, primaryShare: 1, dayType: "trip" };
   }
   return null;
@@ -117,12 +112,27 @@ function paintStayEveningHalf(day: DayPlaceDraft, city: string): DayPlaceDraft {
 
   if (secondary && citiesMatch(secondary, city)) {
     if (!primary) {
-      return { ...day, primaryCity: city, secondaryCity: null, primaryShare: 1, dayType: "trip" };
+      return day;
     }
     return day;
   }
   if (primary && citiesMatch(primary, city) && !secondary) {
-    return { ...day, primaryCity: city, secondaryCity: null, primaryShare: 1, dayType: "trip" };
+    if ((day.primaryShare ?? 1) < 1) {
+      return {
+        ...day,
+        primaryCity: city,
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: day.dayType === "buffer" ? "buffer" : "trip",
+      };
+    }
+    return {
+      ...day,
+      primaryCity: "",
+      secondaryCity: city,
+      primaryShare: DEFAULT_HALF_SHARE,
+      dayType: day.dayType === "buffer" ? "buffer" : "trip",
+    };
   }
   if (emptyHalf === "right") return fillEmptyHalf(day, city, "right");
   if (primary && !citiesMatch(primary, city)) {
@@ -154,7 +164,13 @@ function paintStayMorningHalf(day: DayPlaceDraft, city: string): DayPlaceDraft {
 
   if (primary && citiesMatch(primary, city)) return day;
   if (secondary && citiesMatch(secondary, city) && !primary) {
-    return { ...day, primaryCity: city, secondaryCity: null, primaryShare: 1, dayType: "trip" };
+    return {
+      ...day,
+      primaryCity: city,
+      secondaryCity: null,
+      primaryShare: DEFAULT_HALF_SHARE,
+      dayType: day.dayType === "buffer" ? "buffer" : "trip",
+    };
   }
   if (emptyHalf === "left") return fillEmptyHalf(day, city, "left");
   if (secondary && !citiesMatch(secondary, city)) {
@@ -194,9 +210,14 @@ export function inferDayPlacesFromStay(
         const hasSplitCities = Boolean(
           current.primaryCity.trim() && current.secondaryCity?.trim(),
         );
+        const stayCityOnDay = cityOnDay(current, city);
         byDate.set(
           clear,
-          hasSplitCities ? clearStayCityFromDay(current, city) : emptyDay(clear),
+          hasSplitCities && !stayCityOnDay
+            ? emptyDay(clear)
+            : hasSplitCities
+              ? clearStayCityFromDay(current, city)
+              : emptyDay(clear),
         );
       }
       clear = addDays(clear, 1);
@@ -353,6 +374,7 @@ export function inferDayPlacesFromIntercityLeg(
 
   const byDate = new Map(existing.map((d) => [d.date, d]));
   const prev = byDate.get(date);
+  if (prev && dayConflictsWithLegCorridor(prev, from, to)) return existing;
   if (prev && hasGroupDayOverride(existing, date)) return existing;
 
   byDate.set(date, {

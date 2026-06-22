@@ -10,8 +10,11 @@ export type CostLineCategory =
 export type CostAllocationRuleType =
   | "equal_cost_participants"
   | "equal_group"
+  | "equal_present"
   | "assign_one"
   | "manual";
+
+export type CostLineScope = "presence" | "trip_wide";
 
 export type CostAllocationRulePayload = {
   groupId?: string;
@@ -32,6 +35,7 @@ export type CostLineItemDraft = {
   linkedStayId: string | null;
   linkedTransportLegId: string | null;
   linkedActivityId: string | null;
+  scope: CostLineScope;
   supplierPaymentStatus: "estimated" | "invoiced" | "paid" | null;
 };
 
@@ -84,11 +88,16 @@ export type AllocatableItem = {
   currency: string;
   allocationRuleType: CostAllocationRuleType;
   allocationRulePayload: CostAllocationRulePayload;
+  scope?: CostLineScope;
+  linkedStayId?: string | null;
+  linkedTransportLegId?: string | null;
+  linkedActivityId?: string | null;
 };
 
 export type LineAllocationResult = {
   lineItemId: string;
   allocations: Record<string, number>;
+  eligibleParticipantIds: string[];
   balanced: boolean;
   allocatedTotalCents: number;
 };

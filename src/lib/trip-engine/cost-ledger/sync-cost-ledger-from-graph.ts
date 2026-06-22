@@ -9,9 +9,14 @@ import { buildSeedLineItems, seedItemsNotYetPresent } from "./seed-from-graph";
 export async function syncCostLedgerFromGraph(
   tripId: string,
   graph: TripEntityGraph,
+  dismissedKeys: Set<string> = new Set(),
 ): Promise<number> {
   const raw = await loadCostLedgerRaw(tripId);
-  const seeds = seedItemsNotYetPresent(raw.lineItems, buildSeedLineItems(graph));
+  const seeds = seedItemsNotYetPresent(
+    raw.lineItems,
+    buildSeedLineItems(graph),
+    dismissedKeys,
+  );
   if (!seeds.length) return 0;
 
   await db.insert(costLineItems).values(
@@ -29,6 +34,7 @@ export async function syncCostLedgerFromGraph(
       linkedStayId: seed.linkedStayId,
       linkedTransportLegId: seed.linkedTransportLegId,
       linkedActivityId: seed.linkedActivityId,
+      scope: seed.scope,
       supplierPaymentStatus: seed.supplierPaymentStatus,
     })),
   );

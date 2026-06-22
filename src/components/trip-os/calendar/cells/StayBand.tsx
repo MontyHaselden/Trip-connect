@@ -3,6 +3,10 @@ import {
   stayBandFill,
   stayBandText,
 } from "@/lib/host/locations/accommodation-colors";
+import {
+  tripLocationSwatch,
+  type LocationPaletteSwatch,
+} from "@/lib/host/wizard/location-stays";
 
 type StayBandStyle = {
   fill: string;
@@ -152,6 +156,18 @@ export function StayBand(props: {
       colors={props.singleColors ?? props.leftColors ?? props.rightColors}
     />
   );
+}
+
+export function stayBandStyleForCity(
+  city: string,
+  colorMap?: Map<string, LocationPaletteSwatch>,
+): StayBandStyle {
+  const swatch = tripLocationSwatch(city, colorMap);
+  return {
+    fill: swatch.fill,
+    border: swatch.accent,
+    text: swatch.text,
+  };
 }
 
 export function stayBandStyleForLabel(stay: {

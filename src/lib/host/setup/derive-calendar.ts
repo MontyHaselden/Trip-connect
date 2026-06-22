@@ -4,12 +4,14 @@ import {
   stayCityLabel,
 } from "@/lib/host/setup/accommodation-calendar";
 import { stripConnectionHubsFromImportedDayPlaces } from "@/lib/host/import/sanitize-imported-locations";
+import { normalizeDayPlacesAirports } from "@/lib/host/setup/canonical-stay-city";
 import { locationsMatch } from "@/lib/host/wizard/location-stays";
 import {
   inferDayPlacesFromIntercityLeg,
   inferDayPlacesFromStay,
   normalizeInteriorStayDays,
 } from "@/lib/host/setup-inference";
+import { fillAccommodationInteriorGaps } from "@/lib/host/setup/fill-accommodation-gaps";
 import { deriveHomeArrivalDay } from "@/lib/host/setup/derive-trip-bounds";
 import {
   clearOrphanOutboundHomePaint,
@@ -222,6 +224,7 @@ export function deriveCalendarState(input: {
   const paintedCityChange = new Set<string>();
 
   for (const leg of intercityLegs) {
+    if (leg.surfaceOnly) continue;
     if (leg.legKind === "city_change" || !leg.legKind) {
       const paintDate = cityChangePaintDate(leg, named, dayPlaces);
       if (!paintDate) continue;
@@ -240,10 +243,13 @@ export function deriveCalendarState(input: {
     returnDepartsAfterTripEnd(transportDraft, trip.endDate) || !hasReturnTransport;
 
   if (overlayStoredLocationGaps) {
-    const storedDayPlaces = stripConnectionHubsFromImportedDayPlaces(
-      transportDraft.dayPlaces,
-      planeLegs,
-      named,
+    const storedDayPlaces = normalizeDayPlacesAirports(
+      stripConnectionHubsFromImportedDayPlaces(
+        transportDraft.dayPlaces,
+        planeLegs,
+        named,
+      ),
+      { stays: named, planeLegs, dayPlaces: transportDraft.dayPlaces },
     );
     dayPlaces = overlayStoredHostLocations(dayPlaces, storedDayPlaces, named);
   }
@@ -251,13 +257,22 @@ export function deriveCalendarState(input: {
   dayPlaces = inferDayPlacesFromFlightLegs(dayPlaces, planeLegs, { stays: named });
 
   if (overlayStoredLocationGaps) {
-    const storedDayPlaces = stripConnectionHubsFromImportedDayPlaces(
-      transportDraft.dayPlaces,
-      planeLegs,
-      named,
+    const storedDayPlaces = normalizeDayPlacesAirports(
+      stripConnectionHubsFromImportedDayPlaces(
+        transportDraft.dayPlaces,
+        planeLegs,
+        named,
+      ),
+      { stays: named, planeLegs, dayPlaces: transportDraft.dayPlaces },
     );
     dayPlaces = overlayStoredHostLocations(dayPlaces, storedDayPlaces, named);
   }
+
+  dayPlaces = normalizeDayPlacesAirports(dayPlaces, {
+    stays: named,
+    planeLegs,
+    dayPlaces,
+  });
 
   dayPlaces = enforceHomeLocks(
     dayPlaces,
@@ -288,6 +303,7 @@ export function deriveCalendarState(input: {
   );
 
   dayPlaces = normalizeInteriorStayDays(dayPlaces, named);
+  dayPlaces = fillAccommodationInteriorGaps(dayPlaces, named);
 
   const accommodationByDate = accommodationLabelByDate(named, planeLegs);
   const boundaries = listNightBoundaries(dayPlaces, named);

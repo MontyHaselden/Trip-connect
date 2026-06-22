@@ -47,6 +47,7 @@ export function DayOverviewActivities(props: {
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
 }) {
   const [adding, setAdding] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [startTime, setStartTime] = useState("10:00");
   const [endTime, setEndTime] = useState("");
@@ -139,9 +140,14 @@ export function DayOverviewActivities(props: {
   }
 
   async function removeActivity(activityId: string) {
-    await props.onDispatch([
-      { type: "removeActivity", groupId: props.groupId, activityId },
-    ]);
+    setRemovingId(activityId);
+    try {
+      await props.onDispatch([
+        { type: "removeActivity", groupId: props.groupId, activityId },
+      ]);
+    } finally {
+      setRemovingId(null);
+    }
   }
 
   return (
@@ -228,7 +234,7 @@ export function DayOverviewActivities(props: {
                       ) : null}
                     </div>
                     <AsyncButton
-                      loading={props.saving}
+                      loading={removingId === activity.id}
                       loadingLabel="…"
                       onClick={() => void removeActivity(activity.id)}
                       className="shrink-0 text-xs text-zinc-400 hover:text-red-600"

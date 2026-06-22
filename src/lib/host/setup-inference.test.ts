@@ -66,6 +66,7 @@ describe("inferDayPlacesFromStay", () => {
     const sep2 = result.find((d) => d.date === "2026-09-02");
     assert.equal(aug23?.primaryCity, "Minato City, Tokyo");
     assert.equal(sep1?.primaryCity, "Minato City, Tokyo");
+    assert.equal(sep1?.primaryShare, 1);
     assert.equal(sep2?.primaryCity, "Minato City, Tokyo");
   });
 

@@ -267,6 +267,7 @@ Rules:
 - checkOutDate is the calendar day the group leaves the hotel — usually the same day as their departure flight from that city, NOT the day after.
 - Do not invent ground transport (train/bus) between cities unless the document explicitly mentions it.
 - Flight connections: when the document shows multi-leg flights (e.g. Bangkok → Melbourne → Christchurch), output each leg as a separate transport leg with airports in fromCity/toCity. Do NOT paint connection-hub cities (e.g. Melbourne on a 4-hour layover) as dayPlaces locations — the group is in transit, not visiting the hub. Only paint a hub city if the group has an overnight stay or explicit day tour there.
+- NEVER put airport names in dayPlaces (e.g. Haneda, Narita, Heathrow, HND, NRT). Airports belong in transport leg fromCity/toCity only. dayPlaces use the city guests stay in (e.g. Tokyo, not Haneda). If the document says "fly to Haneda" but the group stays in Tokyo, primaryCity/secondaryCity must be Tokyo.
 - Use legKind "connection" on intercity legs after the first leg in a same-day or overnight flight chain.
 - ${documentImportSystemRules({ defaultTimezone: params.defaultTimezone })}
 - No markdown or commentary.`;

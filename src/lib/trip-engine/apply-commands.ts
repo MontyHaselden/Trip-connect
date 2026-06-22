@@ -1,5 +1,7 @@
 import { applySetupAccommodationChange } from "@/lib/host/setup/apply-setup-accommodation";
 import { applySetupTransportChange } from "@/lib/host/setup/apply-setup-transport";
+import { syncTransportLegAllocation } from "@/lib/host/setup/transport-allocation";
+import { enforceGroupHalfDayBoundaries } from "@/lib/host/setup/enforce-content-half-days";
 import {
   classifyImportedFlightChain,
   mergeClassifiedLegsIntoState,
@@ -31,6 +33,16 @@ function mergeGraphState(graph: TripEntityGraph, state: TripSetupState): TripEnt
     emergencySummary: graph.emergencySummary,
     publishSummary: graph.publishSummary,
   };
+}
+
+function finalizeTransportChange(
+  graph: TripEntityGraph,
+  derived: TripSetupState,
+): TripEntityGraph {
+  const synced = syncTransportLegAllocation(derived, derived.mainGroupId, {
+    checkConflicts: true,
+  });
+  return mergeGraphState(graph, syncTripBoundsFromContent(synced));
 }
 
 function warn(id: string, message: string, section = "general"): EngineWarning {
@@ -91,9 +103,17 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
       const groupId = command.groupId;
       const stay = { ...command.stay, originGroupId: command.stay.originGroupId ?? groupId };
       const withoutOrphans = dropUnnamedStaysOverlappingNamed(graph.accommodationStays, stay);
+      let nextGraph: TripEntityGraph = {
+        ...graph,
+        accommodationStays: [...withoutOrphans, stay],
+      };
+      const replaceStayIds = command.replaceLocationLabels
+        ? new Set([stay.id])
+        : undefined;
       const next = applySetupAccommodationChange(
-        { ...graph, accommodationStays: [...withoutOrphans, stay] },
+        nextGraph,
         groupId,
+        replaceStayIds ? { replaceStayIds } : undefined,
       );
       return ok(mergeGraphState(graph, next), warnings);
     }
@@ -108,7 +128,15 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
       const groupId = command.groupId ?? existing.originGroupId ?? graph.mainGroupId;
       const updated = { ...existing, ...command.patch };
       const stays = graph.accommodationStays.map((s, i) => (i === idx ? updated : s));
-      const next = applySetupAccommodationChange({ ...graph, accommodationStays: stays }, groupId);
+      let nextGraph: TripEntityGraph = { ...graph, accommodationStays: stays };
+      const replaceStayIds = command.replaceLocationLabels
+        ? new Set([command.stayId])
+        : undefined;
+      const next = applySetupAccommodationChange(
+        nextGraph,
+        groupId,
+        replaceStayIds ? { replaceStayIds } : undefined,
+      );
       return ok(mergeGraphState(graph, next), warnings);
     }
 
@@ -150,7 +178,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         returnLegs: next.returnLegs,
         intercityLegs: next.intercityLegs,
       });
-      return ok(mergeGraphState(graph, syncTripBoundsFromContent(derived)), warnings);
+      return ok(finalizeTransportChange(graph, derived), warnings);
     }
 
     case "addTransportLeg": {
@@ -173,7 +201,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         returnLegs: next.returnLegs,
         intercityLegs: next.intercityLegs,
       });
-      return ok(mergeGraphState(graph, syncTripBoundsFromContent(derived)), warnings);
+      return ok(finalizeTransportChange(graph, derived), warnings);
     }
 
     case "updateTransportLeg": {
@@ -193,7 +221,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         returnLegs: next.returnLegs,
         intercityLegs: next.intercityLegs,
       });
-      return ok(mergeGraphState(graph, syncTripBoundsFromContent(derived)), warnings);
+      return ok(finalizeTransportChange(graph, derived), warnings);
     }
 
     case "removeTransportLeg": {
@@ -207,7 +235,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         returnLegs: next.returnLegs,
         intercityLegs: next.intercityLegs,
       });
-      return ok(mergeGraphState(graph, syncTripBoundsFromContent(derived)), warnings);
+      return ok(finalizeTransportChange(graph, derived), warnings);
     }
 
     case "paintDayRange": {
@@ -238,11 +266,19 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         startHalf,
         endHalf,
       );
-      const next = syncTripBoundsFromContent({
-        ...graph,
-        accommodationStays: mergeAccommodationStays(graph, groupId, trimmedStays),
-        dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: painted },
-      });
+      const synced = enforceGroupHalfDayBoundaries(
+        syncTransportLegAllocation(
+          {
+            ...graph,
+            accommodationStays: mergeAccommodationStays(graph, groupId, trimmedStays),
+            dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: painted },
+          },
+          groupId,
+          { checkConflicts: true },
+        ),
+        groupId,
+      );
+      const next = syncTripBoundsFromContent(synced);
       return ok(mergeGraphState(graph, next), warnings);
     }
 
@@ -263,19 +299,31 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
     }
 
     case "setDayPlaces": {
-      const next = syncTripBoundsFromContent({
-        ...graph,
-        dayPlacesByGroupId: {
-          ...graph.dayPlacesByGroupId,
-          [command.groupId]: command.days,
-        },
-      });
+      const synced = enforceGroupHalfDayBoundaries(
+        syncTransportLegAllocation(
+          {
+            ...graph,
+            dayPlacesByGroupId: {
+              ...graph.dayPlacesByGroupId,
+              [command.groupId]: command.days,
+            },
+          },
+          command.groupId,
+          { checkConflicts: true },
+        ),
+        command.groupId,
+      );
+      const next = syncTripBoundsFromContent(synced);
       return ok(mergeGraphState(graph, next), warnings);
     }
 
     case "addActivity": {
+      const activity = {
+        ...command.activity,
+        originGroupId: command.activity.originGroupId ?? command.groupId,
+      };
       return ok(
-        { ...graph, activities: [...graph.activities, command.activity] },
+        { ...graph, activities: [...graph.activities, activity] },
         warnings,
       );
     }
@@ -318,12 +366,53 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
 
     case "createGroup": {
       const group = {
-        id: newId(),
+        id: command.id ?? newId(),
         name: command.name,
         type: command.groupType,
         description: command.description ?? null,
         sortOrder: graph.groups.length,
         isMain: false,
+        inheritMode: command.inheritMode ?? null,
+        personalForParticipantId: command.personalForParticipantId ?? null,
+      };
+      return ok(
+        {
+          ...graph,
+          groups: [...graph.groups, group],
+          dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [group.id]: [] },
+        },
+        warnings,
+      );
+    }
+
+    case "setGroupInheritMode": {
+      const groups = graph.groups.map((g) =>
+        g.id === command.groupId
+          ? { ...g, inheritMode: command.mode }
+          : g,
+      );
+      return ok({ ...graph, groups }, warnings);
+    }
+
+    case "ensurePersonalGroup": {
+      const existing = graph.groups.find(
+        (g) => g.personalForParticipantId === command.participantId && !g.isMain,
+      );
+      if (existing) {
+        const groups = graph.groups.map((g) =>
+          g.id === existing.id ? { ...g, inheritMode: command.mode } : g,
+        );
+        return ok({ ...graph, groups }, warnings);
+      }
+      const group = {
+        id: newId(),
+        name: command.participantName,
+        type: "split_travel",
+        description: null,
+        sortOrder: graph.groups.length,
+        isMain: false,
+        inheritMode: command.mode,
+        personalForParticipantId: command.participantId,
       };
       return ok(
         {
@@ -369,6 +458,42 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
             (s) => s.originGroupId !== command.groupId,
           ),
           intercityLegs: graph.intercityLegs.filter((l) => l.originGroupId !== command.groupId),
+          overlayOps: graph.overlayOps.filter((o) => o.groupId !== command.groupId),
+        },
+        warnings,
+      );
+    }
+
+    case "resetGroupFromMain": {
+      if (command.groupId === graph.mainGroupId) {
+        warnings.push(warn("reset-main-group", "Main group is already the source plan", "groups"));
+        return { graph, warnings, conflicts };
+      }
+      const group = graph.groups.find((g) => g.id === command.groupId);
+      if (!group || group.isMain) {
+        conflicts.push({
+          id: "reset-unknown-group",
+          severity: "blocking",
+          section: "groups",
+          message: "Cannot reset this group",
+        });
+        return { graph, warnings, conflicts };
+      }
+      return ok(
+        {
+          ...graph,
+          groups: graph.groups.map((g) =>
+            g.id === command.groupId ? { ...g, inheritMode: null } : g,
+          ),
+          dayPlacesByGroupId: {
+            ...graph.dayPlacesByGroupId,
+            [command.groupId]: [],
+          },
+          accommodationStays: graph.accommodationStays.filter(
+            (s) => s.originGroupId !== command.groupId,
+          ),
+          intercityLegs: graph.intercityLegs.filter((l) => l.originGroupId !== command.groupId),
+          activities: graph.activities.filter((a) => a.originGroupId !== command.groupId),
           overlayOps: graph.overlayOps.filter((o) => o.groupId !== command.groupId),
         },
         warnings,

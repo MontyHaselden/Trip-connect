@@ -10,6 +10,7 @@ import {
   preTripHomeBufferDate,
 } from "@/lib/host/setup/home-locks";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
+import { enforceGroupHalfDayBoundaries } from "@/lib/host/setup/enforce-content-half-days";
 import {
   allPlaneLegsFromState,
   inferDayPlacesFromFlightLegs,
@@ -176,13 +177,16 @@ export function applySetupTransportChange(
     ? postTripHomeBufferDate(boundsSynced.basics.endDate, homeArrival)
     : boundsSynced.basics.endDate;
 
-  return {
-    ...boundsSynced,
-    dayPlacesByGroupId: {
-      ...boundsSynced.dayPlacesByGroupId,
-      [next.mainGroupId]: lockedDays.filter((day) =>
-        tripDayInBounds(day.date, calendarStart, calendarEnd),
-      ),
+  return enforceGroupHalfDayBoundaries(
+    {
+      ...boundsSynced,
+      dayPlacesByGroupId: {
+        ...boundsSynced.dayPlacesByGroupId,
+        [next.mainGroupId]: lockedDays.filter((day) =>
+          tripDayInBounds(day.date, calendarStart, calendarEnd),
+        ),
+      },
     },
-  };
+    next.mainGroupId,
+  );
 }

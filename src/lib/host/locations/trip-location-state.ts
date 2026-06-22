@@ -11,6 +11,7 @@ import {
   groupTargetsByEntity,
   loadVisibilityTargetsForTrip,
 } from "@/lib/visibility/persistence";
+import { decodeTransportLegNotes } from "@/lib/host/setup/transport-leg-notes";
 import type {
   AccommodationStayDraft,
   DayPlaceDraft,
@@ -32,7 +33,7 @@ function inferPrimaryShare(day: {
   calendarLabel: string | null;
 }): number {
   if (!day.secondaryCityLabel?.trim()) return 1;
-  if (day.dayType === "travel") return 0.25;
+  if (day.dayType === "travel") return 0.5;
   if (day.calendarLabel?.includes("/")) return 0.5;
   return 0.5;
 }
@@ -53,6 +54,7 @@ function rowToTransportLeg(row: {
   flightNumber: string | null;
   notes: string | null;
 }): TransportLegDraft {
+  const decoded = decodeTransportLegNotes(row.notes);
   return {
     id: row.id,
     transportType: row.transportType,
@@ -73,7 +75,8 @@ function rowToTransportLeg(row: {
     operator: row.operator,
     referenceNumber: row.referenceNumber,
     flightNumber: row.flightNumber,
-    notes: row.notes,
+    notes: decoded.notes,
+    surfaceOnly: decoded.surfaceOnly || undefined,
   };
 }
 

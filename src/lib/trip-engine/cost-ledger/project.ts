@@ -1,7 +1,7 @@
-import type { RosterSummary } from "../types";
+import type { RosterSummary, TripEntityGraph } from "../types";
 
+import { buildParticipantPresenceMap, computeItemAllocations } from "./allocate";
 import { convertToBaseCents } from "./format-money";
-import { computeItemAllocations } from "./allocate";
 import type {
   CostLedgerProjection,
   CostLedgerRaw,
@@ -21,17 +21,23 @@ function toBaseCents(
 export function projectCostLedger(
   raw: CostLedgerRaw,
   roster: RosterSummary,
+  graph?: TripEntityGraph,
 ): CostLedgerProjection {
+  const presence = graph ? buildParticipantPresenceMap(graph, roster) : undefined;
+  const ctx = graph && presence ? { graph, presence } : {};
+
   const lineAllocations = raw.lineItems.map((line) => {
-    const { allocations, balanced } = computeItemAllocations(
+    const { allocations, eligibleParticipantIds, balanced } = computeItemAllocations(
       line,
       roster,
       raw.overrides,
+      ctx,
     );
     const allocatedTotalCents = Object.values(allocations).reduce((sum, n) => sum + n, 0);
     return {
       lineItemId: line.id,
       allocations,
+      eligibleParticipantIds,
       balanced,
       allocatedTotalCents,
     };
@@ -49,6 +55,7 @@ export function projectCostLedger(
       },
       roster,
       [],
+      ctx,
     );
     fundAllocations[fund.id] = allocations;
   }

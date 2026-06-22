@@ -21,8 +21,9 @@ import {
   TRANSPORT_STACK_WIDTH,
 } from "@/lib/host/setup/transport-corridor";
 import { metroDisplayLabel } from "@/lib/host/setup/infer-flight-calendar";
+import { canonicalStayCity } from "@/lib/host/setup/canonical-stay-city";
 import { resolveArrivalStayCity } from "@/lib/host/setup/resolve-arrival-stay-city";
-import { addDays, DEFAULT_HALF_SHARE, getEmptyHalf, type TripDayCoverageContext } from "./location-stays";
+import { addDays, DEFAULT_HALF_SHARE, getEmptyHalf, normalizeDayShare, type TripDayCoverageContext } from "./location-stays";
 import type {
   AccommodationStayDraft,
   DayPlaceDraft,
@@ -65,16 +66,16 @@ export type CalendarDaySegment =
   | { kind: "city"; city: string; start: number; end: number; colorOnly?: boolean }
   | { kind: "transit"; label: string; start: number; end: number; tentative?: boolean };
 
-/** Same-day connection: ¼ origin | ¼ in transit | ½ destination (only when you land that day). */
-export const TRAVEL_SEGMENT_QUARTER = 0.25;
+/** Same-day connection: half origin | half destination (transit label in overlay). */
+export const TRAVEL_SEGMENT_QUARTER = 0.5;
 export const TRAVEL_SEGMENT_MID = 0.5;
-export const TRAVEL_SEGMENT_LATE_FLY = 0.75;
+export const TRAVEL_SEGMENT_LATE_FLY = 0.5;
 
-/** Arrivals at or after 6pm use ¾ flying · ¼ landing on that day. */
+/** Arrivals at or after 6pm use half-day landing bands. */
 export const LATE_ARRIVAL_MINUTES = 18 * 60;
 
-/** Evening departures keep at least this much of the cell for the flight band. */
-export const MIN_EVENING_DEPARTURE_TRANSIT = 1 / 3;
+/** Evening departures keep half the cell for the departure city. */
+export const MIN_EVENING_DEPARTURE_TRANSIT = 0.5;
 
 /** Departures from 8pm onward keep a wider flight band (6pm is still proportional). */
 export const EVENING_DEPARTURE_MINUTES = 20 * 60;
@@ -193,32 +194,37 @@ const MODE_TRANSIT_LABELS: Record<TransportType, string> = {
   other: "Travel",
 };
 
-function intercityDestinationLabel(leg: IntercityLegDraft): string {
-  const dest = leg.intercityToCity.trim() || leg.toCity.trim();
-  return dest.split(",")[0]?.trim() || dest;
+function legDestinationLabel(leg: TransportLegDraft): string {
+  const raw =
+    "intercityToCity" in leg && (leg as IntercityLegDraft).intercityToCity.trim()
+      ? (leg as IntercityLegDraft).intercityToCity.trim()
+      : leg.toCity.trim();
+  return canonicalStayCity(raw);
 }
 
 export function intercityCalendarLabel(leg: IntercityLegDraft): string {
-  const dest = intercityDestinationLabel(leg);
-  if (leg.bookingStatus === "flexible" || leg.transportType === "unsure") {
-    return `Depart for ${dest}`;
-  }
-  if (leg.transportType === "plane") {
-    if (leg.flightNumber?.trim()) return leg.flightNumber.trim();
-    return `Fly to ${dest}`;
-  }
-  return `${MODE_TRANSIT_LABELS[leg.transportType]} to ${dest}`;
+  return calendarDepartureLabel(leg);
 }
 
-function transitLabel(leg: TransportLegDraft): string {
+/** Calendar transit chip on the departure date of a leg. */
+export function calendarDepartureLabel(leg: TransportLegDraft): string {
+  const dest = legDestinationLabel(leg);
   if ("intercityToCity" in leg) {
-    return intercityCalendarLabel(leg as IntercityLegDraft);
+    const ic = leg as IntercityLegDraft;
+    if (
+      ic.transportType !== "plane" &&
+      ic.transportType !== "unsure" &&
+      ic.bookingStatus !== "flexible"
+    ) {
+      return `${MODE_TRANSIT_LABELS[ic.transportType]} to ${dest}`;
+    }
   }
-  if (leg.transportType === "plane" && leg.flightNumber?.trim()) {
-    return leg.flightNumber.trim();
-  }
-  if (leg.transportType === "plane") return "Flying";
-  return MODE_TRANSIT_LABELS[leg.transportType] ?? "In transit";
+  return `Depart for ${dest}`;
+}
+
+/** Calendar transit chip on the arrival date of a leg. */
+export function calendarArrivalLabel(leg: TransportLegDraft): string {
+  return `Arrive in ${legDestinationLabel(leg)}`;
 }
 
 function allTransportLegs(
@@ -355,38 +361,16 @@ export function isMajorTravelDay(legs: TransportLegDraft[], date: string): boole
   return false;
 }
 
-function majorTravelDayShares(chain: TransportLegDraft[], date: string): MajorTravelShares {
-  const first = chain[0]!;
-  const last = chain[chain.length - 1]!;
-  let originEnd = MAJOR_TRAVEL_ORIGIN_END;
-  let destStart = MAJOR_TRAVEL_DEST_START;
-  let transitEnd = MAJOR_TRAVEL_TRANSIT_END;
-
-  if (first.departureTime) {
-    const timeBased = flightTimeShare(first.departureTime, MAJOR_TRAVEL_ORIGIN_END);
-    originEnd = Math.max(MAJOR_TRAVEL_ORIGIN_MIN, Math.min(MAJOR_TRAVEL_ORIGIN_END, timeBased));
-  }
-
-  if (isLateArrival(last) && arrivalDate(last) === date) {
-    destStart = 1 - MAJOR_TRAVEL_DEST_SLICE;
-    transitEnd = destStart;
-    return {
-      originEnd,
-      transitStart: originEnd,
-      transitEnd,
-      destStart,
-    };
-  }
-
+function majorTravelDayShares(_chain: TransportLegDraft[], _date: string): MajorTravelShares {
   return {
-    originEnd,
-    transitStart: Math.max(originEnd, MAJOR_TRAVEL_TRANSIT_START),
-    transitEnd,
-    destStart,
+    originEnd: MAJOR_TRAVEL_ORIGIN_END,
+    transitStart: MAJOR_TRAVEL_TRANSIT_START,
+    transitEnd: MAJOR_TRAVEL_TRANSIT_END,
+    destStart: MAJOR_TRAVEL_DEST_START,
   };
 }
 
-/** Major outbound/return crossovers use ¼·½·¼; short hops use 40%·20%·40%. */
+/** Major outbound/return crossovers and short hops both use half · half. */
 function flightCrossoverShares(
   routeLegs: TransportLegDraft[],
   date: string,
@@ -425,12 +409,16 @@ function buildFlightCrossoverLayout(
 
   return [
     { kind: "city", city: origin, start: 0, end: shares.originEnd, colorOnly: true },
-    transitSegment(
-      flightRouteAirportLabel(routeLegs),
-      shares.transitStart,
-      shares.transitEnd,
-      plane,
-    ),
+    ...(shares.transitEnd > shares.transitStart
+      ? [
+          transitSegment(
+            flightRouteAirportLabel(routeLegs),
+            shares.transitStart,
+            shares.transitEnd,
+            plane,
+          ),
+        ]
+      : []),
     {
       kind: "city",
       city: dest,
@@ -811,21 +799,12 @@ export function travelLayoutPaintStart(segments: CalendarDaySegment[] | undefine
   return Math.max(...segments.map((segment) => segment.end));
 }
 
-/** Location + hotel bands on departure days — fill through to the flight slice. */
+/** Location bands use full or half shares only — not travel-segment fractions. */
 export function stayCityPaintShareForDay(
   day: Pick<DayPlaceDraft, "primaryCity" | "secondaryCity" | "primaryShare">,
-  segments: CalendarDaySegment[] | undefined,
+  _segments?: CalendarDaySegment[] | undefined,
 ): number {
-  const share = day.primaryShare ?? 1;
-  const primary = day.primaryCity.trim();
-  const secondary = day.secondaryCity?.trim() ?? "";
-  if (!primary || secondary) return share;
-
-  const paintStart = travelLayoutPaintStart(segments);
-  if (paintStart > 0.02 && paintStart < 0.999 && paintStart > share) {
-    return paintStart;
-  }
-  return share;
+  return normalizeDayShare(day.primaryShare ?? 1);
 }
 
 /** When afternoon transit starts mid-day, morning share 0 → this value is paintable. */
@@ -1277,51 +1256,69 @@ export function computeTravelDayLayouts(
   return map;
 }
 
-function pushOverlay(
+function pushDepartureOverlay(
   map: Map<string, TransitOverlay[]>,
   date: string,
-  overlay: TransitOverlay,
+  label: string,
+  depShare: number,
 ): void {
   const list = map.get(date) ?? [];
-  list.push(overlay);
-  map.set(date, list);
+  const next = list.filter((overlay) => !overlay.label.startsWith("Depart for "));
+  if (next.some((overlay) => overlay.label === label)) {
+    map.set(date, next);
+    return;
+  }
+  next.push({ fromShare: depShare, toShare: 1, label });
+  map.set(date, next);
 }
 
-/** Grey in-transit blocks on the calendar — does not paint destination cities. */
+function pushArrivalOverlay(
+  map: Map<string, TransitOverlay[]>,
+  date: string,
+  label: string,
+  arrShare: number,
+): void {
+  const list = map.get(date) ?? [];
+  const next = list.filter((overlay) => !overlay.label.startsWith("Arrive in "));
+  if (next.some((overlay) => overlay.label === label)) {
+    map.set(date, next);
+    return;
+  }
+  next.push({ fromShare: 0, toShare: arrShare, label });
+  map.set(date, next);
+}
+
+/** Travel labels on the calendar (e.g. "Depart for Tokyo") — city paint stays half/full only. */
 export function computeTransitOverlays(
   draft: TransportCalendarInput,
   trip: TripBounds,
   options?: CalendarTransportOptions,
 ): Map<string, TransitOverlay[]> {
   draft = calendarTransportDraft(normalizeTransportCalendarDraft(draft), options);
-  const travelLayouts = computeTravelDayLayouts(draft, trip, options);
   const map = new Map<string, TransitOverlay[]>();
+  const depShare = DEFAULT_HALF_SHARE;
+  const arrShare = DEFAULT_HALF_SHARE;
 
   for (const leg of allTransportLegs(draft)) {
     if (!legUsesTransitOverlay(leg) || !leg.fromCity.trim() || !leg.toCity.trim()) continue;
 
     const depDate = leg.travelDate;
     const arrDate = arrivalDate(leg);
-    const label = transitLabel(leg);
-    const depShare = timeToShare(leg.departureTime, 0.375);
-    const arrShare = timeToShare(leg.arrivalTime, 0.625);
+    const depLabel = calendarDepartureLabel(leg);
+    const arrLabel = calendarArrivalLabel(leg);
 
     if (depDate === arrDate) {
-      if (inCalendarRange(depDate, trip, draft) && !travelLayouts.has(depDate)) {
-        pushOverlay(map, depDate, {
-          fromShare: depShare,
-          toShare: Math.max(depShare + 0.08, arrShare),
-          label,
-        });
+      if (inCalendarRange(depDate, trip, draft)) {
+        pushDepartureOverlay(map, depDate, depLabel, depShare);
       }
       continue;
     }
 
-    if (inCalendarRange(depDate, trip, draft) && !travelLayouts.has(depDate)) {
-      pushOverlay(map, depDate, { fromShare: depShare, toShare: 1, label });
+    if (inCalendarRange(depDate, trip, draft)) {
+      pushDepartureOverlay(map, depDate, depLabel, depShare);
     }
-    if (inCalendarRange(arrDate, trip, draft) && !travelLayouts.has(arrDate)) {
-      pushOverlay(map, arrDate, { fromShare: 0, toShare: arrShare, label });
+    if (inCalendarRange(arrDate, trip, draft)) {
+      pushArrivalOverlay(map, arrDate, arrLabel, arrShare);
     }
   }
 

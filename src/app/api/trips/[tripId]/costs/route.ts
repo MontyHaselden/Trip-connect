@@ -16,11 +16,19 @@ import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import { loadTripGraph } from "@/lib/trip-engine";
 import { loadCostLedgerProjection } from "@/lib/trip-engine/cost-ledger/index";
 import { loadCostLedgerRaw } from "@/lib/trip-engine/cost-ledger/load-cost-ledger";
+import {
+  dismissalKeyFromLine,
+  dismissFromFinance,
+  loadFinanceDismissals,
+} from "@/lib/trip-engine/cost-ledger/finance-dismissals";
 import { syncCostLedgerFromGraph } from "@/lib/trip-engine/cost-ledger/sync-cost-ledger-from-graph";
+import { persistCommands } from "@/lib/trip-engine/persist-command";
+import type { TripCommand } from "@/lib/trip-engine/commands";
 
 const AllocationRuleSchema = z.enum([
   "equal_cost_participants",
   "equal_group",
+  "equal_present",
   "assign_one",
   "manual",
 ]);
@@ -236,6 +244,67 @@ export async function PATCH(
         return NextResponse.json({ error: "Line id required." }, { status: 400 });
       }
       await db.delete(costLineItems).where(eq(costLineItems.id, lineId));
+    } else if (action === "dismissAndDeleteLine") {
+      const lineId = json.lineId as string | undefined;
+      if (!lineId) {
+        return NextResponse.json({ error: "Line id required." }, { status: 400 });
+      }
+      const raw = await loadCostLedgerRaw(tripId);
+      const line = raw.lineItems.find((l) => l.id === lineId);
+      if (!line) {
+        return NextResponse.json({ error: "Line not found." }, { status: 404 });
+      }
+      const key = dismissalKeyFromLine(line);
+      if (key) await dismissFromFinance(tripId, key);
+      await db.delete(costLineItems).where(eq(costLineItems.id, lineId));
+    } else if (action === "removeLineFromTrip") {
+      const lineId = json.lineId as string | undefined;
+      if (!lineId) {
+        return NextResponse.json({ error: "Line id required." }, { status: 400 });
+      }
+      const graph = await loadTripGraph(tripId);
+      if (!graph) {
+        return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+      }
+      const raw = await loadCostLedgerRaw(tripId);
+      const line = raw.lineItems.find((l) => l.id === lineId);
+      if (!line) {
+        return NextResponse.json({ error: "Line not found." }, { status: 404 });
+      }
+      const commands: TripCommand[] = [];
+      if (line.linkedStayId) {
+        const stay = graph.accommodationStays.find((s) => s.id === line.linkedStayId);
+        commands.push({
+          type: "removeStay",
+          groupId: stay?.originGroupId ?? graph.mainGroupId,
+          stayId: line.linkedStayId,
+        });
+      } else if (line.linkedTransportLegId) {
+        const legId = line.linkedTransportLegId;
+        const bucket = graph.outboundLegs.some((l) => l.id === legId)
+          ? "outbound"
+          : graph.returnLegs.some((l) => l.id === legId)
+            ? "return"
+            : "intercity";
+        commands.push({
+          type: "removeTransportLeg",
+          groupId: graph.mainGroupId,
+          bucket,
+          legId,
+        });
+      } else if (line.linkedActivityId) {
+        const activity = graph.activities.find((a) => a.id === line.linkedActivityId);
+        commands.push({
+          type: "removeActivity",
+          groupId: activity?.originGroupId ?? graph.mainGroupId,
+          activityId: line.linkedActivityId,
+        });
+      } else {
+        await db.delete(costLineItems).where(eq(costLineItems.id, lineId));
+      }
+      if (commands.length) {
+        await persistCommands(tripId, graph, commands);
+      }
     } else if (action === "deleteEmptyLines") {
       await db
         .delete(costLineItems)
@@ -287,7 +356,7 @@ export async function PATCH(
       if (!graph) {
         return NextResponse.json({ error: "Trip not found." }, { status: 404 });
       }
-      await syncCostLedgerFromGraph(tripId, graph);
+      await syncCostLedgerFromGraph(tripId, graph, await loadFinanceDismissals(tripId));
     } else {
       return NextResponse.json({ error: "Unknown action." }, { status: 400 });
     }

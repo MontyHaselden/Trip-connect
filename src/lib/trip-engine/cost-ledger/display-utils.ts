@@ -23,6 +23,8 @@ export function allocationRuleLabel(
   roster: RosterSummary,
 ): string {
   switch (ruleType) {
+    case "equal_present":
+      return "÷ present";
     case "equal_cost_participants":
       return "Equal split";
     case "equal_group": {

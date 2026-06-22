@@ -11,6 +11,12 @@ export type LocationStayDraft = {
 
 export const DEFAULT_HALF_SHARE = 0.5;
 
+/** Calendar days are full (1) or half (0.5) only — no thirds or quarters. */
+export function normalizeDayShare(share: number | null | undefined): number {
+  if (share == null || share >= 0.75) return 1;
+  return DEFAULT_HALF_SHARE;
+}
+
 export type HalfSide = "left" | "right";
 
 /** Which half of the day is still free to paint a location. */
@@ -701,7 +707,15 @@ const LOCATION_PALETTE = [
   { fill: "#f8f0e4", accent: "#9a7340", text: "#4a3618" },
   { fill: "#e8f4f8", accent: "#3d7a8a", text: "#173d47" },
   { fill: "#f8e8ec", accent: "#9a4f62", text: "#4a1f2a" },
+  { fill: "#ece8f8", accent: "#5f4f9a", text: "#2a1f52" },
+  { fill: "#eef4e4", accent: "#627a3d", text: "#2d3d17" },
+  { fill: "#f8ece8", accent: "#9a5f4f", text: "#522a1f" },
+  { fill: "#eef0f4", accent: "#5a6478", text: "#252a35" },
+  { fill: "#e8f8f2", accent: "#3d9a7a", text: "#174a3d" },
+  { fill: "#f8f4e8", accent: "#9a8a40", text: "#4a4218" },
 ] as const;
+
+export const LOCATION_PALETTE_SIZE = LOCATION_PALETTE.length;
 
 export type LocationPaletteSwatch = (typeof LOCATION_PALETTE)[number];
 

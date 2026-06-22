@@ -29,6 +29,25 @@ function isAccommodationOnlyCommands(commands: TripCommand[]): boolean {
   );
 }
 
+function commandsNeedCostRefresh(commands: TripCommand[]): boolean {
+  return commands.some((c) =>
+    [
+      "removeStay",
+      "removeTransportLeg",
+      "removeActivity",
+      "addStay",
+      "addTransportLeg",
+      "addClassifiedTransportLegs",
+      "addActivity",
+      "paintDayRange",
+      "setDayPlaces",
+      "clearDayRange",
+      "ensurePersonalGroup",
+      "setGroupInheritMode",
+    ].includes(c.type),
+  );
+}
+
 async function handleCommands(
   tripId: string,
   commands: TripCommand[],
@@ -39,7 +58,8 @@ async function handleCommands(
   if (!graph) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
   const result = await persistCommands(tripId, graph, commands);
-  const lightweight = isAccommodationOnlyCommands(commands);
+  const lightweight =
+    isAccommodationOnlyCommands(commands) && !commandsNeedCostRefresh(commands);
   const [rosterSummary, costLedger] = lightweight
     ? [undefined, undefined]
     : await Promise.all([

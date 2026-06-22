@@ -31,8 +31,13 @@ export function legsForGroup(
   };
 }
 
-export function activitiesForGroup(graph: TripEntityGraph, _groupId: string): ActivityDraft[] {
-  return graph.activities;
+export function activitiesForGroup(graph: TripEntityGraph, groupId: string): ActivityDraft[] {
+  if (groupId === graph.mainGroupId) {
+    return graph.activities.filter(
+      (a) => !a.originGroupId || a.originGroupId === graph.mainGroupId,
+    );
+  }
+  return graph.activities.filter((a) => a.originGroupId === groupId);
 }
 
 export function dayPlacesForGroup(graph: TripEntityGraph, groupId: string) {
@@ -55,5 +60,7 @@ export function legsOnDate(graph: TripEntityGraph, date: string) {
 }
 
 export function namedStays(graph: TripEntityGraph, groupId: string): AccommodationStayDraft[] {
-  return staysForGroup(graph, groupId).filter((s) => s.name?.trim());
+  return staysForGroup(graph, groupId).filter(
+    (s) => s.name?.trim() && !(s.stayType === "homestay" && !s.isHomestayGroup),
+  );
 }

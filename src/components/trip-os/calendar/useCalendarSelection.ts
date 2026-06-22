@@ -180,7 +180,7 @@ export function useCalendarSelection(props: {
     ? `Selected ${formatCalendarSelectionLabel(selection)}`
     : props.renderModel?.datesUnset
       ? "Scroll to browse and paint days"
-      : "Click days for a range, or a half on split days — click the same half again for the full travel day";
+      : "Click days for a range, or a half on split days";
 
   return {
     selection,
