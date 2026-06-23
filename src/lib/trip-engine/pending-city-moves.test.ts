@@ -142,6 +142,25 @@ describe("pendingTransportNeedsFromCalendar", () => {
     const outbound = pending.find((need) => need.kind === "outbound_flight");
     assert.equal(outbound?.fromCity, "Christchurch");
     assert.match(outbound?.toCity ?? "", /Tokyo/i);
+    assert.ok(!pending.some((need) => need.kind === "return_flight" && need.date === "2026-12-05"));
+  });
+
+  it("still flags Christchurch to Tokyo outbound when departure city is wrong", () => {
+    const state = japanOutboundState();
+    state.basics = {
+      ...state.basics,
+      departureCity: "Tokyo, Japan",
+      returnCity: "Christchurch, New Zealand",
+    };
+    const graph = setupStateToGraph("trip-1", state);
+    const pending = pendingTransportNeedsFromCalendar(graph, "main");
+    const outbound = pending.find((need) => need.kind === "outbound_flight" && need.date === "2026-12-05");
+    assert.ok(outbound);
+    assert.match(outbound.fromCity, /Christchurch/i);
+    assert.match(outbound.toCity, /Tokyo/i);
+    assert.ok(!pending.some((need) => need.kind === "return_flight" && need.date === "2026-12-05"));
+    const tokyoKagoshima = pending.find((need) => need.date === "2026-12-06");
+    assert.equal(tokyoKagoshima?.kind, "intercity");
   });
 
   it("clears pending move when matching intercity leg exists", () => {

@@ -53,29 +53,26 @@ function legCoversMove(leg: TransportLegDraft | IntercityLegDraft, move: CityMov
   return leg.travelDate === move.date && routeMatchesMove(from, to, move);
 }
 
+function isHomeCity(city: string, basics: TripEntityGraph["basics"]): boolean {
+  const trimmed = city.trim();
+  if (!trimmed) return false;
+  const home = basics.returnCity.trim() || basics.departureCity.trim();
+  if (!home) return false;
+  return locationsMatch(trimmed, home) || placesShareMetro(trimmed, home);
+}
+
+function homeCityLabel(basics: TripEntityGraph["basics"]): string {
+  return basics.returnCity.trim() || basics.departureCity.trim();
+}
+
 function classifyMoveKind(move: CityMove, graph: TripEntityGraph): PendingTransportKind {
-  const departure = graph.basics.departureCity.trim();
-  const home = graph.basics.returnCity.trim();
+  const from = move.fromCity.trim();
+  const to = move.toCity.trim();
+  const fromHome = isHomeCity(from, graph.basics);
+  const toHome = isHomeCity(to, graph.basics);
 
-  if (
-    departure &&
-    (locationsMatch(move.fromCity, departure) || placesShareMetro(move.fromCity, departure)) &&
-    home &&
-    !locationsMatch(move.toCity, home) &&
-    !placesShareMetro(move.toCity, home)
-  ) {
-    return "outbound_flight";
-  }
-
-  if (
-    home &&
-    (locationsMatch(move.toCity, home) || placesShareMetro(move.toCity, home)) &&
-    !locationsMatch(move.fromCity, home) &&
-    !placesShareMetro(move.fromCity, home)
-  ) {
-    return "return_flight";
-  }
-
+  if (fromHome && !toHome) return "outbound_flight";
+  if (toHome && !fromHome) return "return_flight";
   return "intercity";
 }
 
@@ -84,9 +81,9 @@ export function detectMissingOutboundFlight(
   dayPlaces: DayPlaceDraft[],
   basics: TripEntityGraph["basics"],
 ): CityMove | null {
-  const departure = basics.departureCity.trim();
   const startDate = basics.startDate.trim();
-  if (!departure || !startDate) return null;
+  const home = homeCityLabel(basics);
+  if (!startDate || !home) return null;
 
   const sorted = sortedTripDays(dayPlaces);
   const outboundDay = sorted.find((day) => day.date >= startDate);
@@ -94,23 +91,25 @@ export function detectMissingOutboundFlight(
 
   const primary = outboundDay.primaryCity.trim();
   const secondary = outboundDay.secondaryCity?.trim() ?? "";
-  const leavesHome =
-    locationsMatch(primary, departure) ||
-    placesShareMetro(primary, departure) ||
-    outboundDay.date <= addDays(startDate, 1);
+  const primaryIsHome = primary ? isHomeCity(primary, basics) : false;
+  const secondaryIsHome = secondary ? isHomeCity(secondary, basics) : false;
 
-  if (!leavesHome) return null;
+  const involvesLeavingHome =
+    primaryIsHome || outboundDay.date <= addDays(startDate, 1);
+  if (!involvesLeavingHome) return null;
 
-  if (secondary && locationsMatch(primary, departure)) {
-    return { fromCity: departure, toCity: secondary, date: outboundDay.date };
+  // Travel split: home on the left, destination on the right.
+  if (secondary && primaryIsHome && !secondaryIsHome) {
+    return { fromCity: primary || home, toCity: secondary, date: outboundDay.date };
   }
 
-  if (primary && !locationsMatch(primary, departure)) {
-    return { fromCity: departure, toCity: primary, date: outboundDay.date };
+  // Land abroad (destination city on the calendar without a home split).
+  if (primary && !primaryIsHome) {
+    return { fromCity: home, toCity: primary, date: outboundDay.date };
   }
 
-  if (!primary && secondary && !locationsMatch(secondary, departure)) {
-    return { fromCity: departure, toCity: secondary, date: outboundDay.date };
+  if (!primary && secondary && !secondaryIsHome) {
+    return { fromCity: home, toCity: secondary, date: outboundDay.date };
   }
 
   return null;
