@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { patchParticipantAllocation } from "./finance-line-patch";
+import { patchLinePayload, patchParticipantAllocation } from "./finance-line-patch";
 import type { CostLineItemDraft, LineAllocationResult } from "@/lib/trip-engine/cost-ledger/types";
 
 function line(totalAmountCents: number): CostLineItemDraft {
@@ -58,6 +58,14 @@ describe("patchParticipantAllocation", () => {
       null,
     );
     assert.equal(patch.totalAmountCents, undefined);
+    assert.deepEqual(patch.overrides, []);
+  });
+});
+
+describe("patchLinePayload", () => {
+  it("clears pinned overrides when row total is set to zero", () => {
+    const patch = patchLinePayload(line(100000), { totalAmountCents: 0 });
+    assert.equal(patch.totalAmountCents, 0);
     assert.deepEqual(patch.overrides, []);
   });
 });

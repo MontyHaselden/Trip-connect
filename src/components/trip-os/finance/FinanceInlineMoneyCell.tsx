@@ -62,7 +62,7 @@ export function FinanceInlineMoneyCell(props: {
       if (props.allowClear) nextCents = null;
     } else {
       const cents = parseMoneyInput(trimmed, props.currency);
-      if (cents > 0) nextCents = cents;
+      if (cents >= 0) nextCents = cents;
       else if (props.allowClear) nextCents = null;
     }
     if (nextCents !== null || props.allowClear) {

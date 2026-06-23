@@ -97,5 +97,8 @@ export function patchLinePayload(
       financeSection: line.allocationRulePayload.financeSection,
     };
   }
+  if (patch.totalAmountCents === 0) {
+    payload.overrides = [];
+  }
   return payload;
 }
