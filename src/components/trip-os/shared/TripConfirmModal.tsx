@@ -18,6 +18,7 @@ export function TripConfirmModal(props: {
   onCancel: () => void;
   onConfirm: () => void;
   children?: ReactNode;
+  wide?: boolean;
 }) {
   const {
     open,
@@ -32,6 +33,7 @@ export function TripConfirmModal(props: {
     onCancel,
     onConfirm,
     children,
+    wide,
   } = props;
 
   useEffect(() => {

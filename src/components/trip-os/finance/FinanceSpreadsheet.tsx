@@ -47,7 +47,10 @@ import {
   type OpenCell,
 } from "./FinanceCellEditors";
 import { FinanceAbsentCell } from "./FinanceAbsentCell";
-import { FinanceBulkFillBar } from "./FinanceBulkFillBar";
+import {
+  FinancePerPersonPricesModal,
+  type FinancePriceParticipant,
+} from "./FinancePerPersonPricesModal";
 import { FinanceParticipantHeader } from "./FinanceParticipantHeader";
 
 type FinanceTab = FinanceEntitySection | "overall";
@@ -121,8 +124,7 @@ export function FinanceSpreadsheet(props: {
   const [pendingDeleteLines, setPendingDeleteLines] = useState<CostLineItemDraft[] | null>(null);
   const [dragLineId, setDragLineId] = useState<string | null>(null);
   const [dragOverLineId, setDragOverLineId] = useState<string | null>(null);
-  const [selectedParticipantIds, setSelectedParticipantIds] = useState<Set<string>>(new Set());
-  const [fillRowId, setFillRowId] = useState<string | null>(null);
+  const [pricingLineId, setPricingLineId] = useState<string | null>(null);
 
   const presence = useMemo(
     () =>
@@ -163,17 +165,39 @@ export function FinanceSpreadsheet(props: {
     return linesBySection.get(activeTab) ?? [];
   }, [activeTab, linesBySection]);
 
-  const bulkFillLineId =
-    fillRowId ??
-    (activeTab !== "overall" && selectedLineIds.size === 1 ? [...selectedLineIds][0]! : null);
-  const bulkFillLine = useMemo(() => {
-    if (!bulkFillLineId) return null;
+  const pricingLine = useMemo(() => {
+    if (!pricingLineId) return null;
     return (
-      tabLines.find((line) => line.id === bulkFillLineId) ??
-      props.costLedger.lineItems.find((line) => line.id === bulkFillLineId) ??
+      tabLines.find((line) => line.id === pricingLineId) ??
+      props.costLedger.lineItems.find((line) => line.id === pricingLineId) ??
       null
     );
-  }, [bulkFillLineId, tabLines, props.costLedger.lineItems]);
+  }, [pricingLineId, tabLines, props.costLedger.lineItems]);
+
+  function eligibleIdsForLine(line: CostLineItemDraft): string[] {
+    if (props.graph && presence) {
+      return eligibleParticipantIdsForLine(line, props.graph, props.roster, presence);
+    }
+    return pool.map((p) => p.id);
+  }
+
+  const pricingParticipants = useMemo((): FinancePriceParticipant[] => {
+    if (!pricingLine) return [];
+    const eligible = eligibleIdsForLine(pricingLine);
+    const lineAlloc = props.costLedger.lineAllocations.find(
+      (row) => row.lineItemId === pricingLine.id,
+    );
+    const alloc = lineAlloc?.allocations ?? {};
+    const pinned = new Set(lineAlloc?.pinnedParticipantIds ?? []);
+    return pool
+      .filter((p) => eligible.includes(p.id))
+      .map((p) => ({
+        id: p.id,
+        fullName: p.fullName,
+        amountCents: alloc[p.id] ?? null,
+        isPinned: pinned.has(p.id),
+      }));
+  }, [pricingLine, pool, props.costLedger.lineAllocations, props.graph, presence, props.roster]);
 
   const selectableLineIds = useMemo(
     () => (activeTab === "overall" ? [] : tabLines.map((line) => line.id)),
@@ -193,39 +217,9 @@ export function FinanceSpreadsheet(props: {
     });
   }
 
-  function startPerPersonFill(lineId: string) {
-    setFillRowId(lineId);
-    setSelectedParticipantIds(new Set());
-  }
-
-  function exitPerPersonFill() {
-    setFillRowId(null);
-    setSelectedParticipantIds(new Set());
-  }
-
-  function toggleParticipantSelection(participantId: string) {
-    if (!bulkFillLineId) return;
-    setSelectedParticipantIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(participantId)) next.delete(participantId);
-      else next.add(participantId);
-      return next;
-    });
-  }
-
-  function applyBulkFill(amountCents: number) {
-    if (!bulkFillLine || !props.onPatchParticipantsBulk) return;
-    const eligible = eligibleIdsForLine(bulkFillLine);
-    const targets = [...selectedParticipantIds].filter((id) => eligible.includes(id));
-    if (!targets.length) return;
-    props.onPatchParticipantsBulk(bulkFillLine.id, targets, amountCents);
-  }
-
-  function eligibleIdsForLine(line: CostLineItemDraft): string[] {
-    if (props.graph && presence) {
-      return eligibleParticipantIdsForLine(line, props.graph, props.roster, presence);
-    }
-    return pool.map((p) => p.id);
+  function applyPerPersonPrices(participantIds: string[], amountCents: number) {
+    if (!pricingLine || !props.onPatchParticipantsBulk) return;
+    props.onPatchParticipantsBulk(pricingLine.id, participantIds, amountCents);
   }
 
   function linkedLegHint(line: CostLineItemDraft): string | null {
@@ -358,15 +352,16 @@ export function FinanceSpreadsheet(props: {
     const stay = stayForLine(line, props.graph);
 
     const rowStickyBg =
-      fillRowId === line.id
-        ? "bg-violet-100"
+      pricingLineId === line.id
+        ? "bg-violet-50"
         : selectedLineIds.has(line.id) || props.detailLineId === line.id
           ? "bg-violet-50"
           : "bg-white";
     const isLinkedTripRow = Boolean(
       line.linkedStayId || line.linkedTransportLegId || line.linkedActivityId,
     );
-    const isFillingRow = fillRowId === line.id;
+    const lineAllocRow = props.costLedger.lineAllocations.find((l) => l.lineItemId === line.id);
+    const hasPinnedPrices = (lineAllocRow?.pinnedParticipantIds.length ?? 0) > 0;
 
     return (
       <tr
@@ -374,11 +369,9 @@ export function FinanceSpreadsheet(props: {
         className={[
           "group cursor-pointer",
           isEmpty ? "text-zinc-400" : "",
-          isFillingRow
-            ? "bg-violet-100 ring-2 ring-inset ring-violet-400"
-            : selectedLineIds.has(line.id) || props.detailLineId === line.id
-              ? "bg-violet-50"
-              : "bg-white",
+          selectedLineIds.has(line.id) || props.detailLineId === line.id || pricingLineId === line.id
+            ? "bg-violet-50"
+            : "bg-white",
           dragLineId === line.id ? "opacity-50" : "",
           dragOverLineId === line.id ? "ring-2 ring-inset ring-violet-300" : "",
         ].join(" ")}
@@ -447,17 +440,11 @@ export function FinanceSpreadsheet(props: {
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (isFillingRow) exitPerPersonFill();
-                else startPerPersonFill(line.id);
+                setPricingLineId(line.id);
               }}
-              className={[
-                "mt-1 rounded border px-1.5 py-0.5 text-[9px] font-semibold",
-                isFillingRow
-                  ? "border-violet-600 bg-violet-600 text-white"
-                  : "border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100",
-              ].join(" ")}
+              className="mt-1 rounded border border-violet-300 bg-violet-50 px-1.5 py-0.5 text-[9px] font-semibold text-violet-800 hover:bg-violet-100"
             >
-              {isFillingRow ? "Done · per-person prices" : "Set per-person prices"}
+              {hasPinnedPrices ? "Edit per-person prices" : "Set per-person prices"}
             </button>
           ) : null}
           <FinanceStatusChips line={line} compact />
@@ -524,11 +511,7 @@ export function FinanceSpreadsheet(props: {
           return (
             <td
               key={participant.id}
-              className={[
-                `${tdParticipantClass} ${tdRowBg} text-right`,
-                ineligible ? "!bg-zinc-50" : "",
-                selectedParticipantIds.has(participant.id) ? "bg-violet-100/70" : "",
-              ].join(" ")}
+              className={`${tdParticipantClass} ${tdRowBg} text-right ${ineligible ? "!bg-zinc-50" : ""}`}
             >
               {ineligible && absenceMessage ? (
                 <FinanceAbsentCell message={absenceMessage} />
@@ -603,9 +586,7 @@ export function FinanceSpreadsheet(props: {
   const panelDescription =
     activeTab === "overall"
       ? "Per-person totals across accommodation, transport, and activities"
-      : fillRowId
-        ? "Set each person’s fare on this trip row — row total and booking checks stay linked to the calendar"
-        : FINANCE_SECTION_DESCRIPTIONS[activeTab];
+      : FINANCE_SECTION_DESCRIPTIONS[activeTab];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -621,8 +602,7 @@ export function FinanceSpreadsheet(props: {
                 onClick={() => {
                   setActiveTab(section);
                   setSelectedLineIds(new Set());
-                  setSelectedParticipantIds(new Set());
-                  setFillRowId(null);
+                  setPricingLineId(null);
                 }}
                 className={[
                   "rounded-t-lg border border-b-0 px-3 py-2 text-[11px] font-semibold transition",
@@ -645,8 +625,7 @@ export function FinanceSpreadsheet(props: {
             onClick={() => {
               setActiveTab("overall");
               setSelectedLineIds(new Set());
-              setSelectedParticipantIds(new Set());
-              setFillRowId(null);
+              setPricingLineId(null);
             }}
             className={[
               "rounded-t-lg border border-b-0 px-3 py-2 text-[11px] font-semibold transition",
@@ -697,21 +676,6 @@ export function FinanceSpreadsheet(props: {
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden bg-zinc-200/50 p-2">
-        {bulkFillLine && props.onPatchParticipantsBulk ? (
-          <FinanceBulkFillBar
-            selectedRowLabel={bulkFillLine.description}
-            linkedHint={linkedLegHint(bulkFillLine)}
-            selectedParticipantCount={selectedParticipantIds.size}
-            eligibleParticipantCount={eligibleIdsForLine(bulkFillLine).length}
-            currency={bulkFillLine.currency}
-            onApply={applyBulkFill}
-            onSelectAll={() =>
-              setSelectedParticipantIds(new Set(eligibleIdsForLine(bulkFillLine)))
-            }
-            onClearSelection={() => setSelectedParticipantIds(new Set())}
-            onDone={exitPerPersonFill}
-          />
-        ) : null}
         {activeTab === "overall" ? (
           <div className="mb-2 px-1">
             <FinanceOverallSummary ledger={props.costLedger} />
@@ -756,25 +720,15 @@ export function FinanceSpreadsheet(props: {
               </th>
               {pool.map((participant) => {
                 const label = participantHeaderLabel(participant, pool);
-                const columnSelected = selectedParticipantIds.has(participant.id);
                 return (
                   <th
                     key={participant.id}
-                    className={[
-                      `${thMoneyClass} ${stickyHeadTop} ${participantColWidth} text-center`,
-                      columnSelected ? "bg-violet-200" : "",
-                    ].join(" ")}
+                    className={`${thMoneyClass} ${stickyHeadTop} ${participantColWidth} text-center`}
                     title={participant.fullName}
                   >
                     <FinanceParticipantHeader
                       label={label}
                       fullName={participant.fullName}
-                      selected={columnSelected}
-                      onToggle={
-                        bulkFillLineId
-                          ? () => toggleParticipantSelection(participant.id)
-                          : undefined
-                      }
                     />
                   </th>
                 );
@@ -865,6 +819,18 @@ export function FinanceSpreadsheet(props: {
             if (!lines?.length) return;
             await confirmRemoveFromTrip(lines);
           }}
+        />
+      ) : null}
+
+      {pricingLine && props.onPatchParticipantsBulk ? (
+        <FinancePerPersonPricesModal
+          open={pricingLineId != null}
+          lineDescription={pricingLine.description}
+          linkedHint={linkedLegHint(pricingLine)}
+          currency={pricingLine.currency}
+          participants={pricingParticipants}
+          onCancel={() => setPricingLineId(null)}
+          onApply={applyPerPersonPrices}
         />
       ) : null}
     </div>
