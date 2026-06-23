@@ -76,7 +76,8 @@ export function TripConfirmModal(props: {
         aria-modal="true"
         aria-labelledby="trip-confirm-title"
         className={[
-          "relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl ring-1",
+          "relative w-full overflow-hidden rounded-2xl bg-white shadow-2xl ring-1",
+          wide ? "max-w-lg" : "max-w-md",
           toneRing,
         ].join(" ")}
       >
