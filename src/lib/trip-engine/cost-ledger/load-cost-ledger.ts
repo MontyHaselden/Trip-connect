@@ -46,6 +46,7 @@ function mapLine(row: typeof costLineItems.$inferSelect): CostLineItemDraft {
     allocationRulePayload: {
       groupId: payload.groupId,
       participantId: payload.participantId,
+      financeSection: payload.financeSection as CostLineItemDraft["allocationRulePayload"]["financeSection"],
     },
     linkedStayId: row.linkedStayId,
     linkedTransportLegId: row.linkedTransportLegId,

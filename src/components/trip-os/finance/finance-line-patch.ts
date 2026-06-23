@@ -1,5 +1,5 @@
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
-import type { CostLineItemDraft, LineAllocationResult } from "@/lib/trip-engine/cost-ledger/types";
+import type { CostLineItemDraft, FinanceManualSection, LineAllocationResult } from "@/lib/trip-engine/cost-ledger/types";
 
 export function lineToFormValues(
   line: CostLineItemDraft,
@@ -38,6 +38,22 @@ export function linePayload(values: CostLineFormValues): Record<string, unknown>
   return payload;
 }
 
+export function extraLinePayload(
+  section: FinanceManualSection,
+  baseCurrency: string,
+): Record<string, unknown> {
+  return {
+    category: "other",
+    description: "New line",
+    notes: null,
+    totalAmountCents: 0,
+    currency: baseCurrency,
+    quantity: null,
+    allocationRuleType: "equal_cost_participants",
+    allocationRulePayload: { financeSection: section },
+  };
+}
+
 export function patchParticipantAllocation(
   line: CostLineItemDraft,
   lineAlloc: LineAllocationResult,
@@ -74,5 +90,12 @@ export function patchLinePayload(
   patch: Partial<CostLineFormValues>,
 ): Record<string, unknown> {
   const current = lineToFormValues(line);
-  return linePayload({ ...current, ...patch, lineId: line.id });
+  const payload = linePayload({ ...current, ...patch, lineId: line.id });
+  if (line.allocationRulePayload.financeSection) {
+    payload.allocationRulePayload = {
+      ...(payload.allocationRulePayload as Record<string, unknown>),
+      financeSection: line.allocationRulePayload.financeSection,
+    };
+  }
+  return payload;
 }

@@ -1,5 +1,6 @@
 import type { RosterSummary, TripEntityGraph } from "../types";
 
+import { reorderFinanceSectionLines } from "./finance-line-order";
 import { projectCostLedger } from "./project";
 import type {
   CostAllocationOverrideDraft,
@@ -73,6 +74,71 @@ export function applyOptimisticFinancePatch(
     const remove = new Set(lineIds as string[]);
     raw.lineItems = raw.lineItems.filter((line) => !remove.has(line.id));
     raw.overrides = raw.overrides.filter((row) => !remove.has(row.lineItemId));
+    return projectCostLedger(raw, roster, graph ?? undefined);
+  }
+
+  if (action === "reorderSectionLines") {
+    const section = payload.section;
+    const orderedIds = payload.orderedIds;
+    if (
+      typeof section !== "string" ||
+      !["accommodation", "transport", "activities"].includes(section) ||
+      !Array.isArray(orderedIds) ||
+      !orderedIds.every((id) => typeof id === "string")
+    ) {
+      return null;
+    }
+    try {
+      raw.lineItems = reorderFinanceSectionLines(
+        raw.lineItems,
+        section as "accommodation" | "transport" | "activities",
+        orderedIds as string[],
+        graph,
+      );
+    } catch {
+      return null;
+    }
+    return projectCostLedger(raw, roster, graph ?? undefined);
+  }
+
+  if (action === "addLine") {
+    const line = payload.line;
+    if (!line || typeof line !== "object") return null;
+    const parsed = line as Record<string, unknown>;
+    const financeSection = (parsed.allocationRulePayload as { financeSection?: string } | undefined)
+      ?.financeSection;
+    const tempId = `optimistic-${Date.now()}`;
+    raw.lineItems.push({
+      id: tempId,
+      sortOrder: raw.lineItems.length,
+      category: (parsed.category as CostLineItemDraft["category"]) ?? "other",
+      description: typeof parsed.description === "string" ? parsed.description : "New line",
+      notes: null,
+      totalAmountCents: 0,
+      currency: typeof parsed.currency === "string" ? parsed.currency : "NZD",
+      quantity: null,
+      allocationRuleType: "equal_cost_participants",
+      allocationRulePayload: financeSection
+        ? { financeSection: financeSection as CostLineItemDraft["allocationRulePayload"]["financeSection"] }
+        : {},
+      linkedStayId: null,
+      linkedTransportLegId: null,
+      linkedActivityId: null,
+      scope: "trip_wide",
+      supplierPaymentStatus: null,
+      costStatus: "unknown",
+      linePaymentStatus: "unpaid",
+      fundingStatus: "unfunded",
+      supplierName: null,
+      estimatedAmountCents: null,
+      actualAmountCents: null,
+      taxTreatment: "unknown",
+      exportCategoryLabel: null,
+      exportReference: null,
+      bookingReference: null,
+      invoiceRecorded: false,
+      receiptRecorded: false,
+    });
     return projectCostLedger(raw, roster, graph ?? undefined);
   }
 

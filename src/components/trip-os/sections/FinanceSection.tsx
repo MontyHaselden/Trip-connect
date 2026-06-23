@@ -15,11 +15,12 @@ import {
 import type { PaidByType, SupplierPaymentMethod } from "@/lib/trip-engine/cost-ledger/finance-metadata";
 import type { RosterSummary, TripEntityGraph } from "@/lib/trip-engine/types";
 import type { CostLineItemDraft } from "@/lib/trip-engine/cost-ledger/types";
+import type { FinanceEntitySection } from "@/lib/trip-engine/cost-ledger/finance-sections";
 
-import { CostLineDrawer, type CostLineFormValues } from "../costs/CostLineDrawer";
 import { FinanceSpreadsheet } from "../finance/FinanceSpreadsheet";
 import { FinanceRowDetailPanel } from "../finance/FinanceRowDetailPanel";
-import { linePayload, patchLinePayload, patchParticipantAllocation } from "../finance/finance-line-patch";
+import { extraLinePayload, patchLinePayload, patchParticipantAllocation } from "../finance/finance-line-patch";
+import type { CostLineFormValues } from "../costs/CostLineDrawer";
 
 type FinanceAction =
   | { action: "updateSettings"; settings: Record<string, unknown> }
@@ -32,6 +33,11 @@ type FinanceAction =
       action: "deleteLines";
       lineIds: string[];
       mode: "financeOnly" | "removeFromTrip";
+    }
+  | {
+      action: "reorderSectionLines";
+      section: FinanceEntitySection;
+      orderedIds: string[];
     }
   | { action: "deleteEmptyLines" }
   | { action: "addFund"; fund: Record<string, unknown> }
@@ -48,7 +54,6 @@ export function FinanceSection(props: {
   onFinanceAction: (payload: FinanceAction) => Promise<boolean>;
   saving?: boolean;
 }) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailLineId, setDetailLineId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showEmptyLines, setShowEmptyLines] = useState(true);
@@ -98,8 +103,19 @@ export function FinanceSection(props: {
 
   const hasRoster = costSplitParticipants.length > 0;
 
-  function openAddDrawer() {
-    setDrawerOpen(true);
+  async function addExtraLine(section: FinanceEntitySection) {
+    await props.onFinanceAction({
+      action: "addLine",
+      line: extraLinePayload(section, settings.baseCurrency),
+    });
+  }
+
+  async function reorderSectionLines(section: FinanceEntitySection, orderedIds: string[]) {
+    await props.onFinanceAction({
+      action: "reorderSectionLines",
+      section,
+      orderedIds,
+    });
   }
 
   async function patchParticipant(
@@ -125,11 +141,6 @@ export function FinanceSection(props: {
       lineId,
       line: patchLinePayload(line, patch),
     });
-  }
-
-  async function saveLine(values: CostLineFormValues) {
-    const payload = linePayload(values);
-    await props.onFinanceAction({ action: "addLine", line: payload });
   }
 
   const detailLine = detailLineId
@@ -158,9 +169,6 @@ export function FinanceSection(props: {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <ToolbarButton onClick={openAddDrawer} disabled={!hasRoster} primary>
-              + Row
-            </ToolbarButton>
             <ToolbarButton onClick={() => setShowSettings((v) => !v)}>Currency</ToolbarButton>
             <ToolbarButton
               onClick={() =>
@@ -229,6 +237,10 @@ export function FinanceSection(props: {
             onDeleteLines={async (lineIds, mode) => {
               await props.onFinanceAction({ action: "deleteLines", lineIds, mode });
             }}
+            onAddExtraLine={(section) => void addExtraLine(section)}
+            onReorderSectionLines={(section, orderedIds) =>
+              void reorderSectionLines(section, orderedIds)
+            }
             detailLineId={detailLineId}
             onOpenLineDetail={setDetailLineId}
           />
@@ -366,14 +378,6 @@ export function FinanceSection(props: {
           onSave={saveLineDetails}
         />
       ) : null}
-
-      <CostLineDrawer
-        open={drawerOpen}
-        roster={props.roster}
-        baseCurrency={settings.baseCurrency}
-        onClose={() => setDrawerOpen(false)}
-        onSave={saveLine}
-      />
     </div>
   );
 }

@@ -20,6 +20,12 @@ import { loadTripGraph } from "@/lib/trip-engine";
 import { loadCostLedgerProjection } from "@/lib/trip-engine/cost-ledger/index";
 import { loadCostLedgerRaw } from "@/lib/trip-engine/cost-ledger/load-cost-ledger";
 import {
+  applySortOrderInsert,
+  reorderFinanceSectionLines,
+  sortOrderForSectionAppend,
+} from "@/lib/trip-engine/cost-ledger/finance-line-order";
+import type { FinanceEntitySection } from "@/lib/trip-engine/cost-ledger/finance-sections";
+import {
   dismissalKeyFromLine,
   dismissFromFinance,
   loadFinanceDismissals,
@@ -67,6 +73,7 @@ const LineItemSchema = z.object({
     .object({
       groupId: z.string().uuid().optional(),
       participantId: z.string().uuid().optional(),
+      financeSection: z.enum(["accommodation", "transport", "activities"]).optional(),
     })
     .default({}),
   linkedStayId: z.string().uuid().nullable().optional(),
@@ -263,12 +270,31 @@ export async function PATCH(
       if (!parsed.success) {
         return NextResponse.json({ error: "Invalid line item." }, { status: 400 });
       }
+      const graph = await loadTripGraph(tripId);
       const raw = await loadCostLedgerRaw(tripId);
+      const manualSection = parsed.data.allocationRulePayload.financeSection;
+      const insertAt = manualSection
+        ? sortOrderForSectionAppend(raw.lineItems, manualSection, graph)
+        : raw.lineItems.length;
+      const bumped = applySortOrderInsert(raw.lineItems, insertAt);
+      await Promise.all(
+        bumped
+          .filter((line) => {
+            const prev = raw.lineItems.find((row) => row.id === line.id);
+            return prev && prev.sortOrder !== line.sortOrder;
+          })
+          .map((line) =>
+            db
+              .update(costLineItems)
+              .set({ sortOrder: line.sortOrder, updatedAt: new Date() })
+              .where(eq(costLineItems.id, line.id)),
+          ),
+      );
       const [created] = await db
         .insert(costLineItems)
         .values({
           tripId,
-          sortOrder: raw.lineItems.length,
+          sortOrder: insertAt,
           category: parsed.data.category,
           description: parsed.data.description,
           notes: parsed.data.notes ?? null,
@@ -338,6 +364,38 @@ export async function PATCH(
           );
         }
       }
+    } else if (action === "reorderSectionLines") {
+      const section = json.section as FinanceEntitySection | undefined;
+      const orderedIds = json.orderedIds;
+      if (
+        !section ||
+        !["accommodation", "transport", "activities"].includes(section) ||
+        !Array.isArray(orderedIds) ||
+        !orderedIds.every((id) => typeof id === "string")
+      ) {
+        return NextResponse.json({ error: "Invalid section reorder." }, { status: 400 });
+      }
+      const graph = await loadTripGraph(tripId);
+      const raw = await loadCostLedgerRaw(tripId);
+      let next;
+      try {
+        next = reorderFinanceSectionLines(
+          raw.lineItems,
+          section,
+          orderedIds as string[],
+          graph,
+        );
+      } catch {
+        return NextResponse.json({ error: "Invalid section reorder." }, { status: 400 });
+      }
+      await Promise.all(
+        next.map((line) =>
+          db
+            .update(costLineItems)
+            .set({ sortOrder: line.sortOrder, updatedAt: new Date() })
+            .where(eq(costLineItems.id, line.id)),
+        ),
+      );
     } else if (action === "deleteLine") {
       const lineId = json.lineId as string | undefined;
       if (!lineId) {

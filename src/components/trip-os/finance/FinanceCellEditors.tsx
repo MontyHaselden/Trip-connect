@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { CostAllocationRuleType, CostLineItemDraft } from "@/lib/trip-engine/cost-ledger/types";
 import { allocationRuleLabel } from "@/lib/trip-engine/cost-ledger/display-utils";
+import { isManualFinanceLine } from "@/lib/trip-engine/cost-ledger/finance-sections";
 import type { RosterSummary } from "@/lib/trip-engine/types";
 
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
@@ -237,16 +238,43 @@ export function FinanceDescriptionCell(props: {
     props.openCell?.lineId === props.line.id && props.openCell.field === "description";
   const [text, setText] = useState(props.line.description);
 
+  useEffect(() => {
+    if (!open) setText(props.line.description);
+  }, [props.line.description, open]);
+
+  function save(nextText?: string) {
+    const trimmed = (nextText ?? text).trim();
+    if (!trimmed) return;
+    if (trimmed === props.line.description) return;
+    props.onPatch(props.line.id, { description: trimmed });
+    props.setOpenCell(null);
+  }
+
+  if (isManualFinanceLine(props.line)) {
+    return (
+      <input
+        type="text"
+        value={text}
+        placeholder="Name this line…"
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => save()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            save();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full min-w-[10rem] rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-zinc-800 outline-none hover:border-zinc-200 focus:border-sky-300 focus:bg-white"
+        data-finance-cell
+      />
+    );
+  }
+
   function openEditor() {
     setText(props.line.description);
     props.setOpenCell({ lineId: props.line.id, field: "description" });
-  }
-
-  function save() {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    props.onPatch(props.line.id, { description: trimmed });
-    props.setOpenCell(null);
   }
 
   return (
@@ -287,7 +315,7 @@ export function FinanceDescriptionCell(props: {
         />
         <button
           type="button"
-          onClick={save}
+          onClick={() => save()}
           className="mt-2 w-full rounded bg-violet-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-violet-700"
         >
           Apply

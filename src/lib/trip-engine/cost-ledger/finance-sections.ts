@@ -42,6 +42,15 @@ function linkedStayIsFinanceEligible(
   return isFinanceAccommodationStay(stay);
 }
 
+export function isManualFinanceLine(line: CostLineItemDraft): boolean {
+  return (
+    !line.linkedStayId &&
+    !line.linkedTransportLegId &&
+    !line.linkedActivityId &&
+    Boolean(line.allocationRulePayload.financeSection)
+  );
+}
+
 export function financeSectionForLine(
   line: CostLineItemDraft,
   graph?: TripEntityGraph | null,
@@ -52,6 +61,8 @@ export function financeSectionForLine(
   }
   if (line.linkedTransportLegId) return "transport";
   if (line.linkedActivityId) return "activities";
+  const manualSection = line.allocationRulePayload.financeSection;
+  if (manualSection) return manualSection;
   if (line.category === "accommodation") return "accommodation";
   if (line.category === "transport" || line.category === "flights") return "transport";
   if (line.category === "activities") return "activities";

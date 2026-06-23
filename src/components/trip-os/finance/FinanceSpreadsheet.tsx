@@ -102,6 +102,8 @@ export function FinanceSpreadsheet(props: {
     lineIds: string[],
     mode: "financeOnly" | "removeFromTrip",
   ) => Promise<void>;
+  onAddExtraLine?: (section: FinanceEntitySection) => void;
+  onReorderSectionLines?: (section: FinanceEntitySection, orderedIds: string[]) => void;
   detailLineId?: string | null;
   onOpenLineDetail?: (lineId: string) => void;
 }) {
@@ -109,6 +111,8 @@ export function FinanceSpreadsheet(props: {
   const [openCell, setOpenCell] = useState<OpenCell>(null);
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set());
   const [pendingDeleteLines, setPendingDeleteLines] = useState<CostLineItemDraft[] | null>(null);
+  const [dragLineId, setDragLineId] = useState<string | null>(null);
+  const [dragOverLineId, setDragOverLineId] = useState<string | null>(null);
 
   const presence = useMemo(
     () =>
@@ -223,6 +227,45 @@ export function FinanceSpreadsheet(props: {
     );
   }
 
+  function handleRowDrop(targetLineId: string) {
+    if (!dragLineId || dragLineId === targetLineId || activeTab === "overall") return;
+    const ids = tabLines.map((line) => line.id);
+    const from = ids.indexOf(dragLineId);
+    const to = ids.indexOf(targetLineId);
+    if (from < 0 || to < 0) return;
+    const next = [...ids];
+    next.splice(from, 1);
+    next.splice(to, 0, dragLineId);
+    props.onReorderSectionLines?.(activeTab, next);
+    setDragLineId(null);
+    setDragOverLineId(null);
+  }
+
+  function renderAddRowRow() {
+    if (activeTab === "overall" || !props.onAddExtraLine) return null;
+    return (
+      <tr className="bg-zinc-50/80">
+        <td
+          colSpan={2}
+          className={`${tdClass} ${stickyColLeft} border border-zinc-300 bg-zinc-50/80`}
+        >
+          <button
+            type="button"
+            onClick={() => props.onAddExtraLine?.(activeTab)}
+            className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-[11px] font-medium text-violet-700 hover:bg-violet-100/60"
+          >
+            <span className="text-base leading-none">+</span>
+            Add extra line
+          </button>
+        </td>
+        <td
+          colSpan={totalColCount - 2}
+          className="border border-zinc-300 bg-zinc-50/80"
+        />
+      </tr>
+    );
+  }
+
   function renderLineRow(line: CostLineItemDraft, rowNumber: number) {
     const alloc = allocationByLine.get(line.id) ?? {};
     const lineResult = props.costLedger.lineAllocations.find(
@@ -256,7 +299,17 @@ export function FinanceSpreadsheet(props: {
           selectedLineIds.has(line.id) || props.detailLineId === line.id
             ? "bg-violet-50"
             : "bg-white",
+          dragLineId === line.id ? "opacity-50" : "",
+          dragOverLineId === line.id ? "ring-2 ring-inset ring-violet-300" : "",
         ].join(" ")}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOverLineId(line.id);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          handleRowDrop(line.id);
+        }}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("input, button, [data-finance-cell]")) return;
           props.onOpenLineDetail?.(line.id);
@@ -266,6 +319,22 @@ export function FinanceSpreadsheet(props: {
           className={`${tdClass} ${tdRowBg} ${stickyColLeft} ${rowStickyBg} group-hover:bg-zinc-50 text-center text-zinc-400`}
         >
           <div className="flex flex-col items-center gap-0.5">
+            <span
+              draggable
+              onDragStart={(e) => {
+                e.stopPropagation();
+                setDragLineId(line.id);
+              }}
+              onDragEnd={() => {
+                setDragLineId(null);
+                setDragOverLineId(null);
+              }}
+              className="cursor-grab select-none text-[10px] leading-none text-zinc-300 hover:text-zinc-500 active:cursor-grabbing"
+              title="Drag to reorder"
+              aria-hidden
+            >
+              ⋮⋮
+            </span>
             <input
               type="checkbox"
               checked={selectedLineIds.has(line.id)}
@@ -626,19 +695,23 @@ export function FinanceSpreadsheet(props: {
                 )}
               </>
             ) : tabLines.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={totalColCount}
-                  className="border border-zinc-300 px-4 py-8 text-center text-[11px] text-zinc-500"
-                >
-                  {emptyCount > 0 && !props.showEmptyLines
-                    ? `No ${FINANCE_SECTION_LABELS[activeTab].toLowerCase()} rows with amounts — click Show empty.`
-                    : `No ${FINANCE_SECTION_LABELS[activeTab].toLowerCase()} rows yet — add them on the trip calendar.`}
-                </td>
-              </tr>
+              <>
+                <tr>
+                  <td
+                    colSpan={totalColCount}
+                    className="border border-zinc-300 px-4 py-4 text-center text-[11px] text-zinc-500"
+                  >
+                    {emptyCount > 0 && !props.showEmptyLines
+                      ? `No ${FINANCE_SECTION_LABELS[activeTab].toLowerCase()} rows with amounts — click Show empty.`
+                      : `No ${FINANCE_SECTION_LABELS[activeTab].toLowerCase()} rows from the calendar yet.`}
+                  </td>
+                </tr>
+                {renderAddRowRow()}
+              </>
             ) : (
               <>
                 {tabLines.map((line, index) => renderLineRow(line, index + 1))}
+                {renderAddRowRow()}
                 {renderSubtotalRow(`${FINANCE_SECTION_LABELS[activeTab]} subtotal`, tabLines)}
               </>
             )}

@@ -25,9 +25,13 @@ export type CostAllocationRuleType =
 
 export type CostLineScope = "presence" | "trip_wide";
 
+export type FinanceManualSection = "accommodation" | "transport" | "activities";
+
 export type CostAllocationRulePayload = {
   groupId?: string;
   participantId?: string;
+  /** Tab for unlinked manual extras (insurance, fees, etc.). */
+  financeSection?: FinanceManualSection;
 };
 
 export type CostLineItemDraft = {
