@@ -54,35 +54,50 @@ export function extraLinePayload(
   };
 }
 
+export function patchBulkParticipantAllocations(
+  line: CostLineItemDraft,
+  lineAlloc: LineAllocationResult,
+  updates: { participantId: string; amountCents: number | null }[],
+  options?: { syncTotalToPins?: boolean },
+): Record<string, unknown> {
+  const pinned = new Map<string, number>();
+  for (const id of lineAlloc.pinnedParticipantIds) {
+    pinned.set(id, lineAlloc.allocations[id] ?? 0);
+  }
+  for (const { participantId, amountCents } of updates) {
+    if (amountCents == null || amountCents <= 0) pinned.delete(participantId);
+    else pinned.set(participantId, amountCents);
+  }
+
+  const overrides = [...pinned.entries()].map(([participantId, amountCents]) => ({
+    participantId,
+    amountCents,
+  }));
+  const pinnedSum = [...pinned.values()].reduce((sum, cents) => sum + cents, 0);
+
+  const payload: Record<string, unknown> = { overrides };
+  const syncTotal = options?.syncTotalToPins !== false;
+  if (syncTotal) {
+    if (pinnedSum > 0) payload.totalAmountCents = pinnedSum;
+    else if (pinned.size === 0 && line.totalAmountCents > 0) payload.totalAmountCents = 0;
+  } else if (pinnedSum > 0 && line.totalAmountCents < pinnedSum) {
+    payload.totalAmountCents = pinnedSum;
+  }
+  return payload;
+}
+
 export function patchParticipantAllocation(
   line: CostLineItemDraft,
   lineAlloc: LineAllocationResult,
   participantId: string,
   amountCents: number | null,
 ): Record<string, unknown> {
-  const pinned = new Map<string, number>();
-  for (const id of lineAlloc.pinnedParticipantIds) {
-    pinned.set(id, lineAlloc.allocations[id] ?? 0);
-  }
-  if (amountCents == null || amountCents <= 0) {
-    pinned.delete(participantId);
-  } else {
-    pinned.set(participantId, amountCents);
-  }
-
-  const payload: Record<string, unknown> = {
-    overrides: [...pinned.entries()].map(([id, cents]) => ({
-      participantId: id,
-      amountCents: cents,
-    })),
-  };
-
-  const pinnedSum = [...pinned.values()].reduce((sum, cents) => sum + cents, 0);
-  if (pinnedSum > 0 && line.totalAmountCents < pinnedSum) {
-    payload.totalAmountCents = pinnedSum;
-  }
-
-  return payload;
+  return patchBulkParticipantAllocations(
+    line,
+    lineAlloc,
+    [{ participantId, amountCents }],
+    { syncTotalToPins: false },
+  );
 }
 
 export function patchLinePayload(

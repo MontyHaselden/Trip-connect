@@ -19,7 +19,7 @@ import type { FinanceEntitySection } from "@/lib/trip-engine/cost-ledger/finance
 
 import { FinanceSpreadsheet } from "../finance/FinanceSpreadsheet";
 import { FinanceRowDetailPanel } from "../finance/FinanceRowDetailPanel";
-import { extraLinePayload, patchLinePayload, patchParticipantAllocation } from "../finance/finance-line-patch";
+import { extraLinePayload, patchBulkParticipantAllocations, patchLinePayload, patchParticipantAllocation } from "../finance/finance-line-patch";
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
 
 type FinanceAction =
@@ -133,6 +133,25 @@ export function FinanceSection(props: {
     });
   }
 
+  async function patchParticipantsBulk(
+    lineId: string,
+    participantIds: string[],
+    amountCents: number,
+  ) {
+    const line = ledgerForGrid.lineItems.find((l) => l.id === lineId);
+    const lineAlloc = ledgerForGrid.lineAllocations.find((l) => l.lineItemId === lineId);
+    if (!line || !lineAlloc || participantIds.length === 0) return;
+    await props.onFinanceAction({
+      action: "updateLine",
+      lineId,
+      line: patchBulkParticipantAllocations(
+        line,
+        lineAlloc,
+        participantIds.map((participantId) => ({ participantId, amountCents })),
+      ),
+    });
+  }
+
   async function patchLine(lineId: string, patch: Partial<CostLineFormValues>) {
     const line = ledgerForGrid.lineItems.find((l) => l.id === lineId);
     if (!line) return;
@@ -224,6 +243,9 @@ export function FinanceSection(props: {
             onPatchLine={(lineId, patch) => void patchLine(lineId, patch)}
             onPatchParticipant={(lineId, participantId, amountCents) =>
               void patchParticipant(lineId, participantId, amountCents)
+            }
+            onPatchParticipantsBulk={(lineId, participantIds, amountCents) =>
+              void patchParticipantsBulk(lineId, participantIds, amountCents)
             }
             onDismissLine={async (lineId) => {
               await props.onFinanceAction({ action: "dismissAndDeleteLine", lineId });

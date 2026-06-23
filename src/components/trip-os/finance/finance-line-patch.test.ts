@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { patchLinePayload, patchParticipantAllocation } from "./finance-line-patch";
+import { patchBulkParticipantAllocations, patchLinePayload, patchParticipantAllocation } from "./finance-line-patch";
 import type { CostLineItemDraft, LineAllocationResult } from "@/lib/trip-engine/cost-ledger/types";
 
 function line(totalAmountCents: number): CostLineItemDraft {
@@ -59,6 +59,22 @@ describe("patchParticipantAllocation", () => {
     );
     assert.equal(patch.totalAmountCents, undefined);
     assert.deepEqual(patch.overrides, []);
+  });
+
+  it("sets row total to the sum of pinned amounts", () => {
+    const patch = patchBulkParticipantAllocations(
+      line(0),
+      lineAlloc({ allocations: { p1: 0, p2: 0, p3: 0 } }),
+      [
+        { participantId: "p1", amountCents: 209_500 },
+        { participantId: "p2", amountCents: 209_500 },
+      ],
+    );
+    assert.equal(patch.totalAmountCents, 419_000);
+    assert.deepEqual(patch.overrides, [
+      { participantId: "p1", amountCents: 209_500 },
+      { participantId: "p2", amountCents: 209_500 },
+    ]);
   });
 });
 

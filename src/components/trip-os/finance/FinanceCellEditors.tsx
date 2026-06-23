@@ -6,8 +6,13 @@ import type { CostAllocationRuleType, CostLineItemDraft } from "@/lib/trip-engin
 import { allocationRuleLabel } from "@/lib/trip-engine/cost-ledger/display-utils";
 import {
   effectiveStayNights,
-  perNightCents,
 } from "@/lib/trip-engine/cost-ledger/accommodation-nights";
+import {
+  effectiveLineQuantity,
+  perUnitCents,
+  quantityUnitLabel,
+  totalFromUnitCents,
+} from "@/lib/trip-engine/cost-ledger/line-quantity-rate";
 import { isManualFinanceLine } from "@/lib/trip-engine/cost-ledger/finance-sections";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import type { RosterSummary } from "@/lib/trip-engine/types";
@@ -147,11 +152,13 @@ export function FinanceAmountCell(props: {
   displaySecondary?: string;
   onPatch: (lineId: string, patch: Partial<CostLineFormValues>) => void;
 }) {
-  const nights = effectiveStayNights(props.line, props.graph);
-  const nightly =
-    nights && props.line.totalAmountCents > 0
-      ? perNightCents(props.line.totalAmountCents, nights)
+  const quantity = effectiveLineQuantity(props.line, props.graph);
+  const unitLabel = quantityUnitLabel(props.line, props.graph);
+  const perUnit =
+    quantity && props.line.totalAmountCents > 0
+      ? perUnitCents(props.line.totalAmountCents, quantity)
       : null;
+  const showUnitRow = quantity != null && quantity > 0;
 
   return (
     <div>
@@ -168,19 +175,19 @@ export function FinanceAmountCell(props: {
           props.onPatch(props.line.id, { currency: currency.toUpperCase() });
         }}
       />
-      {nightly != null ? (
+      {showUnitRow ? (
         <div className="mt-0.5 flex justify-end">
           <FinanceInlineMoneyCell
-            valueCents={nightly}
+            valueCents={perUnit}
             currency={props.line.currency}
             onCommit={(cents) => {
-              if (!nights || cents == null) return;
+              if (!quantity || cents == null) return;
               props.onPatch(props.line.id, {
-                totalAmountCents: cents * nights,
+                totalAmountCents: totalFromUnitCents(cents, quantity),
               });
             }}
           />
-          <span className="ml-1 self-end pb-0.5 text-[9px] text-zinc-500">/night</span>
+          <span className="ml-1 self-end pb-0.5 text-[9px] text-zinc-500">/{unitLabel}</span>
         </div>
       ) : props.displaySecondary ? (
         <div className="text-[9px] text-zinc-500">{props.displaySecondary}</div>
