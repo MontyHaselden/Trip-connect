@@ -23,12 +23,15 @@ export function FinanceInlineMoneyCell(props: {
 }) {
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState("");
+  const [pendingCents, setPendingCents] = useState<number | null | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const symbol = currencySymbol(props.currency);
 
-  const hasValue = props.valueCents != null && props.valueCents > 0;
+  const effectiveCents =
+    pendingCents !== undefined ? pendingCents : props.valueCents;
+  const hasValue = effectiveCents != null && effectiveCents > 0;
   const displayText = hasValue
-    ? formatMoneyAmount(props.valueCents!, props.currency)
+    ? formatMoneyAmount(effectiveCents!, props.currency)
     : "";
   const widthText = focused ? draft || displayText || "0.00" : displayText || "0.00";
   const inputWidthCh = Math.max(widthText.length, props.currency === "JPY" ? 3 : 4);
@@ -36,21 +39,35 @@ export function FinanceInlineMoneyCell(props: {
   useEffect(() => {
     if (!focused) return;
     setDraft(
-      hasValue ? centsToInputValue(props.valueCents!, props.currency) : "",
+      hasValue ? centsToInputValue(effectiveCents!, props.currency) : "",
     );
     const id = requestAnimationFrame(() => inputRef.current?.select());
     return () => cancelAnimationFrame(id);
-  }, [focused, hasValue, props.valueCents, props.currency]);
+  }, [focused, hasValue, effectiveCents, props.currency]);
+
+  useEffect(() => {
+    if (
+      pendingCents !== undefined &&
+      props.valueCents === pendingCents
+    ) {
+      setPendingCents(undefined);
+    }
+  }, [props.valueCents, pendingCents]);
 
   function commit() {
     if (!focused) return;
     const trimmed = draft.trim();
+    let nextCents: number | null = null;
     if (!trimmed) {
-      if (props.allowClear) props.onCommit(null);
+      if (props.allowClear) nextCents = null;
     } else {
       const cents = parseMoneyInput(trimmed, props.currency);
-      if (cents > 0) props.onCommit(cents);
-      else if (props.allowClear) props.onCommit(null);
+      if (cents > 0) nextCents = cents;
+      else if (props.allowClear) nextCents = null;
+    }
+    if (nextCents !== null || props.allowClear) {
+      setPendingCents(nextCents);
+      props.onCommit(nextCents);
     }
     setFocused(false);
   }

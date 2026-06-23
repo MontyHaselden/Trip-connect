@@ -39,10 +39,17 @@ function isAccommodationOnlyCommands(commands: TripCommand[]): boolean {
   );
 }
 
+function isAccommodationStayMutation(commands: TripCommand[]): boolean {
+  return commands.some((c) =>
+    c.type === "addStay" || c.type === "updateStay" || c.type === "removeStay",
+  );
+}
+
 function commandsNeedCostRefresh(commands: TripCommand[]): boolean {
   return commands.some((c) =>
     [
       "removeStay",
+      "updateStay",
       "removeTransportLeg",
       "removeActivity",
       "addStay",
@@ -68,7 +75,9 @@ async function handleCommands(
   const syncOnly = isCalendarLabelsOnlyBatch(commands);
   const lightweight =
     syncOnly ||
-    (isAccommodationOnlyCommands(commands) && !commandsNeedCostRefresh(commands));
+    (isAccommodationOnlyCommands(commands) &&
+      !isAccommodationStayMutation(commands) &&
+      !commandsNeedCostRefresh(commands));
   const [rosterSummary, costLedger] = lightweight
     ? [undefined, undefined]
     : await Promise.all([

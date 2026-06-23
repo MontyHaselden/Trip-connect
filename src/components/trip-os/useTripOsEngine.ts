@@ -19,6 +19,7 @@ import { computeReadiness } from "@/lib/trip-engine/compute-readiness";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 import { groupIdFromCommands } from "@/lib/trip-engine/persist-command";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
+import { applyOptimisticFinancePatch } from "@/lib/trip-engine/cost-ledger/optimistic-finance-patch";
 import type {
   CalendarProjection,
   CalendarRenderModel,
@@ -517,8 +518,24 @@ export function useTripOsEngine(tripId: string) {
 
   const patchCosts = useCallback(
     async (payload: Record<string, unknown>) => {
-      setSaving(true);
-      setError(null);
+      const snapshot = dataRef.current;
+      if (!snapshot?.costLedger) {
+        setError("Finance data is not loaded yet.");
+        return false;
+      }
+
+      const optimistic = applyOptimisticFinancePatch(
+        snapshot.costLedger,
+        snapshot.rosterSummary,
+        snapshot.graph,
+        payload,
+      );
+
+      if (optimistic) {
+        setData((prev) => (prev ? { ...prev, costLedger: optimistic } : prev));
+        persistLocalSnapshot(snapshot.graph, { costLedger: optimistic });
+      }
+
       try {
         const res = await fetch(`/api/trips/${tripId}/costs`, {
           method: "PATCH",
@@ -536,21 +553,17 @@ export function useTripOsEngine(tripId: string) {
             persistLocalSnapshot(prev.graph, { costLedger: body.costLedger! });
             return { ...prev, costLedger: body.costLedger! };
           });
-        } else {
-          await load(activeGroupId || data?.graph.mainGroupId, {
-            silent: true,
-            forceServer: true,
-          });
         }
+        setError(null);
         return true;
       } catch (e) {
+        setData(snapshot);
+        persistLocalSnapshot(snapshot.graph, { costLedger: snapshot.costLedger });
         setError(e instanceof Error ? e.message : "Costs update failed");
         return false;
-      } finally {
-        setSaving(false);
       }
     },
-    [tripId, activeGroupId, data?.graph.mainGroupId, load, persistLocalSnapshot],
+    [tripId, persistLocalSnapshot],
   );
 
   return {

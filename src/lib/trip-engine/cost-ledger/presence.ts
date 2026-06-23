@@ -23,20 +23,35 @@ function dateInRange(date: string, start: string, end: string): boolean {
   return date >= start && date <= end;
 }
 
-function stayEligible(plan: ResolvedParticipantPlan, stay: {
-  id: string;
-  cityLabel: string;
-  checkInDate: string;
-  checkOutDate: string;
-}): boolean {
+export function participantEligibleForStay(
+  plan: ResolvedParticipantPlan,
+  stay: {
+    id: string;
+    cityLabel: string;
+    checkInDate: string;
+    checkOutDate: string;
+  },
+): boolean {
   if (plan.stayIds.has(stay.id)) return true;
   const stayCity = locationPaletteKey(stay.cityLabel);
   if (!stayCity) return false;
-  for (const [date, day] of plan.daysByDate) {
+  for (const [date] of plan.daysByDate) {
     if (!dateInRange(date, stay.checkInDate, stay.checkOutDate)) continue;
     if (citiesForParticipantOnDate(plan, date).includes(stayCity)) return true;
   }
   return false;
+}
+
+function stayEligible(
+  plan: ResolvedParticipantPlan,
+  stay: {
+    id: string;
+    cityLabel: string;
+    checkInDate: string;
+    checkOutDate: string;
+  },
+): boolean {
+  return participantEligibleForStay(plan, stay);
 }
 
 function activityEligible(

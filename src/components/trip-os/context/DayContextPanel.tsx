@@ -67,11 +67,17 @@ import type {
   RosterSummary,
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
+import {
+  buildStayPropagationCommands,
+  findStayPropagationCandidates,
+  type StayPropagationCandidate,
+} from "@/lib/trip-engine/stay-propagation-candidates";
 import { newId } from "@/lib/host/wizard/types";
 
 import { daysInSelection, type CalendarSelection } from "../calendar/useCalendarSelection";
 import { AsyncButton } from "../shared/AsyncButton";
 import { AccommodationLocationConflictDialog } from "./AccommodationLocationConflictDialog";
+import { StayPropagationDialog } from "./StayPropagationDialog";
 import { DayOverviewActivities } from "./DayOverviewActivities";
 import { AddHomestaysModal } from "../homestay/AddHomestaysModal";
 import { TripConfirmModal } from "../shared/TripConfirmModal";
@@ -310,6 +316,12 @@ export function DayContextPanel(props: {
   const [stayConflictDialog, setStayConflictDialog] = useState<{
     cityLabel: string;
     conflicts: AccommodationLocationConflict[];
+  } | null>(null);
+  const [propagationDialog, setPropagationDialog] = useState<{
+    cityLabel: string;
+    mergedDates: { checkIn: string; checkOut: string };
+    candidates: StayPropagationCandidate[];
+    saveOptions?: { replaceLocationLabels?: boolean };
   } | null>(null);
   const [homestaysModalOpen, setHomestaysModalOpen] = useState(false);
   const [homestaysModalContext, setHomestaysModalContext] = useState<{
@@ -655,10 +667,12 @@ export function DayContextPanel(props: {
     }
   }
 
+  const isMainGroup = groupId === graph.mainGroupId;
+
   async function commitStaySave(
     cityLabel: string,
     mergedDates: { checkIn: string; checkOut: string },
-    options?: { replaceLocationLabels?: boolean },
+    options?: { replaceLocationLabels?: boolean; propagateGroupIds?: string[] },
   ) {
     if (!stayDraft) return;
     const isReplacingStay = Boolean(
@@ -777,6 +791,11 @@ export function DayContextPanel(props: {
         },
       });
     }
+    if (options?.propagateGroupIds?.length) {
+      commands.push(
+        ...buildStayPropagationCommands(graph, mergedDates, options.propagateGroupIds),
+      );
+    }
     const ok = await props.onDispatch(commands);
     if (ok) {
       setStayConflictDialog(null);
@@ -794,6 +813,44 @@ export function DayContextPanel(props: {
     } else {
       setActionError(props.error || "Could not save stay.");
     }
+  }
+
+  function stayDraftChanged(): boolean {
+    if (!stayDraft) return false;
+    if (!linkedStay || linkedStayIsInherited) return Boolean(stayDraft.name.trim());
+    return (
+      (linkedStay.name?.trim() ?? "") !== stayDraft.name.trim() ||
+      !locationsMatch(stayCityLabel(linkedStay), stayDraftCityLabel(stayDraft)) ||
+      linkedStay.checkInDate !== stayDraft.checkIn ||
+      linkedStay.checkOutDate !== stayDraft.checkOut ||
+      (linkedStay.address ?? "") !== (stayDraft.address ?? "") ||
+      (linkedStay.googlePlaceId ?? null) !== (stayDraft.googlePlaceId ?? null)
+    );
+  }
+
+  async function maybePromptStayPropagation(
+    cityLabel: string,
+    mergedDates: { checkIn: string; checkOut: string },
+    saveOptions?: { replaceLocationLabels?: boolean },
+  ): Promise<void> {
+    if (
+      isMainGroup &&
+      props.rosterSummary &&
+      stayDraftChanged() &&
+      !isIndependentPersonal
+    ) {
+      const candidates = findStayPropagationCandidates(
+        graph,
+        props.rosterSummary,
+        mergedDates,
+        cityLabel,
+      );
+      if (candidates.length) {
+        setPropagationDialog({ cityLabel, mergedDates, candidates, saveOptions });
+        return;
+      }
+    }
+    await commitStaySave(cityLabel, mergedDates, saveOptions);
   }
 
   async function saveStay() {
@@ -837,7 +894,7 @@ export function DayContextPanel(props: {
       await adoptMainGroupStay(mainStayMatch.mainStay);
       return;
     }
-    await commitStaySave(cityLabel, mergedDates);
+    await maybePromptStayPropagation(cityLabel, mergedDates);
   }
 
   async function confirmStaySaveWithConflicts() {
@@ -848,8 +905,25 @@ export function DayContextPanel(props: {
           checkIn: stayDraft.checkIn,
           checkOut: stayDraft.checkOut,
         });
-    await commitStaySave(stayConflictDialog.cityLabel, mergedDates, {
+    await maybePromptStayPropagation(stayConflictDialog.cityLabel, mergedDates, {
       replaceLocationLabels: true,
+    });
+  }
+
+  async function confirmPropagationMainOnly() {
+    if (!propagationDialog) return;
+    const { cityLabel, mergedDates, saveOptions } = propagationDialog;
+    setPropagationDialog(null);
+    await commitStaySave(cityLabel, mergedDates, saveOptions);
+  }
+
+  async function confirmPropagationToAll() {
+    if (!propagationDialog) return;
+    const { cityLabel, mergedDates, candidates, saveOptions } = propagationDialog;
+    setPropagationDialog(null);
+    await commitStaySave(cityLabel, mergedDates, {
+      ...saveOptions,
+      propagateGroupIds: candidates.map((c) => c.groupId),
     });
   }
 
@@ -1412,6 +1486,24 @@ export function DayContextPanel(props: {
           );
           setStayConflictDialog({ cityLabel, conflicts });
         }}
+      />
+
+      <StayPropagationDialog
+        open={Boolean(propagationDialog)}
+        stayName={stayDraft?.name ?? ""}
+        dateLabel={
+          propagationDialog
+            ? formatRangeDisplay(
+                propagationDialog.mergedDates.checkIn,
+                propagationDialog.mergedDates.checkOut,
+              )
+            : ""
+        }
+        candidates={propagationDialog?.candidates ?? []}
+        saving={props.saving}
+        onCancel={() => setPropagationDialog(null)}
+        onMainGroupOnly={() => void confirmPropagationMainOnly()}
+        onApplyToAll={() => void confirmPropagationToAll()}
       />
 
       <AddHomestaysModal
