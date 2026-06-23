@@ -78,19 +78,19 @@ export function FinancePerPersonPricesModal(props: {
       onConfirm={handleApply}
     >
       <label className="block">
-        <span className="text-xs font-medium text-zinc-700">Amount per person</span>
+        <span className="text-xs font-medium text-zinc-900">Amount per person</span>
         <input
           type="text"
           inputMode="decimal"
           value={amountInput}
           onChange={(e) => setAmountInput(e.target.value)}
           placeholder={props.currency === "JPY" ? "0" : "0.00"}
-          className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm tabular-nums shadow-inner focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+          className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-900 tabular-nums shadow-inner placeholder:text-zinc-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
           autoFocus
         />
       </label>
       {previewTotal > 0 ? (
-        <p className="mt-2 text-xs text-zinc-600">
+        <p className="mt-2 text-xs text-zinc-800">
           Row total will include{" "}
           <span className="font-semibold text-zinc-900">
             {formatMoney(previewTotal, props.currency)}
@@ -100,7 +100,7 @@ export function FinancePerPersonPricesModal(props: {
       ) : null}
 
       <div className="mt-4 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Who</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-900">Who</p>
         <div className="flex gap-2">
           <button
             type="button"
@@ -128,7 +128,7 @@ export function FinancePerPersonPricesModal(props: {
                 type="button"
                 onClick={() => toggleParticipant(participant.id)}
                 className={[
-                  "flex w-full items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left text-sm transition-colors",
+                  "flex w-full items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left text-sm text-zinc-900 transition-colors",
                   checked
                     ? "border-violet-300 bg-violet-50/80"
                     : "border-zinc-200/80 bg-zinc-50/90 hover:border-zinc-300",
@@ -145,7 +145,7 @@ export function FinancePerPersonPricesModal(props: {
                   {participant.fullName}
                 </span>
                 {participant.amountCents != null && participant.amountCents > 0 ? (
-                  <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                  <span className="shrink-0 text-xs tabular-nums text-zinc-700">
                     {formatMoney(participant.amountCents, props.currency)}
                   </span>
                 ) : null}

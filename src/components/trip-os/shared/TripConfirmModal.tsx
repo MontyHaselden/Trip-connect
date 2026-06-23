@@ -83,14 +83,19 @@ export function TripConfirmModal(props: {
       >
         <div className={["border-b px-6 py-4", toneAccent].join(" ")}>
           {eyebrow ? (
-            <TripEyebrow accent={tone === "default"} className={tone === "default" ? undefined : "text-amber-700"}>
+            <TripEyebrow accent={tone === "default"} className={tone === "default" ? "text-violet-700" : "text-amber-700"}>
               {eyebrow}
             </TripEyebrow>
           ) : null}
-          <h2 id="trip-confirm-title" className="mt-1 text-lg font-semibold tracking-tight">
+          <h2
+            id="trip-confirm-title"
+            className="mt-1 text-lg font-semibold tracking-tight text-zinc-900"
+          >
             {title}
           </h2>
-          {description ? <p className="mt-1.5 text-sm leading-relaxed opacity-90">{description}</p> : null}
+          {description ? (
+            <p className="mt-1.5 text-sm leading-relaxed text-zinc-700">{description}</p>
+          ) : null}
         </div>
 
         {children ? <div className="px-6 py-5">{children}</div> : null}
