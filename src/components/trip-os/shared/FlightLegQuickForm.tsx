@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AirportPicker } from "@/components/geo/AirportPicker";
 import { resolveFlightLookupForTrip } from "@/lib/host/setup/resolve-flight-lookup";
+import { submittableFlightRows } from "@/lib/host/setup/flight-leg-quick-form";
 import {
   applyFlightLookupToLeg,
   type FlightLookupResult,
@@ -229,9 +230,9 @@ export function FlightLegQuickForm(props: {
   const [showPlaceholderHint, setShowPlaceholderHint] = useState(false);
 
   const busy = Boolean(props.saving || lookupLoading);
-  const filledRows = rows.filter((row) => row.flight.trim());
+  const submittableRows = useMemo(() => submittableFlightRows(rows), [rows]);
   const submitLabel =
-    filledRows.length > 1 ? `Add ${filledRows.length} flights` : "Add flight";
+    submittableRows.length > 1 ? `Add ${submittableRows.length} flights` : "Add flight";
 
   useEffect(() => {
     if (!props.prefillRoute) return;
@@ -264,10 +265,13 @@ export function FlightLegQuickForm(props: {
 
   async function buildLegs(): Promise<IntercityLegDraft[]> {
     if (!date.trim()) return [];
-    const activeRows = rows.filter((row) => row.flight.trim());
+    const activeRows = submittableFlightRows(rows);
     if (!activeRows.length) return [];
 
-    setLookupLoading(true);
+    const needsLookup = activeRows.some((row) => row.flight.trim());
+    if (needsLookup) {
+      setLookupLoading(true);
+    }
     setLookupError(null);
     setLookupMessage(null);
 
@@ -288,10 +292,14 @@ export function FlightLegQuickForm(props: {
           date: lookupDate,
         };
         const base = emptyLeg(lookupDate, props.groupId);
-        const { flight: lookup, error } = await resolveFlightLookupForTrip(row.flight, lookupDate);
-        if (lookup) lookupHits += 1;
-        if (error && !row.from.trim() && !row.to.trim()) {
-          lookupErrors.push(`${row.flight.trim()}: ${error}`);
+        let lookup: FlightLookupResult | undefined;
+        if (row.flight.trim()) {
+          const { flight, error } = await resolveFlightLookupForTrip(row.flight, lookupDate);
+          lookup = flight;
+          if (lookup) lookupHits += 1;
+          if (error && !row.from.trim() && !row.to.trim()) {
+            lookupErrors.push(`${row.flight.trim()}: ${error}`);
+          }
         }
         built.push(finalizeLeg(base, manual, lookup));
       }
@@ -304,14 +312,16 @@ export function FlightLegQuickForm(props: {
         legKind: index === 0 ? undefined : "connection",
       }));
 
-      if (lookupHits === activeRows.length) {
+      if (lookupHits === activeRows.filter((row) => row.flight.trim()).length && lookupHits > 0) {
         setLookupMessage(
           activeRows.length > 1
             ? `Found all ${lookupHits} flights — airports and times filled in.`
             : "Found flight — airports and times filled in.",
         );
       } else if (lookupHits > 0) {
-        setLookupMessage(`Found ${lookupHits} of ${activeRows.length} flights.`);
+        setLookupMessage(`Found ${lookupHits} of ${activeRows.filter((row) => row.flight.trim()).length} flights.`);
+      } else if (activeRows.some((row) => !row.flight.trim())) {
+        setLookupMessage("Saved manual route — add a flight number later if you get one.");
       }
       if (lookupErrors.length) {
         setShowPlaceholderHint(true);
@@ -390,7 +400,7 @@ export function FlightLegQuickForm(props: {
         onClick={() => void handleAdd()}
         loading={busy}
         loadingLabel={lookupLoading ? "Looking up flights…" : "Adding…"}
-        disabled={!date.trim() || !filledRows.length}
+        disabled={!date.trim() || !submittableRows.length}
         className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
       >
         {submitLabel}

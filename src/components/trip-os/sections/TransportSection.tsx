@@ -136,7 +136,7 @@ export function TransportSection(props: {
                     {DateTime.fromISO(need.date).toFormat("d MMM yyyy")}
                     {need.kind === "intercity"
                       ? " · How are you getting there?"
-                      : " · Enter flight number below"}
+                      : " · Enter flight number or route below"}
                   </p>
                 </div>
                 <button
@@ -188,8 +188,9 @@ export function TransportSection(props: {
       <div ref={flightFormRef}>
         <TripSoftPanel title="Add flight">
           <p className="text-xs text-zinc-500">
-            Enter departure date and flight number — we&apos;ll look up the schedule. Outbound and
-            return flights are classified automatically and appear in the Finance transport section.
+            Enter departure date and flight number to look up the schedule, or enter origin and
+            destination manually when lookup is unavailable. Outbound and return flights appear in
+            Finance.
           </p>
           <div className="mt-3">
             <FlightLegQuickForm
