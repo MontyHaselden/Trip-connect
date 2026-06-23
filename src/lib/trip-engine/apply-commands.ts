@@ -1,6 +1,5 @@
 import { applySetupAccommodationChange } from "@/lib/host/setup/apply-setup-accommodation";
 import { applySetupTransportChange } from "@/lib/host/setup/apply-setup-transport";
-import { syncTransportLegAllocation } from "@/lib/host/setup/transport-allocation";
 import { enforceGroupHalfDayBoundaries } from "@/lib/host/setup/enforce-content-half-days";
 import {
   classifyImportedFlightChain,
@@ -18,8 +17,14 @@ import {
   shiftTripByMonths,
   shiftTripDates,
 } from "@/lib/host/setup/set-trip-date-range";
+import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import { enumerateDates } from "@/lib/host/wizard/location-stays";
-import { paintLocationDayRange } from "./paint-day-range";
+import { paintLocationDayRange, paintLocationDayRangeProtected } from "./paint-day-range";
+import {
+  extractPersonalLocationOverlayDelta,
+  mergeMainWithPersonalOverlay,
+} from "./personal-location-overlay";
+import { personalGroupForGroupId } from "./person-lens";
 import { normalizeCommand, type TripCommand } from "./commands";
 import type { CommandResult, EngineConflict, EngineWarning, TripEntityGraph } from "./types";
 import type { TripSetupState } from "@/lib/host/setup/types";
@@ -39,10 +44,7 @@ function finalizeTransportChange(
   graph: TripEntityGraph,
   derived: TripSetupState,
 ): TripEntityGraph {
-  const synced = syncTransportLegAllocation(derived, derived.mainGroupId, {
-    checkConflicts: true,
-  });
-  return mergeGraphState(graph, syncTripBoundsFromContent(synced));
+  return mergeGraphState(graph, syncTripBoundsFromContent(derived));
 }
 
 function warn(id: string, message: string, section = "general"): EngineWarning {
@@ -64,6 +66,55 @@ function dropUnnamedStaysOverlappingNamed(
       stay.checkInDate < incoming.checkOutDate && incoming.checkInDate < stay.checkOutDate;
     return !overlaps;
   });
+}
+
+function dayHasPaint(day: { primaryCity: string; secondaryCity?: string | null }): boolean {
+  return Boolean(day.primaryCity.trim() || day.secondaryCity?.trim());
+}
+
+/** Keep location paint outside the edited range; replace days inside the range. */
+function mergeLocationPaintIntoGroup(
+  existing: DayPlaceDraft[],
+  painted: DayPlaceDraft[],
+  rangeStart: string,
+  rangeEnd: string,
+): DayPlaceDraft[] {
+  const end = rangeEnd || rangeStart;
+  const paintedByDate = new Map(painted.map((day) => [day.date, day]));
+  const byDate = new Map(existing.map((day) => [day.date, day]));
+
+  for (const date of enumerateDates(rangeStart, end)) {
+    const next = paintedByDate.get(date);
+    if (next) {
+      byDate.set(date, next);
+      continue;
+    }
+    byDate.delete(date);
+  }
+
+  return [...byDate.values()]
+    .filter((day) => dayHasPaint(day))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function applyPersonalLocationPaint(
+  graph: TripEntityGraph,
+  groupId: string,
+  painted: ReturnType<typeof paintLocationDayRange>,
+): TripEntityGraph {
+  const personal = personalGroupForGroupId(graph, groupId);
+  const groups =
+    personal && !personal.inheritMode && painted.some(dayHasPaint)
+      ? graph.groups.map((g) =>
+          g.id === groupId ? { ...g, inheritMode: "overlay" as const } : g,
+        )
+      : graph.groups;
+
+  return {
+    ...graph,
+    groups,
+    dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: painted },
+  };
 }
 
 function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandResult {
@@ -173,11 +224,15 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         returnLegs: merged.returnLegs,
         intercityLegs,
       };
-      const derived = applySetupTransportChange(next, {
-        outboundLegs: next.outboundLegs,
-        returnLegs: next.returnLegs,
-        intercityLegs: next.intercityLegs,
-      });
+      const derived = applySetupTransportChange(
+        next,
+        {
+          outboundLegs: next.outboundLegs,
+          returnLegs: next.returnLegs,
+          intercityLegs: next.intercityLegs,
+        },
+        { preserveCalendarPaint: true },
+      );
       return ok(finalizeTransportChange(graph, derived), warnings);
     }
 
@@ -196,11 +251,15 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
       } else {
         next = { ...graph, intercityLegs: [...graph.intercityLegs, leg as typeof graph.intercityLegs[0]] };
       }
-      const derived = applySetupTransportChange(next, {
-        outboundLegs: next.outboundLegs,
-        returnLegs: next.returnLegs,
-        intercityLegs: next.intercityLegs,
-      });
+      const derived = applySetupTransportChange(
+        next,
+        {
+          outboundLegs: next.outboundLegs,
+          returnLegs: next.returnLegs,
+          intercityLegs: next.intercityLegs,
+        },
+        { preserveCalendarPaint: true },
+      );
       return ok(finalizeTransportChange(graph, derived), warnings);
     }
 
@@ -216,11 +275,15 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
       }
       const updated = legs.map((l, i) => (i === idx ? { ...l, ...command.patch } : l));
       const next = { ...graph, [listKey]: updated } as TripEntityGraph;
-      const derived = applySetupTransportChange(next, {
-        outboundLegs: next.outboundLegs,
-        returnLegs: next.returnLegs,
-        intercityLegs: next.intercityLegs,
-      });
+      const derived = applySetupTransportChange(
+        next,
+        {
+          outboundLegs: next.outboundLegs,
+          returnLegs: next.returnLegs,
+          intercityLegs: next.intercityLegs,
+        },
+        { preserveCalendarPaint: true },
+      );
       return ok(finalizeTransportChange(graph, derived), warnings);
     }
 
@@ -230,23 +293,97 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         bucket === "outbound" ? "outboundLegs" : bucket === "return" ? "returnLegs" : "intercityLegs";
       const legs = graph[listKey].filter((l) => l.id !== command.legId);
       const next = { ...graph, [listKey]: legs } as TripEntityGraph;
-      const derived = applySetupTransportChange(next, {
-        outboundLegs: next.outboundLegs,
-        returnLegs: next.returnLegs,
-        intercityLegs: next.intercityLegs,
-      });
+      const derived = applySetupTransportChange(
+        next,
+        {
+          outboundLegs: next.outboundLegs,
+          returnLegs: next.returnLegs,
+          intercityLegs: next.intercityLegs,
+        },
+        { preserveCalendarPaint: true },
+      );
       return ok(finalizeTransportChange(graph, derived), warnings);
     }
 
     case "paintDayRange": {
-      const { groupId, rangeStart, rangeEnd, location, startHalf = "full", endHalf = "full" } =
-        command;
+      const {
+        groupId,
+        rangeStart,
+        rangeEnd,
+        location,
+        startHalf = "full",
+        endHalf = "full",
+        replan = false,
+      } = command;
       if (!location.trim()) {
         warnings.push(warn("paint-empty", "Location name required", "locations"));
         return { graph, warnings, conflicts };
       }
-      const dayPlaces = graph.dayPlacesByGroupId[groupId] ?? [];
       const endDate = rangeEnd || rangeStart;
+
+      if (personalGroupForGroupId(graph, groupId)) {
+        const personal = personalGroupForGroupId(graph, groupId)!;
+        const paintedArgs = [
+          rangeStart,
+          endDate,
+          location.trim(),
+          startHalf,
+          endHalf,
+        ] as const;
+
+        if (personal.inheritMode === "independent") {
+          const dayPlaces = graph.dayPlacesByGroupId[groupId] ?? [];
+          const painted = paintLocationDayRangeProtected(dayPlaces, ...paintedArgs);
+          const merged = mergeLocationPaintIntoGroup(
+            dayPlaces,
+            painted,
+            rangeStart,
+            endDate,
+          );
+          return ok(
+            {
+              ...graph,
+              dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: merged },
+            },
+            warnings,
+          );
+        }
+
+        const mainDays = graph.dayPlacesByGroupId[graph.mainGroupId] ?? [];
+        const base = mergeMainWithPersonalOverlay(graph, groupId);
+        const painted = paintLocationDayRangeProtected(base, ...paintedArgs);
+        const overlayOnly = extractPersonalLocationOverlayDelta(
+          mainDays,
+          painted,
+          graph.dayPlacesByGroupId[groupId] ?? [],
+          rangeStart,
+          endDate,
+        );
+        return ok(applyPersonalLocationPaint(graph, groupId, overlayOnly), warnings);
+      }
+
+      const dayPlaces = graph.dayPlacesByGroupId[groupId] ?? [];
+      const painted = paintLocationDayRangeProtected(
+        dayPlaces,
+        rangeStart,
+        endDate,
+        location.trim(),
+        startHalf,
+        endHalf,
+      );
+
+      const needsReplan = replan === true;
+
+      if (!needsReplan) {
+        return ok(
+          {
+            ...graph,
+            dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: painted },
+          },
+          warnings,
+        );
+      }
+
       const scopedStays = graph.accommodationStays.filter((stay) =>
         groupId === graph.mainGroupId
           ? !stay.originGroupId || stay.originGroupId === graph.mainGroupId
@@ -258,27 +395,11 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         rangeStart,
         endDate,
       );
-      const painted = paintLocationDayRange(
-        dayPlaces,
-        rangeStart,
-        endDate,
-        location.trim(),
-        startHalf,
-        endHalf,
-      );
-      const synced = enforceGroupHalfDayBoundaries(
-        syncTransportLegAllocation(
-          {
-            ...graph,
-            accommodationStays: mergeAccommodationStays(graph, groupId, trimmedStays),
-            dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: painted },
-          },
-          groupId,
-          { checkConflicts: true },
-        ),
-        groupId,
-      );
-      const next = syncTripBoundsFromContent(synced);
+      const next = syncTripBoundsFromContent({
+        ...graph,
+        accommodationStays: mergeAccommodationStays(graph, groupId, trimmedStays),
+        dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: painted },
+      });
       return ok(mergeGraphState(graph, next), warnings);
     }
 
@@ -299,18 +420,29 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
     }
 
     case "setDayPlaces": {
+      if (personalGroupForGroupId(graph, command.groupId)) {
+        const mainDays = graph.dayPlacesByGroupId[graph.mainGroupId] ?? [];
+        const dates = command.days.map((d) => d.date).filter(Boolean);
+        const rangeStart = dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : "";
+        const rangeEnd = dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : "";
+        const overlayOnly = extractPersonalLocationOverlayDelta(
+          mainDays,
+          command.days,
+          graph.dayPlacesByGroupId[command.groupId] ?? [],
+          rangeStart,
+          rangeEnd,
+        );
+        return ok(applyPersonalLocationPaint(graph, command.groupId, overlayOnly), warnings);
+      }
+
       const synced = enforceGroupHalfDayBoundaries(
-        syncTransportLegAllocation(
-          {
-            ...graph,
-            dayPlacesByGroupId: {
-              ...graph.dayPlacesByGroupId,
-              [command.groupId]: command.days,
-            },
+        {
+          ...graph,
+          dayPlacesByGroupId: {
+            ...graph.dayPlacesByGroupId,
+            [command.groupId]: command.days,
           },
-          command.groupId,
-          { checkConflicts: true },
-        ),
+        },
         command.groupId,
       );
       const next = syncTripBoundsFromContent(synced);

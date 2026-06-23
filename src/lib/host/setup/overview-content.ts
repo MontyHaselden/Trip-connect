@@ -96,6 +96,7 @@ export function buildOverviewSummary(state: TripSetupState): OverviewSummaryLine
     });
   }
   for (const leg of state.intercityLegs) {
+    if (leg.surfaceOnly) continue;
     lines.push({
       id: `ic-${leg.id}`,
       label: "Between cities",

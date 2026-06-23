@@ -10,7 +10,10 @@ import {
   participantPayments,
   tripCostSettings,
   tripFunds,
+  tripSupplierPayments,
 } from "@/lib/db/schema";
+import { convertToBaseCents } from "@/lib/trip-engine/cost-ledger/format-money";
+import { suggestLinePaymentStatus } from "@/lib/trip-engine/cost-ledger/finance-metadata";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import { loadTripGraph } from "@/lib/trip-engine";
@@ -69,6 +72,24 @@ const LineItemSchema = z.object({
   linkedTransportLegId: z.string().uuid().nullable().optional(),
   linkedActivityId: z.string().uuid().nullable().optional(),
   supplierPaymentStatus: z.enum(["estimated", "invoiced", "paid"]).nullable().optional(),
+  costStatus: z
+    .enum(["unknown", "estimate", "quoted", "confirmed", "invoiced", "paid", "cancelled"])
+    .optional(),
+  linePaymentStatus: z
+    .enum(["unpaid", "deposit_paid", "part_paid", "paid", "reimbursable"])
+    .optional(),
+  fundingStatus: z.enum(["unfunded", "part_funded", "fully_funded"]).optional(),
+  supplierName: z.string().trim().max(200).nullable().optional(),
+  estimatedAmountCents: z.number().int().min(0).nullable().optional(),
+  actualAmountCents: z.number().int().min(0).nullable().optional(),
+  taxTreatment: z
+    .enum(["no_gst", "gst", "gst_exempt", "overseas", "unknown"])
+    .optional(),
+  exportCategoryLabel: z.string().trim().max(200).nullable().optional(),
+  exportReference: z.string().trim().max(200).nullable().optional(),
+  bookingReference: z.string().trim().max(200).nullable().optional(),
+  invoiceRecorded: z.boolean().optional(),
+  receiptRecorded: z.boolean().optional(),
   overrides: z
     .array(
       z.object({
@@ -101,6 +122,83 @@ const PaymentSchema = z.object({
   label: z.string().trim().min(1).max(120).default("deposit"),
   notes: z.string().trim().max(2000).nullable().optional(),
 });
+
+const SupplierPaymentSchema = z.object({
+  costLineItemId: z.string().uuid().nullable().optional(),
+  paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  paidByType: z
+    .enum([
+      "school_bank",
+      "school_card",
+      "staff_member",
+      "student_parent",
+      "grant_fund",
+      "payshare",
+      "other",
+    ])
+    .default("school_bank"),
+  paidByName: z.string().trim().max(200).nullable().optional(),
+  paidTo: z.string().trim().max(200).nullable().optional(),
+  amountCents: z.number().int().min(0),
+  currency: z.string().trim().min(3).max(3).default("NZD"),
+  paymentMethod: z
+    .enum(["bank_transfer", "card", "cash", "payshare", "invoice_payment", "other"])
+    .default("bank_transfer"),
+  reference: z.string().trim().max(200).nullable().optional(),
+  receiptStatus: z.string().trim().max(80).nullable().optional(),
+  reimbursementNeeded: z.boolean().default(false),
+  notes: z.string().trim().max(2000).nullable().optional(),
+});
+
+function financeLineSet(data: Partial<z.infer<typeof LineItemSchema>>) {
+  return {
+    ...(data.costStatus !== undefined ? { costStatus: data.costStatus } : {}),
+    ...(data.linePaymentStatus !== undefined
+      ? { linePaymentStatus: data.linePaymentStatus }
+      : {}),
+    ...(data.fundingStatus !== undefined ? { fundingStatus: data.fundingStatus } : {}),
+    ...(data.supplierName !== undefined ? { supplierName: data.supplierName } : {}),
+    ...(data.estimatedAmountCents !== undefined
+      ? { estimatedAmountCents: data.estimatedAmountCents }
+      : {}),
+    ...(data.actualAmountCents !== undefined
+      ? { actualAmountCents: data.actualAmountCents }
+      : {}),
+    ...(data.taxTreatment !== undefined ? { taxTreatment: data.taxTreatment } : {}),
+    ...(data.exportCategoryLabel !== undefined
+      ? { exportCategoryLabel: data.exportCategoryLabel }
+      : {}),
+    ...(data.exportReference !== undefined ? { exportReference: data.exportReference } : {}),
+    ...(data.bookingReference !== undefined ? { bookingReference: data.bookingReference } : {}),
+    ...(data.invoiceRecorded !== undefined ? { invoiceRecorded: data.invoiceRecorded } : {}),
+    ...(data.receiptRecorded !== undefined ? { receiptRecorded: data.receiptRecorded } : {}),
+  };
+}
+
+async function maybeAutoUpdateLinePaymentStatus(
+  tripId: string,
+  costLineItemId: string | null | undefined,
+) {
+  if (!costLineItemId) return;
+  const raw = await loadCostLedgerRaw(tripId);
+  const line = raw.lineItems.find((l) => l.id === costLineItemId);
+  if (!line || line.linePaymentStatus === "reimbursable") return;
+
+  const paidCents = raw.supplierPayments
+    .filter((p) => p.costLineItemId === costLineItemId)
+    .reduce(
+      (sum, p) => sum + convertToBaseCents(p.amountCents, p.currency, raw.settings),
+      0,
+    );
+  const totalCents = convertToBaseCents(line.totalAmountCents, line.currency, raw.settings);
+  const suggested = suggestLinePaymentStatus(totalCents, paidCents, line.linePaymentStatus);
+  if (suggested !== line.linePaymentStatus) {
+    await db
+      .update(costLineItems)
+      .set({ linePaymentStatus: suggested, updatedAt: new Date() })
+      .where(eq(costLineItems.id, costLineItemId));
+  }
+}
 
 async function requireTrip(tripId: string) {
   const hostId = await requireHostSessionHostId();
@@ -221,6 +319,7 @@ export async function PATCH(
           ...(parsed.data.supplierPaymentStatus !== undefined
             ? { supplierPaymentStatus: parsed.data.supplierPaymentStatus }
             : {}),
+          ...financeLineSet(parsed.data),
           updatedAt: new Date(),
         })
         .where(eq(costLineItems.id, lineId));
@@ -351,6 +450,42 @@ export async function PATCH(
         return NextResponse.json({ error: "Payment id required." }, { status: 400 });
       }
       await db.delete(participantPayments).where(eq(participantPayments.id, paymentId));
+    } else if (action === "addSupplierPayment") {
+      const parsed = SupplierPaymentSchema.safeParse(json.supplierPayment);
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid supplier payment." }, { status: 400 });
+      }
+      await db.insert(tripSupplierPayments).values({
+        tripId,
+        costLineItemId: parsed.data.costLineItemId ?? null,
+        paidAt: parsed.data.paidAt,
+        paidByType: parsed.data.paidByType,
+        paidByName: parsed.data.paidByName ?? null,
+        paidTo: parsed.data.paidTo ?? null,
+        amountCents: parsed.data.amountCents,
+        currency: parsed.data.currency,
+        paymentMethod: parsed.data.paymentMethod,
+        reference: parsed.data.reference ?? null,
+        receiptStatus: parsed.data.receiptStatus ?? "none",
+        reimbursementNeeded: parsed.data.reimbursementNeeded,
+        notes: parsed.data.notes ?? null,
+      });
+      await maybeAutoUpdateLinePaymentStatus(tripId, parsed.data.costLineItemId);
+    } else if (action === "deleteSupplierPayment") {
+      const paymentId = json.supplierPaymentId as string | undefined;
+      if (!paymentId) {
+        return NextResponse.json({ error: "Supplier payment id required." }, { status: 400 });
+      }
+      const existing = await db
+        .select()
+        .from(tripSupplierPayments)
+        .where(eq(tripSupplierPayments.id, paymentId))
+        .limit(1)
+        .then((rows) => rows[0]);
+      await db.delete(tripSupplierPayments).where(eq(tripSupplierPayments.id, paymentId));
+      if (existing?.costLineItemId) {
+        await maybeAutoUpdateLinePaymentStatus(tripId, existing.costLineItemId);
+      }
     } else if (action === "seedFromTrip") {
       const graph = await loadTripGraph(tripId);
       if (!graph) {

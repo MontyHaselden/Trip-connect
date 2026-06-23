@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { defaultCostLineFinanceFields } from "./finance-metadata";
+
 import { computeItemAllocations, splitAmountEvenly } from "./allocate";
 import { projectCostLedger } from "./project";
 import type { CostLedgerRaw } from "./types";
@@ -62,6 +64,25 @@ describe("computeItemAllocations", () => {
     assert.equal(balanced, true);
     assert.equal(allocations.s3, 50000);
   });
+
+  it("splits remainder when one participant is pinned", () => {
+    const { allocations, balanced, pinnedParticipantIds } = computeItemAllocations(
+      {
+        id: "line3",
+        totalAmountCents: 1000000,
+        currency: "NZD",
+        allocationRuleType: "equal_cost_participants",
+        allocationRulePayload: {},
+      },
+      roster,
+      [{ lineItemId: "line3", participantId: "s1", amountCents: 100000 }],
+    );
+    assert.equal(balanced, true);
+    assert.deepEqual(pinnedParticipantIds, ["s1"]);
+    assert.equal(allocations.s1, 100000);
+    assert.equal(allocations.s2, 450000);
+    assert.equal(allocations.s3, 450000);
+  });
 });
 
 describe("projectCostLedger", () => {
@@ -91,6 +112,7 @@ describe("projectCostLedger", () => {
           linkedActivityId: null,
           scope: "trip_wide",
           supplierPaymentStatus: null,
+          ...defaultCostLineFinanceFields(),
         },
       ],
       overrides: [],
@@ -117,6 +139,7 @@ describe("projectCostLedger", () => {
           notes: null,
         },
       ],
+      supplierPayments: [],
     };
 
     const projection = projectCostLedger(raw, roster);

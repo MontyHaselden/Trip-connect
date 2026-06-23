@@ -2,15 +2,18 @@ import { asc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import {
+  groupDayPlaces,
   tripAccommodationStays,
   tripDays,
   tripTransportLegs,
   trips,
 } from "@/lib/db/schema";
+import { ensureMainGroupForTrip } from "@/lib/groups/main-group";
 import {
   groupTargetsByEntity,
   loadVisibilityTargetsForTrip,
 } from "@/lib/visibility/persistence";
+import { hydrateAccommodationCoordinates } from "@/lib/host/locations/hydrate-accommodation-coordinates";
 import { decodeTransportLegNotes } from "@/lib/host/setup/transport-leg-notes";
 import type {
   AccommodationStayDraft,
@@ -100,6 +103,26 @@ export async function loadTripLocationState(tripId: string): Promise<TripLocatio
 
   if (!trip) return null;
 
+  const mainGroupId = await ensureMainGroupForTrip(tripId);
+
+  const groupPlaceRows = await db
+    .select({
+      groupId: groupDayPlaces.groupId,
+      date: groupDayPlaces.date,
+      primaryCity: groupDayPlaces.primaryCity,
+      secondaryCity: groupDayPlaces.secondaryCity,
+      primaryShare: groupDayPlaces.primaryShare,
+      dayType: groupDayPlaces.dayType,
+    })
+    .from(groupDayPlaces)
+    .where(eq(groupDayPlaces.tripId, tripId))
+    .orderBy(asc(groupDayPlaces.date));
+
+  const mainGroupPlaces = groupPlaceRows.filter((row) => row.groupId === mainGroupId);
+  const mainHasPaint = mainGroupPlaces.some(
+    (day) => day.primaryCity.trim() || day.secondaryCity?.trim(),
+  );
+
   const dayRows = await db
     .select({
       date: tripDays.date,
@@ -119,11 +142,13 @@ export async function loadTripLocationState(tripId: string): Promise<TripLocatio
     .where(eq(tripTransportLegs.tripId, tripId))
     .orderBy(asc(tripTransportLegs.sortOrder));
 
-  const stayRows = await db
-    .select()
-    .from(tripAccommodationStays)
-    .where(eq(tripAccommodationStays.tripId, tripId))
-    .orderBy(asc(tripAccommodationStays.sortOrder));
+  const stayRows = await hydrateAccommodationCoordinates(
+    await db
+      .select()
+      .from(tripAccommodationStays)
+      .where(eq(tripAccommodationStays.tripId, tripId))
+      .orderBy(asc(tripAccommodationStays.sortOrder)),
+  );
 
   const visibilityRows = await loadVisibilityTargetsForTrip(tripId);
   const targetMap = groupTargetsByEntity(visibilityRows);
@@ -139,14 +164,23 @@ export async function loadTripLocationState(tripId: string): Promise<TripLocatio
     };
   }
 
-  const dayPlaces: DayPlaceDraft[] = dayRows.map((day) => ({
-    date: day.date,
-    primaryCity: day.cityLabel?.trim() || "",
-    secondaryCity: day.secondaryCityLabel,
-    primaryShare: inferPrimaryShare(day),
-    dayType: (day.dayType ?? "trip") as DayPlaceDraft["dayType"],
-    includeBuffer: Boolean(day.isBufferDay),
-  }));
+  const dayPlaces: DayPlaceDraft[] = mainHasPaint
+    ? mainGroupPlaces.map((day) => ({
+        date: day.date,
+        primaryCity: day.primaryCity?.trim() || "",
+        secondaryCity: day.secondaryCity,
+        primaryShare: Number(day.primaryShare),
+        dayType: (day.dayType ?? "trip") as DayPlaceDraft["dayType"],
+        includeBuffer: false,
+      }))
+    : dayRows.map((day) => ({
+        date: day.date,
+        primaryCity: day.cityLabel?.trim() || "",
+        secondaryCity: day.secondaryCityLabel,
+        primaryShare: inferPrimaryShare(day),
+        dayType: (day.dayType ?? "trip") as DayPlaceDraft["dayType"],
+        includeBuffer: Boolean(day.isBufferDay),
+      }));
 
   const outboundLegs: TransportLegDraft[] = [];
   const returnLegs: TransportLegDraft[] = [];

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import {
@@ -20,7 +20,8 @@ import { inferTimezoneFromWizardBasics } from "@/lib/geo/resolve-timezone";
 import { nextItemSortOrder } from "@/lib/host/itinerary-queries";
 import { toDbBookingStatus, toDbTransportType } from "@/lib/host/wizard/db-enums";
 import { arrivalDate as resolveLegArrivalDate } from "@/lib/host/wizard/transport-day-placement";
-import { getMainGroupId } from "@/lib/groups/main-group";
+import { ensureMainGroupForTrip } from "@/lib/groups/main-group";
+import { syncGroupDayPlaces } from "@/lib/host/setup/apply-setup-state";
 import { persistEntityVisibility, resolveItemVisibility } from "@/lib/visibility/item-visibility";
 import type {
   AccommodationStayDraft,
@@ -91,8 +92,7 @@ async function ensureDay(
     .limit(1)
     .then((rows) => rows[0] ?? null);
 
-  const cityLabel = day.primaryCity.trim() || "TBC";
-  const calLabel = travelCalendarLabel(day);
+  const cityLabel = "TBC";
   const bufferBefore = addDays(tripDates.startDate, -1);
   const bufferAfter = addDays(tripDates.endDate, 1);
   const isBufferDay =
@@ -100,18 +100,14 @@ async function ensureDay(
     day.date === bufferBefore ||
     day.date === bufferAfter;
 
-  const patch = {
-    cityLabel,
-    calendarLabel: calLabel,
+  const structuralPatch = {
     dayType: day.dayType,
-    secondaryCityLabel: day.secondaryCity,
     isBufferDay: isBufferDay && day.includeBuffer,
-    weatherLocationQuery: cityLabel !== "TBC" ? cityLabel : null,
     sortOrder,
   };
 
   if (existing) {
-    await db.update(tripDays).set(patch).where(eq(tripDays.id, existing.id));
+    await db.update(tripDays).set(structuralPatch).where(eq(tripDays.id, existing.id));
     return existing.id;
   }
 
@@ -121,7 +117,11 @@ async function ensureDay(
       tripId,
       date: day.date,
       summary: null,
-      ...patch,
+      cityLabel,
+      calendarLabel: null,
+      secondaryCityLabel: null,
+      weatherLocationQuery: null,
+      ...structuralPatch,
     })
     .returning({ id: tripDays.id });
 
@@ -141,10 +141,79 @@ export async function syncTripDaysPatch(
   const sorted = [...sortSource].sort((a, b) => a.date.localeCompare(b.date));
   const sortOrderByDate = new Map(sorted.map((d, i) => [d.date, i] as const));
   const tripDates = { startDate: basics.startDate, endDate: basics.endDate };
+  const bufferBefore = addDays(tripDates.startDate, -1);
+  const bufferAfter = addDays(tripDates.endDate, 1);
+
+  const dates = daysToSync.map((d) => d.date);
+  const existingRows = await db
+    .select({ id: tripDays.id, date: tripDays.date })
+    .from(tripDays)
+    .where(and(eq(tripDays.tripId, tripId), inArray(tripDays.date, dates)));
+
+  const existingByDate = new Map(
+    existingRows.map((row) => [row.date, row.id] as const),
+  );
+
+  const toInsert: Array<{
+    tripId: string;
+    date: string;
+    summary: null;
+    cityLabel: string;
+    calendarLabel: null;
+    secondaryCityLabel: null;
+    weatherLocationQuery: null;
+    dayType: DayPlaceDraft["dayType"];
+    isBufferDay: boolean;
+    sortOrder: number;
+  }> = [];
+  const toUpdate: Array<{
+    id: string;
+    patch: {
+      dayType: DayPlaceDraft["dayType"];
+      isBufferDay: boolean;
+      sortOrder: number;
+    };
+  }> = [];
 
   for (const day of daysToSync) {
+    assertValidIsoDate(day.date, "trip day date");
     const sortOrder = sortOrderByDate.get(day.date) ?? 0;
-    await ensureDay(tripId, day, sortOrder, tripDates);
+    const isBufferDay =
+      day.dayType === "buffer" ||
+      day.date === bufferBefore ||
+      day.date === bufferAfter;
+    const structuralPatch = {
+      dayType: day.dayType,
+      isBufferDay: isBufferDay && day.includeBuffer,
+      sortOrder,
+    };
+
+    const existingId = existingByDate.get(day.date);
+    if (existingId) {
+      toUpdate.push({ id: existingId, patch: structuralPatch });
+      continue;
+    }
+
+    toInsert.push({
+      tripId,
+      date: day.date,
+      summary: null,
+      cityLabel: "TBC",
+      calendarLabel: null,
+      secondaryCityLabel: null,
+      weatherLocationQuery: null,
+      ...structuralPatch,
+    });
+  }
+
+  await Promise.all(
+    toUpdate.map(({ id, patch }) =>
+      db.update(tripDays).set(patch).where(eq(tripDays.id, id)),
+    ),
+  );
+
+  if (toInsert.length) {
+    await db.insert(tripDays).values(toInsert);
   }
 }
 
@@ -348,6 +417,9 @@ export async function syncAccommodationStays(
       url: s.url,
       address: s.address,
       phone: s.phone,
+      googlePlaceId: s.googlePlaceId ?? null,
+      latitude: s.latitude != null ? String(s.latitude) : null,
+      longitude: s.longitude != null ? String(s.longitude) : null,
       checkInDate: s.checkInDate,
       checkOutDate: s.checkOutDate,
       notes: s.notes,
@@ -446,7 +518,7 @@ export async function applyTripLocationState(
   state: TripLocationState,
   options?: { syncTransportItems?: boolean; syncAccommodationItems?: boolean },
 ): Promise<{ dayCount: number }> {
-  const mainGroupId = await getMainGroupId(tripId);
+  const mainGroupId = await ensureMainGroupForTrip(tripId);
   const { basics } = state;
   const countries = basics.destinationCountries.filter(Boolean).join(", ") || null;
   const timezone = await inferTimezoneFromWizardBasics({
@@ -622,6 +694,8 @@ export async function applyTripLocationState(
     }
   }
   }
+
+  await syncGroupDayPlaces(tripId, mainGroupId, state.dayPlaces);
 
   return { dayCount: sorted.length };
 }

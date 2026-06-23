@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { defaultCostLineFinanceFields } from "./finance-metadata";
+
 import { planModeLabel } from "../person-lens";
 import type { TripEntityGraph } from "../types";
 
@@ -108,9 +110,118 @@ describe("presence eligibility", () => {
       linkedActivityId: null,
       scope: "presence" as const,
       supplierPaymentStatus: null,
+      ...defaultCostLineFinanceFields(),
     };
     const eligible = eligibleParticipantIdsForLine(line, graph, roster, presence);
     assert.ok(eligible.includes("p-sam"));
     assert.ok(!eligible.includes("p-monty"));
+  });
+
+  it("only includes participants whose calendar follows an intercity leg", async () => {
+    const { buildParticipantPresenceMap, eligibleParticipantIdsForLine } = await import(
+      "./presence"
+    );
+    const graph = {
+      ...miniGraph(),
+      dayPlacesByGroupId: {
+        main: [
+          {
+            date: "2026-12-06",
+            primaryCity: "Kagoshima",
+            secondaryCity: null,
+            primaryShare: 1,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+          {
+            date: "2026-12-07",
+            primaryCity: "Kagoshima",
+            secondaryCity: null,
+            primaryShare: 1,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+        ],
+        monty: [
+          {
+            date: "2026-12-07",
+            primaryCity: "Tottori",
+            secondaryCity: null,
+            primaryShare: 1,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+        ],
+      },
+      intercityLegs: [
+        {
+          id: "leg-kag-tottori",
+          transportType: "train",
+          bookingStatus: "planned",
+          travelDate: "2026-12-07",
+          arrivalDate: null,
+          departureTime: null,
+          arrivalTime: null,
+          fromCity: "Kagoshima",
+          toCity: "Tottori",
+          intercityFromCity: "Kagoshima",
+          intercityToCity: "Tottori",
+          fromStation: null,
+          toStation: null,
+          operator: null,
+          referenceNumber: null,
+          flightNumber: null,
+          notes: null,
+          originGroupId: "main",
+        },
+      ],
+    } as TripEntityGraph;
+    const roster = {
+      participants: [
+        {
+          id: "p-amanda",
+          fullName: "Amanda",
+          role: "student",
+          inCostSplit: true,
+          groupIds: ["monty"],
+          roomId: null,
+        },
+        {
+          id: "p-sam",
+          fullName: "Sam",
+          role: "student",
+          inCostSplit: true,
+          groupIds: ["main"],
+          roomId: null,
+        },
+      ],
+      groups: [
+        { id: "main", name: "Main" },
+        { id: "monty", name: "Amanda" },
+      ],
+      rooms: [],
+    };
+    const presence = buildParticipantPresenceMap(graph, roster);
+    const line = {
+      id: "line-transport",
+      sortOrder: 0,
+      category: "transport" as const,
+      description: "Kagoshima -> Tottori",
+      notes: null,
+      totalAmountCents: 0,
+      currency: "NZD",
+      quantity: null,
+      allocationRuleType: "equal_present" as const,
+      allocationRulePayload: {},
+      linkedStayId: null,
+      linkedTransportLegId: "leg-kag-tottori",
+      linkedActivityId: null,
+      scope: "presence" as const,
+      supplierPaymentStatus: null,
+      ...defaultCostLineFinanceFields(),
+    };
+    const eligible = eligibleParticipantIdsForLine(line, graph, roster, presence);
+    assert.ok(eligible.includes("p-amanda"));
+    assert.ok(!eligible.includes("p-sam"));
   });
 });

@@ -11,7 +11,6 @@ import { ensureMainGroupForTrip } from "@/lib/groups/main-group";
 import { loadTripLocationState } from "@/lib/host/locations/trip-location-state";
 import { repairTransportLegsFromLookup } from "@/lib/host/setup/repair-transport-legs";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
-import { applyTripSetupState } from "@/lib/host/setup/apply-setup-state";
 import { repairMisplacedSecondaryHalfDays } from "@/lib/trip-engine/sanitize-day-place";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
@@ -86,24 +85,10 @@ export async function loadTripSetupState(tripId: string): Promise<TripSetupState
     .where(eq(groupOverlayOps.tripId, tripId));
 
   const dayPlacesByGroupId: Record<string, DayPlaceDraft[]> = {};
-  const locationDayPlaces = locationState.dayPlaces;
-  const locationHasPaint = locationDayPlaces.some(
-    (day) => day.primaryCity.trim() || day.secondaryCity?.trim(),
-  );
-
   for (const g of groupRows) {
-    const groupPlaces = placeRows
+    dayPlacesByGroupId[g.id] = placeRows
       .filter((p) => p.groupId === g.id)
       .map(rowToDayPlace);
-    const groupHasPaint = groupPlaces.some(
-      (day) => day.primaryCity.trim() || day.secondaryCity?.trim(),
-    );
-    dayPlacesByGroupId[g.id] =
-      groupHasPaint
-        ? groupPlaces
-        : g.isMain && locationHasPaint
-          ? locationDayPlaces
-          : groupPlaces;
   }
 
   const setupGroups: SetupGroup[] = groupRows.map((g) => ({
@@ -180,16 +165,6 @@ export async function loadTripSetupState(tripId: string): Promise<TripSetupState
       [state.mainGroupId]: repairedMainDays,
     },
   });
-
-  const mainDaysChanged =
-    JSON.stringify(repairedMainDays) !== JSON.stringify(mainDays);
-  if (mainDaysChanged) {
-    await applyTripSetupState(tripId, repairedState, {
-      activeGroupId: state.mainGroupId,
-      persistMode: "dayPlaces",
-      skipWizardItineraryItems: true,
-    });
-  }
 
   return repairedState;
 }

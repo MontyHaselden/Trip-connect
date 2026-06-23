@@ -4,8 +4,7 @@ import { requireHostSessionHostId } from "@/lib/auth/host-session";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import { applyTripSetupState } from "@/lib/host/setup/apply-setup-state";
-import { reconcileTripShellState } from "@/lib/host/setup/reconcile-trip-shell";
-import { graphToSetupState, setupStateToGraph } from "@/lib/trip-engine/adapters";
+import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import { syncActivitiesForTrip } from "@/lib/trip-engine/activities-persistence";
 import {
   buildSetupEngineResponse,
@@ -26,22 +25,8 @@ export async function GET(
     const trip = await getTripByIdForHost(hostId, tripId);
     if (!trip) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
-    const loaded = await loadTripGraph(tripId);
-    if (!loaded) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
-
-    const graph = setupStateToGraph(tripId, reconcileTripShellState(graphToSetupState(loaded)));
-    const shellChanged =
-      graph.basics.startDate !== loaded.basics.startDate ||
-      graph.basics.endDate !== loaded.basics.endDate ||
-      JSON.stringify(graph.dayPlacesByGroupId[graph.mainGroupId] ?? []) !==
-        JSON.stringify(loaded.dayPlacesByGroupId[graph.mainGroupId] ?? []);
-
-    if (shellChanged) {
-      await applyTripSetupState(tripId, graphToSetupState(graph), {
-        activeGroupId: graph.mainGroupId,
-        skipWizardItineraryItems: true,
-      });
-    }
+    const graph = await loadTripGraph(tripId);
+    if (!graph) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
     const url = new URL(req.url);
     const engine = url.searchParams.get("engine") === "1";

@@ -7,6 +7,7 @@ import {
   participantPayments,
   tripCostSettings,
   tripFunds,
+  tripSupplierPayments,
 } from "@/lib/db/schema";
 
 import type {
@@ -14,9 +15,11 @@ import type {
   CostLedgerRaw,
   CostLineItemDraft,
   ParticipantPaymentDraft,
+  SupplierPaymentDraft,
   TripCostSettingsDraft,
   TripFundDraft,
 } from "./types";
+import type { PaidByType, SupplierPaymentMethod } from "./finance-metadata";
 
 function mapSettings(row: typeof tripCostSettings.$inferSelect | undefined): TripCostSettingsDraft {
   return {
@@ -49,6 +52,18 @@ function mapLine(row: typeof costLineItems.$inferSelect): CostLineItemDraft {
     linkedActivityId: row.linkedActivityId,
     scope: row.scope ?? "presence",
     supplierPaymentStatus: row.supplierPaymentStatus,
+    costStatus: row.costStatus ?? "unknown",
+    linePaymentStatus: row.linePaymentStatus ?? "unpaid",
+    fundingStatus: row.fundingStatus ?? "unfunded",
+    supplierName: row.supplierName,
+    estimatedAmountCents: row.estimatedAmountCents,
+    actualAmountCents: row.actualAmountCents,
+    taxTreatment: row.taxTreatment ?? "unknown",
+    exportCategoryLabel: row.exportCategoryLabel,
+    exportReference: row.exportReference,
+    bookingReference: row.bookingReference,
+    invoiceRecorded: row.invoiceRecorded ?? false,
+    receiptRecorded: row.receiptRecorded ?? false,
   };
 }
 
@@ -81,8 +96,28 @@ function mapPayment(row: typeof participantPayments.$inferSelect): ParticipantPa
   };
 }
 
+function mapSupplierPayment(
+  row: typeof tripSupplierPayments.$inferSelect,
+): SupplierPaymentDraft {
+  return {
+    id: row.id,
+    costLineItemId: row.costLineItemId,
+    paidAt: row.paidAt,
+    paidByType: row.paidByType as PaidByType,
+    paidByName: row.paidByName,
+    paidTo: row.paidTo,
+    amountCents: row.amountCents,
+    currency: row.currency,
+    paymentMethod: row.paymentMethod as SupplierPaymentMethod,
+    reference: row.reference,
+    receiptStatus: row.receiptStatus,
+    reimbursementNeeded: row.reimbursementNeeded,
+    notes: row.notes,
+  };
+}
+
 export async function loadCostLedgerRaw(tripId: string): Promise<CostLedgerRaw> {
-  const [settingsRow, lines, funds, payments] = await Promise.all([
+  const [settingsRow, lines, funds, payments, supplierPayments] = await Promise.all([
     db
       .select()
       .from(tripCostSettings)
@@ -104,6 +139,11 @@ export async function loadCostLedgerRaw(tripId: string): Promise<CostLedgerRaw> 
       .from(participantPayments)
       .where(eq(participantPayments.tripId, tripId))
       .orderBy(asc(participantPayments.paidAt)),
+    db
+      .select()
+      .from(tripSupplierPayments)
+      .where(eq(tripSupplierPayments.tripId, tripId))
+      .orderBy(asc(tripSupplierPayments.paidAt)),
   ]);
 
   const lineIds = lines.map((line) => line.id);
@@ -127,6 +167,7 @@ export async function loadCostLedgerRaw(tripId: string): Promise<CostLedgerRaw> 
     overrides,
     funds: funds.map(mapFund),
     payments: payments.map(mapPayment),
+    supplierPayments: supplierPayments.map(mapSupplierPayment),
   };
 }
 

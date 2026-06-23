@@ -19,6 +19,7 @@ export function emptyCostLedgerProjection(
     funds: [],
     fundAllocations: {},
     payments: [],
+    supplierPayments: [],
     personBalances: [],
     categoryTotals: Object.fromEntries(COST_CATEGORIES.map((c) => [c, 0])) as CostLedgerProjection["categoryTotals"],
     tripGrossCents: 0,

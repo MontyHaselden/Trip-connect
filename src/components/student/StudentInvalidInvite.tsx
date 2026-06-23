@@ -30,7 +30,7 @@ export function StudentInvalidInvite(props: { attemptedCode: string }) {
       </p>
       <p className="mt-2 max-w-sm text-sm text-[var(--student-text-muted)]">
         Code <span className="font-mono">{props.attemptedCode}</span> doesn&apos;t match a
-        current trip. Ask your organiser for a fresh link from Trip OS → Join links.
+        current trip. Ask your organiser for a fresh link from Trip OS → Join link.
       </p>
       {cleared ? (
         <p className="mt-4 max-w-sm text-xs text-[var(--student-text-muted)]">

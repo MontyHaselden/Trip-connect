@@ -1,4 +1,3 @@
-import { reconcileTripShellState } from "@/lib/host/setup/reconcile-trip-shell";
 import { graphToSetupState, setupStateToGraph } from "./adapters";
 import { buildCalendarRenderModel } from "./calendar-render-model";
 import { detectGraphConflicts } from "./conflicts";
@@ -28,18 +27,14 @@ export function deriveEngineViewFromGraph(
     costLedger?: CostLedgerProjection | null;
   },
 ) {
-  const reconciled = setupStateToGraph(
-    graph.tripId,
-    reconcileTripShellState(graphToSetupState(graph)),
-  );
-  const groupId = options?.groupId ?? reconciled.mainGroupId;
-  const calendarProjection = projectCalendar(reconciled, { groupId });
-  const calendarRenderModel = buildCalendarRenderModel(reconciled, { groupId });
-  const readiness = computeReadiness(reconciled, calendarProjection, options?.costLedger);
-  const conflicts = detectGraphConflicts(reconciled, calendarProjection, groupId);
+  const groupId = options?.groupId ?? graph.mainGroupId;
+  const calendarProjection = projectCalendar(graph, { groupId });
+  const calendarRenderModel = buildCalendarRenderModel(graph, { groupId });
+  const readiness = computeReadiness(graph, calendarProjection, options?.costLedger);
+  const conflicts = detectGraphConflicts(graph, calendarProjection, groupId);
 
   return {
-    graph: reconciled,
+    graph,
     calendarProjection,
     calendarRenderModel,
     readiness,

@@ -4,11 +4,11 @@ import { useState } from "react";
 
 import type { CostAllocationRuleType, CostLineItemDraft } from "@/lib/trip-engine/cost-ledger/types";
 import { allocationRuleLabel } from "@/lib/trip-engine/cost-ledger/display-utils";
-import { parseMoneyInput } from "@/lib/trip-engine/cost-ledger/format-money";
 import type { RosterSummary } from "@/lib/trip-engine/types";
 
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
 import { FinanceCellPopover, popoverOptionClass } from "./FinanceCellPopover";
+import { FinanceInlineMoneyCell } from "./FinanceInlineMoneyCell";
 
 const RULE_OPTIONS: { value: CostAllocationRuleType; label: string }[] = [
   { value: "equal_cost_participants", label: "Equal split" },
@@ -21,7 +21,7 @@ type OpenCell = { lineId: string; field: string } | null;
 
 function cellButtonClass(active: boolean): string {
   return [
-    "w-full rounded px-1 py-0.5 text-left transition hover:bg-sky-100/80",
+    "w-full rounded px-1.5 py-1 text-left transition hover:bg-sky-100/80",
     active ? "bg-sky-100 ring-1 ring-sky-300" : "",
   ].join(" ");
 }
@@ -137,87 +137,28 @@ export function FinanceRuleCell(props: {
 
 export function FinanceAmountCell(props: {
   line: CostLineItemDraft;
-  displayPrimary: string;
   displaySecondary?: string;
-  openCell: OpenCell;
-  setOpenCell: (cell: OpenCell) => void;
   onPatch: (lineId: string, patch: Partial<CostLineFormValues>) => void;
 }) {
-  const open = props.openCell?.lineId === props.line.id && props.openCell.field === "amount";
-  const [amountInput, setAmountInput] = useState("");
-  const [currencyInput, setCurrencyInput] = useState(props.line.currency);
-
-  function openEditor() {
-    setAmountInput(
-      props.line.totalAmountCents > 0 ? String(props.line.totalAmountCents / 100) : "",
-    );
-    setCurrencyInput(props.line.currency);
-    props.setOpenCell({ lineId: props.line.id, field: "amount" });
-  }
-
-  function save() {
-    props.onPatch(props.line.id, {
-      totalAmountCents: parseMoneyInput(amountInput),
-      currency: currencyInput.toUpperCase(),
-    });
-    props.setOpenCell(null);
-  }
-
   return (
-    <FinanceCellPopover
-      open={open}
-      onClose={() => props.setOpenCell(null)}
-      minWidth="11rem"
-      trigger={
-        <button
-          type="button"
-          className={cellButtonClass(open)}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (open) props.setOpenCell(null);
-            else openEditor();
-          }}
-        >
-          <div>{props.displayPrimary}</div>
-          {props.displaySecondary ? (
-            <div className="text-[9px] text-zinc-500">{props.displaySecondary}</div>
-          ) : null}
-        </button>
-      }
-    >
-      <div className="space-y-2 px-2 py-2">
-        <label className="block text-[10px] font-medium text-zinc-500">
-          Amount
-          <input
-            autoFocus
-            value={amountInput}
-            onChange={(e) => setAmountInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") save();
-              if (e.key === "Escape") props.setOpenCell(null);
-            }}
-            placeholder="0.00"
-            className="mt-0.5 w-full rounded border border-zinc-200 px-2 py-1 text-[11px]"
-          />
-        </label>
-        <label className="block text-[10px] font-medium text-zinc-500">
-          Currency
-          <input
-            value={currencyInput}
-            onChange={(e) => setCurrencyInput(e.target.value.toUpperCase())}
-            maxLength={3}
-            className="mt-0.5 w-full rounded border border-zinc-200 px-2 py-1 text-[11px] uppercase"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={save}
-          className="w-full rounded bg-violet-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-violet-700"
-        >
-          Apply
-        </button>
-      </div>
-    </FinanceCellPopover>
+    <div>
+      <FinanceInlineMoneyCell
+        valueCents={props.line.totalAmountCents > 0 ? props.line.totalAmountCents : null}
+        currency={props.line.currency}
+        showCurrencyCode
+        onCommit={(cents) => {
+          props.onPatch(props.line.id, {
+            totalAmountCents: cents ?? 0,
+          });
+        }}
+        onCurrencyChange={(currency) => {
+          props.onPatch(props.line.id, { currency: currency.toUpperCase() });
+        }}
+      />
+      {props.displaySecondary ? (
+        <div className="text-[9px] text-zinc-500">{props.displaySecondary}</div>
+      ) : null}
+    </div>
   );
 }
 
@@ -323,7 +264,7 @@ export function FinanceDescriptionCell(props: {
             else openEditor();
           }}
         >
-          <span className="line-clamp-2 text-left" title={props.line.description}>
+          <span className="whitespace-nowrap text-left" title={props.line.description}>
             {props.line.description}
           </span>
         </button>
@@ -357,3 +298,22 @@ export function FinanceDescriptionCell(props: {
 }
 
 export type { OpenCell };
+
+export function FinanceParticipantAmountCell(props: {
+  amountCents: number | null;
+  currency: string;
+  isPinned: boolean;
+  disabled?: boolean;
+  onSave: (amountCents: number | null) => void;
+}) {
+  return (
+    <FinanceInlineMoneyCell
+      valueCents={props.amountCents}
+      currency={props.currency}
+      isPinned={props.isPinned}
+      disabled={props.disabled}
+      allowClear
+      onCommit={props.onSave}
+    />
+  );
+}

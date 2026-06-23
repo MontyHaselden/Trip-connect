@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { defaultCostLineFinanceFields } from "./finance-metadata";
 import { seedItemsNotYetPresent } from "./seed-from-graph";
 
 describe("seedItemsNotYetPresent dismissals", () => {
@@ -21,6 +22,7 @@ describe("seedItemsNotYetPresent dismissals", () => {
         linkedActivityId: "act-1",
         scope: "presence" as const,
         supplierPaymentStatus: null,
+        ...defaultCostLineFinanceFields(),
       },
     ];
 

@@ -224,6 +224,27 @@ function removeIntercityLegsOnDates(
   return { ...state, intercityLegs };
 }
 
+function staysChanged(
+  before: AccommodationStayDraft[],
+  after: AccommodationStayDraft[],
+): boolean {
+  if (before.length !== after.length) return true;
+  const beforeById = new Map(before.map((stay) => [stay.id, stay]));
+  for (const stay of after) {
+    const prev = beforeById.get(stay.id);
+    if (!prev) return true;
+    if (
+      prev.checkInDate !== stay.checkInDate ||
+      prev.checkOutDate !== stay.checkOutDate ||
+      prev.cityLabel !== stay.cityLabel ||
+      (prev.name?.trim() ?? "") !== (stay.name?.trim() ?? "")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Remove named accommodation and city labels across a selected date range. */
 export function removeAccommodationAndCitiesFromRange(
   state: TripSetupState,
@@ -254,6 +275,7 @@ export function removeAccommodationAndCitiesFromRange(
     : groupAccommodationStays(state, groupId);
 
   const remainingStays = splitStaysForRangeRemoval(scopedStays, rangeStart, rangeEnd);
+  const staysWereModified = staysChanged(scopedStays, remainingStays);
   const existingDays = state.dayPlacesByGroupId[groupId] ?? [];
 
   const daysOutsideRange = existingDays.filter(
@@ -262,7 +284,9 @@ export function removeAccommodationAndCitiesFromRange(
   const daysInsideRange = existingDays.filter(
     (d) => d.date >= locationClearStart && d.date <= locationClearEnd,
   );
-  const repaintedOutside = applyStaysToDayPlaces(daysOutsideRange, remainingStays);
+  const repaintedOutside = staysWereModified
+    ? applyStaysToDayPlaces(daysOutsideRange, remainingStays)
+    : daysOutsideRange;
   const hasOverlappingNamedStays = scopedStays.some(
     (stay) =>
       stay.name?.trim() &&
@@ -273,10 +297,13 @@ export function removeAccommodationAndCitiesFromRange(
   if (hasOverlappingNamedStays) {
     withGaps = paintRangeGaps(repaintedOutside, locationClearStart, locationClearEnd);
   } else {
-    withGaps = applyStaysToDayPlaces(
-      clearAllLocationInSpan([...repaintedOutside, ...daysInsideRange], halfSelection),
-      remainingStays,
+    const cleared = clearAllLocationInSpan(
+      [...repaintedOutside, ...daysInsideRange],
+      halfSelection,
     );
+    withGaps = staysWereModified
+      ? applyStaysToDayPlaces(cleared, remainingStays)
+      : cleared;
   }
 
   const blankedDates = new Set(

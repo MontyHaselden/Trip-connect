@@ -1,3 +1,12 @@
+import type {
+  CostStatus,
+  FundingStatus,
+  LinePaymentStatus,
+  PaidByType,
+  SupplierPaymentMethod,
+  TaxTreatment,
+} from "./finance-metadata";
+
 export type CostLineCategory =
   | "flights"
   | "transport"
@@ -37,6 +46,18 @@ export type CostLineItemDraft = {
   linkedActivityId: string | null;
   scope: CostLineScope;
   supplierPaymentStatus: "estimated" | "invoiced" | "paid" | null;
+  costStatus: CostStatus;
+  linePaymentStatus: LinePaymentStatus;
+  fundingStatus: FundingStatus;
+  supplierName: string | null;
+  estimatedAmountCents: number | null;
+  actualAmountCents: number | null;
+  taxTreatment: TaxTreatment;
+  exportCategoryLabel: string | null;
+  exportReference: string | null;
+  bookingReference: string | null;
+  invoiceRecorded: boolean;
+  receiptRecorded: boolean;
 };
 
 export type CostAllocationOverrideDraft = {
@@ -66,6 +87,22 @@ export type ParticipantPaymentDraft = {
   notes: string | null;
 };
 
+export type SupplierPaymentDraft = {
+  id: string;
+  costLineItemId: string | null;
+  paidAt: string;
+  paidByType: PaidByType;
+  paidByName: string | null;
+  paidTo: string | null;
+  amountCents: number;
+  currency: string;
+  paymentMethod: SupplierPaymentMethod;
+  reference: string | null;
+  receiptStatus: string | null;
+  reimbursementNeeded: boolean;
+  notes: string | null;
+};
+
 export type TripCostSettingsDraft = {
   baseCurrency: string;
   foreignCurrency: string | null;
@@ -80,6 +117,7 @@ export type CostLedgerRaw = {
   overrides: CostAllocationOverrideDraft[];
   funds: TripFundDraft[];
   payments: ParticipantPaymentDraft[];
+  supplierPayments: SupplierPaymentDraft[];
 };
 
 export type AllocatableItem = {
@@ -98,6 +136,8 @@ export type LineAllocationResult = {
   lineItemId: string;
   allocations: Record<string, number>;
   eligibleParticipantIds: string[];
+  /** Participants with an explicit override amount — remainder splits among others. */
+  pinnedParticipantIds: string[];
   balanced: boolean;
   allocatedTotalCents: number;
 };
@@ -117,6 +157,7 @@ export type CostLedgerProjection = {
   funds: TripFundDraft[];
   fundAllocations: Record<string, Record<string, number>>;
   payments: ParticipantPaymentDraft[];
+  supplierPayments: SupplierPaymentDraft[];
   personBalances: PersonBalance[];
   categoryTotals: Record<CostLineCategory, number>;
   tripGrossCents: number;

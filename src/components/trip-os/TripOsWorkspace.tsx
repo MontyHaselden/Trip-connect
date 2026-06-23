@@ -12,6 +12,9 @@ import type {
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
 
+import type { CalendarSelection } from "./calendar/useCalendarSelection";
+import { EMPTY_CALENDAR_SELECTION } from "@/lib/host/setup/calendar-range-selection";
+
 import { IngestPanel } from "./ingest/IngestPanel";
 import { MapView } from "./map/MapView";
 import { SmartOverview } from "./overview/SmartOverview";
@@ -47,6 +50,9 @@ export function TripOsWorkspace(props: {
   rosterSummary?: RosterSummary;
   costLedger?: CostLedgerProjection | null;
   onCostsAction?: (payload: Record<string, unknown>) => Promise<boolean>;
+  calendarSelection?: CalendarSelection;
+  onHighlightDayFromMap?: (iso: string) => void;
+  onGoToDateFromMap?: (iso: string) => void;
 }) {
   const { graph, groupId, tripId, inviteCode, onDispatch, saving } = props;
 
@@ -55,6 +61,7 @@ export function TripOsWorkspace(props: {
       return (
         <SmartOverview
           graph={graph}
+          groupId={groupId}
           readiness={props.readiness}
           selectedDay={props.selectedDay}
           warnings={props.warnings}
@@ -79,16 +86,19 @@ export function TripOsWorkspace(props: {
         </div>
       );
     case "map":
-      return <MapView graph={graph} groupId={groupId} />;
-    case "locations":
       return (
-        <LocationsSection
+        <MapView
           graph={graph}
           groupId={groupId}
-          selectedDate={props.selectedDay?.date ?? null}
-          saving={saving}
-          onDispatch={onDispatch}
+          calendarSelection={props.calendarSelection ?? { ...EMPTY_CALENDAR_SELECTION }}
+          onHighlightDay={props.onHighlightDayFromMap ?? (() => {})}
+          onGoToDate={props.onGoToDateFromMap ?? (() => {})}
+          onNavigateSection={(s) => props.onNavigateSection(s)}
         />
+      );
+    case "locations":
+      return (
+        <LocationsSection graph={graph} groupId={groupId} selectedDate={props.selectedDay?.date ?? null} />
       );
     case "transport":
       return (
@@ -106,10 +116,12 @@ export function TripOsWorkspace(props: {
           graph={graph}
           groupId={groupId}
           tripId={tripId}
+          inviteCode={inviteCode}
           rosterSummary={props.rosterSummary}
           selectedDate={props.selectedDay?.date ?? null}
           saving={saving}
           onDispatch={onDispatch}
+          onReload={props.onReload}
         />
       );
     case "activities":
@@ -117,7 +129,6 @@ export function TripOsWorkspace(props: {
         <ActivitiesSection
           graph={graph}
           groupId={groupId}
-          selectedDate={props.selectedDay?.date ?? null}
           saving={saving}
           onDispatch={onDispatch}
         />
@@ -125,7 +136,7 @@ export function TripOsWorkspace(props: {
     case "participants":
       return <UsersSection inviteCode={inviteCode} onRosterChanged={props.onRosterChanged} />;
     case "join-links":
-      return <JoinLinksSection inviteCode={inviteCode} graph={graph} />;
+      return <JoinLinksSection inviteCode={inviteCode} />;
     case "bookings":
       return <BookingsSection graph={graph} tripId={tripId} />;
     case "finance":

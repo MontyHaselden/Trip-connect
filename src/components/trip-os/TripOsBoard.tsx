@@ -7,6 +7,10 @@ import {
   editGroupIdForLens,
   type CalendarLens,
 } from "@/lib/trip-engine/person-lens";
+import {
+  mergeTripLocalDraft,
+  readTripLocalDraft,
+} from "@/lib/trip-os/local-draft";
 import { tripOsHomePath } from "@/lib/trip-os/paths";
 
 import { graphToSetupState } from "@/lib/trip-engine/adapters";
@@ -31,7 +35,6 @@ export function TripOsBoard(props: { tripId: string }) {
   const [activeSection, setActiveSection] = useState<TripOsSection>("overview");
   const [participantViewRefreshKey, setParticipantViewRefreshKey] = useState(0);
   const [calendarLens, setCalendarLens] = useState<CalendarLens>({ kind: "whole_group" });
-  const [financeHint, setFinanceHint] = useState<string | null>(null);
   const activeSectionRef = useRef(activeSection);
   const previewRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -60,24 +63,50 @@ export function TripOsBoard(props: { tripId: string }) {
       const ok = await engine.dispatch(commands);
       if (ok) {
         scheduleParticipantPreviewRefresh();
-        if (
-          commands.some((c) =>
-            ["paintDayRange", "setDayPlaces", "clearDayRange", "addStay", "removeStay", "addActivity", "removeActivity"].includes(c.type),
-          )
-        ) {
-          setFinanceHint("Trip plan changed — finance allocations may have updated.");
-        }
       }
       return ok;
     },
     [engine.dispatch, scheduleParticipantPreviewRefresh],
   );
 
+  const saveStatusLine =
+    engine.saveStatus === "sync_error"
+      ? "Sync pending — your edits are saved on this device"
+      : null;
+
   useEffect(() => {
     void engine.load();
   }, [props.tripId]); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only initial load
 
-  const groupId = engine.activeGroupId || engine.data?.graph.mainGroupId || "";
+  useEffect(() => {
+    const draft = readTripLocalDraft(props.tripId);
+    if (draft?.calendarLens) {
+      setCalendarLens(draft.calendarLens);
+    }
+  }, [props.tripId, engine.loading]);
+
+  const graph = engine.data?.graph;
+  const rosterSummary = engine.data?.rosterSummary;
+  const editGroupId =
+    graph && rosterSummary
+      ? editGroupIdForLens(graph, calendarLens, rosterSummary)
+      : engine.activeGroupId || graph?.mainGroupId || "";
+
+  useEffect(() => {
+    if (!graph || !editGroupId) return;
+    if (editGroupId !== engine.activeGroupId) {
+      engine.switchGroup(editGroupId);
+    }
+  }, [calendarLens, editGroupId, graph, engine.activeGroupId, engine.switchGroup]);
+
+  useEffect(() => {
+    if (!graph) return;
+    mergeTripLocalDraft(props.tripId, {
+      calendarLens,
+      activeGroupId: editGroupId,
+    });
+  }, [calendarLens, editGroupId, graph, props.tripId]);
+
   const renderModel = engine.data?.calendarRenderModel ?? null;
 
   const { scrollRef, saveScrollPosition } = useCalendarScroll();
@@ -85,7 +114,7 @@ export function TripOsBoard(props: { tripId: string }) {
   const calendar = useCalendarSelection({
     graph: engine.data?.graph ?? null,
     renderModel,
-    groupId,
+    groupId: editGroupId,
     onDispatch: dispatchWithPreviewRefresh,
     onOpenDayView: () => setMiddleView("day"),
     onOpenSectionView: () => setMiddleView("section"),
@@ -145,10 +174,10 @@ export function TripOsBoard(props: { tripId: string }) {
     );
   }
 
-  const { graph, calendarProjection, calendarRenderModel, readiness, warnings, conflicts, rosterSummary, costLedger } =
+  const { graph: tripGraph, calendarProjection, calendarRenderModel, readiness, warnings, conflicts, rosterSummary: roster, costLedger } =
     engine.data;
-  const activeGroupId = engine.activeGroupId || graph.mainGroupId;
-  const calmNav = isTripWelcomeState(graphToSetupState(graph));
+  const activeGroupId = editGroupId;
+  const calmNav = isTripWelcomeState(graphToSetupState(tripGraph));
 
   const selectedDay =
     calendar.selection.rangeStart
@@ -157,27 +186,25 @@ export function TripOsBoard(props: { tripId: string }) {
 
   const hideCalendar = activeSection === "finance" || activeSection === "participant-view";
   const fullWidthMain = hideCalendar;
+  const mapLayout = activeSection === "map";
 
   const groupSelector = (
     <CalendarPersonLens
-      graph={graph}
-      roster={rosterSummary}
+      graph={tripGraph}
+      roster={roster}
       lens={calendarLens}
       activeGroupId={activeGroupId}
       onLensChange={setCalendarLens}
       onDispatch={dispatchWithPreviewRefresh}
       saving={engine.saving || engine.refreshing}
-      onSwitchGroup={(gid) => void engine.switchGroup(gid)}
-      onSwitchToPerson={(participantId) => {
-        const g = engine.data?.graph;
-        const roster = engine.data?.rosterSummary;
-        if (!g || !roster) return;
-        const gid = editGroupIdForLens(
-          g,
-          { kind: "person", participantId },
-          roster,
-        );
+      onSwitchGroup={(gid) => {
+        if (gid === tripGraph.mainGroupId) {
+          setCalendarLens({ kind: "whole_group" });
+        }
         void engine.switchGroup(gid);
+      }}
+      onSwitchToPerson={(participantId) => {
+        setCalendarLens({ kind: "person", participantId });
       }}
     />
   );
@@ -204,23 +231,24 @@ export function TripOsBoard(props: { tripId: string }) {
         <main
           className={[
             "trip-os-workspace min-w-0 flex-1",
-            fullWidthMain
+            fullWidthMain || mapLayout
               ? "flex min-h-0 flex-col overflow-hidden p-0"
               : "overflow-y-auto px-8 py-8",
-            activeSection === "ingest" && middleView === "section" && !fullWidthMain
+            activeSection === "ingest" && middleView === "section" && !fullWidthMain && !mapLayout
               ? "flex min-h-0 flex-col overflow-hidden"
               : "",
+            mapLayout && middleView === "section" ? "px-4 py-4" : "",
           ].join(" ")}
         >
           {middleView === "day" && calendar.selection.rangeStart ? (
             <DayContextPanel
               tripId={props.tripId}
-              graph={graph}
+              graph={tripGraph}
               groupId={activeGroupId}
               model={calendarRenderModel}
               selection={calendar.selection}
               conflicts={conflicts}
-              rosterSummary={rosterSummary}
+              rosterSummary={roster}
               saving={engine.saving}
               error={engine.error}
               onDispatch={dispatchWithPreviewRefresh}
@@ -230,7 +258,7 @@ export function TripOsBoard(props: { tripId: string }) {
           ) : (
             <TripOsWorkspace
               section={activeSection}
-              graph={graph}
+              graph={tripGraph}
               groupId={activeGroupId}
               tripId={props.tripId}
               inviteCode={engine.data.inviteCode}
@@ -244,9 +272,12 @@ export function TripOsBoard(props: { tripId: string }) {
               onReload={() => void engine.load(undefined, { silent: true })}
               onRosterChanged={handleRosterChanged}
               participantViewRefreshKey={participantViewRefreshKey}
-              rosterSummary={rosterSummary}
+              rosterSummary={roster}
               costLedger={costLedger}
               onCostsAction={engine.patchCosts}
+              calendarSelection={calendar.selection}
+              onHighlightDayFromMap={calendar.highlightDayFromMap}
+              onGoToDateFromMap={calendar.goToDateFromMap}
             />
           )}
         </main>
@@ -262,8 +293,8 @@ export function TripOsBoard(props: { tripId: string }) {
             onClearSelection={calendar.clearSelection}
             headerAside={groupSelector}
             statusLine={
-              financeHint
-                ? `${calendar.statusLine} · ${financeHint}`
+              saveStatusLine
+                ? `${calendar.statusLine} · ${saveStatusLine}`
                 : calendar.statusLine
             }
           />

@@ -154,6 +154,38 @@ export const supplierPaymentStatus = pgEnum("supplier_payment_status", [
   "paid",
 ]);
 
+export const costStatus = pgEnum("cost_status", [
+  "unknown",
+  "estimate",
+  "quoted",
+  "confirmed",
+  "invoiced",
+  "paid",
+  "cancelled",
+]);
+
+export const linePaymentStatus = pgEnum("line_payment_status", [
+  "unpaid",
+  "deposit_paid",
+  "part_paid",
+  "paid",
+  "reimbursable",
+]);
+
+export const fundingStatus = pgEnum("funding_status", [
+  "unfunded",
+  "part_funded",
+  "fully_funded",
+]);
+
+export const taxTreatment = pgEnum("tax_treatment", [
+  "no_gst",
+  "gst",
+  "gst_exempt",
+  "overseas",
+  "unknown",
+]);
+
 export const bookingStatus = pgEnum("booking_status", [
   "booked",
   "not_booked",
@@ -416,6 +448,20 @@ export const costLineItems = pgTable(
     linkedActivityId: uuid("linked_activity_id"),
     scope: costLineScope("scope").notNull().default("presence"),
     supplierPaymentStatus: supplierPaymentStatus("supplier_payment_status"),
+    costStatus: costStatus("cost_status").notNull().default("unknown"),
+    linePaymentStatus: linePaymentStatus("line_payment_status")
+      .notNull()
+      .default("unpaid"),
+    fundingStatus: fundingStatus("funding_status").notNull().default("unfunded"),
+    supplierName: text("supplier_name"),
+    estimatedAmountCents: integer("estimated_amount_cents"),
+    actualAmountCents: integer("actual_amount_cents"),
+    taxTreatment: taxTreatment("tax_treatment").notNull().default("unknown"),
+    exportCategoryLabel: text("export_category_label"),
+    exportReference: text("export_reference"),
+    bookingReference: text("booking_reference"),
+    invoiceRecorded: boolean("invoice_recorded").notNull().default(false),
+    receiptRecorded: boolean("receipt_recorded").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -506,6 +552,40 @@ export const participantPayments = pgTable(
   },
   (t) => ({
     tripIdx: index("participant_payments_trip_idx").on(t.tripId),
+  }),
+);
+
+export const tripSupplierPayments = pgTable(
+  "trip_supplier_payments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    costLineItemId: uuid("cost_line_item_id").references(() => costLineItems.id, {
+      onDelete: "set null",
+    }),
+    paidAt: date("paid_at").notNull(),
+    paidByType: text("paid_by_type").notNull().default("school_bank"),
+    paidByName: text("paid_by_name"),
+    paidTo: text("paid_to"),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull().default("NZD"),
+    paymentMethod: text("payment_method").notNull().default("bank_transfer"),
+    reference: text("reference"),
+    receiptStatus: text("receipt_status").default("none"),
+    reimbursementNeeded: boolean("reimbursement_needed").notNull().default(false),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tripIdx: index("trip_supplier_payments_trip_idx").on(t.tripId),
+    lineIdx: index("trip_supplier_payments_line_idx").on(t.costLineItemId),
   }),
 );
 

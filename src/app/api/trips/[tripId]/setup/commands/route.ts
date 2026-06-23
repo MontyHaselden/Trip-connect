@@ -5,6 +5,7 @@ import { hostApiError } from "@/lib/host/api-errors";
 import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import {
   buildSetupEngineResponse,
+  isCalendarLabelsOnlyBatch,
   loadTripGraph,
   persistCommands,
   serializeSetupResponse,
@@ -12,6 +13,15 @@ import {
 import { loadCostLedgerProjection } from "@/lib/trip-engine/cost-ledger/index";
 import { loadRosterSummary } from "@/lib/trip-engine/roster-summary";
 import type { TripCommand } from "@/lib/trip-engine/commands";
+
+function isActivityOnlyCommands(commands: TripCommand[]): boolean {
+  return (
+    commands.length > 0 &&
+    commands.every((c) =>
+      ["addActivity", "updateActivity", "removeActivity"].includes(c.type),
+    )
+  );
+}
 
 function isAccommodationOnlyCommands(commands: TripCommand[]): boolean {
   return (
@@ -39,9 +49,6 @@ function commandsNeedCostRefresh(commands: TripCommand[]): boolean {
       "addTransportLeg",
       "addClassifiedTransportLegs",
       "addActivity",
-      "paintDayRange",
-      "setDayPlaces",
-      "clearDayRange",
       "ensurePersonalGroup",
       "setGroupInheritMode",
     ].includes(c.type),
@@ -58,14 +65,34 @@ async function handleCommands(
   if (!graph) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
   const result = await persistCommands(tripId, graph, commands);
+  const syncOnly = isCalendarLabelsOnlyBatch(commands);
   const lightweight =
-    isAccommodationOnlyCommands(commands) && !commandsNeedCostRefresh(commands);
+    syncOnly ||
+    (isAccommodationOnlyCommands(commands) && !commandsNeedCostRefresh(commands));
   const [rosterSummary, costLedger] = lightweight
     ? [undefined, undefined]
     : await Promise.all([
         loadRosterSummary(tripId),
         loadCostLedgerProjection(tripId, result.graph).catch(() => null),
       ]);
+
+  if (syncOnly) {
+    return NextResponse.json({
+      syncOnly: true,
+      warnings: result.warnings,
+      conflicts: result.conflicts ?? [],
+    });
+  }
+
+  if (isActivityOnlyCommands(commands)) {
+    return NextResponse.json({
+      activitySync: true,
+      warnings: result.warnings,
+      conflicts: result.conflicts ?? [],
+      costLedger,
+    });
+  }
+
   const response = buildSetupEngineResponse(result.graph, {
     groupId: groupId ?? graph.mainGroupId,
     inviteCode,

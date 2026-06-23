@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { sanitizeDayType } from "@/lib/trip-engine/sanitize-day-place";
@@ -58,7 +58,7 @@ function dedupeDaysByDate(days: DayPlaceDraft[]): DayPlaceDraft[] {
   return [...byDate.values()];
 }
 
-async function syncGroupDayPlaces(
+export async function syncGroupDayPlaces(
   tripId: string,
   groupId: string,
   days: DayPlaceDraft[],
@@ -69,19 +69,21 @@ async function syncGroupDayPlaces(
     .from(groupDayPlaces)
     .where(and(eq(groupDayPlaces.tripId, tripId), eq(groupDayPlaces.groupId, groupId)));
 
-  const existingByDate = new Map(
-    existing.map((row) => [normalizeIsoDate(row.date), row.id] as const),
-  );
-
   const incomingDates = new Set(normalizedDays.map((d) => d.date));
-  for (const row of existing) {
-    if (!incomingDates.has(normalizeIsoDate(row.date))) {
-      await db.delete(groupDayPlaces).where(eq(groupDayPlaces.id, row.id));
-    }
+  const deleteIds = existing
+    .filter((row) => !incomingDates.has(normalizeIsoDate(row.date)))
+    .map((row) => row.id);
+  if (deleteIds.length) {
+    await db.delete(groupDayPlaces).where(inArray(groupDayPlaces.id, deleteIds));
   }
 
-  for (const day of normalizedDays) {
-    const values = {
+  if (!normalizedDays.length) return;
+
+  const updatedAt = new Date();
+  const UPSERT_CHUNK = 50;
+  for (let i = 0; i < normalizedDays.length; i += UPSERT_CHUNK) {
+    const chunk = normalizedDays.slice(i, i + UPSERT_CHUNK);
+    const rows = chunk.map((day) => ({
       tripId,
       groupId,
       date: day.date,
@@ -91,35 +93,24 @@ async function syncGroupDayPlaces(
       dayType: sanitizeDayType(day.dayType),
       calendarLabel: travelCalendarLabel(day),
       weatherLocationQuery: day.primaryCity.trim() || null,
-      updatedAt: new Date(),
-    };
+      updatedAt,
+    }));
 
-    const existingId = existingByDate.get(day.date);
-    if (existingId) {
-      await db.update(groupDayPlaces).set(values).where(eq(groupDayPlaces.id, existingId));
-      continue;
-    }
-
-    const inserted = await db
+    await db
       .insert(groupDayPlaces)
-      .values(values)
+      .values(rows)
       .onConflictDoUpdate({
         target: [groupDayPlaces.tripId, groupDayPlaces.groupId, groupDayPlaces.date],
         set: {
-          primaryCity: values.primaryCity,
-          secondaryCity: values.secondaryCity,
-          primaryShare: values.primaryShare,
-          dayType: values.dayType,
-          calendarLabel: values.calendarLabel,
-          weatherLocationQuery: values.weatherLocationQuery,
-          updatedAt: values.updatedAt,
+          primaryCity: sql`excluded.primary_city`,
+          secondaryCity: sql`excluded.secondary_city`,
+          primaryShare: sql`excluded.primary_share`,
+          dayType: sql`excluded.day_type`,
+          calendarLabel: sql`excluded.calendar_label`,
+          weatherLocationQuery: sql`excluded.weather_location_query`,
+          updatedAt: sql`excluded.updated_at`,
         },
-      })
-      .returning({ id: groupDayPlaces.id, date: groupDayPlaces.date });
-
-    for (const row of inserted) {
-      existingByDate.set(normalizeIsoDate(row.date), row.id);
-    }
+      });
   }
 }
 

@@ -9,13 +9,12 @@ import {
   type LocationPaletteSwatch,
 } from "@/lib/host/wizard/location-stays";
 import {
-  computeCalendarTransport,
   type CalendarDaySegment,
   type TransitOverlay,
 } from "@/lib/host/wizard/transport-day-placement";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import { projectCalendar, type ProjectCalendarOptions } from "./project-calendar";
-import { participantInheritsMainCalendar } from "./person-lens";
+import { participantInheritsMainCalendar, participantUsesLocationOverlayProjection } from "./person-lens";
 import { activitiesForGroup } from "./selectors";
 import { resolveDisplayDayPlaces } from "./resolve-display-day-places";
 import type {
@@ -25,7 +24,7 @@ import type {
   ProjectedDay,
   TripEntityGraph,
 } from "./types";
-import { dayPlacesForGroup, namedStays } from "./selectors";
+import { dayPlacesForGroup, namedStays, calendarContentScopeForGroup } from "./selectors";
 import { activityToMarker, filterCalendarDotActivities } from "./calendar-activity-dots";
 
 function projectedToDayPlace(day: ProjectedDay): DayPlaceDraft {
@@ -39,12 +38,19 @@ function projectedToDayPlace(day: ProjectedDay): DayPlaceDraft {
   };
 }
 
+function usesMainGroupCalendarContent(graph: TripEntityGraph, groupId: string): boolean {
+  return (
+    participantInheritsMainCalendar(graph, groupId) ||
+    participantUsesLocationOverlayProjection(graph, groupId)
+  );
+}
+
 function buildActivitiesByDate(
   graph: TripEntityGraph,
   dates: string[],
   groupId: string,
 ): Map<string, ActivityMarker[]> {
-  const activities = participantInheritsMainCalendar(graph, groupId)
+  const activities = usesMainGroupCalendarContent(graph, groupId)
     ? activitiesForGroup(graph, graph.mainGroupId)
     : activitiesForGroup(graph, groupId);
   const map = new Map<string, ActivityMarker[]>();
@@ -67,9 +73,10 @@ export function buildCalendarRenderModel(
   const bounds = effectiveTripBoundsFromState(graph);
   const datesUnset = tripDatesAreUnset(bounds.startDate, bounds.endDate);
   const storedDays = dayPlacesForGroup(graph, groupId);
+  const scope = calendarContentScopeForGroup(graph, groupId);
 
   const transportDates: string[] = [];
-  for (const leg of [...graph.outboundLegs, ...graph.returnLegs, ...graph.intercityLegs]) {
+  for (const leg of [...scope.outboundLegs, ...scope.returnLegs, ...scope.intercityLegs]) {
     if (leg.travelDate?.trim()) transportDates.push(leg.travelDate);
   }
 
@@ -80,7 +87,7 @@ export function buildCalendarRenderModel(
     endDate: bounds.endDate,
     timezone: graph.basics.timezone,
     dayPlaces: storedDays,
-    accommodationStays: graph.accommodationStays,
+    accommodationStays: scope.stays,
     transportDates,
     activityDates,
   });
@@ -88,8 +95,8 @@ export function buildCalendarRenderModel(
   const gridEnd = options?.gridEnd ?? gridMeta.gridEnd;
 
   const derived = deriveCalendarState({
-    stays: graph.accommodationStays,
-    intercityLegs: graph.intercityLegs,
+    stays: scope.stays,
+    intercityLegs: scope.intercityLegs,
     trip: {
       departureCity: graph.basics.departureCity,
       returnCity: graph.basics.returnCity,
@@ -97,33 +104,18 @@ export function buildCalendarRenderModel(
       endDate: bounds.endDate,
     },
     transportDraft: {
-      outboundLegs: graph.outboundLegs,
-      returnLegs: graph.returnLegs,
-      intercityLegs: graph.intercityLegs,
+      outboundLegs: scope.outboundLegs,
+      returnLegs: scope.returnLegs,
+      intercityLegs: scope.intercityLegs,
       dayPlaces: storedDays,
     },
     gridStart,
     gridEnd,
     overlayStoredLocationGaps: false,
+    inferLocationsFromTransport: false,
   });
 
   const displayDays = resolveDisplayDayPlaces(storedDays, derived.dayPlaces, gridStart, gridEnd);
-
-  const transportDraft = {
-    outboundLegs: graph.outboundLegs,
-    returnLegs: graph.returnLegs,
-    intercityLegs: graph.intercityLegs,
-    dayPlaces: displayDays,
-  };
-  const tripContext = {
-    startDate: bounds.startDate,
-    endDate: bounds.endDate,
-    departureCity: graph.basics.departureCity,
-    returnCity: graph.basics.returnCity,
-  };
-  const { travelLayouts, transitOverlays } = computeCalendarTransport(transportDraft, tripContext, {
-    stays: graph.accommodationStays,
-  });
 
   const projection = projectCalendar(graph, { groupId, gridStart, gridEnd, ...options });
   const allDates = enumerateDates(gridStart, gridEnd);
@@ -153,10 +145,10 @@ export function buildCalendarRenderModel(
     datesUnset,
     days,
     overlayMetaByDate,
-    travelLayoutsByDate: travelLayouts,
-    transitByDate: transitOverlays,
+    travelLayoutsByDate: new Map<string, CalendarDaySegment[]>(),
+    transitByDate: new Map<string, TransitOverlay[]>(),
     accommodationByDate: derived.accommodationByDate,
-    accommodationStays: participantInheritsMainCalendar(graph, groupId)
+    accommodationStays: usesMainGroupCalendarContent(graph, groupId)
       ? namedStays(graph, graph.mainGroupId)
       : namedStays(graph, groupId),
     boundaries: derived.boundaries,

@@ -166,6 +166,8 @@ export function CalendarPersonLens(props: {
         return "Separate plan";
       case "custom_overlay":
         return "Custom (off main)";
+      case "custom_locations":
+        return "Different cities";
       default:
         return "Following main";
     }

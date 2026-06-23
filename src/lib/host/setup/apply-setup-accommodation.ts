@@ -7,10 +7,7 @@ import {
   mainAccommodationStays,
   mergeAccommodationStays,
 } from "@/lib/host/setup/entity-scope";
-import {
-  syncTransportLegAllocation,
-  unallocateLegsForStayRange,
-} from "@/lib/host/setup/transport-allocation";
+import { unallocateLegsForStayRange } from "@/lib/host/setup/transport-allocation";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
@@ -44,9 +41,6 @@ export function applySetupAccommodationChange(
         next = unallocateLegsForStayRange(next, groupId, stay);
       }
     }
-    next = syncTransportLegAllocation(next, groupId, { checkConflicts: true });
-  } else {
-    next = syncTransportLegAllocation(next, groupId);
   }
   return syncTripBoundsFromContent(next);
 }

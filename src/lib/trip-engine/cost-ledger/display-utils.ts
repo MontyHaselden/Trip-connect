@@ -17,6 +17,14 @@ export function participantHeaderLabel(
   return first.length > 10 ? `${first.slice(0, 9)}…` : first;
 }
 
+/** Header font size (px) — shrink long names so columns stay narrow. */
+export function participantHeaderFontSize(labelLength: number): number {
+  if (labelLength <= 9) return 12;
+  if (labelLength <= 12) return 11;
+  if (labelLength <= 15) return 10;
+  return 9;
+}
+
 export function allocationRuleLabel(
   ruleType: CostAllocationRuleType,
   payload: { groupId?: string; participantId?: string },

@@ -1,19 +1,18 @@
 import type { TripEntityGraph } from "../types";
 
 import type { CostLineItemDraft } from "./types";
+import { defaultCostLineFinanceFields } from "./finance-metadata";
 
 function legDescription(from: string, to: string, date: string): string {
   return `${date}: ${from} → ${to}`;
 }
 
 function seedStay(stay: TripEntityGraph["accommodationStays"][number], sortOrder: number) {
-  if (!stay.cityLabel?.trim() && !stay.name?.trim()) return null;
+  if (!stay.name?.trim()) return null;
   return {
     sortOrder,
     category: "accommodation" as const,
-    description: stay.name?.trim()
-      ? `${stay.name} (${stay.cityLabel})`
-      : stay.cityLabel,
+    description: `${stay.name!.trim()} (${stay.cityLabel})`,
     notes: `${stay.checkInDate} → ${stay.checkOutDate}`,
     totalAmountCents: 0,
     currency: "NZD",
@@ -25,6 +24,7 @@ function seedStay(stay: TripEntityGraph["accommodationStays"][number], sortOrder
     linkedActivityId: null,
     scope: "presence" as const,
     supplierPaymentStatus: null,
+    ...defaultCostLineFinanceFields(),
   };
 }
 
@@ -56,6 +56,7 @@ function seedLeg(
     linkedActivityId: null,
     scope: "presence" as const,
     supplierPaymentStatus: null,
+    ...defaultCostLineFinanceFields(),
   };
 }
 
@@ -76,6 +77,7 @@ function seedActivity(activity: TripEntityGraph["activities"][number], sortOrder
     linkedActivityId: activity.id,
     scope: "presence" as const,
     supplierPaymentStatus: null,
+    ...defaultCostLineFinanceFields(),
   };
 }
 

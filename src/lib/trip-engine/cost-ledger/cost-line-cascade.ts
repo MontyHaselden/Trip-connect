@@ -53,6 +53,32 @@ export async function deleteCostLinesForEntity(
   }
 }
 
+export async function purgeLocationPlaceholderStayLines(
+  tripId: string,
+  graph: { accommodationStays: { id: string; name?: string | null }[] },
+): Promise<number> {
+  const placeholderStayIds = new Set(
+    graph.accommodationStays.filter((s) => !s.name?.trim()).map((s) => s.id),
+  );
+  if (!placeholderStayIds.size) return 0;
+
+  const lines = await db
+    .select({ id: costLineItems.id, linkedStayId: costLineItems.linkedStayId })
+    .from(costLineItems)
+    .where(eq(costLineItems.tripId, tripId));
+
+  const orphanIds = lines
+    .filter((line) => line.linkedStayId && placeholderStayIds.has(line.linkedStayId))
+    .map((l) => l.id);
+
+  if (!orphanIds.length) return 0;
+
+  for (const id of orphanIds) {
+    await db.delete(costLineItems).where(eq(costLineItems.id, id));
+  }
+  return orphanIds.length;
+}
+
 export async function purgeOrphanCostLines(
   tripId: string,
   validStayIds: Set<string>,
@@ -82,14 +108,16 @@ export async function purgeOrphanCostLines(
 }
 
 export function graphEntityIdSets(graph: {
-  accommodationStays: { id: string }[];
+  accommodationStays: { id: string; name?: string | null }[];
   outboundLegs: { id: string }[];
   returnLegs: { id: string }[];
   intercityLegs: { id: string }[];
   activities: { id: string }[];
 }) {
   return {
-    stayIds: new Set(graph.accommodationStays.map((s) => s.id)),
+    stayIds: new Set(
+      graph.accommodationStays.filter((s) => Boolean(s.name?.trim())).map((s) => s.id),
+    ),
     legIds: new Set([
       ...graph.outboundLegs.map((l) => l.id),
       ...graph.returnLegs.map((l) => l.id),

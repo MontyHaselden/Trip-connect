@@ -85,6 +85,20 @@
       "when": 1780050000000,
       "tag": "0012_account_home_airport",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1780060000000,
+      "tag": "0022_backfill_group_day_places",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780070000000,
+      "tag": "0023_finance_line_metadata",
+      "breakpoints": true
     }
   ]
 }

@@ -48,6 +48,7 @@ export function applySetupTransportChange(
   updates: Partial<
     Pick<TripSetupState, "outboundLegs" | "returnLegs" | "intercityLegs">
   >,
+  options?: { preserveCalendarPaint?: boolean },
 ): TripSetupState {
   const merged: TripSetupState = { ...state, ...updates };
   const repairedLegs = repairTransportLegsSync(merged);
@@ -86,6 +87,17 @@ export function applySetupTransportChange(
     returnLegs: synced.returnLegs,
     intercityLegs: synced.intercityLegs,
   });
+
+  if (options?.preserveCalendarPaint) {
+    return {
+      ...boundsSynced,
+      outboundLegs: synced.outboundLegs,
+      returnLegs: synced.returnLegs,
+      intercityLegs: synced.intercityLegs,
+      accommodationStays: syncedStays,
+      basics: synced.basics,
+    };
+  }
 
   const trip = {
     startDate: boundsSynced.basics.startDate,

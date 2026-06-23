@@ -11,6 +11,8 @@ import { formatTripDateRangeLabel, tripDatesAreUnset } from "@/lib/host/trip-dat
 import { effectiveTripBoundsFromState } from "@/lib/host/setup/sync-trip-bounds";
 import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import { computeLogisticsPrompts } from "@/lib/trip-engine/logistics-prompts";
+import { projectCalendar } from "@/lib/trip-engine/project-calendar";
+import { personalGroupForGroupId } from "@/lib/trip-engine/person-lens";
 import type {
   EngineConflict,
   EngineSectionReadiness,
@@ -45,6 +47,7 @@ function readinessLabel(r: EngineSectionReadiness): string {
 
 export function SmartOverview(props: {
   graph: TripEntityGraph;
+  groupId?: string;
   readiness: EngineSectionReadiness[];
   selectedDay: ProjectedDay | null;
   warnings: EngineWarning[];
@@ -62,6 +65,23 @@ export function SmartOverview(props: {
     () => (welcome ? [] : computeLogisticsPrompts(props.graph)),
     [props.graph, welcome],
   );
+
+  const participantLensSummary = useMemo(() => {
+    const groupId = props.groupId;
+    if (!groupId || groupId === props.graph.mainGroupId) return null;
+    const group = personalGroupForGroupId(props.graph, groupId);
+    if (!group) return null;
+    const projection = projectCalendar(props.graph, { groupId });
+    const cities = [
+      ...new Set(
+        projection.days
+          .map((d) => d.primaryCity.trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (!cities.length) return null;
+    return { name: group.name, cities: cities.join(" · ") };
+  }, [props.graph, props.groupId]);
 
   const tripBounds = effectiveTripBoundsFromState(setupState);
   const datesLabel = tripDatesAreUnset(tripBounds.startDate, tripBounds.endDate)
@@ -98,6 +118,11 @@ export function SmartOverview(props: {
           className="mt-2"
         />
         <p className="mt-2 text-sm text-zinc-500">{metaLine}</p>
+        {participantLensSummary ? (
+          <p className="mt-2 text-sm text-violet-700">
+            Viewing {participantLensSummary.name}: {participantLensSummary.cities}
+          </p>
+        ) : null}
       </div>
 
       {summary.length ? (

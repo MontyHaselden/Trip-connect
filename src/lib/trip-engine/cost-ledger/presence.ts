@@ -1,4 +1,5 @@
-import { locationPaletteKey } from "@/lib/host/wizard/location-stays";
+import { locationPaletteKey, locationsMatch } from "@/lib/host/wizard/location-stays";
+import type { TransportLegDraft } from "@/lib/host/wizard/types";
 import type { RosterSummary, TripEntityGraph } from "../types";
 
 import { costSplitParticipants } from "./allocate";
@@ -50,8 +51,76 @@ function activityEligible(
   return activity.date <= (plan.daysByDate.size ? [...plan.daysByDate.keys()].sort().at(-1)! : activity.date);
 }
 
-function legEligible(plan: ResolvedParticipantPlan, legId: string): boolean {
-  return plan.legIds.has(legId);
+function findTransportLeg(graph: TripEntityGraph, legId: string) {
+  return [...graph.outboundLegs, ...graph.returnLegs, ...graph.intercityLegs].find(
+    (leg) => leg.id === legId,
+  );
+}
+
+function transportLegEndpoints(leg: {
+  fromCity: string;
+  toCity: string;
+  intercityFromCity?: string;
+  intercityToCity?: string;
+}): { fromKey: string; toKey: string } {
+  const fromRaw =
+    ("intercityFromCity" in leg && leg.intercityFromCity?.trim()) || leg.fromCity?.trim() || "";
+  const toRaw =
+    ("intercityToCity" in leg && leg.intercityToCity?.trim()) || leg.toCity?.trim() || "";
+  return {
+    fromKey: locationPaletteKey(fromRaw),
+    toKey: locationPaletteKey(toRaw),
+  };
+}
+
+/** True when a participant's calendar follows this transport leg. */
+export function participantUsesTransportLeg(
+  plan: ResolvedParticipantPlan,
+  leg: Pick<
+    TransportLegDraft,
+    "id" | "travelDate" | "arrivalDate" | "fromCity" | "toCity" | "surfaceOnly"
+  > & {
+    intercityFromCity?: string;
+    intercityToCity?: string;
+  },
+): boolean {
+  if (leg.surfaceOnly) return false;
+
+  const travelDate = leg.travelDate?.trim();
+  if (!travelDate) return plan.legIds.has(leg.id);
+
+  const { fromKey, toKey } = transportLegEndpoints(leg);
+  if (!fromKey || !toKey) return plan.legIds.has(leg.id);
+
+  const dayCities = citiesForParticipantOnDate(plan, travelDate);
+  const hasFrom = dayCities.some((city) => locationsMatch(city, fromKey) || city === fromKey);
+  const hasTo = dayCities.some((city) => locationsMatch(city, toKey) || city === toKey);
+
+  if (hasFrom && hasTo) return true;
+
+  const arrivalDate = leg.arrivalDate?.trim() || travelDate;
+  const arrivalCities = citiesForParticipantOnDate(plan, arrivalDate);
+  const arrivesAtDestination = arrivalCities.some(
+    (city) => locationsMatch(city, toKey) || city === toKey,
+  );
+
+  if (hasFrom && arrivesAtDestination) return true;
+
+  // Location overlay: at destination on leg date without departing from origin (e.g. side trip).
+  if (hasTo && !hasFrom) return true;
+
+  return false;
+}
+
+function legEligible(
+  plan: ResolvedParticipantPlan,
+  graph: TripEntityGraph,
+  legId: string,
+): boolean {
+  const leg = findTransportLeg(graph, legId);
+  if (!leg) return false;
+  if (participantUsesTransportLeg(plan, leg)) return true;
+  return plan.legIds.has(legId) && plan.mode === "independent";
 }
 
 export function eligibleParticipantIdsForLine(
@@ -98,7 +167,7 @@ export function eligibleParticipantIdsForLine(
     return pool
       .filter((p) => {
         const plan = presence.get(p.id);
-        return plan ? legEligible(plan, line.linkedTransportLegId!) : false;
+        return plan ? legEligible(plan, graph, line.linkedTransportLegId!) : false;
       })
       .map((p) => p.id);
   }

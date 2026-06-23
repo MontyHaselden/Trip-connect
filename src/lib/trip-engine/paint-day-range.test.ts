@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { applyHalfDayPaint, clearAllLocationInSpan, paintLocationDayRange } from "./paint-day-range";
+import { applyHalfDayPaint, clearAllLocationInSpan, paintLocationDayRange, paintLocationDayRangeProtected } from "./paint-day-range";
 import { clearCalendarContentInRange } from "@/lib/host/setup/clear-day-content";
 import type { TripSetupState } from "@/lib/host/setup/types";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
@@ -52,6 +52,30 @@ describe("applyHalfDayPaint", () => {
     assert.equal(out.find((d) => d.date === "2026-07-17"), undefined);
   });
 
+  it("uses half-days on range edges for full/full multi-day location paint", () => {
+    const out = paintLocationDayRange(
+      [],
+      "2026-12-05",
+      "2026-12-08",
+      "Kagoshima",
+      "full",
+      "full",
+    );
+    const dec5 = out.find((d) => d.date === "2026-12-05");
+    const dec6 = out.find((d) => d.date === "2026-12-06");
+    const dec7 = out.find((d) => d.date === "2026-12-07");
+    const dec8 = out.find((d) => d.date === "2026-12-08");
+
+    assert.equal(dec5?.secondaryCity, "Kagoshima");
+    assert.equal(dec5?.primaryShare, 0.5);
+    assert.equal(dec6?.primaryCity, "Kagoshima");
+    assert.equal(dec6?.primaryShare, 1);
+    assert.equal(dec7?.primaryCity, "Kagoshima");
+    assert.equal(dec7?.primaryShare, 1);
+    assert.equal(dec8?.primaryCity, "Kagoshima");
+    assert.equal(dec8?.primaryShare, 0.5);
+  });
+
   it("preserves a travel-day departure city when painting from the second half", () => {
     const days = [
       {
@@ -75,6 +99,61 @@ describe("applyHalfDayPaint", () => {
     assert.equal(dec15?.primaryCity, "Hiroshima");
     assert.equal(dec15?.secondaryCity, "Kyoto");
     assert.equal(dec15?.primaryShare, 0.5);
+  });
+
+  it("protected paint preserves travel split at range end", () => {
+    const days = [
+      ...["2026-12-07", "2026-12-08", "2026-12-09", "2026-12-10", "2026-12-11", "2026-12-12"].map(
+        (date) => day(date, "Kagoshima"),
+      ),
+      {
+        date: "2026-12-13",
+        primaryCity: "Kagoshima",
+        secondaryCity: "Hiroshima",
+        primaryShare: 0.5,
+        dayType: "travel" as const,
+        includeBuffer: false,
+      },
+    ];
+    const out = paintLocationDayRangeProtected(
+      days,
+      "2026-12-07",
+      "2026-12-13",
+      "Kagoshima",
+      "full",
+      "full",
+    );
+    const dec13 = out.find((d) => d.date === "2026-12-13");
+    assert.equal(dec13?.secondaryCity, "Hiroshima");
+    assert.equal(dec13?.primaryShare, 0.5);
+  });
+
+  it("preserves travel split when painting through first half of checkout day", () => {
+    const days = [
+      ...["2026-12-07", "2026-12-08", "2026-12-09", "2026-12-10", "2026-12-11", "2026-12-12"].map(
+        (date) => day(date, "Tokyo"),
+      ),
+      {
+        date: "2026-12-13",
+        primaryCity: "Kagoshima",
+        secondaryCity: "Hiroshima",
+        primaryShare: 0.5,
+        dayType: "travel" as const,
+        includeBuffer: false,
+      },
+    ];
+    const out = paintLocationDayRangeProtected(
+      days,
+      "2026-12-05",
+      "2026-12-13",
+      "Kagoshima",
+      "right",
+      "left",
+    );
+    const dec13 = out.find((d) => d.date === "2026-12-13");
+    assert.equal(dec13?.primaryCity, "Kagoshima");
+    assert.equal(dec13?.secondaryCity, "Hiroshima");
+    assert.equal(dec13?.primaryShare, 0.5);
   });
 });
 

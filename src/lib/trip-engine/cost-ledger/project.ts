@@ -27,17 +27,14 @@ export function projectCostLedger(
   const ctx = graph && presence ? { graph, presence } : {};
 
   const lineAllocations = raw.lineItems.map((line) => {
-    const { allocations, eligibleParticipantIds, balanced } = computeItemAllocations(
-      line,
-      roster,
-      raw.overrides,
-      ctx,
-    );
+    const { allocations, eligibleParticipantIds, pinnedParticipantIds, balanced } =
+      computeItemAllocations(line, roster, raw.overrides, ctx);
     const allocatedTotalCents = Object.values(allocations).reduce((sum, n) => sum + n, 0);
     return {
       lineItemId: line.id,
       allocations,
       eligibleParticipantIds,
+      pinnedParticipantIds,
       balanced,
       allocatedTotalCents,
     };
@@ -132,6 +129,7 @@ export function projectCostLedger(
     funds: raw.funds,
     fundAllocations,
     payments: raw.payments,
+    supplierPayments: raw.supplierPayments,
     personBalances,
     categoryTotals,
     tripGrossCents,

@@ -77,14 +77,12 @@ export function useCalendarSelection(props: {
       }
 
       const day = days.find((d) => d.date === iso) ?? emptyGridDay(iso);
-      const travelSegments = props.renderModel.travelLayoutsByDate.get(iso);
 
       if (
         !isTripOsDayInteractive({
           iso,
           model: props.renderModel,
           day,
-          travelSegments,
         })
       ) {
         if (selection.rangeStart) clearSelection();
@@ -176,6 +174,33 @@ export function useCalendarSelection(props: {
     [props],
   );
 
+  const highlightDayFromMap = useCallback(
+    (iso: string) => {
+      props.saveScrollPosition();
+      setSelection({
+        rangeStart: iso,
+        rangeEnd: iso,
+        startHalf: "full",
+        endHalf: "full",
+      });
+    },
+    [props],
+  );
+
+  const goToDateFromMap = useCallback(
+    (iso: string) => {
+      props.saveScrollPosition();
+      setSelection({
+        rangeStart: iso,
+        rangeEnd: iso,
+        startHalf: "full",
+        endHalf: "full",
+      });
+      props.onOpenDayView();
+    },
+    [props],
+  );
+
   const statusLine = selection.rangeStart
     ? `Selected ${formatCalendarSelectionLabel(selection)}`
     : props.renderModel?.datesUnset
@@ -187,6 +212,8 @@ export function useCalendarSelection(props: {
     clearSelection,
     onDayClick,
     selectTransferDay,
+    highlightDayFromMap,
+    goToDateFromMap,
     pendingFillHalf,
     statusLine,
   };

@@ -2,11 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { GroupInviteLinks } from "@/components/host/roster/GroupInviteLinks";
 import { hostJson } from "@/components/host/shared/host-fetch";
 import type { RosterPayload } from "@/components/host/roster/types";
 import { studentAppPath } from "@/lib/mobile/student-app-paths";
-import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 
@@ -57,11 +55,8 @@ function CopyLinkRow(props: { url: string; label?: string }) {
   );
 }
 
-export function JoinLinksSection(props: {
-  inviteCode: string;
-  graph: TripEntityGraph;
-}) {
-  const { inviteCode, graph } = props;
+export function JoinLinksSection(props: { inviteCode: string }) {
+  const { inviteCode } = props;
   const api = `/api/host/${encodeURIComponent(inviteCode)}`;
 
   const [roster, setRoster] = useState<RosterPayload | null>(null);
@@ -95,13 +90,11 @@ export function JoinLinksSection(props: {
     return { joined, total: students.length };
   }, [roster?.participants]);
 
-  const groups = graph.groups;
-
   return (
     <TripSectionShell
       eyebrow="Sharing"
-      title="Join links"
-      description="Send these links to students. They pick their name from the roster and set a password to join."
+      title="Join link"
+      description="One link for the whole trip. Each student opens it, finds their name on the roster, sets a password, and lands on their own itinerary."
     >
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -109,10 +102,10 @@ export function JoinLinksSection(props: {
         </div>
       ) : null}
 
-      <TripSoftPanel title="Main trip link">
+      <TripSoftPanel title="Student join link">
         <p className="text-sm text-zinc-600">
-          Works for anyone on the roster. Share this in your trip info pack or group chat.
-          Only links shown here work — old links from other trips will not.
+          Share this in your trip info pack or group chat. Students search or tap their name —
+          no separate links per group.
         </p>
         <div className="mt-3">
           <CopyLinkRow url={tripJoinUrl} />
@@ -129,27 +122,6 @@ export function JoinLinksSection(props: {
           Invite code: <span className="font-mono">{inviteCode}</span>
         </p>
       </TripSoftPanel>
-
-      {groups.length > 0 ? (
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-sm font-semibold text-zinc-900">Group links</h3>
-            <p className="mt-1 text-sm text-zinc-500">
-              Optional per-group links auto-assign students to a group when they join.
-            </p>
-          </div>
-          {groups.map((g) => (
-            <TripSoftPanel key={g.id} title={g.name}>
-              {g.isMain ? (
-                <p className="mb-3 text-xs text-zinc-500">
-                  Main group — students can also use the trip link above.
-                </p>
-              ) : null}
-              <GroupInviteLinks inviteCode={inviteCode} groupId={g.id} groupName={g.name} />
-            </TripSoftPanel>
-          ))}
-        </div>
-      ) : null}
     </TripSectionShell>
   );
 }

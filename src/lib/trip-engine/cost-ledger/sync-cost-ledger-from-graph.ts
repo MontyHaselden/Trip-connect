@@ -3,6 +3,7 @@ import { costLineItems } from "@/lib/db/schema";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 import { loadCostLedgerRaw } from "./load-cost-ledger";
+import { purgeLocationPlaceholderStayLines } from "./cost-line-cascade";
 import { buildSeedLineItems, seedItemsNotYetPresent } from "./seed-from-graph";
 
 /** Insert placeholder cost rows for trip entities not yet in the ledger. Idempotent. */
@@ -11,6 +12,7 @@ export async function syncCostLedgerFromGraph(
   graph: TripEntityGraph,
   dismissedKeys: Set<string> = new Set(),
 ): Promise<number> {
+  await purgeLocationPlaceholderStayLines(tripId, graph);
   const raw = await loadCostLedgerRaw(tripId);
   const seeds = seedItemsNotYetPresent(
     raw.lineItems,

@@ -736,6 +736,9 @@ export function tripDayHasPaintableStaySlot(
   const paintStart = travelLayoutPaintStart(segments);
   if (date === trip.startDate && paintStart > 0 && paintStart < 1) return true;
 
+  // Empty or painted edge days with no transport layout blocking the cell yet.
+  if (!segments?.length) return true;
+
   return false;
 }
 
@@ -1006,7 +1009,7 @@ export function computeTravelDayLayouts(
   draft = calendarTransportDraft(normalizeTransportCalendarDraft(draft), options);
   const stays = options?.stays ?? [];
   const map = new Map<string, CalendarDaySegment[]>();
-  const legs = allTransportLegs(draft);
+  const legs = allTransportLegs(draft).filter((leg) => !leg.surfaceOnly);
   const planeLegs = legs.filter((leg) => leg.transportType === "plane");
   const HALF = DEFAULT_HALF_SHARE;
 
@@ -1300,6 +1303,7 @@ export function computeTransitOverlays(
   const arrShare = DEFAULT_HALF_SHARE;
 
   for (const leg of allTransportLegs(draft)) {
+    if (leg.surfaceOnly) continue;
     if (!legUsesTransitOverlay(leg) || !leg.fromCity.trim() || !leg.toCity.trim()) continue;
 
     const depDate = leg.travelDate;

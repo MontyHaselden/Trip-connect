@@ -79,6 +79,8 @@ export type PaintDayRangeCommand = {
   location: string;
   startHalf?: HalfSide | "full";
   endHalf?: HalfSide | "full";
+  /** When true, trim stays and re-sync transport corridors (default: lightweight label paint). */
+  replan?: boolean;
 };
 
 export type ClearDayRangeCommand = {

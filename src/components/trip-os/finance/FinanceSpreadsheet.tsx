@@ -8,94 +8,81 @@ import {
   lineDateSpanLabel,
   presenceHintForLine,
 } from "@/lib/trip-engine/cost-ledger/presence";
+import {
+  absenceMessageForParticipant,
+  FINANCE_ENTITY_SECTIONS,
+  FINANCE_SECTION_DESCRIPTIONS,
+  FINANCE_SECTION_LABELS,
+  financeSectionForLine,
+  groupLinesByFinanceSection,
+  logisticsGrossForParticipant,
+  participantAllocationCents,
+  sectionTotalForParticipant,
+  type FinanceEntitySection,
+} from "@/lib/trip-engine/cost-ledger/finance-sections";
+import { eligibleParticipantIdsForLine } from "@/lib/trip-engine/cost-ledger/presence";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import {
-  COST_CATEGORIES,
-  COST_CATEGORY_LABELS,
-  type CostLineCategory,
-} from "@/lib/trip-engine/cost-ledger/types";
-import {
-  buildGroupColumns,
   formatLineTotal,
   participantHeaderLabel,
-  sumAllocationsForParticipants,
-  type GroupColumn,
 } from "@/lib/trip-engine/cost-ledger/display-utils";
 import { formatMoney, convertToBaseCents } from "@/lib/trip-engine/cost-ledger/format-money";
 import type { RosterSummary } from "@/lib/trip-engine/types";
 
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
 import { FinanceDeleteModal } from "./FinanceDeleteModal";
+import { FinanceStatusChips } from "./FinanceStatusChips";
+import { FinanceOverallSummary } from "./FinanceOverallSummary";
+import { FinanceWarningsPanel } from "./FinanceWarningsPanel";
 import type { CostLineItemDraft } from "@/lib/trip-engine/cost-ledger/types";
 import {
   FinanceAmountCell,
   FinanceDescriptionCell,
+  FinanceParticipantAmountCell,
   FinanceQtyCell,
-  FinanceRuleCell,
   type OpenCell,
 } from "./FinanceCellEditors";
+import { FinanceAbsentCell } from "./FinanceAbsentCell";
+import { FinanceParticipantHeader } from "./FinanceParticipantHeader";
 
-type GridView = "total" | "group" | "person";
-
-type DataColumn =
-  | { kind: "participant"; participant: RosterSummary["participants"][number] }
-  | { kind: "group"; group: GroupColumn };
-
-function buildDataColumns(
-  roster: RosterSummary,
-  view: GridView,
-  selectedPersonId: string | null,
-): DataColumn[] {
-  const pool = roster.participants.filter((p) => p.inCostSplit && p.role !== "host");
-  if (view === "person" && selectedPersonId) {
-    const person = pool.find((p) => p.id === selectedPersonId);
-    return person ? [{ kind: "participant", participant: person }] : [];
-  }
-  if (view === "group") {
-    return buildGroupColumns(roster).map((group) => ({ kind: "group", group }));
-  }
-  return pool.map((participant) => ({ kind: "participant", participant }));
-}
-
-function columnHeader(col: DataColumn, pool: RosterSummary["participants"]): string {
-  if (col.kind === "group") return col.group.label;
-  return participantHeaderLabel(col.participant, pool);
-}
-
-function columnLetter(index: number): string {
-  let n = index;
-  let label = "";
-  while (n >= 0) {
-    label = String.fromCharCode(65 + (n % 26)) + label;
-    n = Math.floor(n / 26) - 1;
-  }
-  return label;
-}
-
-function cellAmount(
-  col: DataColumn,
-  alloc: Record<string, number>,
-  lineCurrency: string,
-  settings: CostLedgerProjection["settings"],
-): number | null {
-  if (col.kind === "participant") {
-    const cents = alloc[col.participant.id];
-    if (cents == null) return null;
-    return convertToBaseCents(cents, lineCurrency, settings);
-  }
-  const total = sumAllocationsForParticipants(
-    alloc,
-    col.group.participantIds,
-    lineCurrency,
-    settings,
-  );
-  return total > 0 ? total : null;
-}
+type FinanceTab = FinanceEntitySection | "overall";
 
 const thClass =
-  "border border-zinc-300 bg-zinc-100 px-2 py-1.5 text-[11px] font-semibold text-zinc-700";
-const tdClass = "border border-zinc-300 px-2 py-1 text-[11px] text-zinc-800 tabular-nums";
-const tdTextClass = "border border-zinc-300 px-2 py-1 text-[11px] text-zinc-800";
+  "border border-zinc-300 bg-zinc-200 px-2.5 py-2 text-xs font-semibold text-zinc-700 align-middle";
+const thMoneyClass =
+  "border border-zinc-300 bg-zinc-200 px-2 py-2 text-xs font-semibold text-zinc-700 align-middle whitespace-nowrap";
+/** Min width only — columns grow to fit the widest amount in that column. */
+const moneyColWidth = "min-w-[6.5rem]";
+const participantColWidth = "min-w-[5.5rem]";
+const tdClass =
+  "border border-zinc-300 px-2.5 py-2 text-xs text-zinc-800 tabular-nums align-middle";
+const tdMoneyClass = `${tdClass} ${moneyColWidth} whitespace-nowrap`;
+const tdParticipantClass = `${tdClass} ${participantColWidth} whitespace-nowrap`;
+const tdTextClass =
+  "border border-zinc-300 px-3 py-2 text-xs text-zinc-800 align-middle";
+const tdRowBg = "bg-white group-hover:bg-zinc-50";
+
+/** Opaque sticky layers — no transparency so scrolled cells don't bleed through. */
+const stickyHeadCorner =
+  "sticky top-0 z-40 bg-zinc-200 shadow-[2px_2px_4px_-2px_rgba(0,0,0,0.12)]";
+const stickyHeadTop = "sticky top-0 z-20 bg-zinc-200";
+const stickyHeadTopRight = "sticky top-0 z-30 bg-violet-100";
+const stickyColLeft = "sticky left-0 z-10 bg-white shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]";
+const stickyColDesc = "sticky left-12 z-10 bg-white shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]";
+const stickyColRight = "sticky right-0 z-10 bg-violet-50 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)]";
+
+const TAB_ACCENT: Record<FinanceTab, string> = {
+  accommodation: "border-sky-500 text-sky-800 bg-sky-50",
+  transport: "border-violet-500 text-violet-800 bg-violet-50",
+  activities: "border-amber-500 text-amber-900 bg-amber-50",
+  overall: "border-zinc-500 text-zinc-800 bg-zinc-50",
+};
+
+const TAB_PANEL_CLASS: Record<FinanceEntitySection, string> = {
+  accommodation: "bg-sky-50/80 border-sky-100",
+  transport: "bg-violet-50/80 border-violet-100",
+  activities: "bg-amber-50/80 border-amber-100",
+};
 
 export function FinanceSpreadsheet(props: {
   costLedger: CostLedgerProjection;
@@ -103,12 +90,18 @@ export function FinanceSpreadsheet(props: {
   graph?: TripEntityGraph | null;
   showEmptyLines: boolean;
   onPatchLine: (lineId: string, patch: Partial<CostLineFormValues>) => void;
+  onPatchParticipant: (
+    lineId: string,
+    participantId: string,
+    amountCents: number | null,
+  ) => void;
   onDismissLine?: (lineId: string) => Promise<void>;
   onDeleteLine?: (lineId: string) => Promise<void>;
   onRemoveLineFromTrip?: (lineId: string) => Promise<void>;
+  detailLineId?: string | null;
+  onOpenLineDetail?: (lineId: string) => void;
 }) {
-  const [view, setView] = useState<GridView>("total");
-  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<FinanceTab>("accommodation");
   const [openCell, setOpenCell] = useState<OpenCell>(null);
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set());
   const [pendingDeleteLines, setPendingDeleteLines] = useState<CostLineItemDraft[] | null>(null);
@@ -124,11 +117,6 @@ export function FinanceSpreadsheet(props: {
     [props.roster.participants],
   );
 
-  const columns = useMemo(
-    () => buildDataColumns(props.roster, view, selectedPersonId),
-    [props.roster, view, selectedPersonId],
-  );
-
   const allocationByLine = useMemo(() => {
     const map = new Map<string, Record<string, number>>();
     for (const row of props.costLedger.lineAllocations) {
@@ -138,15 +126,28 @@ export function FinanceSpreadsheet(props: {
   }, [props.costLedger.lineAllocations]);
 
   const visibleLines = useMemo(() => {
-    if (props.showEmptyLines) return props.costLedger.lineItems;
-    return props.costLedger.lineItems.filter((l) => l.totalAmountCents > 0);
-  }, [props.costLedger.lineItems, props.showEmptyLines]);
+    const lines = props.costLedger.lineItems.filter(
+      (line) => financeSectionForLine(line, props.graph) != null,
+    );
+    if (props.showEmptyLines) return lines;
+    return lines.filter((l) => l.totalAmountCents > 0);
+  }, [props.costLedger.lineItems, props.showEmptyLines, props.graph]);
 
   const emptyCount = props.costLedger.lineItems.filter((l) => l.totalAmountCents === 0).length;
 
+  const linesBySection = useMemo(
+    () => groupLinesByFinanceSection(visibleLines, props.graph),
+    [visibleLines, props.graph],
+  );
+
+  const tabLines = useMemo(() => {
+    if (activeTab === "overall") return [];
+    return linesBySection.get(activeTab) ?? [];
+  }, [activeTab, linesBySection]);
+
   const selectableLineIds = useMemo(
-    () => visibleLines.map((line) => line.id),
-    [visibleLines],
+    () => (activeTab === "overall" ? [] : tabLines.map((line) => line.id)),
+    [activeTab, tabLines],
   );
 
   const allVisibleSelected =
@@ -170,7 +171,7 @@ export function FinanceSpreadsheet(props: {
   }
 
   function openDeleteSelected() {
-    const lines = visibleLines.filter((line) => selectedLineIds.has(line.id));
+    const lines = tabLines.filter((line) => selectedLineIds.has(line.id));
     if (!lines.length) return;
     setPendingDeleteLines(lines);
   }
@@ -197,327 +198,439 @@ export function FinanceSpreadsheet(props: {
     setSelectedLineIds(new Set());
   }
 
-  const linesByCategory = useMemo(() => {
-    const grouped = new Map<CostLineCategory, CostLineItemDraft[]>();
-    for (const cat of COST_CATEGORIES) grouped.set(cat, []);
-    for (const line of visibleLines) {
-      grouped.get(line.category)?.push(line);
-    }
-    return grouped;
-  }, [visibleLines]);
-
   const settings = props.costLedger.settings;
-  let rowNumber = 0;
+  const totalColCount = 4 + pool.length + 2;
+
+  function sectionSubtotalCents(lines: CostLineItemDraft[]): number {
+    return lines.reduce(
+      (sum, line) =>
+        sum + convertToBaseCents(line.totalAmountCents, line.currency, settings),
+      0,
+    );
+  }
+
+  function renderLineRow(line: CostLineItemDraft, rowNumber: number) {
+    const alloc = allocationByLine.get(line.id) ?? {};
+    const lineResult = props.costLedger.lineAllocations.find(
+      (l) => l.lineItemId === line.id,
+    );
+    const totalDisplay = formatLineTotal(line, settings);
+    const isEmpty = line.totalAmountCents === 0;
+    const lineAlloc = props.costLedger.lineAllocations.find((l) => l.lineItemId === line.id);
+    const presenceHint =
+      props.graph && presence
+        ? presenceHintForLine(line, props.graph, props.roster, presence)
+        : null;
+    const spanLabel = props.graph ? lineDateSpanLabel(line, props.graph) : null;
+    const rowParticipantTotal = pool.reduce(
+      (sum, p) =>
+        sum + participantAllocationCents(line, p.id, allocationByLine, settings),
+      0,
+    );
+
+    const rowStickyBg =
+      selectedLineIds.has(line.id) || props.detailLineId === line.id
+        ? "bg-violet-50"
+        : "bg-white";
+
+    return (
+      <tr
+        key={line.id}
+        className={[
+          "group cursor-pointer",
+          isEmpty ? "text-zinc-400" : "",
+          selectedLineIds.has(line.id) || props.detailLineId === line.id
+            ? "bg-violet-50"
+            : "bg-white",
+        ].join(" ")}
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("input, button, [data-finance-cell]")) return;
+          props.onOpenLineDetail?.(line.id);
+        }}
+      >
+        <td
+          className={`${tdClass} ${tdRowBg} ${stickyColLeft} ${rowStickyBg} group-hover:bg-zinc-50 text-center text-zinc-400`}
+        >
+          <div className="flex flex-col items-center gap-0.5">
+            <input
+              type="checkbox"
+              checked={selectedLineIds.has(line.id)}
+              onChange={() => toggleLineSelection(line.id)}
+              className="rounded border-zinc-400"
+              aria-label={`Select row ${rowNumber}`}
+            />
+            <span className="text-[10px] leading-none">{rowNumber}</span>
+          </div>
+        </td>
+        <td
+          className={`${tdTextClass} ${tdRowBg} ${stickyColDesc} ${rowStickyBg} group-hover:bg-zinc-50`}
+        >
+          <FinanceDescriptionCell
+            line={line}
+            openCell={openCell}
+            setOpenCell={setOpenCell}
+            onPatch={props.onPatchLine}
+          />
+          {spanLabel || presenceHint ? (
+            <p className="mt-0.5 whitespace-nowrap text-[9px] text-zinc-400">
+              {[spanLabel, presenceHint].filter(Boolean).join(" · ")}
+            </p>
+          ) : null}
+          <FinanceStatusChips line={line} compact />
+        </td>
+        <td className={`${tdClass} ${tdRowBg} w-12 text-center`}>
+          <FinanceQtyCell
+            line={line}
+            openCell={openCell}
+            setOpenCell={setOpenCell}
+            onPatch={props.onPatchLine}
+          />
+        </td>
+        <td className={`${tdMoneyClass} ${tdRowBg}`}>
+          <FinanceAmountCell
+            line={line}
+            displaySecondary={totalDisplay.secondary}
+            onPatch={props.onPatchLine}
+          />
+        </td>
+        {pool.map((participant) => {
+          const isPresenceLine = Boolean(
+            line.linkedStayId || line.linkedTransportLegId || line.linkedActivityId,
+          );
+          const eligibleFromPresence =
+            isPresenceLine && props.graph && presence
+              ? eligibleParticipantIdsForLine(
+                  line,
+                  props.graph,
+                  props.roster,
+                  presence,
+                )
+              : null;
+          const eligible = new Set(
+            eligibleFromPresence ?? lineAlloc?.eligibleParticipantIds ?? [],
+          );
+          const ineligible =
+            eligibleFromPresence != null
+              ? !eligible.has(participant.id)
+              : eligible.size > 0 && !eligible.has(participant.id);
+          const absenceMessage =
+            ineligible &&
+            props.graph &&
+            presence &&
+            absenceMessageForParticipant(
+              line,
+              props.graph,
+              props.roster,
+              presence,
+              participant.id,
+            );
+          const isPinned = lineAlloc?.pinnedParticipantIds.includes(participant.id) ?? false;
+          const amountCents = ineligible ? null : alloc[participant.id] ?? null;
+
+          return (
+            <td
+              key={participant.id}
+              className={`${tdParticipantClass} ${tdRowBg} text-right ${ineligible ? "!bg-zinc-50" : ""}`}
+            >
+              {ineligible && absenceMessage ? (
+                <FinanceAbsentCell message={absenceMessage} />
+              ) : (
+                <FinanceParticipantAmountCell
+                  amountCents={amountCents}
+                  currency={line.currency}
+                  isPinned={isPinned}
+                  onSave={(cents) =>
+                    props.onPatchParticipant(line.id, participant.id, cents)
+                  }
+                />
+              )}
+            </td>
+          );
+        })}
+        <td
+          className={`${tdMoneyClass} ${stickyColRight} ${rowStickyBg} group-hover:bg-zinc-50 text-right font-medium`}
+        >
+          {rowParticipantTotal > 0
+            ? formatMoney(rowParticipantTotal, settings.baseCurrency)
+            : ""}
+        </td>
+        <td className={`${tdClass} ${tdRowBg} text-center`}>
+          {line.totalAmountCents === 0 ? (
+            ""
+          ) : lineResult?.balanced ? (
+            <span className="text-emerald-600">✓</span>
+          ) : (
+            <span className="font-bold text-amber-600">!</span>
+          )}
+        </td>
+      </tr>
+    );
+  }
+
+  function renderSubtotalRow(
+    label: string,
+    lines: CostLineItemDraft[],
+    rowClass = "bg-zinc-50 font-semibold",
+    stickyBg = "bg-zinc-50",
+    rightStickyBg = "bg-violet-100",
+  ) {
+    const subtotal = sectionSubtotalCents(lines);
+    const subtotalLabel = `${label} (${settings.baseCurrency})`;
+    return (
+      <tr className={rowClass}>
+        <td className={`${tdClass} ${stickyColLeft} ${stickyBg} w-12`} />
+        <td className={`${tdTextClass} ${stickyColDesc} ${stickyBg}`}>{subtotalLabel}</td>
+        <td className={`${tdClass} ${stickyBg} w-12`} />
+        <td className={`${tdMoneyClass} ${stickyBg}`}>
+          {formatMoney(subtotal, settings.baseCurrency)}
+        </td>
+      {pool.map((participant) => {
+          const sectionTotal = sectionTotalForParticipant(
+            lines,
+            participant.id,
+            allocationByLine,
+            settings,
+          );
+          return (
+            <td
+              key={participant.id}
+              className={`${tdParticipantClass} ${stickyBg} text-right`}
+            >
+              {sectionTotal > 0 ? formatMoney(sectionTotal, settings.baseCurrency) : ""}
+            </td>
+          );
+        })}
+        <td className={`${tdMoneyClass} ${stickyColRight} ${rightStickyBg} text-right`}>
+          {formatMoney(subtotal, settings.baseCurrency)}
+        </td>
+        <td className={`${tdClass} ${stickyBg}`} />
+      </tr>
+    );
+  }
+
+  const panelTitle =
+    activeTab === "overall"
+      ? "Overall"
+      : FINANCE_SECTION_LABELS[activeTab];
+  const panelDescription =
+    activeTab === "overall"
+      ? "Per-person totals across accommodation, transport, and activities"
+      : FINANCE_SECTION_DESCRIPTIONS[activeTab];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-2">
-        {(["total", "group", "person"] as const).map((mode) => (
+      <div className="shrink-0 border-b border-zinc-200 bg-white px-3 pt-2">
+        <div className="flex flex-wrap items-center gap-1">
+          {FINANCE_ENTITY_SECTIONS.map((section) => {
+            const count = linesBySection.get(section)?.length ?? 0;
+            const active = activeTab === section;
+            return (
+              <button
+                key={section}
+                type="button"
+                onClick={() => {
+                  setActiveTab(section);
+                  setSelectedLineIds(new Set());
+                }}
+                className={[
+                  "rounded-t-lg border border-b-0 px-3 py-2 text-[11px] font-semibold transition",
+                  active
+                    ? TAB_ACCENT[section]
+                    : "border-transparent bg-zinc-100 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
+                ].join(" ")}
+              >
+                {FINANCE_SECTION_LABELS[section]}
+                {count > 0 ? (
+                  <span className="ml-1.5 rounded-full bg-white/80 px-1.5 py-0.5 text-[9px] font-medium tabular-nums">
+                    {count}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
           <button
-            key={mode}
             type="button"
-            onClick={() => setView(mode)}
+            onClick={() => {
+              setActiveTab("overall");
+              setSelectedLineIds(new Set());
+            }}
             className={[
-              "rounded px-2.5 py-1 text-[11px] font-medium transition",
-              view === mode
-                ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-300"
-                : "text-zinc-600 hover:bg-white/70",
+              "rounded-t-lg border border-b-0 px-3 py-2 text-[11px] font-semibold transition",
+              activeTab === "overall"
+                ? TAB_ACCENT.overall
+                : "border-transparent bg-zinc-100 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900",
             ].join(" ")}
           >
-            {mode === "total" ? "By person" : mode === "group" ? "By group" : "One person"}
+            Overall
           </button>
-        ))}
-        {view === "person" ? (
-          <select
-            value={selectedPersonId ?? ""}
-            onChange={(e) => setSelectedPersonId(e.target.value || null)}
-            className="rounded border border-zinc-300 bg-white px-2 py-1 text-[11px]"
-          >
-            <option value="">Select person…</option>
-            {pool.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.fullName}
-              </option>
-            ))}
-          </select>
-        ) : null}
-        {!props.showEmptyLines && emptyCount > 0 ? (
-          <span className="text-[11px] text-zinc-500">{emptyCount} empty rows hidden</span>
-        ) : null}
-        <button
-          type="button"
-          disabled={selectedLineIds.size === 0}
-          onClick={openDeleteSelected}
-          className="ml-auto rounded border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-800 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
+          <div className="ml-auto flex items-center gap-2 pb-1">
+            {!props.showEmptyLines && emptyCount > 0 ? (
+              <span className="text-[10px] text-zinc-500">{emptyCount} empty hidden</span>
+            ) : null}
+            {activeTab !== "overall" ? (
+              <button
+                type="button"
+                disabled={selectedLineIds.size === 0}
+                onClick={openDeleteSelected}
+                className="rounded border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-medium text-red-800 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
+              >
+                Delete selected{selectedLineIds.size > 0 ? ` (${selectedLineIds.size})` : ""}
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div
+          className={[
+            "flex items-center justify-between gap-3 border px-3 py-2.5",
+            activeTab === "overall"
+              ? "border-zinc-200 bg-zinc-50/80"
+              : `${TAB_PANEL_CLASS[activeTab as FinanceEntitySection]} border-t-0`,
+          ].join(" ")}
         >
-          Delete selected{selectedLineIds.size > 0 ? ` (${selectedLineIds.size})` : ""}
-        </button>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-zinc-800">
+              {panelTitle}
+            </p>
+            <p className="mt-0.5 text-[10px] text-zinc-600">{panelDescription}</p>
+          </div>
+          {activeTab !== "overall" ? (
+            <p className="text-[10px] tabular-nums text-zinc-500">
+              {tabLines.length} row{tabLines.length === 1 ? "" : "s"}
+            </p>
+          ) : null}
+        </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-zinc-200/50 p-2">
-        <table className="w-max min-w-full border-collapse bg-white text-left shadow-sm">
-          <thead className="sticky top-0 z-20">
+      <div className="min-h-0 flex-1 overflow-hidden bg-zinc-200/50 p-2">
+        {activeTab === "overall" ? (
+          <div className="mb-2 px-1">
+            <FinanceOverallSummary ledger={props.costLedger} />
+            <FinanceWarningsPanel
+              ledger={props.costLedger}
+              onSelectLine={props.onOpenLineDetail}
+            />
+          </div>
+        ) : null}
+        <div className="h-max max-h-full w-full overflow-auto">
+        <table className="w-max border-collapse bg-white text-left shadow-sm">
+          <thead>
             <tr>
-              <th className={`${thClass} sticky left-0 z-30 w-12 bg-zinc-200 text-center`}>
-                <span className="sr-only">Select rows</span>
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  disabled={selectableLineIds.length === 0}
-                  onChange={toggleSelectAllVisible}
-                  className="rounded border-zinc-400"
-                  aria-label="Select all visible rows"
-                />
+              <th
+                className={`${thClass} ${stickyHeadCorner} left-0 w-12 text-center`}
+              >
+                {activeTab !== "overall" ? (
+                  <>
+                    <span className="sr-only">Select rows</span>
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      disabled={selectableLineIds.length === 0}
+                      onChange={toggleSelectAllVisible}
+                      className="rounded border-zinc-400"
+                      aria-label="Select all visible rows"
+                    />
+                  </>
+                ) : null}
               </th>
-              <th className={`${thClass} sticky left-12 z-30 min-w-[14rem] bg-zinc-200`}>
-                Description
+              <th className={`${thClass} ${stickyHeadCorner} left-12 min-w-[14rem]`}>
+                {activeTab === "overall" ? "Category" : "Description"}
               </th>
-              <th className={`${thClass} w-12 bg-zinc-200 text-center`}>Qty</th>
-              <th className={`${thClass} min-w-[6rem] bg-zinc-200`}>Total</th>
-              <th className={`${thClass} min-w-[5rem] bg-zinc-200`}>Rule</th>
-              {columns.map((col, i) => (
-                <th
-                  key={col.kind === "group" ? col.group.id : col.participant.id}
-                  className={`${thClass} min-w-[4.5rem] bg-zinc-200 text-center`}
-                  title={
-                    col.kind === "participant" ? col.participant.fullName : col.group.label
-                  }
-                >
-                  <span className="block text-[9px] font-normal text-zinc-500">
-                    {columnLetter(i)}
-                  </span>
-                  <span className="block truncate">{columnHeader(col, pool)}</span>
-                </th>
-              ))}
-              <th className={`${thClass} w-10 bg-zinc-200 text-center`}>✓</th>
+              <th className={`${thMoneyClass} ${stickyHeadTop} w-12 text-center`}>Qty</th>
+              <th className={`${thMoneyClass} ${stickyHeadTop} ${moneyColWidth} text-right`}>
+                Total
+                <span className="mt-0.5 block text-[10px] font-normal text-zinc-500">
+                  row currency
+                </span>
+              </th>
+              {pool.map((participant) => {
+                const label = participantHeaderLabel(participant, pool);
+                return (
+                  <th
+                    key={participant.id}
+                    className={`${thMoneyClass} ${stickyHeadTop} ${participantColWidth} text-center`}
+                    title={participant.fullName}
+                  >
+                    <FinanceParticipantHeader
+                      label={label}
+                      fullName={participant.fullName}
+                    />
+                  </th>
+                );
+              })}
+              <th
+                className={`${thMoneyClass} ${stickyHeadTopRight} right-0 ${moneyColWidth} text-right text-violet-900`}
+              >
+                Total
+                <span className="mt-0.5 block text-[10px] font-normal text-violet-700">
+                  {settings.baseCurrency}
+                </span>
+              </th>
+              <th className={`${thMoneyClass} ${stickyHeadTop} w-10 text-center`}>✓</th>
             </tr>
           </thead>
           <tbody>
-            {visibleLines.length === 0 ? (
+            {pool.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length + 5}
+                  colSpan={totalColCount}
                   className="border border-zinc-300 px-4 py-8 text-center text-[11px] text-zinc-500"
                 >
-                  {columns.length === 0
-                    ? "No participants in cost split — check Users."
-                    : emptyCount > 0 && !props.showEmptyLines
-                      ? "Linked trip rows are hidden — click Show empty, or use + Row."
-                      : "No expense rows yet — add stays/transport in Trip OS, or use + Row."}
+                  No participants in cost split — check Users.
+                </td>
+              </tr>
+            ) : activeTab === "overall" ? (
+              <>
+                {FINANCE_ENTITY_SECTIONS.map((section) => {
+                  const lines = linesBySection.get(section) ?? [];
+                  if (!lines.length) return null;
+                  return (
+                    <Fragment key={section}>
+                      {renderSubtotalRow(FINANCE_SECTION_LABELS[section], lines, "hover:bg-zinc-50/80")}
+                    </Fragment>
+                  );
+                })}
+                {visibleLines.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={totalColCount}
+                      className="border border-zinc-300 px-4 py-8 text-center text-[11px] text-zinc-500"
+                    >
+                      {emptyCount > 0 && !props.showEmptyLines
+                        ? "Linked trip rows are hidden — click Show empty."
+                        : "No rows yet — add stays, transport, or activities on the trip calendar."}
+                    </td>
+                  </tr>
+                ) : (
+                  renderSubtotalRow(
+                    "Total per person",
+                    visibleLines,
+                    "bg-violet-100 font-bold",
+                    "bg-violet-100",
+                    "bg-violet-100",
+                  )
+                )}
+              </>
+            ) : tabLines.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={totalColCount}
+                  className="border border-zinc-300 px-4 py-8 text-center text-[11px] text-zinc-500"
+                >
+                  {emptyCount > 0 && !props.showEmptyLines
+                    ? `No ${FINANCE_SECTION_LABELS[activeTab].toLowerCase()} rows with amounts — click Show empty.`
+                    : `No ${FINANCE_SECTION_LABELS[activeTab].toLowerCase()} rows yet — add them on the trip calendar.`}
                 </td>
               </tr>
             ) : (
-              COST_CATEGORIES.map((category) => {
-                const lines = linesByCategory.get(category) ?? [];
-                if (!lines.length) return null;
-
-                let categorySubtotal = 0;
-                for (const line of lines) {
-                  categorySubtotal += convertToBaseCents(
-                    line.totalAmountCents,
-                    line.currency,
-                    settings,
-                  );
-                }
-
-                return (
-                  <Fragment key={category}>
-                    <tr className="bg-zinc-50">
-                      <td
-                        colSpan={columns.length + 6}
-                        className="border border-zinc-300 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-zinc-600"
-                      >
-                        {COST_CATEGORY_LABELS[category]}
-                      </td>
-                    </tr>
-                    {lines.map((line) => {
-                      rowNumber += 1;
-                      const alloc = allocationByLine.get(line.id) ?? {};
-                      const lineResult = props.costLedger.lineAllocations.find(
-                        (l) => l.lineItemId === line.id,
-                      );
-                      const totalDisplay = formatLineTotal(line, settings);
-                      const isEmpty = line.totalAmountCents === 0;
-                      const lineAlloc = props.costLedger.lineAllocations.find(
-                        (l) => l.lineItemId === line.id,
-                      );
-                      const eligible = new Set(lineAlloc?.eligibleParticipantIds ?? []);
-                      const presenceHint =
-                        props.graph && presence
-                          ? presenceHintForLine(line, props.graph, props.roster, presence)
-                          : null;
-                      const spanLabel =
-                        props.graph ? lineDateSpanLabel(line, props.graph) : null;
-                      const linked = Boolean(
-                        line.linkedStayId ||
-                          line.linkedTransportLegId ||
-                          line.linkedActivityId,
-                      );
-
-                      if (
-                        view === "person" &&
-                        selectedPersonId &&
-                        eligible.size > 0 &&
-                        !eligible.has(selectedPersonId)
-                      ) {
-                        return null;
-                      }
-
-                      return (
-                        <tr
-                          key={line.id}
-                          className={[
-                            isEmpty ? "text-zinc-400" : "hover:bg-zinc-50/50",
-                            selectedLineIds.has(line.id) ? "bg-violet-50/40" : "",
-                          ].join(" ")}
-                        >
-                          <td
-                            className={`${tdClass} sticky left-0 z-10 bg-inherit text-center text-zinc-400`}
-                          >
-                            <div className="flex flex-col items-center gap-0.5">
-                              <input
-                                type="checkbox"
-                                checked={selectedLineIds.has(line.id)}
-                                onChange={() => toggleLineSelection(line.id)}
-                                className="rounded border-zinc-400"
-                                aria-label={`Select row ${rowNumber}`}
-                              />
-                              <span className="text-[10px] leading-none">{rowNumber}</span>
-                            </div>
-                          </td>
-                          <td
-                            className={`${tdTextClass} sticky left-12 z-10 max-w-[18rem] bg-inherit`}
-                          >
-                            <FinanceDescriptionCell
-                              line={line}
-                              openCell={openCell}
-                              setOpenCell={setOpenCell}
-                              onPatch={props.onPatchLine}
-                            />
-                            {spanLabel || presenceHint ? (
-                              <p className="mt-0.5 truncate text-[9px] text-zinc-400">
-                                {[spanLabel, presenceHint].filter(Boolean).join(" · ")}
-                              </p>
-                            ) : null}
-                            {linked ? (
-                              <span className="mt-0.5 inline-block rounded bg-zinc-100 px-1 text-[8px] text-zinc-500">
-                                linked
-                              </span>
-                            ) : null}
-                          </td>
-                          <td className={`${tdClass} text-center`}>
-                            <FinanceQtyCell
-                              line={line}
-                              openCell={openCell}
-                              setOpenCell={setOpenCell}
-                              onPatch={props.onPatchLine}
-                            />
-                          </td>
-                          <td className={tdClass}>
-                            <FinanceAmountCell
-                              line={line}
-                              displayPrimary={totalDisplay.primary}
-                              displaySecondary={totalDisplay.secondary}
-                              openCell={openCell}
-                              setOpenCell={setOpenCell}
-                              onPatch={props.onPatchLine}
-                            />
-                          </td>
-                          <td className={`${tdTextClass} max-w-[6rem] text-zinc-600`}>
-                            <FinanceRuleCell
-                              line={line}
-                              roster={props.roster}
-                              openCell={openCell}
-                              setOpenCell={setOpenCell}
-                              onPatch={props.onPatchLine}
-                            />
-                          </td>
-                          {columns.map((col) => {
-                            const participantId =
-                              col.kind === "participant" ? col.participant.id : null;
-                            const ineligible =
-                              participantId &&
-                              eligible.size > 0 &&
-                              !eligible.has(participantId);
-                            const amount = ineligible
-                              ? null
-                              : cellAmount(col, alloc, line.currency, settings);
-                            return (
-                              <td
-                                key={col.kind === "group" ? col.group.id : col.participant.id}
-                                className={`${tdClass} text-right ${ineligible ? "text-zinc-300" : ""}`}
-                              >
-                                {ineligible ? "—" : amount != null
-                                  ? formatMoney(amount, settings.baseCurrency)
-                                  : ""}
-                              </td>
-                            );
-                          })}
-                          <td className={`${tdClass} text-center`}>
-                            {line.totalAmountCents === 0 ? (
-                              ""
-                            ) : lineResult?.balanced ? (
-                              <span className="text-emerald-600">✓</span>
-                            ) : (
-                              <span className="font-bold text-amber-600">!</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    <tr className="bg-zinc-50 font-semibold">
-                      <td className={`${tdClass} sticky left-0 z-10 bg-zinc-50`} />
-                      <td className={`${tdTextClass} sticky left-12 z-10 bg-zinc-50`}>Subtotal</td>
-                      <td className={tdClass} />
-                      <td className={tdClass}>
-                        {formatMoney(categorySubtotal, settings.baseCurrency)}
-                      </td>
-                      <td colSpan={columns.length + 2} className={tdClass} />
-                    </tr>
-                  </Fragment>
-                );
-              })
+              <>
+                {tabLines.map((line, index) => renderLineRow(line, index + 1))}
+                {renderSubtotalRow(`${FINANCE_SECTION_LABELS[activeTab]} subtotal`, tabLines)}
+              </>
             )}
-            {columns.length > 0 ? (
-              <tr className="bg-violet-50 font-bold">
-                <td className={`${tdClass} sticky left-0 z-10 bg-violet-50`} />
-                <td className={`${tdTextClass} sticky left-12 z-10 bg-violet-50`}>
-                  Gross per person
-                </td>
-                <td className={`${tdClass} bg-violet-50`} />
-                <td className={`${tdClass} bg-violet-50`}>
-                  {formatMoney(props.costLedger.tripGrossCents, settings.baseCurrency)}
-                </td>
-                <td className={`${tdClass} bg-violet-50`} />
-                <td className={`${tdClass} bg-violet-50`} />
-                {columns.map((col) => {
-                  let gross = 0;
-                  if (col.kind === "participant") {
-                    gross =
-                      props.costLedger.personBalances.find(
-                        (b) => b.participantId === col.participant.id,
-                      )?.grossCents ?? 0;
-                  } else {
-                    for (const id of col.group.participantIds) {
-                      gross +=
-                        props.costLedger.personBalances.find((b) => b.participantId === id)
-                          ?.grossCents ?? 0;
-                    }
-                  }
-                  return (
-                    <td
-                      key={col.kind === "group" ? col.group.id : col.participant.id}
-                      className={`${tdClass} bg-violet-50 text-right`}
-                    >
-                      {formatMoney(gross, settings.baseCurrency)}
-                    </td>
-                  );
-                })}
-                <td className={`${tdClass} bg-violet-50`} />
-              </tr>
-            ) : null}
           </tbody>
         </table>
+        </div>
       </div>
 
       {pendingDeleteLines?.length ? (

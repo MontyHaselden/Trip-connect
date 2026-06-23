@@ -1,3 +1,4 @@
+import { projectTripMap } from "./project-trip-map";
 import type { TripEntityGraph } from "./types";
 
 export type MapPin = {
@@ -13,61 +14,44 @@ export type MapProjection = {
   routes: Array<{ from: string; to: string; date: string; label: string }>;
 };
 
-/** Read-only map projection from the trip graph. */
+export type { TripMapProjection, TripMapMarker, TripMapRouteLine, NeedsCoordinatesItem } from "./map-types";
+export { projectTripMap, MAP_MARKER_COLORS } from "./project-trip-map";
+
+/** @deprecated Use projectTripMap — kept for compatibility. */
 export function projectMap(graph: TripEntityGraph, groupId?: string): MapProjection {
   const gid = groupId ?? graph.mainGroupId;
-  const days = graph.dayPlacesByGroupId[gid] ?? [];
-  const pins: MapPin[] = [];
-  const routes: MapProjection["routes"] = [];
-
-  for (const day of days) {
-    if (day.primaryCity.trim()) {
-      pins.push({
-        id: `loc-${day.date}-primary`,
-        label: day.primaryCity,
-        date: day.date,
-        kind: "location",
-        city: day.primaryCity,
-      });
-    }
-  }
-
-  for (const stay of graph.accommodationStays) {
-    if (stay.name?.trim()) {
-      pins.push({
-        id: `stay-${stay.id}`,
-        label: stay.name,
-        date: stay.checkInDate,
-        kind: "stay",
-        city: stay.cityLabel || stay.name,
-      });
-    }
-  }
-
-  for (const activity of graph.activities) {
-    if (activity.locationName?.trim() || activity.title.trim()) {
-      pins.push({
-        id: `act-${activity.id}`,
-        label: activity.title,
-        date: activity.date,
-        kind: "activity",
-        city: activity.locationName?.trim() || activity.title,
-      });
-    }
-  }
-
-  for (const leg of graph.intercityLegs) {
-    const from = leg.intercityFromCity || leg.fromCity || "";
-    const to = leg.intercityToCity || leg.toCity || "";
-    if (from && to) {
-      routes.push({
-        from,
-        to,
-        date: leg.travelDate,
-        label: `${from} → ${to}`,
-      });
-    }
-  }
-
+  const projection = projectTripMap(graph, { groupId: gid });
+  const pins: MapPin[] = [
+    ...projection.markers.map((m) => ({
+      id: m.id,
+      label: m.title,
+      date: m.date,
+      kind:
+        m.entityType === "accommodation"
+          ? ("stay" as const)
+          : m.entityType === "activity"
+            ? ("activity" as const)
+            : ("location" as const),
+      city: m.city,
+    })),
+    ...projection.missingCoordinates.map((m) => ({
+      id: m.id,
+      label: m.title,
+      date: m.date,
+      kind:
+        m.entityType === "accommodation"
+          ? ("stay" as const)
+          : m.entityType === "activity"
+            ? ("activity" as const)
+            : ("location" as const),
+      city: m.city,
+    })),
+  ];
+  const routes = projection.routeLines.map((r) => ({
+    from: r.fromTitle,
+    to: r.toTitle,
+    date: r.date,
+    label: r.title,
+  }));
   return { pins, routes };
 }

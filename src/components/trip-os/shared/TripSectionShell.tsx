@@ -27,12 +27,20 @@ export function TripSectionShell(props: {
   );
 }
 
-export function TripSoftPanel(props: { title?: string; children: React.ReactNode; className?: string }) {
+export function TripSoftPanel(props: {
+  title?: string;
+  headerAction?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
   const fillLayout = props.className?.includes("flex");
   return (
     <div className={["rounded-2xl bg-zinc-50/80 p-5", props.className ?? ""].join(" ")}>
       {props.title ? (
-        <h3 className="shrink-0 text-sm font-semibold text-zinc-900">{props.title}</h3>
+        <div className="flex shrink-0 items-start justify-between gap-3">
+          <h3 className="text-sm font-semibold text-zinc-900">{props.title}</h3>
+          {props.headerAction ? <div className="shrink-0">{props.headerAction}</div> : null}
+        </div>
       ) : null}
       <div
         className={[

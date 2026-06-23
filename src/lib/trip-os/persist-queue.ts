@@ -1,6 +1,7 @@
 /** Serializes trip setup writes across hook remounts (e.g. Next.js Fast Refresh). */
 const queues = new Map<string, Promise<boolean>>();
 const inFlightCounts = new Map<string, number>();
+const lastPersistOk = new Map<string, boolean>();
 
 export function enqueueTripPersist(
   tripId: string,
@@ -18,8 +19,14 @@ export function enqueueTripPersist(
   queues.set(
     tripId,
     next.then(
-      () => true,
-      () => true,
+      (ok) => {
+        lastPersistOk.set(tripId, ok);
+        return ok;
+      },
+      () => {
+        lastPersistOk.set(tripId, false);
+        return false;
+      },
     ),
   );
   return next;
@@ -31,4 +38,9 @@ export function waitForTripPersist(tripId: string): Promise<boolean> {
 
 export function tripPersistInFlight(tripId: string): boolean {
   return (inFlightCounts.get(tripId) ?? 0) > 0;
+}
+
+export function lastTripPersistSucceeded(tripId: string): boolean | null {
+  if (!lastPersistOk.has(tripId)) return null;
+  return lastPersistOk.get(tripId) ?? false;
 }

@@ -75,7 +75,7 @@ export function FinanceCellPopover(props: {
 
   return (
     <>
-      <div ref={triggerRef} className="inline-block max-w-full">
+      <div ref={triggerRef} className="block w-full max-w-full">
         {props.trigger}
       </div>
       {mounted && menu ? createPortal(menu, document.body) : null}

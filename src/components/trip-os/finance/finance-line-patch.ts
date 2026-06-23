@@ -1,5 +1,5 @@
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
-import type { CostLineItemDraft } from "@/lib/trip-engine/cost-ledger/types";
+import type { CostLineItemDraft, LineAllocationResult } from "@/lib/trip-engine/cost-ledger/types";
 
 export function lineToFormValues(
   line: CostLineItemDraft,
@@ -35,6 +35,37 @@ export function linePayload(values: CostLineFormValues): Record<string, unknown>
   if (values.allocationRuleType === "assign_one" && values.participantId) {
     payload.allocationRulePayload = { participantId: values.participantId };
   }
+  return payload;
+}
+
+export function patchParticipantAllocation(
+  line: CostLineItemDraft,
+  lineAlloc: LineAllocationResult,
+  participantId: string,
+  amountCents: number | null,
+): Record<string, unknown> {
+  const pinned = new Map<string, number>();
+  for (const id of lineAlloc.pinnedParticipantIds) {
+    pinned.set(id, lineAlloc.allocations[id] ?? 0);
+  }
+  if (amountCents == null || amountCents <= 0) {
+    pinned.delete(participantId);
+  } else {
+    pinned.set(participantId, amountCents);
+  }
+
+  const payload: Record<string, unknown> = {
+    overrides: [...pinned.entries()].map(([id, cents]) => ({
+      participantId: id,
+      amountCents: cents,
+    })),
+  };
+
+  const pinnedSum = [...pinned.values()].reduce((sum, cents) => sum + cents, 0);
+  if (pinnedSum > 0 && line.totalAmountCents < pinnedSum) {
+    payload.totalAmountCents = pinnedSum;
+  }
+
   return payload;
 }
 

@@ -173,4 +173,142 @@ describe("removeAccommodationAndCitiesFromRange", () => {
     assert.equal(days.find((d) => d.date === "2026-07-10")?.primaryCity, "Bangkok");
     assert.equal(days.find((d) => d.date === "2026-07-10")?.secondaryCity, null);
   });
+
+  it("clearing a distant half-day does not re-derive stay paint on earlier manual splits", () => {
+    const state: TripSetupState = {
+      ...baseState(),
+      basics: {
+        ...baseState().basics,
+        startDate: "2026-12-05",
+        endDate: "2026-12-22",
+        departureCity: "Christchurch",
+        returnCity: "Christchurch",
+      },
+      dayPlacesByGroupId: {
+        main: [
+          { date: "2026-12-12", primaryCity: "Kagoshima", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+          {
+            date: "2026-12-13",
+            primaryCity: "Kagoshima",
+            secondaryCity: "Hiroshima",
+            primaryShare: 0.5,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+          {
+            date: "2026-12-22",
+            primaryCity: "Christchurch",
+            secondaryCity: null,
+            primaryShare: 0.5,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+        ],
+      },
+      accommodationStays: [
+        {
+          id: "hiroshima",
+          cityLabel: "Hiroshima",
+          stayType: "hotel",
+          name: "The Knot",
+          url: null,
+          address: null,
+          phone: null,
+          checkInDate: "2026-12-13",
+          checkOutDate: "2026-12-16",
+          notes: null,
+          isHomestayGroup: false,
+          multipleInCity: false,
+        },
+      ],
+      activities: [],
+    };
+
+    const next = clearCalendarContentInRange(
+      state,
+      {
+        rangeStart: "2026-12-22",
+        rangeEnd: "2026-12-22",
+        startHalf: "left",
+        endHalf: "left",
+      },
+      state.mainGroupId,
+    );
+
+    const dec13 = next.dayPlacesByGroupId.main?.find((d) => d.date === "2026-12-13");
+    assert.equal(dec13?.primaryCity, "Kagoshima");
+    assert.equal(dec13?.secondaryCity, "Hiroshima");
+    assert.equal(next.dayPlacesByGroupId.main?.find((d) => d.date === "2026-12-22"), undefined);
+  });
+
+  it("clearing a personal group range does not remove main-group transport legs", () => {
+    const state: TripSetupState = {
+      ...baseState(),
+      groups: [
+        { id: "main", name: "Main", type: "main", description: null, sortOrder: 0, isMain: true },
+        {
+          id: "g-macy",
+          name: "Macy",
+          type: "split_travel",
+          description: null,
+          sortOrder: 1,
+          isMain: false,
+          inheritMode: "independent",
+          personalForParticipantId: "p-macy",
+        },
+      ],
+      dayPlacesByGroupId: {
+        main: [],
+        "g-macy": [
+          {
+            date: "2026-08-24",
+            primaryCity: "Kyoto",
+            secondaryCity: null,
+            primaryShare: 1,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+        ],
+      },
+      intercityLegs: [
+        {
+          id: "leg-main",
+          legKind: "city_change",
+          transportType: "train",
+          bookingStatus: "not_booked",
+          travelDate: "2026-08-24",
+          arrivalDate: null,
+          departureTime: null,
+          arrivalTime: null,
+          fromCity: "Osaka",
+          toCity: "Kyoto",
+          fromStation: null,
+          toStation: null,
+          operator: null,
+          referenceNumber: null,
+          flightNumber: null,
+          notes: null,
+          intercityFromCity: "Osaka",
+          intercityToCity: "Kyoto",
+          originGroupId: "main",
+        },
+      ],
+      activities: [],
+    };
+
+    const next = clearCalendarContentInRange(
+      state,
+      {
+        rangeStart: "2026-08-24",
+        rangeEnd: "2026-08-24",
+        startHalf: "full",
+        endHalf: "full",
+      },
+      "g-macy",
+    );
+
+    assert.equal(next.intercityLegs.length, 1);
+    assert.equal(next.intercityLegs[0]?.id, "leg-main");
+    assert.equal(next.dayPlacesByGroupId["g-macy"]?.length, 0);
+  });
 });

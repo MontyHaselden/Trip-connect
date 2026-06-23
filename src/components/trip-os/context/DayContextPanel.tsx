@@ -34,7 +34,19 @@ import {
   type AccommodationLocationConflict,
 } from "@/lib/host/setup/day-selection-setup";
 import { shortCityName } from "@/lib/host/setup/location-range-display";
-import { dayPlacesForGroup, legsOnDate, staysForGroup } from "@/lib/trip-engine/selectors";
+import { dayPlacesForGroup, staysForGroup } from "@/lib/trip-engine/selectors";
+import {
+  findMatchingMainStay,
+  formatStayNightSpan,
+  mergePersonalDayPlacesFromMain,
+  type MainStayMatch,
+} from "@/lib/trip-engine/match-main-accommodation-stay";
+import {
+  personalGroupForGroupId,
+  stayInheritsFromMainGroup,
+  staysForCalendarView,
+} from "@/lib/trip-engine/person-lens";
+import { isCitySplitDay } from "@/lib/trip-engine/paint-location-preflight";
 import {
   cityOnHalf,
   enumerateDates,
@@ -42,16 +54,11 @@ import {
   locationsMatch,
   type HalfSide,
 } from "@/lib/host/wizard/location-stays";
-import {
-  isOvernightHubSecondaryOnDepartureDay,
-} from "@/lib/host/wizard/transport-day-placement";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 import type {
   AccommodationStayDraft,
   DayPlaceDraft,
-  IntercityLegDraft,
   StayType,
-  TransportLegDraft,
 } from "@/lib/host/wizard/types";
 import type {
   CalendarRenderModel,
@@ -67,12 +74,12 @@ import { AsyncButton } from "../shared/AsyncButton";
 import { AccommodationLocationConflictDialog } from "./AccommodationLocationConflictDialog";
 import { DayOverviewActivities } from "./DayOverviewActivities";
 import { AddHomestaysModal } from "../homestay/AddHomestaysModal";
-import { FlightLegQuickForm } from "../shared/FlightLegQuickForm";
+import { TripConfirmModal } from "../shared/TripConfirmModal";
 import { tripFieldClass, TripInput } from "../shared/TripInput";
 import { TripDateInput } from "../shared/TripDateInput";
 import { tripDatePickerContext } from "../shared/trip-date-picker";
 
-type EditField = "location" | "accommodation" | "transport";
+type EditField = "location" | "accommodation";
 
 function projectedToDayPlace(day: ProjectedDay): DayPlaceDraft {
   return {
@@ -101,13 +108,49 @@ function formatRangeDisplay(start: string, end: string): string {
   return `${s.toFormat("d MMM yyyy")} – ${e.toFormat("d MMM yyyy")}`;
 }
 
-function legBucket(
-  graph: TripEntityGraph,
-  legId: string,
-): "intercity" | "outbound" | "return" {
-  if (graph.intercityLegs.some((x) => x.id === legId)) return "intercity";
-  if (graph.outboundLegs.some((x) => x.id === legId)) return "outbound";
-  return "return";
+type AccommodationSearchSelection = {
+  name: string;
+  address: string;
+  cityLabel?: string | null;
+  placeId?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+};
+
+type LocalStayDraft = {
+  id: string | null;
+  name: string;
+  city: string;
+  address: string | null;
+  googlePlaceId: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  checkIn: string;
+  checkOut: string;
+  stayType: StayType;
+  isHomestayGroup: boolean;
+};
+
+function applyAccommodationSearchToDraft(
+  draft: LocalStayDraft,
+  selection: AccommodationSearchSelection,
+  options?: { preservePeriodLabel?: boolean },
+): LocalStayDraft {
+  const preserveName = options?.preservePeriodLabel && draft.name.trim().length > 0;
+  return {
+    ...draft,
+    name: preserveName ? draft.name : selection.name,
+    address: selection.address || null,
+    googlePlaceId: selection.placeId ?? null,
+    latitude: selection.lat ?? null,
+    longitude: selection.lng ?? null,
+    city: resolveStayCityOnHotelPick({
+      hotelName: selection.name,
+      mapsCityLabel: selection.cityLabel,
+      address: selection.address,
+      existingCity: draft.city,
+    }),
+  };
 }
 
 function stayCoveringDate(
@@ -180,21 +223,27 @@ function rangeAccommodationSummaryHalfAware(
   return "No stay in this range";
 }
 
-function isSplitTravelDay(
-  projected: ProjectedDay | undefined,
-  date: string,
-  legs: TransportLegDraft[],
-): boolean {
-  if (!projected?.primaryCity.trim() || !projected.secondaryCity?.trim()) return false;
-  if ((projected.primaryShare ?? 1) >= 0.99) return false;
-  if (isOvernightHubSecondaryOnDepartureDay(date, projected, legs)) return false;
-  return true;
+function isSplitLocationDay(projected: ProjectedDay | undefined): boolean {
+  if (!projected) return false;
+  return isCitySplitDay(projectedToDayPlace(projected));
 }
 
 function formatLocationSlice(city: string, share: number): string {
   const label = shortCityName(city);
   if (share >= 0.99) return label;
   return `${label} (half day)`;
+}
+
+function stayDraftCityLabel(draft: {
+  name: string;
+  city: string;
+  address: string | null;
+}): string {
+  return (
+    draft.city.trim() ||
+    inferCityLabelFromAddress(draft.address ?? "") ||
+    draft.name.trim()
+  );
 }
 
 function splitDayTransitionSummary(left: string | undefined, right: string | undefined): string | null {
@@ -217,25 +266,6 @@ function splitDayAccommodationSummary(
   const left = stayForHalfSelection(stays, date, "left")?.name?.trim();
   const right = stayForHalfSelection(stays, date, "right")?.name?.trim();
   return splitDayTransitionSummary(left, right);
-}
-
-function legRouteLabel(leg: TransportLegDraft | IntercityLegDraft): string {
-  const from = leg.fromCity?.trim() ?? "";
-  const to = leg.toCity?.trim() ?? "";
-  const flight = "flightNumber" in leg && leg.flightNumber ? ` · ${leg.flightNumber}` : "";
-  return `${shortCityName(from)} → ${shortCityName(to)}${flight}`;
-}
-
-function stayDraftCityLabel(draft: {
-  name: string;
-  city: string;
-  address: string | null;
-}): string {
-  return (
-    draft.city.trim() ||
-    inferCityLabelFromAddress(draft.address ?? "") ||
-    draft.name.trim()
-  );
 }
 
 export function DayContextPanel(props: {
@@ -276,19 +306,7 @@ export function DayContextPanel(props: {
   const [locationDraft, setLocationDraft] = useState("");
   const [departureDraft, setDepartureDraft] = useState("");
   const [arrivalDraft, setArrivalDraft] = useState("");
-  const [stayDraft, setStayDraft] = useState<{
-    id: string | null;
-    name: string;
-    city: string;
-    address: string | null;
-    googlePlaceId: string | null;
-    latitude: number | null;
-    longitude: number | null;
-    checkIn: string;
-    checkOut: string;
-    stayType: StayType;
-    isHomestayGroup: boolean;
-  } | null>(null);
+  const [stayDraft, setStayDraft] = useState<LocalStayDraft | null>(null);
   const [stayConflictDialog, setStayConflictDialog] = useState<{
     cityLabel: string;
     conflicts: AccommodationLocationConflict[];
@@ -299,8 +317,12 @@ export function DayContextPanel(props: {
     checkIn: string;
     checkOut: string;
   } | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<"clearRange" | "removeStay" | null>(
+    null,
+  );
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
-  const groupStays = useMemo(() => staysForGroup(graph, groupId), [graph, groupId]);
+  const groupStays = useMemo(() => staysForCalendarView(graph, groupId), [graph, groupId]);
 
   const homestayPeriodInRange = useMemo(() => {
     if (!rangeStart) return null;
@@ -327,6 +349,26 @@ export function DayContextPanel(props: {
 
   const isGroupHomestayDraft =
     stayDraft?.stayType === "homestay" && Boolean(stayDraft.isHomestayGroup);
+
+  const personalGroup = personalGroupForGroupId(graph, groupId);
+  const isIndependentPersonal = personalGroup?.inheritMode === "independent";
+  const participantLabel = useMemo(() => {
+    const id = personalGroup?.personalForParticipantId;
+    if (!id) return "this participant";
+    const person = props.rosterSummary?.participants.find((p) => p.id === id);
+    return person?.fullName.trim().split(/\s+/)[0] || person?.fullName || "this participant";
+  }, [personalGroup?.personalForParticipantId, props.rosterSummary?.participants]);
+
+  const mainStayMatch = useMemo((): MainStayMatch | null => {
+    if (!stayDraft || !isIndependentPersonal || isGroupHomestayDraft) return null;
+    if (!stayDraft.name.trim() || !stayDraft.checkIn || !stayDraft.checkOut) return null;
+    return findMatchingMainStay(graph, {
+      name: stayDraft.name,
+      cityLabel: stayDraftCityLabel(stayDraft),
+      checkInDate: stayDraft.checkIn,
+      checkOutDate: stayDraft.checkOut,
+    });
+  }, [stayDraft, graph, isIndependentPersonal, isGroupHomestayDraft]);
 
   const rangeConflicts = useMemo(() => {
     if (!rangeStart) return [];
@@ -369,11 +411,10 @@ export function DayContextPanel(props: {
     }
     return dates.map((date) => {
       const projected = model.projectedDays.find((d) => d.date === date);
-      const dayLegs = legsOnDate(graph, date);
       const stay = stayCoveringDate(groupStays, date);
-      return { date, projected, dayLegs, stay };
+      return { date, projected, stay };
     });
-  }, [rangeStart, rangeEnd, model.projectedDays, graph, groupStays]);
+  }, [rangeStart, rangeEnd, model.projectedDays, groupStays]);
 
   const projectedInRange = useMemo(
     () =>
@@ -383,53 +424,39 @@ export function DayContextPanel(props: {
     [overviewDays],
   );
 
-  const legsInRange = useMemo(() => {
-    const seen = new Set<string>();
-    const legs: Array<TransportLegDraft | IntercityLegDraft> = [];
-    for (const row of overviewDays) {
-      for (const leg of row.dayLegs) {
-        if (!seen.has(leg.id)) {
-          seen.add(leg.id);
-          legs.push(leg);
-        }
-      }
-    }
-    return legs;
-  }, [overviewDays]);
-
   const linkedStay = useMemo(() => {
     if (!rangeStart || !rangeEnd) return null;
     return stayLinkedToHalfAwareSelection(groupStays, selection);
   }, [groupStays, rangeStart, rangeEnd, selection]);
 
+  const linkedStayIsInherited = useMemo(
+    () => Boolean(linkedStay && stayInheritsFromMainGroup(graph, groupId, linkedStay!)),
+    [graph, groupId, linkedStay],
+  );
+
   const dayCount = overviewDays.length;
   const isMultiDayRange = Boolean(rangeStart) && rangeStart !== rangeEnd;
-  const legsForSelectedDay = useMemo(
-    () => (rangeStart ? legsOnDate(props.graph, rangeStart) : []),
-    [props.graph, rangeStart],
-  );
   const isFullSingleDay =
     Boolean(rangeStart) && dayCount === 1 && rangeStart === rangeEnd && selectedHalf === "full";
-  const splitTravelDay =
-    isFullSingleDay &&
-    rangeStart &&
-    isSplitTravelDay(projectedInRange[0], rangeStart, legsForSelectedDay);
+  const splitLocationDay =
+    isFullSingleDay && rangeStart && isSplitLocationDay(projectedInRange[0]);
 
   const anchorDay = projectedDaysInRange.find((d) => d.date === rangeStart);
-  const locationSummary = splitTravelDay
+  const locationSummary = splitLocationDay
     ? splitDayLocationSummary(projectedInRange[0]) ??
       rangeLocationSummaryHalfAware(projectedDaysInRange, selection)
     : rangeLocationSummaryHalfAware(projectedDaysInRange, selection);
-  const accommodationSummary = splitTravelDay && rangeStart
-    ? splitDayAccommodationSummary(groupStays, rangeStart) ??
-      rangeAccommodationSummaryHalfAware(selection, groupStays)
-    : rangeAccommodationSummaryHalfAware(selection, groupStays);
-  const transportSummary =
-    splitTravelDay && legsInRange.length === 0
-      ? "How are you getting there?"
-      : legsInRange.length
-        ? legsInRange.map((leg) => legRouteLabel(leg)).join(" · ")
-        : "No legs in this range";
+  const accommodationSummary = (() => {
+    const base =
+      splitLocationDay && rangeStart
+        ? splitDayAccommodationSummary(groupStays, rangeStart) ??
+          rangeAccommodationSummaryHalfAware(selection, groupStays)
+        : rangeAccommodationSummaryHalfAware(selection, groupStays);
+    if (linkedStayIsInherited && base !== "No stay in this range") {
+      return `${base} · main group`;
+    }
+    return base;
+  })();
 
   const daysForConflictCheck = useMemo(() => {
     if (!rangeStart) return [];
@@ -478,7 +505,7 @@ export function DayContextPanel(props: {
 
     if (editingField === "location") {
       const day = projectedInRange[0];
-      if (day && rangeStart && isSplitTravelDay(day, rangeStart, legsForSelectedDay)) {
+      if (day && rangeStart && isSplitLocationDay(day)) {
         setDepartureDraft(day.primaryCity.trim());
         setArrivalDraft(day.secondaryCity?.trim() ?? "");
         setLocationDraft("");
@@ -495,7 +522,7 @@ export function DayContextPanel(props: {
 
     if (editingField === "accommodation") {
       const city =
-        linkedStay
+        linkedStay && !linkedStayIsInherited
           ? stayCityLabel(linkedStay)
           : accommodationCityForSelection(selection, daysForConflictCheck);
       const dates = isMultiDayRange
@@ -507,7 +534,7 @@ export function DayContextPanel(props: {
             }
           : stayDatesForSelection(selection, null);
       setStayDraft({
-        id: linkedStay?.id ?? null,
+        id: linkedStayIsInherited ? null : linkedStay?.id ?? null,
         name: linkedStay?.name?.trim() || "",
         city,
         address: linkedStay?.address ?? null,
@@ -520,12 +547,22 @@ export function DayContextPanel(props: {
         isHomestayGroup: linkedStay?.isHomestayGroup ?? false,
       });
     }
-  }, [editingField, projectedInRange, linkedStay, selection, rangeStart, rangeEnd, legsForSelectedDay, isMultiDayRange, daysForConflictCheck]);
+  }, [
+    editingField,
+    projectedInRange,
+    linkedStay,
+    linkedStayIsInherited,
+    selection,
+    rangeStart,
+    rangeEnd,
+    isMultiDayRange,
+    daysForConflictCheck,
+  ]);
 
   if (!rangeStart) {
     return (
       <div className="rounded-xl border border-dashed border-zinc-300 p-6 text-sm text-zinc-600">
-        Select days on the calendar to view and edit locations, stays, and transport.
+        Select days on the calendar to view and edit locations and stays.
       </div>
     );
   }
@@ -536,10 +573,29 @@ export function DayContextPanel(props: {
       ? `Apply to all ${dayCount} days`
       : "Save";
 
+  function dispatchPaintLocation(
+    location: string,
+    opts: { rangeEndOverride?: string; replan?: boolean } = {},
+  ) {
+    void props.onDispatch([
+      {
+        type: "paintDayRange",
+        groupId,
+        rangeStart,
+        rangeEnd: opts.rangeEndOverride ?? rangeEnd,
+        location,
+        startHalf,
+        endHalf,
+        replan: opts.replan,
+      },
+    ]);
+    setEditingField(null);
+  }
+
   function saveLocation() {
     setActionError(null);
 
-    if (splitTravelDay && rangeStart) {
+    if (splitLocationDay && rangeStart) {
       if (!departureDraft.trim() || !arrivalDraft.trim()) {
         setActionError("Enter both departure and arrival cities.");
         return;
@@ -566,18 +622,37 @@ export function DayContextPanel(props: {
       setActionError("Enter a city or region.");
       return;
     }
-    void props.onDispatch([
-      {
-        type: "paintDayRange",
+    dispatchPaintLocation(locationDraft.trim());
+  }
+
+  async function adoptMainGroupStay(mainStay: AccommodationStayDraft) {
+    setActionError(null);
+    const personalDays = dayPlacesForGroup(graph, groupId);
+    const mainDays = dayPlacesForGroup(graph, graph.mainGroupId);
+    const merged = mergePersonalDayPlacesFromMain(personalDays, mainDays, mainStay);
+
+    const overlappingPersonalStays = staysForGroup(graph, groupId).filter(
+      (stay) =>
+        stay.checkInDate < mainStay.checkOutDate &&
+        mainStay.checkInDate < stay.checkOutDate,
+    );
+
+    const commands: TripCommand[] = [
+      { type: "setDayPlaces", groupId, days: merged },
+      ...overlappingPersonalStays.map((stay) => ({
+        type: "removeStay" as const,
         groupId,
-        rangeStart,
-        rangeEnd,
-        location: locationDraft.trim(),
-        startHalf,
-        endHalf,
-      },
-    ]);
-    setEditingField(null);
+        stayId: stay.id,
+      })),
+    ];
+
+    const ok = await props.onDispatch(commands);
+    if (ok) {
+      setStayConflictDialog(null);
+      setEditingField(null);
+    } else {
+      setActionError(props.error || "Could not align with main group stay.");
+    }
   }
 
   async function commitStaySave(
@@ -593,6 +668,13 @@ export function DayContextPanel(props: {
     );
     const isGroupHomestayPeriod =
       stayDraft.stayType === "homestay" && stayDraft.isHomestayGroup;
+    const personalDateNote =
+      isIndependentPersonal &&
+      !isGroupHomestayPeriod &&
+      mainStayMatch?.kind === "name_only" &&
+      !linkedStayIsInherited
+        ? `Personal dates for ${participantLabel}`
+        : null;
     const payload = {
       name: isGroupHomestayPeriod
         ? stayDraft.name.trim() || `Homestays · ${cityLabel}`
@@ -607,6 +689,7 @@ export function DayContextPanel(props: {
       stayType: stayDraft.stayType,
       isHomestayGroup: stayDraft.isHomestayGroup,
       multipleInCity: stayDraft.stayType === "homestay" && stayDraft.isHomestayGroup,
+      notes: personalDateNote ?? linkedStay?.notes ?? null,
     };
     const commands: TripCommand[] = [];
     const needsLocationPaint =
@@ -616,7 +699,7 @@ export function DayContextPanel(props: {
         : overviewDays.some((row) => {
             const p = row.projected;
             if (!p) return true;
-            if (isSplitTravelDay(p, row.date, row.dayLegs)) {
+            if (isSplitLocationDay(p)) {
               return !locationsMatch(p.secondaryCity?.trim() ?? "", cityLabel);
             }
             return !p.primaryCity.trim();
@@ -624,13 +707,13 @@ export function DayContextPanel(props: {
     if (needsLocationPaint && cityLabel && !isReplacingStay) {
       const checkInProjected = projectedInRange.find((d) => d.date === rangeStart);
       const checkInDepartureCity = checkInProjected?.primaryCity.trim() ?? "";
-      const preserveTravelDayOnCheckIn = Boolean(
+      const preserveSplitDayOnCheckIn = Boolean(
         startHalf === "right" &&
           rangeStart &&
           checkInDepartureCity &&
           !locationsMatch(checkInDepartureCity, cityLabel),
       );
-      if ((splitTravelDay || preserveTravelDayOnCheckIn) && rangeStart) {
+      if ((splitLocationDay || preserveSplitDayOnCheckIn) && rangeStart) {
         const projected = checkInProjected ?? projectedInRange[0];
         const updatedDay = {
           date: rangeStart,
@@ -660,7 +743,7 @@ export function DayContextPanel(props: {
         });
       }
     }
-    if (isReplacingStay && linkedStay) {
+    if (isReplacingStay && linkedStay && !linkedStayIsInherited) {
       commands.push({ type: "removeStay", groupId, stayId: linkedStay.id });
       commands.push({
         type: "addStay",
@@ -670,11 +753,10 @@ export function DayContextPanel(props: {
           id: newId(),
           url: null,
           phone: null,
-          notes: null,
           ...payload,
         },
       });
-    } else if (stayDraft.id) {
+    } else if (stayDraft.id && !linkedStayIsInherited) {
       commands.push({
         type: "updateStay",
         groupId,
@@ -691,7 +773,6 @@ export function DayContextPanel(props: {
           id: newId(),
           url: null,
           phone: null,
-          notes: null,
           ...payload,
         },
       });
@@ -752,6 +833,10 @@ export function DayContextPanel(props: {
       setStayConflictDialog({ cityLabel, conflicts });
       return;
     }
+    if (mainStayMatch?.kind === "exact" && !linkedStayIsInherited) {
+      await adoptMainGroupStay(mainStayMatch.mainStay);
+      return;
+    }
     await commitStaySave(cityLabel, mergedDates);
   }
 
@@ -768,45 +853,33 @@ export function DayContextPanel(props: {
     });
   }
 
-  function removeStay() {
-    if (!linkedStay) return;
-    if (!window.confirm("Remove this stay?")) return;
+  async function confirmRemoveStay() {
+    if (!linkedStay || linkedStayIsInherited) return;
+    setConfirmBusy(true);
     setEditingField(null);
-    void props.onDispatch([
+    const ok = await props.onDispatch([
       { type: "removeStay", groupId, stayId: linkedStay.id },
     ]);
+    setConfirmBusy(false);
+    setPendingConfirm(null);
+    if (!ok) {
+      setActionError(props.error || "Could not remove this stay.");
+    }
   }
 
-  async function addTransportLegs(legs: IntercityLegDraft[]) {
-    if (!legs.length) return false;
+  async function confirmClearRange() {
+    setActionError(null);
+    setConfirmBusy(true);
     const ok = await props.onDispatch([
-      {
-        type: "addClassifiedTransportLegs",
-        groupId,
-        legs,
-      },
-    ]);
-    if (ok) setEditingField(null);
-    return ok;
-  }
-
-  async function removeLeg(leg: TransportLegDraft | IntercityLegDraft) {
-    await props.onDispatch([
-      {
-        type: "removeTransportLeg",
-        groupId,
-        bucket: legBucket(graph, leg.id),
-        legId: leg.id,
-      },
-    ]);
-  }
-
-  async function clearRange() {
-    if (!window.confirm(`Clear content for ${rangeLabel}?`)) return;
-    await props.onDispatch([
       { type: "clearDayRange", groupId, rangeStart, rangeEnd, startHalf, endHalf },
     ]);
-    props.onClearSelection();
+    setConfirmBusy(false);
+    setPendingConfirm(null);
+    if (ok) {
+      props.onClearSelection();
+    } else {
+      setActionError(props.error || "Could not clear this range.");
+    }
   }
 
   const dayTitle = rangeStart
@@ -819,8 +892,8 @@ export function DayContextPanel(props: {
 
   const daySubtitle = isSingleHalfDay
     ? `${selectedHalf === "left" ? "First half" : "Second half"} of the day`
-    : splitTravelDay
-      ? "Travel day — both halves shown"
+    : splitLocationDay
+      ? "Two cities on this day"
       : dayCount > 1
         ? `${dayCount} days selected`
         : null;
@@ -867,8 +940,8 @@ export function DayContextPanel(props: {
 
       {groupId !== graph.mainGroupId ? (
         <p className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm leading-relaxed text-violet-950">
-          You&apos;re editing a participant or subgroup plan — not the whole group. Switch the
-          calendar back to <span className="font-medium">Whole group</span> to edit the main trip.
+          You&apos;re editing a participant plan — location changes apply only to them. Stays and
+          activities follow the main group until you save a personal stay override here.
         </p>
       ) : null}
 
@@ -898,13 +971,6 @@ export function DayContextPanel(props: {
             action={hasStay ? "Edit" : "Add"}
             highlight={!hasStay && accommodationSummary === "No stay in this range"}
             onAction={() => setEditingField("accommodation")}
-          />
-          <OverviewLine
-            label="Transport"
-            value={transportSummary}
-            action={legsInRange.length ? "Edit" : "Add"}
-            highlight={Boolean(splitTravelDay && legsInRange.length === 0)}
-            onAction={() => setEditingField("transport")}
           />
         </ul>
       </section>
@@ -953,29 +1019,28 @@ export function DayContextPanel(props: {
 
       {editingField === "location" ? (
         <SectionEditorPanel label="Location" onClose={() => setEditingField(null)}>
-          {splitTravelDay ? (
+          {splitLocationDay ? (
             <>
               <label className="block space-y-1">
-                <span className="text-xs text-zinc-500">Departing from</span>
+                <span className="text-xs text-zinc-500">First half of the day</span>
                 <PlacePicker
                   value={departureDraft}
                   onChange={setDepartureDraft}
-                  placeholder="Origin city…"
+                  placeholder="City…"
                   inputClassName={inputClass}
                 />
               </label>
               <label className="block space-y-1">
-                <span className="text-xs text-zinc-500">Arriving to (stay city)</span>
+                <span className="text-xs text-zinc-500">Second half of the day</span>
                 <PlacePicker
                   value={arrivalDraft}
                   onChange={setArrivalDraft}
-                  placeholder="e.g. Patong, not Phuket airport…"
+                  placeholder="City…"
                   inputClassName={inputClass}
                 />
               </label>
               <p className="text-xs text-zinc-500">
-                Travel day — set arrival to your stay city (Patong) so it connects to the
-                hotel block.
+                This day has two cities — set each half separately.
               </p>
             </>
           ) : (
@@ -993,7 +1058,7 @@ export function DayContextPanel(props: {
           )}
           <div className="flex gap-2">
             <AsyncButton
-              onClick={() => void saveLocation()}
+              onClick={() => saveLocation()}
               className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
             >
               {applyLabel} location
@@ -1035,6 +1100,27 @@ export function DayContextPanel(props: {
             </label>
             {isGroupHomestayDraft ? (
               <>
+                <label className="block space-y-1.5">
+                  <span className="text-xs text-zinc-500">Search address or homestay</span>
+                  <HotelNamePicker
+                    value={stayDraft.address ?? ""}
+                    onChange={(address) =>
+                      setStayDraft({ ...stayDraft, address: address || null })
+                    }
+                    onSelectHotel={(selection) =>
+                      setStayDraft(
+                        applyAccommodationSearchToDraft(stayDraft, selection, {
+                          preservePeriodLabel: true,
+                        }),
+                      )
+                    }
+                    stayType="homestay"
+                    countryNames={props.graph.basics.destinationCountries ?? []}
+                    stayCity={stayDraftCityLabel(stayDraft) || undefined}
+                    placeholder={accommodationSearchMode("homestay").placeholder}
+                    inputClassName={inputClass}
+                  />
+                </label>
                 <label className="block space-y-1.5">
                   <span className="text-xs text-zinc-500">Period label (optional)</span>
                   <TripInput
@@ -1080,22 +1166,9 @@ export function DayContextPanel(props: {
                 <HotelNamePicker
                   value={stayDraft.name}
                   onChange={(name) => setStayDraft({ ...stayDraft, name })}
-                  onSelectHotel={({ name, address, cityLabel, placeId, lat, lng }) => {
-                    setStayDraft({
-                      ...stayDraft,
-                      name,
-                      address: address || null,
-                      googlePlaceId: placeId ?? null,
-                      latitude: lat ?? null,
-                      longitude: lng ?? null,
-                      city: resolveStayCityOnHotelPick({
-                        hotelName: name,
-                        mapsCityLabel: cityLabel,
-                        address,
-                        existingCity: stayDraft.city,
-                      }),
-                    });
-                  }}
+                  onSelectHotel={(selection) =>
+                    setStayDraft(applyAccommodationSearchToDraft(stayDraft, selection))
+                  }
                   stayType={stayDraft.stayType}
                   countryNames={props.graph.basics.destinationCountries ?? []}
                   stayCity={stayDraftCityLabel(stayDraft) || undefined}
@@ -1104,11 +1177,49 @@ export function DayContextPanel(props: {
                 />
               </label>
             )}
+            {mainStayMatch?.kind === "exact" ? (
+              <div className="rounded-md border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs leading-relaxed text-violet-950">
+                <p className="font-medium">Same as main group for these dates</p>
+                <p className="mt-1">
+                  The main trip already has{" "}
+                  <span className="font-medium">{mainStayMatch.mainStay.name}</span> (
+                  {formatStayNightSpan(
+                    mainStayMatch.mainStay.checkInDate,
+                    mainStayMatch.mainStay.checkOutDate,
+                  )}
+                  ). Use the main group stay instead of duplicating it for {participantLabel}.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void adoptMainGroupStay(mainStayMatch.mainStay)}
+                  className="mt-2 font-medium text-violet-800 hover:underline"
+                >
+                  Use main group stay
+                </button>
+              </div>
+            ) : mainStayMatch?.kind === "name_only" ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-950">
+                <p className="font-medium">
+                  Same hotel, different dates — personal stay for {participantLabel}
+                </p>
+                <p className="mt-1">
+                  Main group has {mainStayMatch.mainStay.name} on{" "}
+                  {formatStayNightSpan(
+                    mainStayMatch.mainStay.checkInDate,
+                    mainStayMatch.mainStay.checkOutDate,
+                  )}
+                  . Your dates (
+                  {formatStayNightSpan(stayDraft.checkIn, stayDraft.checkOut)}) apply only to{" "}
+                  {participantLabel}.
+                </p>
+              </div>
+            ) : null}
             <label className="block space-y-1.5">
               <span className="text-xs text-zinc-500">Stay city (calendar label)</span>
               <PlacePicker
                 value={stayDraft.city}
                 onChange={(city) => setStayDraft({ ...stayDraft, city })}
+                countryNames={props.graph.basics.destinationCountries ?? []}
                 placeholder="e.g. Patong"
                 inputClassName={inputClass}
               />
@@ -1193,25 +1304,29 @@ export function DayContextPanel(props: {
               </label>
             ) : null}
             <p className="text-xs text-zinc-500">
-              {linkedStay && linkedStay.checkInDate > rangeStart
-                ? `Saving merges with your existing stay (check-in moves to ${stayDraft?.checkIn}).`
-                : isSingleHalfDay
-                  ? "Check-in/out dates follow hotel convention; your calendar selection stays on this half."
-                  : dayCount > 1
-                    ? "Dates in the form are saved as entered — they are not auto-extended to the selected range."
-                    : "Saving updates this stay on the calendar."}
+              {mainStayMatch?.kind === "exact"
+                ? `Save will use the main group stay for ${participantLabel} — no duplicate row.`
+                : linkedStayIsInherited
+                ? "Saving creates a personal stay for this participant — the main group homestay is unchanged."
+                : linkedStay && linkedStay.checkInDate > rangeStart
+                  ? `Saving merges with your existing stay (check-in moves to ${stayDraft?.checkIn}).`
+                  : isSingleHalfDay
+                    ? "Check-in/out dates follow hotel convention; your calendar selection stays on this half."
+                    : dayCount > 1
+                      ? "Dates in the form are saved as entered — they are not auto-extended to the selected range."
+                      : "Saving updates this stay on the calendar."}
             </p>
             <div className="flex flex-wrap gap-2">
               <AsyncButton
                 onClick={() => void saveStay()}
                 className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
               >
-                {applyLabel} stay
+                {mainStayMatch?.kind === "exact" ? "Use main group stay" : `${applyLabel} stay`}
               </AsyncButton>
-              {linkedStay ? (
+              {linkedStay && !linkedStayIsInherited ? (
                 <button
                   type="button"
-                  onClick={() => void removeStay()}
+                  onClick={() => setPendingConfirm("removeStay")}
                   className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-800"
                 >
                   Remove stay
@@ -1229,46 +1344,6 @@ export function DayContextPanel(props: {
         </SectionEditorPanel>
       ) : null}
 
-      {editingField === "transport" ? (
-        <SectionEditorPanel label="Transport" onClose={() => setEditingField(null)}>
-          {legsInRange.length ? (
-            <ul className="space-y-1">
-              {legsInRange.map((leg) => (
-                <li
-                  key={leg.id}
-                  className="flex items-center justify-between rounded-xl bg-white px-3 py-2 shadow-sm"
-                >
-                  <span>
-                    {leg.travelDate} · {legRouteLabel(leg)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void removeLeg(leg)}
-                    className="text-red-700 hover:underline"
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <FlightLegQuickForm
-            groupId={groupId}
-            defaultDate={rangeStart}
-            anchorDate={datePicker.anchorDate}
-            saving={props.saving}
-            onSubmit={addTransportLegs}
-          />
-          <button
-            type="button"
-            onClick={() => setEditingField(null)}
-            className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-700"
-          >
-            Done
-          </button>
-        </SectionEditorPanel>
-      ) : null}
-
       {rangeStart ? (
         <DayOverviewActivities
           graph={graph}
@@ -1283,12 +1358,36 @@ export function DayContextPanel(props: {
       {(hasPaint || hasStay) && (
         <button
           type="button"
-          onClick={() => void clearRange()}
+          onClick={() => setPendingConfirm("clearRange")}
           className="text-sm font-medium text-red-700 hover:underline"
         >
           Clear selected range
         </button>
       )}
+
+      <TripConfirmModal
+        open={pendingConfirm === "clearRange"}
+        eyebrow="Calendar"
+        title={`Clear ${rangeLabel}?`}
+        description="Locations, stays, and activities in this selection will be removed from the calendar. This cannot be undone."
+        tone="danger"
+        confirmLabel="Clear range"
+        confirmLoading={confirmBusy}
+        onCancel={() => setPendingConfirm(null)}
+        onConfirm={() => void confirmClearRange()}
+      />
+
+      <TripConfirmModal
+        open={pendingConfirm === "removeStay"}
+        eyebrow="Accommodation"
+        title="Remove this stay?"
+        description="The stay will be removed from the calendar for this participant or group. Linked finance rows may need updating separately."
+        tone="danger"
+        confirmLabel="Remove stay"
+        confirmLoading={confirmBusy}
+        onCancel={() => setPendingConfirm(null)}
+        onConfirm={() => void confirmRemoveStay()}
+      />
 
       <AccommodationLocationConflictDialog
         open={Boolean(stayConflictDialog)}

@@ -2,11 +2,44 @@ import type { ActivityDraft, AccommodationStayDraft } from "@/lib/host/wizard/ty
 import type { TransportLegDraft, IntercityLegDraft } from "@/lib/host/wizard/types";
 import type { TripEntityGraph } from "./types";
 
+import { borrowedMainStaysForParticipant } from "./match-main-accommodation-stay";
+import { personalGroupForGroupId } from "./person-lens";
+
 export function staysForGroup(graph: TripEntityGraph, groupId: string): AccommodationStayDraft[] {
   if (groupId === graph.mainGroupId) {
     return graph.accommodationStays.filter((s) => !s.originGroupId || s.originGroupId === groupId);
   }
   return graph.accommodationStays.filter((s) => s.originGroupId === groupId);
+}
+
+/** Stays and legs that must feed calendar derivation for one group — never bleed across groups. */
+export function calendarContentScopeForGroup(
+  graph: TripEntityGraph,
+  groupId: string,
+): {
+  stays: AccommodationStayDraft[];
+  outboundLegs: TransportLegDraft[];
+  returnLegs: TransportLegDraft[];
+  intercityLegs: IntercityLegDraft[];
+} {
+  const legs = legsForGroup(graph, groupId);
+  const ownStays = staysForGroup(graph, groupId);
+  const borrowed = borrowedMainStaysForParticipant(graph, groupId);
+  const personal = personalGroupForGroupId(graph, groupId);
+  const stays =
+    groupId === graph.mainGroupId
+      ? ownStays
+      : personal?.inheritMode === "independent"
+        ? ownStays
+        : borrowed.length
+          ? [...ownStays, ...borrowed]
+          : ownStays;
+  return {
+    stays,
+    outboundLegs: groupId === graph.mainGroupId ? graph.outboundLegs : [],
+    returnLegs: groupId === graph.mainGroupId ? graph.returnLegs : [],
+    intercityLegs: legs.intercity,
+  };
 }
 
 export function legsForGroup(
@@ -56,7 +89,9 @@ export function allLegs(graph: TripEntityGraph): Array<TransportLegDraft | Inter
 }
 
 export function legsOnDate(graph: TripEntityGraph, date: string) {
-  return allLegs(graph).filter((leg) => leg.travelDate === date);
+  return allLegs(graph).filter(
+    (leg) => leg.travelDate === date && !leg.surfaceOnly,
+  );
 }
 
 export function namedStays(graph: TripEntityGraph, groupId: string): AccommodationStayDraft[] {

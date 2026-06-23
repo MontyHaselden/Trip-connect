@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { entityBookingDetails, groups, trips } from "@/lib/db/schema";
 import { applyTripSetupState, persistResetGroupFromMain } from "@/lib/host/setup/apply-setup-state";
+import { syncTransportLegsTable } from "@/lib/host/locations/apply-location-state";
 import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import { purgeTransportItineraryForRemovedLeg, reconcileTransportItineraryItems } from "@/lib/host/import/transport-itinerary-reconcile";
 import { graphToSetupState } from "./adapters";
@@ -308,13 +309,86 @@ function affectedDatesFromCommands(commands: TripCommand[]): string[] {
       for (const day of command.days) {
         if (day.date) dates.add(day.date);
       }
-    } else if (command.type === "paintDayRange") {
-      for (const iso of enumerateDates(command.rangeStart, command.rangeEnd || command.rangeStart)) {
+    } else if (
+      command.type === "paintDayRange" ||
+      command.type === "clearDayRange"
+    ) {
+      for (const iso of enumerateDates(
+        command.rangeStart,
+        command.rangeEnd || command.rangeStart,
+      )) {
         dates.add(iso);
       }
     }
   }
   return [...dates];
+}
+
+function calendarCommandsNeedStaySync(commands: TripCommand[]): boolean {
+  return commands.some(
+    (c) =>
+      c.type === "clearDayRange" ||
+      c.type === "addStay" ||
+      c.type === "updateStay" ||
+      c.type === "removeStay" ||
+      (c.type === "paintDayRange" && c.replan === true),
+  );
+}
+
+function calendarCommandsNeedTransportSync(commands: TripCommand[]): boolean {
+  return commands.some((c) => c.type === "clearDayRange");
+}
+
+function calendarCommandsNeedActivitySync(commands: TripCommand[]): boolean {
+  return commands.some((c) => c.type === "clearDayRange");
+}
+
+/** Label-only calendar edits — safe to skip full engine response round-trip. */
+export function isCalendarLabelsOnlyBatch(commands: TripCommand[]): boolean {
+  return (
+    commands.length > 0 &&
+    commands.every(
+      (c) =>
+        (c.type === "paintDayRange" && c.replan !== true) ||
+        c.type === "setDayPlaces",
+    )
+  );
+}
+
+async function persistAccommodationCalendarBatch(
+  tripId: string,
+  graph: TripEntityGraph,
+  commands: TripCommand[],
+  activeGroupId: string,
+): Promise<void> {
+  const affectedDates = affectedDatesFromCommands(commands);
+  const syncStays = calendarCommandsNeedStaySync(commands);
+  const syncTransport = calendarCommandsNeedTransportSync(commands);
+  const syncActivities = calendarCommandsNeedActivitySync(commands);
+  const isMain = activeGroupId === graph.mainGroupId;
+  const persistMode =
+    !isMain && syncStays ? ("accommodation" as const) : ("dayPlaces" as const);
+
+  await applyTripSetupState(tripId, graphToSetupState(graph), {
+    activeGroupId,
+    persistMode,
+    affectedDates:
+      persistMode === "dayPlaces" && affectedDates.length ? affectedDates : undefined,
+    syncMainAccommodationStays: syncStays && isMain,
+  });
+
+  if (syncTransport && isMain) {
+    await syncTransportLegsTable(
+      tripId,
+      graph.mainGroupId,
+      graph.outboundLegs,
+      graph.returnLegs,
+      graph.intercityLegs,
+    );
+  }
+  if (syncActivities) {
+    await syncActivitiesForTrip(tripId, graph.activities);
+  }
 }
 
 async function persistBasicsCommand(tripId: string, basics: TripEntityGraph["basics"]): Promise<void> {
@@ -424,7 +498,9 @@ export async function persistCommands(
       await applyTripSetupState(tripId, graphToSetupState(result.graph), {
         activeGroupId,
         persistMode: "dayPlaces",
-        syncMainAccommodationStays: stateCommands.some((c) => c.type === "paintDayRange"),
+        syncMainAccommodationStays: stateCommands.some(
+          (c) => c.type === "paintDayRange" && c.replan === true,
+        ),
         affectedDates: affectedDatesFromCommands(stateCommands),
       });
     } else if (isAccommodationStayBatch(stateCommands)) {
@@ -432,8 +508,14 @@ export async function persistCommands(
         activeGroupId,
         persistMode: "accommodation",
       });
+    } else if (isAccommodationOnlyBatch(stateCommands)) {
+      await persistAccommodationCalendarBatch(
+        tripId,
+        result.graph,
+        stateCommands,
+        activeGroupId,
+      );
     } else {
-      const accommodationOnly = isAccommodationOnlyBatch(stateCommands);
       const syncTransportItems = commandsNeedTransportItinerarySync(stateCommands);
       await applyTripSetupState(tripId, graphToSetupState(result.graph), {
         activeGroupId,
@@ -441,14 +523,12 @@ export async function persistCommands(
         syncTransportItems,
         syncAccommodationItems: false,
       });
-      if (!accommodationOnly) {
-        await syncActivitiesForTrip(tripId, result.graph.activities);
-        await reconcileTransportItineraryItems(tripId, {
-          outboundLegs: result.graph.outboundLegs,
-          returnLegs: result.graph.returnLegs,
-          intercityLegs: result.graph.intercityLegs,
-        });
-      }
+      await syncActivitiesForTrip(tripId, result.graph.activities);
+      await reconcileTransportItineraryItems(tripId, {
+        outboundLegs: result.graph.outboundLegs,
+        returnLegs: result.graph.returnLegs,
+        intercityLegs: result.graph.intercityLegs,
+      });
     }
   }
 

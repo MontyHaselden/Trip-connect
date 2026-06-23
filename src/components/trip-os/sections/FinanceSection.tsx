@@ -2,14 +2,24 @@
 
 import { useMemo, useState } from "react";
 
+import { downloadFinancePack } from "@/lib/trip-engine/cost-ledger/export-finance-csv";
 import { emptyCostLedgerProjection } from "@/lib/trip-engine/cost-ledger/empty-projection";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import { formatMoney, parseMoneyInput } from "@/lib/trip-engine/cost-ledger/format-money";
-import type { RosterSummary } from "@/lib/trip-engine/types";
+import {
+  PAID_BY_TYPE_LABELS,
+  PAID_BY_TYPES,
+  SUPPLIER_PAYMENT_METHOD_LABELS,
+  SUPPLIER_PAYMENT_METHODS,
+} from "@/lib/trip-engine/cost-ledger/finance-metadata";
+import type { PaidByType, SupplierPaymentMethod } from "@/lib/trip-engine/cost-ledger/finance-metadata";
+import type { RosterSummary, TripEntityGraph } from "@/lib/trip-engine/types";
+import type { CostLineItemDraft } from "@/lib/trip-engine/cost-ledger/types";
 
 import { CostLineDrawer, type CostLineFormValues } from "../costs/CostLineDrawer";
 import { FinanceSpreadsheet } from "../finance/FinanceSpreadsheet";
-import { linePayload, patchLinePayload } from "../finance/finance-line-patch";
+import { FinanceRowDetailPanel } from "../finance/FinanceRowDetailPanel";
+import { linePayload, patchLinePayload, patchParticipantAllocation } from "../finance/finance-line-patch";
 
 type FinanceAction =
   | { action: "updateSettings"; settings: Record<string, unknown> }
@@ -22,9 +32,9 @@ type FinanceAction =
   | { action: "addFund"; fund: Record<string, unknown> }
   | { action: "deleteFund"; fundId: string }
   | { action: "addPayment"; payment: Record<string, unknown> }
-  | { action: "deletePayment"; paymentId: string };
-
-import type { TripEntityGraph } from "@/lib/trip-engine/types";
+  | { action: "deletePayment"; paymentId: string }
+  | { action: "addSupplierPayment"; supplierPayment: Record<string, unknown> }
+  | { action: "deleteSupplierPayment"; supplierPaymentId: string };
 
 export function FinanceSection(props: {
   roster: RosterSummary;
@@ -34,14 +44,23 @@ export function FinanceSection(props: {
   saving?: boolean;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [detailLineId, setDetailLineId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showEmptyLines, setShowEmptyLines] = useState(true);
-  const [bottomTab, setBottomTab] = useState<"funds" | "payments">("funds");
+  const [bottomTab, setBottomTab] = useState<"funds" | "payments" | "supplier">("funds");
   const [fundName, setFundName] = useState("");
   const [fundAmount, setFundAmount] = useState("");
   const [paymentParticipantId, setPaymentParticipantId] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentLabel, setPaymentLabel] = useState("deposit");
+  const [supplierPaidTo, setSupplierPaidTo] = useState("");
+  const [supplierAmount, setSupplierAmount] = useState("");
+  const [supplierLineId, setSupplierLineId] = useState("");
+  const [supplierPaidByType, setSupplierPaidByType] = useState<PaidByType>("school_bank");
+  const [supplierPaymentMethod, setSupplierPaymentMethod] =
+    useState<SupplierPaymentMethod>("bank_transfer");
+
+  const tripName = props.graph?.basics?.name?.trim() || "Trip";
 
   const ledger = props.costLedger;
   const settings = ledger?.settings ?? {
@@ -78,6 +97,21 @@ export function FinanceSection(props: {
     setDrawerOpen(true);
   }
 
+  async function patchParticipant(
+    lineId: string,
+    participantId: string,
+    amountCents: number | null,
+  ) {
+    const line = ledgerForGrid.lineItems.find((l) => l.id === lineId);
+    const lineAlloc = ledgerForGrid.lineAllocations.find((l) => l.lineItemId === lineId);
+    if (!line || !lineAlloc) return;
+    await props.onFinanceAction({
+      action: "updateLine",
+      lineId,
+      line: patchParticipantAllocation(line, lineAlloc, participantId, amountCents),
+    });
+  }
+
   async function patchLine(lineId: string, patch: Partial<CostLineFormValues>) {
     const line = ledgerForGrid.lineItems.find((l) => l.id === lineId);
     if (!line) return;
@@ -91,6 +125,14 @@ export function FinanceSection(props: {
   async function saveLine(values: CostLineFormValues) {
     const payload = linePayload(values);
     await props.onFinanceAction({ action: "addLine", line: payload });
+  }
+
+  const detailLine = detailLineId
+    ? ledgerForGrid.lineItems.find((l) => l.id === detailLineId)
+    : null;
+
+  async function saveLineDetails(lineId: string, patch: Record<string, unknown>) {
+    await props.onFinanceAction({ action: "updateLine", lineId, line: patch });
   }
 
   async function clearEmptyLines() {
@@ -115,6 +157,18 @@ export function FinanceSection(props: {
               + Row
             </ToolbarButton>
             <ToolbarButton onClick={() => setShowSettings((v) => !v)}>Currency</ToolbarButton>
+            <ToolbarButton
+              onClick={() =>
+                downloadFinancePack({
+                  ledger: ledgerForGrid,
+                  roster: props.roster,
+                  tripName,
+                  graph: props.graph,
+                })
+              }
+            >
+              Export pack
+            </ToolbarButton>
             {emptyLineCount > 0 ? (
               <>
                 <ToolbarButton onClick={() => setShowEmptyLines((v) => !v)}>
@@ -155,6 +209,9 @@ export function FinanceSection(props: {
             graph={props.graph}
             showEmptyLines={showEmptyLines}
             onPatchLine={(lineId, patch) => void patchLine(lineId, patch)}
+            onPatchParticipant={(lineId, participantId, amountCents) =>
+              void patchParticipant(lineId, participantId, amountCents)
+            }
             onDismissLine={async (lineId) => {
               await props.onFinanceAction({ action: "dismissAndDeleteLine", lineId });
             }}
@@ -164,6 +221,8 @@ export function FinanceSection(props: {
             onRemoveLineFromTrip={async (lineId) => {
               await props.onFinanceAction({ action: "removeLineFromTrip", lineId });
             }}
+            detailLineId={detailLineId}
+            onOpenLineDetail={setDetailLineId}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
@@ -174,19 +233,25 @@ export function FinanceSection(props: {
 
       <footer className="shrink-0 border-t border-zinc-300 bg-zinc-50">
         <div className="flex border-b border-zinc-200">
-          {(["funds", "payments"] as const).map((tab) => (
+          {(
+            [
+              ["funds", "Funds in"],
+              ["payments", "Parent payments"],
+              ["supplier", "Supplier payouts"],
+            ] as const
+          ).map(([tab, label]) => (
             <button
               key={tab}
               type="button"
               onClick={() => setBottomTab(tab)}
               className={[
-                "px-4 py-2 text-[11px] font-medium capitalize",
+                "px-4 py-2 text-[11px] font-medium",
                 bottomTab === tab
                   ? "border-b-2 border-violet-600 bg-white text-zinc-900"
                   : "text-zinc-500 hover:text-zinc-800",
               ].join(" ")}
             >
-              {tab}
+              {label}
             </button>
           ))}
         </div>
@@ -216,7 +281,7 @@ export function FinanceSection(props: {
               }}
               onDelete={(id) => props.onFinanceAction({ action: "deleteFund", fundId: id })}
             />
-          ) : (
+          ) : bottomTab === "payments" ? (
             <PaymentsPanel
               ledger={ledger}
               roster={props.roster}
@@ -244,9 +309,55 @@ export function FinanceSection(props: {
               }}
               onDelete={(id) => props.onFinanceAction({ action: "deletePayment", paymentId: id })}
             />
+          ) : (
+            <SupplierPaymentsPanel
+              ledger={ledger}
+              lines={ledgerForGrid.lineItems}
+              paidTo={supplierPaidTo}
+              amount={supplierAmount}
+              lineId={supplierLineId}
+              paidByType={supplierPaidByType}
+              paymentMethod={supplierPaymentMethod}
+              currency={settings.baseCurrency}
+              onPaidTo={setSupplierPaidTo}
+              onAmount={setSupplierAmount}
+              onLineId={setSupplierLineId}
+              onPaidByType={setSupplierPaidByType}
+              onPaymentMethod={setSupplierPaymentMethod}
+              onAdd={async () => {
+                const amountCents = parseMoneyInput(supplierAmount);
+                if (amountCents <= 0) return;
+                await props.onFinanceAction({
+                  action: "addSupplierPayment",
+                  supplierPayment: {
+                    costLineItemId: supplierLineId || null,
+                    paidAt: new Date().toISOString().slice(0, 10),
+                    paidByType: supplierPaidByType,
+                    paidTo: supplierPaidTo.trim() || null,
+                    amountCents,
+                    currency: settings.baseCurrency,
+                    paymentMethod: supplierPaymentMethod,
+                  },
+                });
+                setSupplierAmount("");
+              }}
+              onDelete={(id) =>
+                props.onFinanceAction({ action: "deleteSupplierPayment", supplierPaymentId: id })
+              }
+            />
           )}
         </div>
       </footer>
+
+      {detailLine ? (
+        <FinanceRowDetailPanel
+          line={detailLine}
+          ledger={ledgerForGrid}
+          open
+          onClose={() => setDetailLineId(null)}
+          onSave={saveLineDetails}
+        />
+      ) : null}
 
       <CostLineDrawer
         open={drawerOpen}
@@ -422,6 +533,115 @@ function PaymentsPanel(props: {
           </tbody>
         </table>
       ) : null}
+    </div>
+  );
+}
+
+function SupplierPaymentsPanel(props: {
+  ledger: CostLedgerProjection | null;
+  lines: CostLineItemDraft[];
+  paidTo: string;
+  amount: string;
+  lineId: string;
+  paidByType: PaidByType;
+  paymentMethod: SupplierPaymentMethod;
+  currency: string;
+  onPaidTo: (v: string) => void;
+  onAmount: (v: string) => void;
+  onLineId: (v: string) => void;
+  onPaidByType: (v: PaidByType) => void;
+  onPaymentMethod: (v: SupplierPaymentMethod) => void;
+  onAdd: () => void;
+  onDelete: (id: string) => void;
+}) {
+  const lineById = new Map(props.lines.map((l) => [l.id, l.description]));
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <select
+          value={props.lineId}
+          onChange={(e) => props.onLineId(e.target.value)}
+          className="min-w-[8rem] rounded border border-zinc-300 px-2 py-1 text-[11px]"
+        >
+          <option value="">Link to row…</option>
+          {props.lines.map((line) => (
+            <option key={line.id} value={line.id}>
+              {line.description}
+            </option>
+          ))}
+        </select>
+        <input
+          value={props.paidTo}
+          onChange={(e) => props.onPaidTo(e.target.value)}
+          placeholder="Paid to / supplier"
+          className="min-w-[8rem] flex-1 rounded border border-zinc-300 px-2 py-1 text-[11px]"
+        />
+        <input
+          value={props.amount}
+          onChange={(e) => props.onAmount(e.target.value)}
+          placeholder="Amount"
+          className="w-24 rounded border border-zinc-300 px-2 py-1 text-[11px]"
+        />
+        <select
+          value={props.paidByType}
+          onChange={(e) => props.onPaidByType(e.target.value as PaidByType)}
+          className="rounded border border-zinc-300 px-2 py-1 text-[11px]"
+        >
+          {PAID_BY_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {PAID_BY_TYPE_LABELS[t]}
+            </option>
+          ))}
+        </select>
+        <select
+          value={props.paymentMethod}
+          onChange={(e) => props.onPaymentMethod(e.target.value as SupplierPaymentMethod)}
+          className="rounded border border-zinc-300 px-2 py-1 text-[11px]"
+        >
+          {SUPPLIER_PAYMENT_METHODS.map((m) => (
+            <option key={m} value={m}>
+              {SUPPLIER_PAYMENT_METHOD_LABELS[m]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => void props.onAdd()}
+          className="rounded border border-zinc-300 bg-white px-2 py-1 text-[11px] font-medium hover:bg-zinc-50"
+        >
+          Record payout
+        </button>
+      </div>
+      {props.ledger?.supplierPayments.length ? (
+        <table className="w-full border-collapse text-[11px]">
+          <tbody>
+            {props.ledger.supplierPayments.map((pay) => (
+              <tr key={pay.id}>
+                <td className="border border-zinc-300 px-2 py-1">
+                  {pay.paidAt} · {pay.paidTo ?? "—"}
+                  {pay.costLineItemId
+                    ? ` · ${lineById.get(pay.costLineItemId) ?? "linked row"}`
+                    : ""}
+                </td>
+                <td className="border border-zinc-300 px-2 py-1 tabular-nums">
+                  {formatMoney(pay.amountCents, pay.currency)}
+                </td>
+                <td className="border border-zinc-300 px-2 py-1">
+                  <button
+                    type="button"
+                    onClick={() => void props.onDelete(pay.id)}
+                    className="text-red-500 hover:underline"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="text-[11px] text-zinc-500">Money paid to hotels, transport operators, etc.</p>
+      )}
     </div>
   );
 }

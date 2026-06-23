@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { TripConfirmModal } from "./shared/TripConfirmModal";
 
@@ -33,10 +33,11 @@ export function TripOsParticipantUpdate(props: {
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justUpdated, setJustUpdated] = useState(false);
+  const previewLoads = useRef(0);
 
-  const loadPreview = useCallback(async () => {
+  const loadPreview = useCallback(async (options?: { silent?: boolean }) => {
     if (!inviteCode) return;
-    setLoadingPreview(true);
+    if (!options?.silent) setLoadingPreview(true);
     try {
       const res = await fetch(
         `/api/host/${encodeURIComponent(inviteCode)}/publish/preview`,
@@ -56,17 +57,18 @@ export function TripOsParticipantUpdate(props: {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load update status");
     } finally {
-      setLoadingPreview(false);
+      if (!options?.silent) setLoadingPreview(false);
     }
   }, [inviteCode]);
 
   useEffect(() => {
-    void loadPreview();
+    previewLoads.current += 1;
+    void loadPreview({ silent: previewLoads.current > 1 });
   }, [loadPreview, refreshKey]);
 
   useEffect(() => {
     if (saving) return;
-    void loadPreview();
+    void loadPreview({ silent: true });
   }, [saving, loadPreview]);
 
   const neverShared = (preview?.publishedVersion ?? 0) === 0;

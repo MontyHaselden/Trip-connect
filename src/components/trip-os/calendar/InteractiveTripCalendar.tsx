@@ -8,12 +8,10 @@ import {
   accommodationLabelForCalendarDay,
 } from "@/lib/host/setup/accommodation-calendar";
 import { weekStartMonday } from "@/lib/host/setup/calendar-bounds";
-import { tripDayHasPaintableStaySlot } from "@/lib/host/wizard/transport-day-placement";
 import type { CalendarRenderModel } from "@/lib/trip-engine/types";
 import {
   emptyGridDay,
   isTripOsDayInteractive,
-  tripContextFromModel,
 } from "./calendar-day-utils";
 import {
   buildScrollWeeks,
@@ -49,7 +47,6 @@ export function InteractiveTripCalendar(props: {
     if (target.closest("button, select, a, input, textarea, label, [role='dialog']")) return;
     props.onClearSelection();
   }
-  const tripContext = useMemo(() => tripContextFromModel(model), [model]);
 
   const dayByDate = useMemo(() => new Map(model.days.map((d) => [d.date, d])), [model.days]);
 
@@ -74,16 +71,14 @@ export function InteractiveTripCalendar(props: {
 
   function renderCell(cell: WeekCell) {
     const day = dayByDate.get(cell.iso) ?? emptyGridDay(cell.iso);
-    const travelLayout = model.travelLayoutsByDate.get(cell.iso);
     const isHomeEdge = cell.iso === model.tripStart || cell.iso === model.tripEnd;
     const edgePaintable =
       isHomeEdge &&
-      tripDayHasPaintableStaySlot(cell.iso, tripContext, travelLayout, day);
+      Boolean(day.primaryCity.trim() || day.secondaryCity?.trim());
     const isInteractive = isTripOsDayInteractive({
       iso: cell.iso,
       model,
       day,
-      travelSegments: travelLayout,
     });
     const primaryCity = day.primaryCity.trim();
     const secondaryCity = day.secondaryCity?.trim() ?? "";
@@ -112,7 +107,7 @@ export function InteractiveTripCalendar(props: {
         day={day}
         tripDayPlaces={model.days}
         isSelectable={isInteractive}
-        isHomeEdge={isHomeEdge && !edgePaintable}
+        isHomeEdge={isHomeEdge && !edgePaintable && !isInteractive}
         isToday={cell.iso === model.todayIso}
         accommodationLabel={dayAccommodationLabel}
         accommodationLeftLabel={accommodationBands.left}

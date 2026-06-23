@@ -179,7 +179,7 @@ export function accommodationSearchMode(stayType?: StayType): {
         lodgingOnly: false,
         querySuffix: "homestay",
         fieldLabel: "Homestay / host family",
-        placeholder: "Search homestays or host families…",
+        placeholder: "Search by address, homestay, or host family…",
       };
     case "multiple_hotels":
       return {

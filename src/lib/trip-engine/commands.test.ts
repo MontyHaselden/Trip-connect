@@ -164,6 +164,7 @@ describe("trip-engine applyCommands", () => {
         location: "Paris, France",
         startHalf: "right",
         endHalf: "full",
+        replan: true,
       },
     ]).graph;
 

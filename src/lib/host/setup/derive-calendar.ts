@@ -187,6 +187,8 @@ export function deriveCalendarState(input: {
   transportDraft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs" | "dayPlaces">;
   gridStart: string;
   gridEnd: string;
+  /** When false, calendar city paint comes only from stays + stored host paint — not transport legs. */
+  inferLocationsFromTransport?: boolean;
   /** When false, only named stays (+ transport legs) paint location — no stored gap fill. */
   overlayStoredLocationGaps?: boolean;
 }): DerivedCalendarState {
@@ -197,6 +199,7 @@ export function deriveCalendarState(input: {
     transportDraft,
     gridStart,
     gridEnd,
+    inferLocationsFromTransport = true,
     overlayStoredLocationGaps = true,
   } = input;
 
@@ -223,22 +226,25 @@ export function deriveCalendarState(input: {
 
   const paintedCityChange = new Set<string>();
 
-  for (const leg of intercityLegs) {
-    if (leg.surfaceOnly) continue;
-    if (leg.legKind === "city_change" || !leg.legKind) {
-      const paintDate = cityChangePaintDate(leg, named, dayPlaces);
-      if (!paintDate) continue;
-      const routeKey = `${leg.intercityFromCity.trim().toLowerCase()}→${leg.intercityToCity.trim().toLowerCase()}`;
-      if (paintedCityChange.has(routeKey)) continue;
-      paintedCityChange.add(routeKey);
-      dayPlaces = inferDayPlacesFromIntercityLeg(dayPlaces, {
-        ...leg,
-        travelDate: paintDate,
-      }, { stays: named });
+  if (inferLocationsFromTransport) {
+    for (const leg of intercityLegs) {
+      if (leg.surfaceOnly) continue;
+      if (leg.legKind === "city_change" || !leg.legKind) {
+        const paintDate = cityChangePaintDate(leg, named, dayPlaces);
+        if (!paintDate) continue;
+        const routeKey = `${leg.intercityFromCity.trim().toLowerCase()}→${leg.intercityToCity.trim().toLowerCase()}`;
+        if (paintedCityChange.has(routeKey)) continue;
+        paintedCityChange.add(routeKey);
+        dayPlaces = inferDayPlacesFromIntercityLeg(dayPlaces, {
+          ...leg,
+          travelDate: paintDate,
+        }, { stays: named });
+      }
     }
   }
 
-  const hasReturnTransport = hasScheduledReturnTransport(transportDraft, trip);
+  const hasReturnTransport =
+    inferLocationsFromTransport && hasScheduledReturnTransport(transportDraft, trip);
   const skipEndHomeLock =
     returnDepartsAfterTripEnd(transportDraft, trip.endDate) || !hasReturnTransport;
 
@@ -254,7 +260,9 @@ export function deriveCalendarState(input: {
     dayPlaces = overlayStoredHostLocations(dayPlaces, storedDayPlaces, named);
   }
 
-  dayPlaces = inferDayPlacesFromFlightLegs(dayPlaces, planeLegs, { stays: named });
+  if (inferLocationsFromTransport) {
+    dayPlaces = inferDayPlacesFromFlightLegs(dayPlaces, planeLegs, { stays: named });
+  }
 
   if (overlayStoredLocationGaps) {
     const storedDayPlaces = normalizeDayPlacesAirports(
@@ -277,12 +285,13 @@ export function deriveCalendarState(input: {
   dayPlaces = enforceHomeLocks(
     dayPlaces,
     trip,
-    flightDepartureDates(transportDraft, trip),
-    flightArrivalDates(transportDraft, trip),
+    inferLocationsFromTransport ? flightDepartureDates(transportDraft, trip) : new Set<string>(),
+    inferLocationsFromTransport ? flightArrivalDates(transportDraft, trip) : new Set<string>(),
     skipEndHomeLock,
   );
 
-  const hasOutboundTransport = hasScheduledOutboundTransport(transportDraft);
+  const hasOutboundTransport =
+    inferLocationsFromTransport && hasScheduledOutboundTransport(transportDraft);
   dayPlaces = clearOrphanOutboundHomePaint(dayPlaces, trip, hasOutboundTransport);
   dayPlaces = clearOrphanReturnHomePaint(dayPlaces, trip, hasReturnTransport);
   dayPlaces = ensurePreTripHomeBuffer(dayPlaces, trip, hasOutboundTransport);

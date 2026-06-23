@@ -14,6 +14,8 @@ import {
 } from "@/lib/host/wizard/location-stays";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
+import { protectTravelSplitDays } from "./paint-location-preflight";
+
 function emptyDay(date: string): DayPlaceDraft {
   return {
     date,
@@ -269,32 +271,48 @@ export function applyHalfDayPaint(
   if (startHalf === "full" && endHalf === "full") return days;
   const end = rangeEnd || rangeStart;
 
+  function prepForLeftHalf(day: DayPlaceDraft): DayPlaceDraft {
+    const secondary = day.secondaryCity?.trim();
+    if (secondary) {
+      return { ...day, primaryShare: day.primaryShare ?? DEFAULT_HALF_SHARE };
+    }
+    return { ...day, secondaryCity: null, primaryShare: 1 };
+  }
+
+  function prepForRightHalf(day: DayPlaceDraft): DayPlaceDraft {
+    const primary = day.primaryCity.trim();
+    if (primary) {
+      return { ...day, primaryShare: day.primaryShare ?? DEFAULT_HALF_SHARE };
+    }
+    return { ...day, primaryCity: "", primaryShare: 1 };
+  }
+
   return days.map((day) => {
     if (day.date < rangeStart || day.date > end) return day;
 
     if (rangeStart === end) {
-      if (startHalf === "left") return paintHalf({ ...day, secondaryCity: null, primaryShare: 1 }, location, "left");
-      if (startHalf === "right") return paintHalf({ ...day, primaryCity: "", primaryShare: 1 }, location, "right");
+      if (startHalf === "left") return paintHalf(prepForLeftHalf(day), location, "left");
+      if (startHalf === "right") return paintHalf(prepForRightHalf(day), location, "right");
       if (startHalf === "full" && endHalf === "left") {
-        return paintHalf({ ...day, secondaryCity: null, primaryShare: 1 }, location, "left");
+        return paintHalf(prepForLeftHalf(day), location, "left");
       }
       if (startHalf === "full" && endHalf === "right") {
-        return paintHalf({ ...day, primaryCity: "", primaryShare: 1 }, location, "right");
+        return paintHalf(prepForRightHalf(day), location, "right");
       }
       return day;
     }
 
     if (day.date === rangeStart && startHalf === "right") {
-      return paintHalf({ ...day, primaryCity: day.primaryCity, secondaryCity: null, primaryShare: 1 }, location, "right");
+      return paintHalf(prepForRightHalf(day), location, "right");
     }
     if (day.date === end && endHalf === "left") {
-      return paintHalf({ ...day, secondaryCity: null, primaryShare: 1 }, location, "left");
+      return paintHalf(prepForLeftHalf(day), location, "left");
     }
     if (day.date === rangeStart && startHalf === "left") {
-      return paintHalf({ ...day, secondaryCity: null, primaryShare: 1 }, location, "left");
+      return paintHalf(prepForLeftHalf(day), location, "left");
     }
     if (day.date === end && endHalf === "right") {
-      return paintHalf({ ...day, primaryCity: day.primaryCity, secondaryCity: null, primaryShare: 1 }, location, "right");
+      return paintHalf(prepForRightHalf(day), location, "right");
     }
     return day;
   });
@@ -386,4 +404,25 @@ export function paintLocationDayRange(
   }
 
   return result.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim());
+}
+
+/** Paint location on a calendar range, preserving travel split days at range edges. */
+export function paintLocationDayRangeProtected(
+  days: DayPlaceDraft[],
+  rangeStart: string,
+  rangeEnd: string,
+  location: string,
+  startHalf: HalfSide | "full" = "full",
+  endHalf: HalfSide | "full" = "full",
+): DayPlaceDraft[] {
+  const originals = new Map(days.map((day) => [day.date, day]));
+  const painted = paintLocationDayRange(
+    days,
+    rangeStart,
+    rangeEnd,
+    location,
+    startHalf,
+    endHalf,
+  );
+  return protectTravelSplitDays(originals, painted, rangeStart, rangeEnd, startHalf, endHalf);
 }

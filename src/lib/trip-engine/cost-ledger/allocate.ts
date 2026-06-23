@@ -5,6 +5,7 @@ import {
   eligibleParticipantIdsForLine,
   type ParticipantPresenceMap,
 } from "./presence";
+import { isAllocationBalanced, splitAmountEvenly, splitWithPinnedOverrides } from "./smart-split";
 import type {
   AllocatableItem,
   CostAllocationOverrideDraft,
@@ -58,21 +59,7 @@ export function participantsForRule(
   }
 }
 
-/** Split total cents evenly; remainder goes to first N participants. */
-export function splitAmountEvenly(totalCents: number, participantIds: string[]): Record<string, number> {
-  if (!participantIds.length || totalCents === 0) {
-    return Object.fromEntries(participantIds.map((id) => [id, 0]));
-  }
-  const base = Math.trunc(totalCents / participantIds.length);
-  let remainder = totalCents - base * participantIds.length;
-  const out: Record<string, number> = {};
-  for (const id of participantIds) {
-    const extra = remainder > 0 ? 1 : 0;
-    if (extra) remainder -= 1;
-    out[id] = base + extra;
-  }
-  return out;
-}
+export { splitAmountEvenly, splitWithPinnedOverrides, isAllocationBalanced } from "./smart-split";
 
 export function computeItemAllocations(
   item: AllocatableItem & Partial<CostLineItemDraft>,
@@ -82,20 +69,25 @@ export function computeItemAllocations(
 ): {
   allocations: Record<string, number>;
   eligibleParticipantIds: string[];
+  pinnedParticipantIds: string[];
   balanced: boolean;
 } {
   const line = item as CostLineItemDraft;
+  const itemOverrides = overrides.filter((o) => o.lineItemId === item.id);
+  const pinnedParticipantIds = itemOverrides.map((o) => o.participantId);
+  const pinnedOverrides = Object.fromEntries(
+    itemOverrides.map((o) => [o.participantId, o.amountCents]),
+  );
 
   if (item.allocationRuleType === "manual") {
-    const itemOverrides = overrides.filter((o) => o.lineItemId === item.id);
     const allocations = Object.fromEntries(
       itemOverrides.map((o) => [o.participantId, o.amountCents]),
     );
-    const allocatedTotal = Object.values(allocations).reduce((sum, n) => sum + n, 0);
     return {
       allocations,
       eligibleParticipantIds: Object.keys(allocations),
-      balanced: allocatedTotal === item.totalAmountCents,
+      pinnedParticipantIds,
+      balanced: isAllocationBalanced(item.totalAmountCents, allocations),
     };
   }
 
@@ -118,15 +110,27 @@ export function computeItemAllocations(
   }
 
   const eligibleParticipantIds = targets.map((p) => p.id);
-  const allocations = splitAmountEvenly(
-    item.totalAmountCents,
-    eligibleParticipantIds,
-  );
-  const allocatedTotal = Object.values(allocations).reduce((sum, n) => sum + n, 0);
+
+  if (itemOverrides.length > 0) {
+    const allocations = splitWithPinnedOverrides(
+      item.totalAmountCents,
+      eligibleParticipantIds,
+      pinnedOverrides,
+    );
+    return {
+      allocations,
+      eligibleParticipantIds,
+      pinnedParticipantIds,
+      balanced: isAllocationBalanced(item.totalAmountCents, allocations),
+    };
+  }
+
+  const allocations = splitAmountEvenly(item.totalAmountCents, eligibleParticipantIds);
   return {
     allocations,
     eligibleParticipantIds,
-    balanced: allocatedTotal === item.totalAmountCents,
+    pinnedParticipantIds: [],
+    balanced: isAllocationBalanced(item.totalAmountCents, allocations),
   };
 }
 

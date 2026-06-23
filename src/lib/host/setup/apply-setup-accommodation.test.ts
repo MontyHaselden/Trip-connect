@@ -86,16 +86,18 @@ function kyotoStay(): AccommodationStayDraft {
 }
 
 describe("applySetupAccommodationChange", () => {
-  it("keeps Hiroshima on the first half when a Kyoto stay checks in on a travel day", () => {
+  it("does not paint transport corridors when adding a stay", () => {
     const state = baseState();
     const next = applySetupAccommodationChange(
       { ...state, accommodationStays: [kyotoStay()] },
       "main",
     );
     const dec15 = next.dayPlacesByGroupId.main?.find((d) => d.date === "2026-12-15");
-    assert.equal(dec15?.primaryCity, "Hiroshima");
-    assert.equal(dec15?.secondaryCity, "Kyoto");
-    assert.equal(dec15?.primaryShare, TRANSPORT_CORRIDOR_LEFT_SHARE);
+    assert.notEqual(dec15?.primaryCity, "Hiroshima");
+    assert.notEqual(
+      dec15?.primaryCity === "Hiroshima" && dec15?.secondaryCity === "Kyoto",
+      true,
+    );
   });
 
   it("replaces a transport travel day when applying a stay with replaceLocationLabels", () => {
