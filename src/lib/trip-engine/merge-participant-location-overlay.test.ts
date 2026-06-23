@@ -93,6 +93,41 @@ describe("mergeParticipantLocationOverlay", () => {
     assert.equal(dec13?.secondaryCity, "Hiroshima");
   });
 
+  it("keeps an intentional departure-half clear on a return travel day", () => {
+    const merged = mergeParticipantLocationOverlay(
+      [
+        {
+          date: "2026-12-22",
+          groupId: "main",
+          primaryCity: "Tokyo",
+          secondaryCity: "Christchurch",
+          primaryShare: TRANSPORT_CORRIDOR_LEFT_SHARE,
+          dayType: "travel",
+          accommodationLabel: null,
+          transportOverlays: [],
+          activities: [],
+          warnings: [],
+          overlayMeta: "inherit",
+        },
+      ],
+      [
+        {
+          date: "2026-12-22",
+          primaryCity: "",
+          secondaryCity: "Christchurch",
+          primaryShare: TRANSPORT_CORRIDOR_LEFT_SHARE,
+          dayType: "travel",
+          includeBuffer: false,
+        },
+      ],
+    );
+
+    const dec22 = merged.find((d) => d.date === "2026-12-22");
+    assert.equal(dec22?.primaryCity, "");
+    assert.equal(dec22?.secondaryCity, "Christchurch");
+    assert.equal(dec22?.overlayMeta, "override");
+  });
+
   it("builds replacement map from matching dates", () => {
     const replacements = buildParticipantCityReplacements(mainJapanDays(), [
       {

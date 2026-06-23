@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AirportPicker } from "@/components/geo/AirportPicker";
 import { resolveFlightLookupForTrip } from "@/lib/host/setup/resolve-flight-lookup";
@@ -205,11 +205,24 @@ export function FlightLegQuickForm(props: {
   groupId: string;
   defaultDate?: string;
   anchorDate?: string;
+  prefillRoute?: { from?: string; to?: string; date?: string } | null;
   saving?: boolean;
   onSubmit: (legs: IntercityLegDraft[]) => Promise<boolean>;
 }) {
-  const [date, setDate] = useState(props.defaultDate ?? "");
-  const [rows, setRows] = useState<LegRow[]>([emptyRow()]);
+  const [date, setDate] = useState(props.defaultDate ?? props.prefillRoute?.date ?? "");
+  const [rows, setRows] = useState<LegRow[]>(() => {
+    const route = props.prefillRoute;
+    if (route?.from || route?.to) {
+      return [
+        {
+          ...emptyRow(),
+          from: route.from ?? "",
+          to: route.to ?? "",
+        },
+      ];
+    }
+    return [emptyRow()];
+  });
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -219,6 +232,20 @@ export function FlightLegQuickForm(props: {
   const filledRows = rows.filter((row) => row.flight.trim());
   const submitLabel =
     filledRows.length > 1 ? `Add ${filledRows.length} flights` : "Add flight";
+
+  useEffect(() => {
+    if (!props.prefillRoute) return;
+    if (props.prefillRoute.date) setDate(props.prefillRoute.date);
+    if (props.prefillRoute.from || props.prefillRoute.to) {
+      setRows([
+        {
+          ...emptyRow(),
+          from: props.prefillRoute.from ?? "",
+          to: props.prefillRoute.to ?? "",
+        },
+      ]);
+    }
+  }, [props.prefillRoute?.date, props.prefillRoute?.from, props.prefillRoute?.to, props.prefillRoute]);
 
   function updateRow(id: string, patch: Partial<LegRow>) {
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));

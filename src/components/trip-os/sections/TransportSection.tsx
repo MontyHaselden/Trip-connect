@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { DateTime } from "luxon";
 
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
@@ -8,7 +8,9 @@ import type { TripCommand } from "@/lib/trip-engine/commands";
 import { legsForGroup } from "@/lib/trip-engine/selectors";
 import {
   cityMoveToPlaceholderLeg,
-  pendingCityMovesFromCalendar,
+  pendingNeedLabel,
+  pendingTransportNeedsFromCalendar,
+  type PendingTransportNeed,
 } from "@/lib/trip-engine/pending-city-moves";
 import { legScheduleSummary, legTransportTypeLabel } from "@/lib/host/setup/repair-transport-legs";
 import type { IntercityLegDraft, TransportLegDraft } from "@/lib/host/wizard/types";
@@ -36,9 +38,15 @@ export function TransportSection(props: {
   const legs = legsForGroup(props.graph, props.groupId);
   const all = [...legs.outbound, ...legs.return, ...legs.intercity];
   const [adding, setAdding] = useState(false);
+  const [flightPrefill, setFlightPrefill] = useState<{
+    date: string;
+    from?: string;
+    to?: string;
+  } | null>(null);
+  const flightFormRef = useRef<HTMLDivElement | null>(null);
 
-  const pendingMoves = useMemo(
-    () => pendingCityMovesFromCalendar(props.graph, props.groupId),
+  const pendingNeeds = useMemo(
+    () => pendingTransportNeedsFromCalendar(props.graph, props.groupId),
     [props.graph, props.groupId],
   );
 
@@ -51,13 +59,15 @@ export function TransportSection(props: {
   async function addLegs(legsToAdd: IntercityLegDraft[]) {
     setAdding(true);
     try {
-      return await props.onDispatch([
+      const ok = await props.onDispatch([
         {
           type: "addClassifiedTransportLegs" as const,
           groupId: props.groupId,
           legs: legsToAdd,
         },
       ]);
+      if (ok) setFlightPrefill(null);
+      return ok;
     } finally {
       setAdding(false);
     }
@@ -74,47 +84,71 @@ export function TransportSection(props: {
     ]);
   }
 
-  function addPlaceholderForMove(move: (typeof pendingMoves)[number]) {
+  function addPlaceholderForMove(need: PendingTransportNeed) {
     void props.onDispatch([
       {
         type: "addClassifiedTransportLegs",
         groupId: props.groupId,
-        legs: [cityMoveToPlaceholderLeg(move, props.groupId)],
+        legs: [cityMoveToPlaceholderLeg(need, props.groupId, need.kind)],
       },
     ]);
+  }
+
+  function openFlightFormForNeed(need: PendingTransportNeed) {
+    setFlightPrefill({
+      date: need.date,
+      from: need.fromCity,
+      to: need.toCity,
+    });
+    flightFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function needActionLabel(need: PendingTransportNeed): string {
+    return need.kind === "intercity" ? "Add leg" : "Add flight";
   }
 
   return (
     <TripSectionShell
       eyebrow="Advanced"
       title="Transport"
-      description="Flights and intercity legs live here. When you paint a city change on the calendar (e.g. Kyoto → Tokyo), add the matching leg below."
+      description="Add outbound and return flights with a flight number — they appear in Finance. Intercity legs match city changes on the calendar."
     >
-      {pendingMoves.length ? (
+      {pendingNeeds.length ? (
         <TripSoftPanel title="From your calendar">
           <p className="text-xs text-zinc-500">
-            These city changes are on the calendar but don&apos;t have a transport leg yet.
+            These routes are on the calendar but don&apos;t have transport yet. Outbound and return
+            flights use the flight form below and sync to Finance.
           </p>
           <ul className="mt-3 space-y-2">
-            {pendingMoves.map((move) => (
+            {pendingNeeds.map((need) => (
               <li
-                key={`${move.date}:${move.fromCity}:${move.toCity}`}
+                key={`${need.kind}:${need.date}:${need.fromCity}:${need.toCity}`}
                 className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5"
               >
                 <div className="min-w-0 text-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                    {pendingNeedLabel(need)}
+                  </p>
                   <p className="font-medium text-amber-950">
-                    {move.fromCity} → {move.toCity}
+                    {need.fromCity} → {need.toCity}
                   </p>
                   <p className="text-xs text-amber-800">
-                    {DateTime.fromISO(move.date).toFormat("d MMM yyyy")} · How are you getting there?
+                    {DateTime.fromISO(need.date).toFormat("d MMM yyyy")}
+                    {need.kind === "intercity"
+                      ? " · How are you getting there?"
+                      : " · Enter flight number below"}
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => addPlaceholderForMove(move)}
+                  onClick={() =>
+                    need.kind === "intercity"
+                      ? addPlaceholderForMove(need)
+                      : openFlightFormForNeed(need)
+                  }
                   className="shrink-0 rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-950"
                 >
-                  Add leg
+                  {needActionLabel(need)}
                 </button>
               </li>
             ))}
@@ -145,28 +179,31 @@ export function TransportSection(props: {
             </div>
           </li>
         ))}
-        {!all.length && !pendingMoves.length ? (
+        {!all.length && !pendingNeeds.length ? (
           <li className="rounded-2xl bg-zinc-50/80 px-4 py-6 text-center text-sm text-zinc-500">
             No transport legs yet. Paint a city change on the calendar or add a flight below.
           </li>
         ) : null}
       </ul>
-      <TripSoftPanel title="Add flight">
-        <p className="text-xs text-zinc-500">
-          Enter departure date and flight number — we&apos;ll look up the schedule. Use &ldquo;Add
-          connection leg&rdquo; for multi-leg routes. Open &ldquo;Placeholder flights&rdquo; only if
-          lookup fails.
-        </p>
-        <div className="mt-3">
-          <FlightLegQuickForm
-            groupId={props.groupId}
-            defaultDate={props.selectedDate ?? undefined}
-            anchorDate={datePicker.anchorDate}
-            saving={adding}
-            onSubmit={addLegs}
-          />
-        </div>
-      </TripSoftPanel>
+      <div ref={flightFormRef}>
+        <TripSoftPanel title="Add flight">
+          <p className="text-xs text-zinc-500">
+            Enter departure date and flight number — we&apos;ll look up the schedule. Outbound and
+            return flights are classified automatically and appear in the Finance transport section.
+          </p>
+          <div className="mt-3">
+            <FlightLegQuickForm
+              key={`${flightPrefill?.date ?? "default"}:${flightPrefill?.from ?? ""}:${flightPrefill?.to ?? ""}`}
+              groupId={props.groupId}
+              defaultDate={props.selectedDate ?? undefined}
+              anchorDate={datePicker.anchorDate}
+              prefillRoute={flightPrefill}
+              saving={adding}
+              onSubmit={addLegs}
+            />
+          </div>
+        </TripSoftPanel>
+      </div>
     </TripSectionShell>
   );
 }

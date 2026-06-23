@@ -1,5 +1,9 @@
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
+import type { NightPairSelection } from "@/lib/host/setup/night-pair-selection";
+import type { TripSetupState } from "@/lib/host/setup/types";
+
+import { clearAllLocationInSpan } from "./paint-day-range";
 import { isTravelSplitDay } from "./paint-location-preflight";
 import type { TripEntityGraph } from "./types";
 
@@ -29,13 +33,50 @@ export function mergeMainWithPersonalOverlay(
   graph: TripEntityGraph,
   groupId: string,
 ): DayPlaceDraft[] {
-  const mainDays = graph.dayPlacesByGroupId[graph.mainGroupId] ?? [];
-  const overlayDays = graph.dayPlacesByGroupId[groupId] ?? [];
+  return mergeMainWithPersonalOverlayDays(graph.mainGroupId, graph.dayPlacesByGroupId, groupId);
+}
+
+function mergeMainWithPersonalOverlayDays(
+  mainGroupId: string,
+  dayPlacesByGroupId: Record<string, DayPlaceDraft[]>,
+  groupId: string,
+): DayPlaceDraft[] {
+  const mainDays = dayPlacesByGroupId[mainGroupId] ?? [];
+  const overlayDays = dayPlacesByGroupId[groupId] ?? [];
   const byDate = new Map(mainDays.map((day) => [day.date, day]));
   for (const day of overlayDays) {
     if (dayHasPaint(day)) byDate.set(day.date, day);
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function isPersonalOverlayGroup(state: TripSetupState, groupId: string): boolean {
+  const group = state.groups?.find((g) => g.id === groupId);
+  return Boolean(group?.personalForParticipantId && group.inheritMode === "overlay");
+}
+
+/** Clear inherited main paint for a personal overlay group and return the stored delta. */
+export function clearPersonalOverlayLocationInSpan(
+  state: TripSetupState,
+  groupId: string,
+  selection: NightPairSelection,
+): DayPlaceDraft[] {
+  const mainDays = state.dayPlacesByGroupId[state.mainGroupId] ?? [];
+  const existingOverlay = state.dayPlacesByGroupId[groupId] ?? [];
+  const merged = mergeMainWithPersonalOverlayDays(
+    state.mainGroupId,
+    state.dayPlacesByGroupId,
+    groupId,
+  );
+  const clearedMerged = clearAllLocationInSpan(merged, selection);
+  const end = selection.rangeEnd || selection.rangeStart;
+  return extractPersonalLocationOverlayDelta(
+    mainDays,
+    clearedMerged,
+    existingOverlay,
+    selection.rangeStart,
+    end,
+  );
 }
 
 function repairOverlayTravelDay(
@@ -56,11 +97,18 @@ function repairOverlayTravelDay(
   };
 }
 
-function shouldOmitOverlayDate(mainDay: DayPlaceDraft | undefined, paintedDay: DayPlaceDraft): boolean {
+function shouldOmitOverlayDate(
+  mainDay: DayPlaceDraft | undefined,
+  paintedDay: DayPlaceDraft,
+  rangeStart: string,
+  rangeEnd: string,
+): boolean {
   if (!mainDay || !isTravelSplitDay(mainDay)) return false;
   if (isTravelSplitDay(paintedDay)) return false;
-  // Full-range paint flattened a corridor day — corridor replacement handles display.
-  return true;
+  const end = rangeEnd || rangeStart;
+  // Multi-day paints flatten corridor days — corridor replacement handles display.
+  if (rangeStart !== end) return true;
+  return false;
 }
 
 /**
@@ -89,7 +137,7 @@ export function extractPersonalLocationOverlayDelta(
     if (!dayHasPaint(paintedDay)) continue;
 
     const mainDay = mainByDate.get(date);
-    if (shouldOmitOverlayDate(mainDay, paintedDay)) continue;
+    if (shouldOmitOverlayDate(mainDay, paintedDay, rangeStart, end)) continue;
 
     const normalized = mainDay ? repairOverlayTravelDay(mainDay, paintedDay) : paintedDay;
     if (mainDay && daysLocationEqual(normalized, mainDay)) continue;

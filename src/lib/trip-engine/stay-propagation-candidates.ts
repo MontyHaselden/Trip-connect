@@ -1,6 +1,10 @@
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
-import { buildParticipantPresenceMap, participantEligibleForStay } from "@/lib/trip-engine/cost-ledger/presence";
+import {
+  buildParticipantPresenceMap,
+  participantEligibleForStay,
+} from "@/lib/trip-engine/cost-ledger/presence";
+import type { ResolvedParticipantPlan } from "@/lib/trip-engine/resolve-participant-graph";
 import type { RosterSummary, TripEntityGraph } from "@/lib/trip-engine/types";
 
 export type StayPropagationCandidate = {
@@ -24,20 +28,24 @@ function daysLocationEqual(a: DayPlaceDraft, b: DayPlaceDraft): boolean {
   );
 }
 
-/** Participants on trip during the stay who have personal location/stay overrides in that window. */
-export function findStayPropagationCandidates(
+function participantPresentDuringRange(
+  plan: ResolvedParticipantPlan,
+  range: { checkIn: string; checkOut: string },
+): boolean {
+  for (const date of plan.daysByDate.keys()) {
+    if (date >= range.checkIn && date < range.checkOut) return true;
+  }
+  return false;
+}
+
+/** Participants on trip during a change who have personal location/stay overrides in that window. */
+export function findMainGroupPropagationCandidates(
   graph: TripEntityGraph,
   roster: RosterSummary,
   range: { checkIn: string; checkOut: string },
-  stayCityLabel: string,
+  options?: { stayCityLabel?: string },
 ): StayPropagationCandidate[] {
   const presence = buildParticipantPresenceMap(graph, roster);
-  const draftStay = {
-    id: "__draft__",
-    cityLabel: stayCityLabel,
-    checkInDate: range.checkIn,
-    checkOutDate: range.checkOut,
-  };
   const mainDays = graph.dayPlacesByGroupId[graph.mainGroupId] ?? [];
   const candidates: StayPropagationCandidate[] = [];
 
@@ -45,7 +53,17 @@ export function findStayPropagationCandidates(
     if (participant.role === "host") continue;
 
     const plan = presence.get(participant.id);
-    if (!plan || !participantEligibleForStay(plan, draftStay)) continue;
+    if (!plan) continue;
+
+    const onTrip = options?.stayCityLabel
+      ? participantEligibleForStay(plan, {
+          id: "__draft__",
+          cityLabel: options.stayCityLabel,
+          checkInDate: range.checkIn,
+          checkOutDate: range.checkOut,
+        })
+      : participantPresentDuringRange(plan, range);
+    if (!onTrip) continue;
 
     const personalGroup = graph.groups.find(
       (g) => g.personalForParticipantId === participant.id && !g.isMain,
@@ -79,6 +97,16 @@ export function findStayPropagationCandidates(
   }
 
   return candidates;
+}
+
+/** Participants on trip during the stay who have personal location/stay overrides in that window. */
+export function findStayPropagationCandidates(
+  graph: TripEntityGraph,
+  roster: RosterSummary,
+  range: { checkIn: string; checkOut: string },
+  stayCityLabel: string,
+): StayPropagationCandidate[] {
+  return findMainGroupPropagationCandidates(graph, roster, range, { stayCityLabel });
 }
 
 export function buildStayPropagationCommands(

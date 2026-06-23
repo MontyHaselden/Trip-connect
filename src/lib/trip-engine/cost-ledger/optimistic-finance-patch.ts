@@ -63,13 +63,25 @@ export function applyOptimisticFinancePatch(
   payload: Record<string, unknown>,
 ): CostLedgerProjection | null {
   const action = payload.action;
+  const raw = projectionToRaw(ledger);
+
+  if (action === "deleteLines") {
+    const lineIds = payload.lineIds;
+    if (!Array.isArray(lineIds) || !lineIds.every((id) => typeof id === "string")) {
+      return null;
+    }
+    const remove = new Set(lineIds as string[]);
+    raw.lineItems = raw.lineItems.filter((line) => !remove.has(line.id));
+    raw.overrides = raw.overrides.filter((row) => !remove.has(row.lineItemId));
+    return projectCostLedger(raw, roster, graph ?? undefined);
+  }
+
   if (action !== "updateLine") return null;
 
   const lineId = payload.lineId;
   const patch = payload.line;
   if (typeof lineId !== "string" || !patch || typeof patch !== "object") return null;
 
-  const raw = projectionToRaw(ledger);
   const lineIndex = raw.lineItems.findIndex((line) => line.id === lineId);
   if (lineIndex < 0) return null;
 

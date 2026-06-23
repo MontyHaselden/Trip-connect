@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { setupStateToGraph } from "./adapters";
-import { pendingCityMovesFromCalendar } from "./pending-city-moves";
+import {
+  detectMissingOutboundFlight,
+  pendingTransportNeedsFromCalendar,
+} from "./pending-city-moves";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
 function baseState(): TripSetupState {
@@ -66,14 +69,79 @@ function baseState(): TripSetupState {
   };
 }
 
-describe("pendingCityMovesFromCalendar", () => {
+function japanOutboundState(): TripSetupState {
+  return {
+    ...baseState(),
+    basics: {
+      ...baseState().basics,
+      startDate: "2026-12-05",
+      endDate: "2026-12-21",
+    },
+    dayPlacesByGroupId: {
+      main: [
+        {
+          date: "2026-12-05",
+          primaryCity: "Christchurch",
+          secondaryCity: "Tokyo, Japan",
+          primaryShare: 0.5,
+          dayType: "travel",
+          includeBuffer: false,
+        },
+        {
+          date: "2026-12-06",
+          primaryCity: "Tokyo, Japan",
+          secondaryCity: "Kagoshima",
+          primaryShare: 0.5,
+          dayType: "travel",
+          includeBuffer: false,
+        },
+        {
+          date: "2026-12-21",
+          primaryCity: "Tokyo",
+          secondaryCity: "Christchurch, New Zealand",
+          primaryShare: 0.5,
+          dayType: "travel",
+          includeBuffer: false,
+        },
+      ],
+    },
+  };
+}
+
+describe("detectMissingOutboundFlight", () => {
+  it("flags Christchurch to Tokyo on the first trip day", () => {
+    const state = japanOutboundState();
+    const move = detectMissingOutboundFlight(
+      state.dayPlacesByGroupId.main ?? [],
+      state.basics,
+    );
+    assert.ok(move);
+    assert.equal(move.fromCity, "Christchurch");
+    assert.match(move.toCity, /Tokyo/i);
+    assert.equal(move.date, "2026-12-05");
+  });
+});
+
+describe("pendingTransportNeedsFromCalendar", () => {
   it("flags Kyoto → Tokyo travel split when no intercity leg exists", () => {
     const graph = setupStateToGraph("trip-1", baseState());
-    const pending = pendingCityMovesFromCalendar(graph, "main");
+    const pending = pendingTransportNeedsFromCalendar(graph, "main");
     assert.equal(pending.length, 1);
     assert.equal(pending[0]?.fromCity, "Kyoto");
     assert.equal(pending[0]?.toCity, "Tokyo");
     assert.equal(pending[0]?.date, "2026-12-23");
+    assert.equal(pending[0]?.kind, "intercity");
+  });
+
+  it("includes outbound and return flights for a Japan trip", () => {
+    const graph = setupStateToGraph("trip-1", japanOutboundState());
+    const pending = pendingTransportNeedsFromCalendar(graph, "main");
+    const kinds = pending.map((need) => need.kind);
+    assert.ok(kinds.includes("outbound_flight"));
+    assert.ok(kinds.includes("return_flight"));
+    const outbound = pending.find((need) => need.kind === "outbound_flight");
+    assert.equal(outbound?.fromCity, "Christchurch");
+    assert.match(outbound?.toCity ?? "", /Tokyo/i);
   });
 
   it("clears pending move when matching intercity leg exists", () => {
@@ -101,6 +169,32 @@ describe("pendingCityMovesFromCalendar", () => {
       },
     ];
     const graph = setupStateToGraph("trip-1", state);
-    assert.equal(pendingCityMovesFromCalendar(graph, "main").length, 0);
+    assert.equal(pendingTransportNeedsFromCalendar(graph, "main").length, 0);
+  });
+
+  it("clears outbound flight when matching outbound leg exists", () => {
+    const state = japanOutboundState();
+    state.outboundLegs = [
+      {
+        id: "out-1",
+        transportType: "plane",
+        bookingStatus: "not_booked",
+        travelDate: "2026-12-05",
+        arrivalDate: "2026-12-05",
+        departureTime: null,
+        arrivalTime: null,
+        fromCity: "Christchurch",
+        toCity: "Tokyo",
+        fromStation: "CHC",
+        toStation: "NRT",
+        operator: null,
+        referenceNumber: null,
+        flightNumber: "NZ99",
+        notes: null,
+      },
+    ];
+    const graph = setupStateToGraph("trip-1", state);
+    const pending = pendingTransportNeedsFromCalendar(graph, "main");
+    assert.ok(!pending.some((need) => need.kind === "outbound_flight"));
   });
 });

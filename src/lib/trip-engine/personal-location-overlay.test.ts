@@ -264,6 +264,47 @@ describe("personal location overlay", () => {
     assert.equal(delta[0]?.date, "2026-12-12");
   });
 
+  it("clearDayRange on personal overlay clears inherited main paint on one half", () => {
+    const state: TripSetupState = {
+      ...japanAmandaFixture(),
+      basics: {
+        ...japanAmandaFixture().basics,
+        endDate: "2026-12-22",
+      },
+      dayPlacesByGroupId: {
+        "g-main": [
+          ...(japanAmandaFixture().dayPlacesByGroupId["g-main"] ?? []),
+          {
+            date: "2026-12-22",
+            primaryCity: "Tokyo",
+            secondaryCity: "Christchurch",
+            primaryShare: TRANSPORT_CORRIDOR_LEFT_SHARE,
+            dayType: "travel" as const,
+            includeBuffer: false,
+          },
+        ],
+        "g-amanda": [],
+      },
+    };
+
+    const graph = setupStateToGraph("trip-1", state);
+    const result = applyCommands(graph, [
+      {
+        type: "clearDayRange",
+        groupId: "g-amanda",
+        rangeStart: "2026-12-22",
+        rangeEnd: "2026-12-22",
+        startHalf: "left",
+        endHalf: "left",
+      },
+    ]);
+
+    const personal = projectCalendar(result.graph, { groupId: "g-amanda" });
+    const dec22 = personal.days.find((d) => d.date === "2026-12-22");
+    assert.equal(dec22?.primaryCity, "");
+    assert.equal(dec22?.secondaryCity, "Christchurch");
+  });
+
   it("staysForCalendarView surfaces inherited main homestay for location overlay", () => {
     const graph = setupStateToGraph("trip-1", japanAmandaFixture());
     const result = applyCommands(graph, [

@@ -88,12 +88,22 @@ function repairOverlayTravelDay(
   }
 
   const mainLeft = cityOnHalf(toDayPlace(mainDay), "left").trim();
-  const replacement =
-    replacements.get(locationPaletteKey(mainLeft)) ?? mainLeft;
+  const mainRight = cityOnHalf(toDayPlace(mainDay), "right").trim();
+  const replacement = replacements.get(locationPaletteKey(mainLeft));
+  const arrivalMatchesMain = locationsMatch(secondary, mainRight);
+
+  // Participant cleared the departure half while keeping the main arrival city.
+  if (arrivalMatchesMain && !replacement) {
+    return {
+      ...mainDay,
+      ...locationFieldsFromOverlay(overlay),
+      overlayMeta: "override",
+    };
+  }
 
   return {
     ...mainDay,
-    primaryCity: replacement || mainDay.primaryCity,
+    primaryCity: replacement ?? (mainLeft || mainDay.primaryCity),
     secondaryCity: secondary || mainDay.secondaryCity,
     primaryShare: mainDay.primaryShare,
     dayType: mainDay.dayType,

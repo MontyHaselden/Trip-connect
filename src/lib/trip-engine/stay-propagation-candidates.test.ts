@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   buildStayPropagationCommands,
+  findMainGroupPropagationCandidates,
   findStayPropagationCandidates,
 } from "./stay-propagation-candidates";
 import type { TripEntityGraph } from "./types";
@@ -165,6 +166,19 @@ describe("findStayPropagationCandidates", () => {
     );
     assert.equal(candidates.length, 1);
     assert.equal(candidates[0]?.participantId, "p-amanda");
+  });
+});
+
+describe("findMainGroupPropagationCandidates", () => {
+  it("includes location-only overrides without requiring stay city match", () => {
+    const candidates = findMainGroupPropagationCandidates(
+      baseGraph(),
+      roster,
+      { checkIn: "2026-12-05", checkOut: "2026-12-06" },
+    );
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0]?.participantId, "p-amanda");
+    assert.equal(candidates[0]?.hasLocationOverride, true);
   });
 });
 

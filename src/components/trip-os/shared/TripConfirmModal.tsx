@@ -14,6 +14,7 @@ export function TripConfirmModal(props: {
   cancelLabel?: string;
   confirmLabel: string;
   confirmLoading?: boolean;
+  confirmDisabled?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
   children?: ReactNode;
@@ -27,6 +28,7 @@ export function TripConfirmModal(props: {
     cancelLabel = "Cancel",
     confirmLabel,
     confirmLoading,
+    confirmDisabled,
     onCancel,
     onConfirm,
     children,
@@ -97,7 +99,7 @@ export function TripConfirmModal(props: {
           <TripPrimaryButton
             variant={tone === "danger" ? "dark" : "violet"}
             onClick={onConfirm}
-            disabled={confirmLoading}
+            disabled={confirmLoading || confirmDisabled}
           >
             {confirmLoading ? "Applying…" : confirmLabel}
           </TripPrimaryButton>

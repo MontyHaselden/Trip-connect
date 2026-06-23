@@ -28,6 +28,11 @@ type FinanceAction =
   | { action: "deleteLine"; lineId: string }
   | { action: "dismissAndDeleteLine"; lineId: string }
   | { action: "removeLineFromTrip"; lineId: string }
+  | {
+      action: "deleteLines";
+      lineIds: string[];
+      mode: "financeOnly" | "removeFromTrip";
+    }
   | { action: "deleteEmptyLines" }
   | { action: "addFund"; fund: Record<string, unknown> }
   | { action: "deleteFund"; fundId: string }
@@ -220,6 +225,9 @@ export function FinanceSection(props: {
             }}
             onRemoveLineFromTrip={async (lineId) => {
               await props.onFinanceAction({ action: "removeLineFromTrip", lineId });
+            }}
+            onDeleteLines={async (lineIds, mode) => {
+              await props.onFinanceAction({ action: "deleteLines", lineIds, mode });
             }}
             detailLineId={detailLineId}
             onOpenLineDetail={setDetailLineId}

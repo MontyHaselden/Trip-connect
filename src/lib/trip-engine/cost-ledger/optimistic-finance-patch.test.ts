@@ -122,4 +122,15 @@ describe("applyOptimisticFinancePatch", () => {
     assert.equal(alloc?.allocations.p2, 15000);
     assert.deepEqual(alloc?.pinnedParticipantIds, ["p1"]);
   });
+
+  it("removes deleted rows immediately", () => {
+    const next = applyOptimisticFinancePatch(ledger(), roster, null, {
+      action: "deleteLines",
+      lineIds: ["line-1"],
+      mode: "financeOnly",
+    });
+    assert.ok(next);
+    assert.equal(next.lineItems.length, 0);
+    assert.equal(next.tripGrossCents, 0);
+  });
 });

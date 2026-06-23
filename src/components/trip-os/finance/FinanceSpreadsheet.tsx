@@ -98,6 +98,10 @@ export function FinanceSpreadsheet(props: {
   onDismissLine?: (lineId: string) => Promise<void>;
   onDeleteLine?: (lineId: string) => Promise<void>;
   onRemoveLineFromTrip?: (lineId: string) => Promise<void>;
+  onDeleteLines?: (
+    lineIds: string[],
+    mode: "financeOnly" | "removeFromTrip",
+  ) => Promise<void>;
   detailLineId?: string | null;
   onOpenLineDetail?: (lineId: string) => void;
 }) {
@@ -177,23 +181,33 @@ export function FinanceSpreadsheet(props: {
   }
 
   async function confirmFinanceOnlyDelete(lines: CostLineItemDraft[]) {
-    for (const line of lines) {
-      const linked = Boolean(
-        line.linkedStayId || line.linkedTransportLegId || line.linkedActivityId,
-      );
-      if (linked && props.onDismissLine) await props.onDismissLine(line.id);
-      else if (props.onDeleteLine) await props.onDeleteLine(line.id);
+    const lineIds = lines.map((line) => line.id);
+    if (props.onDeleteLines) {
+      await props.onDeleteLines(lineIds, "financeOnly");
+    } else {
+      for (const line of lines) {
+        const linked = Boolean(
+          line.linkedStayId || line.linkedTransportLegId || line.linkedActivityId,
+        );
+        if (linked && props.onDismissLine) await props.onDismissLine(line.id);
+        else if (props.onDeleteLine) await props.onDeleteLine(line.id);
+      }
     }
     setSelectedLineIds(new Set());
   }
 
   async function confirmRemoveFromTrip(lines: CostLineItemDraft[]) {
-    for (const line of lines) {
-      const linked = Boolean(
-        line.linkedStayId || line.linkedTransportLegId || line.linkedActivityId,
-      );
-      if (linked && props.onRemoveLineFromTrip) await props.onRemoveLineFromTrip(line.id);
-      else if (props.onDeleteLine) await props.onDeleteLine(line.id);
+    const lineIds = lines.map((line) => line.id);
+    if (props.onDeleteLines) {
+      await props.onDeleteLines(lineIds, "removeFromTrip");
+    } else {
+      for (const line of lines) {
+        const linked = Boolean(
+          line.linkedStayId || line.linkedTransportLegId || line.linkedActivityId,
+        );
+        if (linked && props.onRemoveLineFromTrip) await props.onRemoveLineFromTrip(line.id);
+        else if (props.onDeleteLine) await props.onDeleteLine(line.id);
+      }
     }
     setSelectedLineIds(new Set());
   }

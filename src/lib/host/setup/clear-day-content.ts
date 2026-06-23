@@ -4,6 +4,7 @@ import type { NightPairSelection } from "@/lib/host/setup/night-pair-selection";
 import { removeAccommodationAndCitiesFromRange } from "@/lib/host/setup/remove-accommodation-range";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import type { TripSetupState } from "@/lib/host/setup/types";
+import { isPersonalOverlayGroup } from "@/lib/trip-engine/personal-location-overlay";
 import {
   clearCheckoutLocationDay,
   clearFullLocationDaysAfter,
@@ -80,23 +81,25 @@ export function clearCalendarContentInRange(
     endHalf,
   });
 
-  const { checkOut } = stayDatesForSelection({
-    rangeStart: selection.rangeStart,
-    rangeEnd: end,
-    startHalf,
-    endHalf,
-  });
-  const clearedDays = clearCheckoutLocationDay(
-    clearFullLocationDaysAfter(next.dayPlacesByGroupId[groupId] ?? [], checkOut),
-    checkOut,
-  );
-  next = {
-    ...next,
-    dayPlacesByGroupId: {
-      ...next.dayPlacesByGroupId,
-      [groupId]: clearedDays,
-    },
-  };
+  if (!isPersonalOverlayGroup(state, groupId)) {
+    const { checkOut } = stayDatesForSelection({
+      rangeStart: selection.rangeStart,
+      rangeEnd: end,
+      startHalf,
+      endHalf,
+    });
+    const clearedDays = clearCheckoutLocationDay(
+      clearFullLocationDaysAfter(next.dayPlacesByGroupId[groupId] ?? [], checkOut),
+      checkOut,
+    );
+    next = {
+      ...next,
+      dayPlacesByGroupId: {
+        ...next.dayPlacesByGroupId,
+        [groupId]: clearedDays,
+      },
+    };
+  }
 
   const clearedDates = new Set(enumerateDates(selection.rangeStart, end));
   next = {

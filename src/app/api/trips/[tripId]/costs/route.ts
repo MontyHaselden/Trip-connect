@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { requireHostSessionHostId } from "@/lib/auth/host-session";
@@ -25,6 +25,7 @@ import {
   loadFinanceDismissals,
 } from "@/lib/trip-engine/cost-ledger/finance-dismissals";
 import { syncCostLedgerFromGraph } from "@/lib/trip-engine/cost-ledger/sync-cost-ledger-from-graph";
+import { bulkDeleteFinanceLines } from "@/lib/trip-engine/cost-ledger/bulk-delete-finance-lines";
 import { persistCommands } from "@/lib/trip-engine/persist-command";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 
@@ -404,6 +405,10 @@ export async function PATCH(
       if (commands.length) {
         await persistCommands(tripId, graph, commands);
       }
+    } else if (action === "deleteLines") {
+      const lineIds = z.array(z.string().uuid()).min(1).parse(json.lineIds);
+      const mode = json.mode === "removeFromTrip" ? "removeFromTrip" : "financeOnly";
+      await bulkDeleteFinanceLines(tripId, lineIds, mode);
     } else if (action === "deleteEmptyLines") {
       await db
         .delete(costLineItems)
