@@ -5,6 +5,12 @@ import {
   eligibleParticipantIdsForLine,
   type ParticipantPresenceMap,
 } from "./presence";
+import {
+  participantNightsAtStay,
+  splitByNightUnits,
+  splitWithPinnedOverridesByNights,
+  stayForLine,
+} from "./accommodation-nights";
 import { isAllocationBalanced, splitAmountEvenly, splitWithPinnedOverrides } from "./smart-split";
 import type {
   AllocatableItem,
@@ -112,11 +118,43 @@ export function computeItemAllocations(
   const eligibleParticipantIds = targets.map((p) => p.id);
 
   if (itemOverrides.length > 0) {
-    const allocations = splitWithPinnedOverrides(
-      item.totalAmountCents,
-      eligibleParticipantIds,
-      pinnedOverrides,
-    );
+    const allocations =
+      line.linkedStayId && item.quantity && item.quantity > 0 && ctx.graph && ctx.presence
+        ? (() => {
+            const stay = stayForLine(line, ctx.graph);
+            if (!stay) {
+              return splitWithPinnedOverrides(
+                item.totalAmountCents,
+                eligibleParticipantIds,
+                pinnedOverrides,
+              );
+            }
+            const nightUnits = Object.fromEntries(
+              eligibleParticipantIds.map((id) => {
+                const plan = ctx.presence!.get(id);
+                return [id, plan ? participantNightsAtStay(plan, stay) : 0];
+              }),
+            );
+            const hasNightWeights = Object.values(nightUnits).some((n) => n > 0);
+            if (!hasNightWeights) {
+              return splitWithPinnedOverrides(
+                item.totalAmountCents,
+                eligibleParticipantIds,
+                pinnedOverrides,
+              );
+            }
+            return splitWithPinnedOverridesByNights(
+              item.totalAmountCents,
+              eligibleParticipantIds,
+              pinnedOverrides,
+              nightUnits,
+            );
+          })()
+        : splitWithPinnedOverrides(
+            item.totalAmountCents,
+            eligibleParticipantIds,
+            pinnedOverrides,
+          );
     return {
       allocations,
       eligibleParticipantIds,
@@ -125,7 +163,25 @@ export function computeItemAllocations(
     };
   }
 
-  const allocations = splitAmountEvenly(item.totalAmountCents, eligibleParticipantIds);
+  const stayNightSplit =
+    line.linkedStayId && item.quantity && item.quantity > 0 && ctx.graph && ctx.presence
+      ? (() => {
+          const stay = stayForLine(line, ctx.graph);
+          if (!stay) return null;
+          const nightUnits = Object.fromEntries(
+            eligibleParticipantIds.map((id) => {
+              const plan = ctx.presence!.get(id);
+              return [id, plan ? participantNightsAtStay(plan, stay) : 0];
+            }),
+          );
+          if (!Object.values(nightUnits).some((n) => n > 0)) return null;
+          return splitByNightUnits(item.totalAmountCents, nightUnits);
+        })()
+      : null;
+
+  const allocations =
+    stayNightSplit ??
+    splitAmountEvenly(item.totalAmountCents, eligibleParticipantIds);
   return {
     allocations,
     eligibleParticipantIds,

@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 
 import type { CostAllocationRuleType, CostLineItemDraft } from "@/lib/trip-engine/cost-ledger/types";
 import { allocationRuleLabel } from "@/lib/trip-engine/cost-ledger/display-utils";
+import {
+  effectiveStayNights,
+  perNightCents,
+} from "@/lib/trip-engine/cost-ledger/accommodation-nights";
 import { isManualFinanceLine } from "@/lib/trip-engine/cost-ledger/finance-sections";
+import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import type { RosterSummary } from "@/lib/trip-engine/types";
 
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
@@ -138,9 +143,16 @@ export function FinanceRuleCell(props: {
 
 export function FinanceAmountCell(props: {
   line: CostLineItemDraft;
+  graph?: TripEntityGraph | null;
   displaySecondary?: string;
   onPatch: (lineId: string, patch: Partial<CostLineFormValues>) => void;
 }) {
+  const nights = effectiveStayNights(props.line, props.graph);
+  const nightly =
+    nights && props.line.totalAmountCents > 0
+      ? perNightCents(props.line.totalAmountCents, nights)
+      : null;
+
   return (
     <div>
       <FinanceInlineMoneyCell
@@ -156,7 +168,21 @@ export function FinanceAmountCell(props: {
           props.onPatch(props.line.id, { currency: currency.toUpperCase() });
         }}
       />
-      {props.displaySecondary ? (
+      {nightly != null ? (
+        <div className="mt-0.5 flex justify-end">
+          <FinanceInlineMoneyCell
+            valueCents={nightly}
+            currency={props.line.currency}
+            onCommit={(cents) => {
+              if (!nights || cents == null) return;
+              props.onPatch(props.line.id, {
+                totalAmountCents: cents * nights,
+              });
+            }}
+          />
+          <span className="ml-1 self-end pb-0.5 text-[9px] text-zinc-500">/night</span>
+        </div>
+      ) : props.displaySecondary ? (
         <div className="text-[9px] text-zinc-500">{props.displaySecondary}</div>
       ) : null}
     </div>
@@ -165,15 +191,18 @@ export function FinanceAmountCell(props: {
 
 export function FinanceQtyCell(props: {
   line: CostLineItemDraft;
+  graph?: TripEntityGraph | null;
   openCell: OpenCell;
   setOpenCell: (cell: OpenCell) => void;
   onPatch: (lineId: string, patch: Partial<CostLineFormValues>) => void;
 }) {
   const open = props.openCell?.lineId === props.line.id && props.openCell.field === "qty";
   const [qtyInput, setQtyInput] = useState("");
+  const displayQty = effectiveStayNights(props.line, props.graph);
+  const isStayLine = Boolean(props.line.linkedStayId);
 
   function openEditor() {
-    setQtyInput(props.line.quantity != null ? String(props.line.quantity) : "");
+    setQtyInput(displayQty != null ? String(displayQty) : "");
     props.setOpenCell({ lineId: props.line.id, field: "qty" });
   }
 
@@ -183,6 +212,14 @@ export function FinanceQtyCell(props: {
       quantity: trimmed ? Number.parseFloat(trimmed) : null,
     });
     props.setOpenCell(null);
+  }
+
+  if (isStayLine && displayQty != null && !open) {
+    return (
+      <div className="text-center text-xs tabular-nums text-zinc-700" title="Nights at this stay">
+        {displayQty}
+      </div>
+    );
   }
 
   return (
@@ -200,7 +237,7 @@ export function FinanceQtyCell(props: {
             else openEditor();
           }}
         >
-          {props.line.quantity ?? "—"}
+          {props.line.quantity ?? displayQty ?? "—"}
         </button>
       }
     >
@@ -331,17 +368,23 @@ export function FinanceParticipantAmountCell(props: {
   amountCents: number | null;
   currency: string;
   isPinned: boolean;
+  nightsLabel?: string | null;
   disabled?: boolean;
   onSave: (amountCents: number | null) => void;
 }) {
   return (
-    <FinanceInlineMoneyCell
-      valueCents={props.amountCents}
-      currency={props.currency}
-      isPinned={props.isPinned}
-      disabled={props.disabled}
-      allowClear
-      onCommit={props.onSave}
-    />
+    <div className="flex flex-col items-end">
+      <FinanceInlineMoneyCell
+        valueCents={props.amountCents}
+        currency={props.currency}
+        isPinned={props.isPinned}
+        disabled={props.disabled}
+        allowClear
+        onCommit={props.onSave}
+      />
+      {props.nightsLabel ? (
+        <span className="mt-0.5 text-[9px] font-medium text-zinc-500">{props.nightsLabel}</span>
+      ) : null}
+    </div>
   );
 }

@@ -1,5 +1,6 @@
 import type { TripEntityGraph } from "../types";
 
+import { countStayNights } from "./accommodation-nights";
 import type { CostLineItemDraft } from "./types";
 import { defaultCostLineFinanceFields } from "./finance-metadata";
 
@@ -16,7 +17,7 @@ function seedStay(stay: TripEntityGraph["accommodationStays"][number], sortOrder
     notes: `${stay.checkInDate} → ${stay.checkOutDate}`,
     totalAmountCents: 0,
     currency: "NZD",
-    quantity: null,
+    quantity: countStayNights(stay.checkInDate, stay.checkOutDate) || null,
     allocationRuleType: "equal_present" as const,
     allocationRulePayload: {},
     linkedStayId: stay.id,

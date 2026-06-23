@@ -5,6 +5,7 @@ import { costLineItems } from "@/lib/db/schema";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 import { loadCostLedgerRaw } from "./load-cost-ledger";
+import { countStayNights } from "./accommodation-nights";
 
 function legDescription(from: string, to: string, date: string): string {
   return `${date}: ${from} → ${to}`;
@@ -25,10 +26,24 @@ export async function syncLinkedCostLineMetadata(
 
     const description = `${stay.name.trim()} (${stay.cityLabel})`;
     const notes = `${stay.checkInDate} → ${stay.checkOutDate}`;
-    if (line.description !== description || line.notes !== notes) {
+    const quantity = countStayNights(stay.checkInDate, stay.checkOutDate) || null;
+    const quantityStr = quantity != null ? String(quantity) : null;
+    const lineQuantity = line.quantity;
+    const needsQuantity =
+      quantity != null && (lineQuantity == null || lineQuantity !== quantity);
+    if (
+      line.description !== description ||
+      line.notes !== notes ||
+      needsQuantity
+    ) {
       await db
         .update(costLineItems)
-        .set({ description, notes, updatedAt: new Date() })
+        .set({
+          description,
+          notes,
+          ...(needsQuantity ? { quantity: quantityStr } : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(costLineItems.id, line.id));
       updates++;
     }

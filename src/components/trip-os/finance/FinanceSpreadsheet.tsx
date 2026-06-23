@@ -16,7 +16,6 @@ import {
   financeSectionForLine,
   groupLinesByFinanceSection,
   logisticsGrossForParticipant,
-  participantAllocationCents,
   sectionTotalForParticipant,
   type FinanceEntitySection,
 } from "@/lib/trip-engine/cost-ledger/finance-sections";
@@ -27,6 +26,11 @@ import {
   participantHeaderLabel,
 } from "@/lib/trip-engine/cost-ledger/display-utils";
 import { formatMoney, convertToBaseCents } from "@/lib/trip-engine/cost-ledger/format-money";
+import {
+  nightsLabel,
+  participantNightsForLine,
+  stayForLine,
+} from "@/lib/trip-engine/cost-ledger/accommodation-nights";
 import type { RosterSummary } from "@/lib/trip-engine/types";
 
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
@@ -66,10 +70,8 @@ const tdRowBg = "bg-white group-hover:bg-zinc-50";
 const stickyHeadCorner =
   "sticky top-0 z-40 bg-zinc-200 shadow-[2px_2px_4px_-2px_rgba(0,0,0,0.12)]";
 const stickyHeadTop = "sticky top-0 z-20 bg-zinc-200";
-const stickyHeadTopRight = "sticky top-0 z-30 bg-violet-100";
 const stickyColLeft = "sticky left-0 z-10 bg-white shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]";
 const stickyColDesc = "sticky left-12 z-10 bg-white shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]";
-const stickyColRight = "sticky right-0 z-10 bg-violet-50 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)]";
 
 const TAB_ACCENT: Record<FinanceTab, string> = {
   accommodation: "border-sky-500 text-sky-800 bg-sky-50",
@@ -217,7 +219,7 @@ export function FinanceSpreadsheet(props: {
   }
 
   const settings = props.costLedger.settings;
-  const totalColCount = 4 + pool.length + 2;
+  const totalColCount = 3 + pool.length + 1;
 
   function sectionSubtotalCents(lines: CostLineItemDraft[]): number {
     return lines.reduce(
@@ -279,11 +281,7 @@ export function FinanceSpreadsheet(props: {
         ? presenceHintForLine(line, props.graph, props.roster, presence)
         : null;
     const spanLabel = props.graph ? lineDateSpanLabel(line, props.graph) : null;
-    const rowParticipantTotal = pool.reduce(
-      (sum, p) =>
-        sum + participantAllocationCents(line, p.id, allocationByLine, settings),
-      0,
-    );
+    const stay = stayForLine(line, props.graph);
 
     const rowStickyBg =
       selectedLineIds.has(line.id) || props.detailLineId === line.id
@@ -364,6 +362,7 @@ export function FinanceSpreadsheet(props: {
         <td className={`${tdClass} ${tdRowBg} w-12 text-center`}>
           <FinanceQtyCell
             line={line}
+            graph={props.graph}
             openCell={openCell}
             setOpenCell={setOpenCell}
             onPatch={props.onPatchLine}
@@ -372,6 +371,7 @@ export function FinanceSpreadsheet(props: {
         <td className={`${tdMoneyClass} ${tdRowBg}`}>
           <FinanceAmountCell
             line={line}
+            graph={props.graph}
             displaySecondary={totalDisplay.secondary}
             onPatch={props.onPatchLine}
           />
@@ -409,6 +409,14 @@ export function FinanceSpreadsheet(props: {
             );
           const isPinned = lineAlloc?.pinnedParticipantIds.includes(participant.id) ?? false;
           const amountCents = ineligible ? null : alloc[participant.id] ?? null;
+          const participantNightCount =
+            stay && presence && props.graph
+              ? participantNightsForLine(line, participant.id, props.graph, presence)
+              : null;
+          const participantNightLabel =
+            participantNightCount != null && participantNightCount > 0
+              ? nightsLabel(participantNightCount)
+              : null;
 
           return (
             <td
@@ -422,6 +430,7 @@ export function FinanceSpreadsheet(props: {
                   amountCents={amountCents}
                   currency={line.currency}
                   isPinned={isPinned}
+                  nightsLabel={participantNightLabel}
                   onSave={(cents) =>
                     props.onPatchParticipant(line.id, participant.id, cents)
                   }
@@ -430,13 +439,6 @@ export function FinanceSpreadsheet(props: {
             </td>
           );
         })}
-        <td
-          className={`${tdMoneyClass} ${stickyColRight} ${rowStickyBg} group-hover:bg-zinc-50 text-right font-medium`}
-        >
-          {rowParticipantTotal > 0
-            ? formatMoney(rowParticipantTotal, settings.baseCurrency)
-            : ""}
-        </td>
         <td className={`${tdClass} ${tdRowBg} text-center`}>
           {line.totalAmountCents === 0 ? (
             ""
@@ -455,7 +457,6 @@ export function FinanceSpreadsheet(props: {
     lines: CostLineItemDraft[],
     rowClass = "bg-zinc-50 font-semibold",
     stickyBg = "bg-zinc-50",
-    rightStickyBg = "bg-violet-100",
   ) {
     const subtotal = sectionSubtotalCents(lines);
     const subtotalLabel = `${label} (${settings.baseCurrency})`;
@@ -467,7 +468,7 @@ export function FinanceSpreadsheet(props: {
         <td className={`${tdMoneyClass} ${stickyBg}`}>
           {formatMoney(subtotal, settings.baseCurrency)}
         </td>
-      {pool.map((participant) => {
+        {pool.map((participant) => {
           const sectionTotal = sectionTotalForParticipant(
             lines,
             participant.id,
@@ -483,9 +484,6 @@ export function FinanceSpreadsheet(props: {
             </td>
           );
         })}
-        <td className={`${tdMoneyClass} ${stickyColRight} ${rightStickyBg} text-right`}>
-          {formatMoney(subtotal, settings.baseCurrency)}
-        </td>
         <td className={`${tdClass} ${stickyBg}`} />
       </tr>
     );
@@ -619,7 +617,9 @@ export function FinanceSpreadsheet(props: {
               <th className={`${thClass} ${stickyHeadCorner} left-12 min-w-[14rem]`}>
                 {activeTab === "overall" ? "Category" : "Description"}
               </th>
-              <th className={`${thMoneyClass} ${stickyHeadTop} w-12 text-center`}>Qty</th>
+              <th className={`${thMoneyClass} ${stickyHeadTop} w-12 text-center`}>
+                {activeTab === "accommodation" ? "Nights" : "Qty"}
+              </th>
               <th className={`${thMoneyClass} ${stickyHeadTop} ${moneyColWidth} text-right`}>
                 Total
                 <span className="mt-0.5 block text-[10px] font-normal text-zinc-500">
@@ -641,14 +641,6 @@ export function FinanceSpreadsheet(props: {
                   </th>
                 );
               })}
-              <th
-                className={`${thMoneyClass} ${stickyHeadTopRight} right-0 ${moneyColWidth} text-right text-violet-900`}
-              >
-                Total
-                <span className="mt-0.5 block text-[10px] font-normal text-violet-700">
-                  {settings.baseCurrency}
-                </span>
-              </th>
               <th className={`${thMoneyClass} ${stickyHeadTop} w-10 text-center`}>✓</th>
             </tr>
           </thead>
@@ -689,7 +681,6 @@ export function FinanceSpreadsheet(props: {
                     "Total per person",
                     visibleLines,
                     "bg-violet-100 font-bold",
-                    "bg-violet-100",
                     "bg-violet-100",
                   )
                 )}
