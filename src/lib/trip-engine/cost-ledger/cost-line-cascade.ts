@@ -96,6 +96,7 @@ export async function purgeOrphanCostLines(
   validStayIds: Set<string>,
   validLegIds: Set<string>,
   validActivityIds: Set<string>,
+  validProductIds: Set<string> = new Set(),
 ): Promise<number> {
   const lines = await db
     .select()
@@ -107,6 +108,9 @@ export async function purgeOrphanCostLines(
       if (line.linkedStayId && !validStayIds.has(line.linkedStayId)) return true;
       if (line.linkedTransportLegId && !validLegIds.has(line.linkedTransportLegId)) return true;
       if (line.linkedActivityId && !validActivityIds.has(line.linkedActivityId)) return true;
+      if (line.linkedTransportProductId && !validProductIds.has(line.linkedTransportProductId)) {
+        return true;
+      }
       return false;
     })
     .map((l) => l.id);
@@ -150,6 +154,7 @@ export function graphEntityIdSets(graph: {
   returnLegs: { id: string }[];
   intercityLegs: { id: string }[];
   activities: { id: string }[];
+  transportProducts?: { id: string }[];
 }) {
   return {
     stayIds: new Set(
@@ -161,5 +166,6 @@ export function graphEntityIdSets(graph: {
       ...graph.intercityLegs.map((l) => l.id),
     ]),
     activityIds: new Set(graph.activities.map((a) => a.id)),
+    productIds: new Set((graph.transportProducts ?? []).map((product) => product.id)),
   };
 }

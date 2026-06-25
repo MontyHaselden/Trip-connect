@@ -157,6 +157,7 @@ export function TransportSection(props: {
   saving?: boolean;
   rosterSummary?: RosterSummary;
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
+  onSwitchGroup?: (groupId: string) => void;
   costLedger?: CostLedgerProjection | null;
   onOpenFinanceSection?: (section: FinanceBuiltInSection, lineId?: string) => void;
   onCostsAction?: (payload: Record<string, unknown>) => Promise<CostsPatchResult>;
@@ -249,6 +250,9 @@ export function TransportSection(props: {
   }
 
   function openAdd(need: PendingTransportNeed, groupId: string) {
+    if (groupId !== props.groupId) {
+      props.onSwitchGroup?.(groupId);
+    }
     setPrefillNeed(need);
     setAddGroupId(groupId);
     setAddOpen(true);
@@ -354,13 +358,12 @@ export function TransportSection(props: {
               <button
                 type="button"
                 onClick={() => openAdd(need, scope.groupId)}
-                disabled={!isActiveScope}
                 title={
                   isActiveScope
                     ? undefined
-                    : `Switch to ${scope.title}'s calendar to add this transport`
+                    : `Switch to ${scope.title}'s calendar and add this transport`
                 }
-                className="rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-950 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-950"
               >
                 Add
               </button>

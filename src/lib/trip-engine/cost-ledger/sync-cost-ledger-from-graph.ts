@@ -4,6 +4,7 @@ import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 import { loadCostLedgerRaw } from "./load-cost-ledger";
 import { purgeLocationPlaceholderStayLines, purgeOrphanCostLines, purgeDuplicatePersonalStayFinanceLines, graphEntityIdSets } from "./cost-line-cascade";
+import { repairTransportProductFinanceLinks } from "./repair-transport-product-finance-links";
 import { buildSeedLineItems, seedItemsNotYetPresent } from "./seed-from-graph";
 import { syncLinkedCostLineMetadata } from "./sync-linked-cost-line-metadata";
 
@@ -15,12 +16,14 @@ export async function syncCostLedgerFromGraph(
 ): Promise<number> {
   await purgeLocationPlaceholderStayLines(tripId, graph);
   await purgeDuplicatePersonalStayFinanceLines(tripId, graph);
+  await repairTransportProductFinanceLinks(tripId, graph);
   const entityIds = graphEntityIdSets(graph);
   await purgeOrphanCostLines(
     tripId,
     entityIds.stayIds,
     entityIds.legIds,
     entityIds.activityIds,
+    entityIds.productIds,
   );
   await syncLinkedCostLineMetadata(tripId, graph);
   const raw = await loadCostLedgerRaw(tripId);
@@ -45,9 +48,22 @@ export async function syncCostLedgerFromGraph(
       allocationRulePayload: seed.allocationRulePayload,
       linkedStayId: seed.linkedStayId,
       linkedTransportLegId: seed.linkedTransportLegId,
+      linkedTransportProductId: seed.linkedTransportProductId,
       linkedActivityId: seed.linkedActivityId,
       scope: seed.scope,
       supplierPaymentStatus: seed.supplierPaymentStatus,
+      costStatus: seed.costStatus,
+      linePaymentStatus: seed.linePaymentStatus,
+      fundingStatus: seed.fundingStatus,
+      supplierName: seed.supplierName,
+      estimatedAmountCents: seed.estimatedAmountCents,
+      actualAmountCents: seed.actualAmountCents,
+      taxTreatment: seed.taxTreatment,
+      exportCategoryLabel: seed.exportCategoryLabel,
+      exportReference: seed.exportReference,
+      bookingReference: seed.bookingReference,
+      invoiceRecorded: seed.invoiceRecorded,
+      receiptRecorded: seed.receiptRecorded,
     })),
   );
 

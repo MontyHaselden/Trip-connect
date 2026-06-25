@@ -83,6 +83,8 @@ function commandsNeedCostLedgerSeed(commands: TripCommand[]): boolean {
       "addStay",
       "addTransportLeg",
       "addClassifiedTransportLegs",
+      "addTransportProduct",
+      "removeTransportProduct",
       "removeActivity",
       "removeStay",
       "removeTransportLeg",

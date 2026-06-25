@@ -331,6 +331,7 @@ export function TripOsBoard(props: { tripId: string }) {
               conflicts={conflicts}
               saving={engine.saving}
               onDispatch={dispatchWithPreviewRefresh}
+              onSwitchGroup={engine.switchGroup}
               onNavigateSection={handleNavSelect}
               onOpenFinanceSection={handleOpenFinanceSection}
               financeFocusTab={financeFocus?.tab ?? null}

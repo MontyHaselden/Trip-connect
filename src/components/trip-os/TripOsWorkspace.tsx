@@ -47,6 +47,7 @@ export function TripOsWorkspace(props: {
   warnings: EngineWarning[];
   conflicts: EngineConflict[];
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
+  onSwitchGroup?: (groupId: string) => void;
   onNavigateSection: (section: TripOsSection) => void;
   onOpenFinanceSection?: (section: FinanceBuiltInSection, lineId?: string) => void;
   financeFocusTab?: FinanceBuiltInSection | null;
@@ -125,6 +126,7 @@ export function TripOsWorkspace(props: {
           selectedDate={props.selectedDay?.date ?? null}
           saving={saving}
           onDispatch={onDispatch}
+          onSwitchGroup={props.onSwitchGroup}
           rosterSummary={props.rosterSummary}
           costLedger={props.costLedger ?? null}
           onOpenFinanceSection={props.onOpenFinanceSection}
