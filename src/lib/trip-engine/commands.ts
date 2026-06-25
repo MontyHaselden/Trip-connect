@@ -57,7 +57,7 @@ export type UpdateTransportLegCommand = {
   groupId: string;
   bucket: "outbound" | "return" | "intercity";
   legId: string;
-  patch: Partial<TransportLegDraft>;
+  patch: Partial<IntercityLegDraft>;
   /** When set and different from `bucket`, moves the leg between outbound / return / intercity lists. */
   targetBucket?: "outbound" | "return" | "intercity";
 };

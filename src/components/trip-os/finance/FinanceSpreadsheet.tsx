@@ -444,13 +444,13 @@ export function FinanceSpreadsheet(props: {
       props.costLedger.lineItems.filter(
         (line) => financeSectionForLine(line, props.graph, settings) === deleteSectionId,
       ).length;
-    const funds = fundsForFinanceSection(props.costLedger.funds, deleteSectionId, settings).length;
+    const funds = fundsForFinanceSection(props.costLedger.funds, deleteSectionId).length;
     return { ...custom, lineCount: lines, fundCount: funds };
   }, [deleteSectionId, settings, props.costLedger, props.graph]);
 
   const sectionFunds = useMemo(() => {
     if (isEntitySectionTab(activeTab)) {
-      return fundsForFinanceSection(props.costLedger.funds, activeTab, settings);
+      return fundsForFinanceSection(props.costLedger.funds, activeTab);
     }
     if (activeTab === "overall") {
       return fundsForOverallView(props.costLedger.funds);
@@ -1088,7 +1088,7 @@ export function FinanceSpreadsheet(props: {
           />
         ) : undefined,
       onOpenFundPricing: props.onPatchFundParticipantsBulk
-        ? (fundId) => {
+        ? (fundId: string) => {
             setPricingFundId(fundId);
             setPricingError(null);
           }

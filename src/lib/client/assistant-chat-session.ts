@@ -55,7 +55,7 @@ export async function loadAssistantChat(
 
   try {
     const controller = new AbortController();
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let timeoutId: number | undefined;
     if (typeof window !== "undefined") {
       timeoutId = window.setTimeout(() => controller.abort(), 12_000);
     }

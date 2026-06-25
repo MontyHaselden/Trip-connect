@@ -33,7 +33,7 @@ export function resolveStudentTripPayload(
 
 export function hasTodaySchedule(
   trip: ParticipantFilteredTripV1 | null,
-): trip is ParticipantFilteredTripV1 {
+): boolean {
   return Boolean(trip?.trip && trip.days?.length && trip.itineraryItems);
 }
 

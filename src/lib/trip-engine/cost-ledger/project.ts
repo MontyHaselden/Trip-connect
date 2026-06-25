@@ -1,6 +1,6 @@
 import type { RosterSummary, TripEntityGraph } from "../types";
 
-import { buildParticipantPresenceMap, computeItemAllocations } from "./allocate";
+import { buildParticipantPresenceMap, computeItemAllocations, type AllocationContext } from "./allocate";
 import { convertToBaseCents } from "./format-money";
 import { effectiveLineTotalCents } from "./finance-grid-totals";
 import { isAllocationBalanced } from "./smart-split";

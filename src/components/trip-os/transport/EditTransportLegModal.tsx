@@ -171,7 +171,7 @@ export function EditTransportLegModal(props: {
       billingMode = "product";
     }
 
-    const patch: Partial<TransportLegDraft> = {
+    const patch: Partial<IntercityLegDraft> = {
       ...draft,
       transportProductId: nextProductId,
       billingMode,

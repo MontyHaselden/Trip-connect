@@ -3,7 +3,8 @@ import { DateTime } from "luxon";
 import { airportCodeFromPlace, placesShareMetro } from "@/lib/geo/airport-codes";
 import { shortCityName } from "@/lib/host/setup/location-range-display";
 import { locationsMatch } from "@/lib/host/wizard/location-stays";
-import type { CityMove, PendingTransportNeed } from "./pending-city-moves";
+import type { CityMove } from "@/lib/host/wizard/detect-city-moves";
+import type { PendingTransportNeed } from "./pending-city-moves";
 import { pendingTransportNeedsFromCalendar } from "./pending-city-moves";
 import type { TripEntityGraph } from "./types";
 import {

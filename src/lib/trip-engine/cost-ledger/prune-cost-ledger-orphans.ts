@@ -17,8 +17,8 @@ function linkedEntityIds(graph: TripEntityGraph) {
 export function pruneCostLedgerLinkedOrphans(
   ledger: CostLedgerProjection | null | undefined,
   graph: TripEntityGraph,
-): CostLedgerProjection | null | undefined {
-  if (!ledger) return ledger;
+): CostLedgerProjection | null {
+  if (!ledger) return ledger ?? null;
 
   const { activityIds, stayIds, legIds, productIds } = linkedEntityIds(graph);
   const lineItems = ledger.lineItems.filter((line) => {

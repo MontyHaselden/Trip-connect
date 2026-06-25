@@ -359,14 +359,14 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
       return ok(
         {
           ...graph,
-          transportProducts: [...graph.transportProducts, product],
+          transportProducts: [...(graph.transportProducts ?? []), product],
         },
         warnings,
       );
     }
 
     case "updateTransportProduct": {
-      const products = graph.transportProducts.map((product) =>
+      const products = (graph.transportProducts ?? []).map((product) =>
         product.id === command.productId ? { ...product, ...command.patch } : product,
       );
       if (!products.some((product) => product.id === command.productId)) {
@@ -379,7 +379,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
     }
 
     case "removeTransportProduct": {
-      const products = graph.transportProducts.filter(
+      const products = (graph.transportProducts ?? []).filter(
         (product) => product.id !== command.productId,
       );
       const detach = <T extends { transportProductId?: string | null; billingMode?: string }>(

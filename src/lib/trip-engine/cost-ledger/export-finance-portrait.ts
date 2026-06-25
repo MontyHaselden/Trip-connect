@@ -719,8 +719,8 @@ function appendixSectionHtml(
   ]);
 
   const supplierRows = ledger.supplierPayments.map((p) => [
-    p.paidAt,
-    p.paidTo,
+    p.paidAt ?? "",
+    p.paidTo ?? "",
     p.costLineItemId ? (lineById.get(p.costLineItemId) ?? "") : "",
     formatMoney(convertToBaseCents(p.amountCents, p.currency, ledger.settings), currency),
     SUPPLIER_PAYMENT_METHOD_LABELS[p.paymentMethod],

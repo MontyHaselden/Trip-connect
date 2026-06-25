@@ -979,7 +979,9 @@ export function useTripOsEngine(tripId: string) {
             setData((prev) => {
               if (!prev) return prev;
               const latestLedger = dataRef.current?.costLedger ?? prev.costLedger;
-              const costLedger = mergeFinancePatchResult(latestLedger, body.costLedger!);
+              const costLedger = latestLedger
+                ? mergeFinancePatchResult(latestLedger, body.costLedger!)
+                : body.costLedger!;
               persistLocalSnapshot(prev.graph, { costLedger });
               return { ...prev, costLedger };
             });

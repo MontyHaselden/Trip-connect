@@ -172,9 +172,9 @@ function applyMainStayHotelToDraft(
     name: mainStay.name?.trim() ?? "",
     city: stayCityLabel(mainStay),
     address: mainStay.address,
-    googlePlaceId: mainStay.googlePlaceId,
-    latitude: mainStay.latitude,
-    longitude: mainStay.longitude,
+    googlePlaceId: mainStay.googlePlaceId ?? null,
+    latitude: mainStay.latitude ?? null,
+    longitude: mainStay.longitude ?? null,
     stayType: mainStay.stayType,
     isHomestayGroup: mainStay.isHomestayGroup ?? false,
   };
@@ -990,7 +990,7 @@ export function DayContextPanel(props: {
       setStayConflictDialog({ cityLabel, conflicts });
       return;
     }
-    if (canFollowMainGroupStay) {
+    if (canFollowMainGroupStay && mainStayMatch) {
       await adoptMainGroupStay(mainStayMatch.mainStay);
       return;
     }

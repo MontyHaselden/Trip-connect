@@ -406,7 +406,7 @@ export function FinanceGridFooter(props: FooterProps) {
 
   const scopedFunds = props.overallView
     ? fundsForOverallView(ledger.funds)
-    : fundsForFinanceSection(ledger.funds, incomeSection, ledger.settings);
+    : fundsForFinanceSection(ledger.funds, incomeSection);
 
   const showPaymentsSection =
     incomeMode !== "none" &&

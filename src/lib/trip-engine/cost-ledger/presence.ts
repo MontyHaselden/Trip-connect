@@ -10,6 +10,7 @@ import {
   resolveAllParticipantPlans,
   type ResolvedParticipantPlan,
 } from "../resolve-participant-graph";
+import type { RosterSummary, TripEntityGraph } from "../types";
 import { participantSharesMainContextOnDate } from "../match-main-accommodation-stay";
 import { personalGroupForParticipant } from "../person-lens";
 import { isSameFinanceAccommodationLeg } from "./accommodation-finance-leg";

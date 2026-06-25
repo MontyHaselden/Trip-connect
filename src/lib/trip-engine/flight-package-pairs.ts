@@ -24,8 +24,8 @@ export function citiesLooselyMatch(a: string, b: string): boolean {
 }
 
 export function isReverseFlightPair(
-  a: TransportLegDraft | IntercityLegDraft,
-  b: TransportLegDraft | IntercityLegDraft,
+  a: Pick<TransportLegDraft, "transportType" | "fromCity" | "toCity">,
+  b: Pick<TransportLegDraft, "transportType" | "fromCity" | "toCity">,
 ): boolean {
   if (a.transportType !== "plane" || b.transportType !== "plane") return false;
   return citiesLooselyMatch(a.fromCity, b.toCity) && citiesLooselyMatch(a.toCity, b.fromCity);

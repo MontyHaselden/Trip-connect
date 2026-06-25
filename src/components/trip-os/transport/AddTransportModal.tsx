@@ -276,7 +276,7 @@ export function AddTransportModal(props: {
     if (ok) props.onClose();
   }
 
-  async function submitFlightLegs(legs: IntercityLegDraft[]) {
+  async function submitFlightLegs(legs: IntercityLegDraft[]): Promise<boolean> {
     const commands: TripCommand[] = [];
     let productId: string | null = null;
 
@@ -311,6 +311,7 @@ export function AddTransportModal(props: {
 
     const ok = await props.onDispatch(commands);
     if (ok) props.onClose();
+    return ok;
   }
 
   function toggleParticipant(id: string) {
@@ -561,13 +562,9 @@ export function AddTransportModal(props: {
           ) : mode === "flight" && billing === "single" && !need ? (
             <FlightLegQuickForm
               groupId={props.groupId}
-              defaultDate={need?.date ?? props.selectedDate ?? undefined}
+              defaultDate={props.selectedDate ?? undefined}
               anchorDate={datePicker.anchorDate}
-              prefillRoute={
-                need
-                  ? { date: need.date, from: need.fromCity, to: need.toCity }
-                  : null
-              }
+              prefillRoute={null}
               saving={props.saving}
               onSubmit={submitFlightLegs}
             />

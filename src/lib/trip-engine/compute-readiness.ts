@@ -13,8 +13,8 @@ import { hasUnbalancedLines } from "./cost-ledger/project";
 import {
   financeSectionAllocationMessage,
   financeSectionAllocationStatuses,
-  type FinanceBuiltInSection,
 } from "./cost-ledger/finance-section-readiness";
+import type { FinanceBuiltInSection } from "./cost-ledger/finance-sections";
 import { detectGraphConflicts } from "./conflicts";
 import { allLegs } from "./selectors";
 

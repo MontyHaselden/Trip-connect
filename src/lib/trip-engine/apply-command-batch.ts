@@ -18,6 +18,7 @@ export function applyCommandBatch(
     warnings: [
       ...coerceWarnings.map((message) => ({
         id: "invalid-command",
+        severity: "warning" as const,
         message,
         section: "general" as const,
       })),

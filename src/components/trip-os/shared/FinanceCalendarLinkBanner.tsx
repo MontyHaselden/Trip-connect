@@ -16,6 +16,8 @@ const CALENDAR_HINT: Record<FinanceBuiltInSection, string> = {
     "Add the leg on the trip calendar (select travel days → Transport). Finance will follow automatically.",
   activities:
     "Add the activity on the trip calendar (select a day → Activities). Finance will follow automatically.",
+  other:
+    "Other costs live in Finance only — no calendar link is required for this section.",
 };
 
 export function FinanceCalendarLinkBanner(props: {

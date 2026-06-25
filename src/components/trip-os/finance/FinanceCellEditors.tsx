@@ -18,7 +18,6 @@ import type { RosterSummary } from "@/lib/trip-engine/types";
 
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
 import { financeLineDisplayDescription } from "@/lib/trip-engine/transport-route-label";
-import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import { FinanceCellPopover, popoverOptionClass } from "./FinanceCellPopover";
 import { FinanceInlineMoneyCell } from "./FinanceInlineMoneyCell";
 

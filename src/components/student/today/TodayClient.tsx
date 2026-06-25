@@ -110,14 +110,15 @@ function TodayContent() {
     );
   }
 
+  if (!trip) {
+    return (
+      <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">
+        Could not load trip preview.
+      </div>
+    );
+  }
+
   if (!hasTodaySchedule(trip)) {
-    if (!trip) {
-      return (
-        <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">
-          Could not load trip preview.
-        </div>
-      );
-    }
     if (!trip.days?.length) {
       return (
         <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">
