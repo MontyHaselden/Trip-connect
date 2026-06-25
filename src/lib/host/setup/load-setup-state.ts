@@ -137,6 +137,7 @@ export async function loadTripSetupState(tripId: string): Promise<TripSetupState
     returnLegs: locationState.returnLegs,
     intercityLegs: locationState.intercityLegs,
     accommodationStays: locationState.accommodationStays,
+    transportProducts: locationState.transportProducts ?? [],
     activities: [],
     overlayOps,
   };

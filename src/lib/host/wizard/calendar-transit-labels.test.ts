@@ -108,6 +108,52 @@ describe("computeTransitOverlays", () => {
     const dec22 = overlays.get("2026-12-22") ?? [];
     assert.ok(dec22.some((overlay) => overlay.label === "Arrive in Christchurch"));
   });
+
+  it("skips Depart for chips when the day is already a painted city-change split", () => {
+    const overlays = computeTransitOverlays(
+      {
+        outboundLegs: [],
+        returnLegs: [],
+        intercityLegs: [
+          {
+            id: newId(),
+            fromCity: "Kagoshima",
+            toCity: "Hiroshima",
+            intercityFromCity: "Kagoshima",
+            intercityToCity: "Hiroshima",
+            travelDate: "2026-12-13",
+            transportType: "train",
+            bookingStatus: "not_booked",
+            departureTime: "09:00",
+            arrivalTime: "12:00",
+            fromStation: null,
+            toStation: null,
+            carrier: null,
+            flightNumber: null,
+            notes: null,
+          },
+        ],
+        dayPlaces: [
+          {
+            date: "2026-12-13",
+            primaryCity: "Kagoshima",
+            secondaryCity: "Hiroshima",
+            primaryShare: 0.5,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+        ],
+      },
+      {
+        startDate: "2026-12-05",
+        endDate: "2026-12-21",
+        departureCity: "Christchurch",
+        returnCity: "Christchurch",
+      },
+    );
+
+    assert.equal(overlays.has("2026-12-13"), false);
+  });
 });
 
 describe("destinationCoveredByOverlays", () => {

@@ -5,16 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import type { IntercityLegDraft, TransportLegDraft } from "@/lib/host/wizard/types";
 
+import { transportLegRouteLabel } from "@/lib/trip-engine/transport-route-label";
+
 import { TripInput } from "../shared/TripInput";
 import { TripSectionShell } from "../shared/TripSectionShell";
-
-function legRouteLabel(leg: TransportLegDraft | IntercityLegDraft): string {
-  const ic = leg as IntercityLegDraft;
-  if (ic.intercityFromCity && ic.intercityToCity) {
-    return `${leg.travelDate} · ${ic.intercityFromCity} → ${ic.intercityToCity}`;
-  }
-  return `${leg.travelDate} · ${leg.fromCity} → ${leg.toCity}`;
-}
 
 type BookingRow = {
   entityType: string;
@@ -56,7 +50,7 @@ export function BookingsSection(props: { graph: TripEntityGraph; tripId: string 
       list.push({
         entityType: "transport_leg",
         entityId: leg.id,
-        label: legRouteLabel(leg),
+        label: transportLegRouteLabel(leg, props.graph),
         bookingStatus: leg.bookingStatus,
         supplier: summary?.supplier ?? null,
         bookingReference: summary?.bookingReference ?? null,

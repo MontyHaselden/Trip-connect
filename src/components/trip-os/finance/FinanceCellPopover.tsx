@@ -12,6 +12,8 @@ export function FinanceCellPopover(props: {
   children: ReactNode;
   align?: "left" | "right";
   minWidth?: string;
+  /** Keep trigger wrapper shrink-wrapped (e.g. toolbar + buttons). */
+  inlineTrigger?: boolean;
 }) {
   const triggerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -75,7 +77,10 @@ export function FinanceCellPopover(props: {
 
   return (
     <>
-      <div ref={triggerRef} className="block w-full max-w-full">
+      <div
+        ref={triggerRef}
+        className={props.inlineTrigger ? "inline-flex shrink-0" : "block w-full max-w-full"}
+      >
         {props.trigger}
       </div>
       {mounted && menu ? createPortal(menu, document.body) : null}

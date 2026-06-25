@@ -1,6 +1,6 @@
-# Trip Connect
+# Itinerary Live
 
-**School trip itineraries, rebuilt for phones.** Trip Connect is a school trip management platform that replaces paper booklets, email threads, and scattered updates with one live/offline trip hub. No student GPS tracking. No per-student fees. Students join by invite link and save the trip to their phone like a PWA.
+**School trip itineraries, rebuilt for phones.** Itinerary Live (operated by PayShare Limited trading as Itinerary Live) is a school trip management platform — live/offline student booklets, no GPS tracking, no per-student fees.
 
 ## Stack
 
@@ -10,18 +10,20 @@
 
 ## Environment
 
-Create `.env.local`:
+Copy `.env.example` to `.env.local` and fill in values.
 
 | Variable | Required | Notes |
 |----------|----------|--------|
 | `DATABASE_URL` | Yes | Neon (or Postgres) connection string |
 | `SESSION_SECRET` | Yes | Long random string for host session HMAC |
+| `BILLING_ENFORCEMENT_DISABLED` | No | Set `true` locally to skip billing gates on publish/student links |
+| `RESEND_API_KEY` | No | Transactional email (welcome, invoice, activation) |
+| `EMAIL_FROM` | No | Resend from address |
+| `SUPPORT_EMAIL` | No | Shown on public contact/legal pages |
+| `ADMIN_BOOTSTRAP_*` | No | One-time super-admin bootstrap (`npm run bootstrap:admin`) |
 | `OPENAI_API_KEY` | No | AI itinerary import and phrase translation |
-| `OPENAI_MODEL` | No | Defaults to `gpt-4o-mini` |
-| `OPENAI_FIXTURE_DIR` | No | Replay recorded OpenAI JSON responses (no API cost) |
-| `OPENAI_FIXTURE_RECORD` | No | Set to `1` with `OPENAI_FIXTURE_DIR` to record fixtures once |
-| `WEATHER_MODE` | No | `live` (default) or `mock` for demos |
-| `AERODATABOX_API_KEY` | No | [AeroDataBox on API.market](https://api.market/store/aedbx/aerodatabox) — your `x-api-market-key` for flight lookup |
+| `WEATHER_MODE` | No | `live` (default) or `mock` |
+| `AERODATABOX_API_KEY` | No | Flight lookup |
 
 ## Scripts
 
@@ -29,56 +31,39 @@ Create `.env.local`:
 npm install
 npm run dev          # http://localhost:3000
 npm run build        # production build
-npm run db:migrate   # apply Drizzle migrations
+npm run db:apply     # apply SQL migrations (recommended)
+npm run db:migrate   # drizzle-kit migrate
 npm run seed:japan   # sample Japan trip + host login
+npm run bootstrap:admin
 ```
+
+## Launch billing (founding schools)
+
+- **School plan:** $400 NZD + GST / year (`school_pro_plus` in DB)
+- **Founding schools:** $240 NZD + GST first year (first 15 schools)
+- **Trial:** 7 days on school signup — publish and student preview allowed; manual invoice to activate
+- **Admin:** `/admin` — accounts, invoices, extend trial, mark active, founding flag
+
+See `docs/PUBLISH_GOLDEN_TEST.md` for publish → student QA.
 
 ## Route map
 
 | Audience | Routes |
 |----------|--------|
-| Public | `/`, `/features`, `/pricing`, `/demo`, `/payshare`, `/login`, `/signup` |
-| School / personal | `/dashboard` (school or personal account), `/dashboard/trips/[tripId]/builder`, wizard, participants, photos, viewers, settings |
+| Public | `/`, `/features`, `/pricing`, `/contact`, `/terms`, `/privacy`, `/demo`, `/login`, `/signup` |
+| School / personal | `/dashboard`, `/dashboard/trips/[tripId]/…` |
 | Student | `/join/[inviteCode]` → `/trip/[tripId]/today`, `/trip/[tripId]/my-trip` |
-| Viewer | `/view/[viewerCode]` (read-only itinerary + gallery) |
+| Viewer | `/view/[viewerCode]` |
+| Admin | `/admin` |
 
-Legacy URLs redirect automatically:
+## Production deploy notes
 
-- `/host` → `/dashboard`
-- `/host/[inviteCode]/manage/*` → `/dashboard/trips/[tripId]/*`
-- `/app/today`, `/app/my-trip`, `/app/calendar` → `/trip/[tripId]/*` (uses stored trip id)
+1. Run **all** migrations on production DB (`npm run db:apply`) before deploy.
+2. Set `SESSION_SECRET`, `DATABASE_URL`, `RESEND_API_KEY`, `SUPPORT_EMAIL`.
+3. **Do not** set `BILLING_ENFORCEMENT_DISABLED` in production.
+4. Bootstrap admin with strong credentials — never use seed/demo passwords in production.
+5. **Photo uploads** may use local disk — Vercel serverless needs object storage (S3/R2) for production photo hosting.
 
-## Host vs student
+## Manual QA
 
-| Role | Entry | Auth |
-|------|--------|------|
-| Host | `/login` → `/dashboard` | Email/password (session cookie) |
-| Student | `/join/[inviteCode]` | Name + phone; token in localStorage |
-| Viewer | `/view/[viewerCode]` | Read-only; no personal data |
-
-**Publishing:** Before any students join (`publishedVersion === 0` and no participants), edits auto-publish. Once the trip is live, changes are draft until the host publishes from the builder.
-
-**AI builder:** Mock conversational editing at `/dashboard/trips/[tripId]/builder` — review proposals before applying. Optional OpenAI path behind env flag later.
-
-## Manual QA checklist
-
-1. **Marketing** — Landing, features, pricing, demo phone mock render correctly.
-2. **Host signup** — Sign up → dashboard → create trip → builder split layout loads.
-3. **Mock AI** — Chat proposes changes; Apply updates itinerary; Publish increments version.
-4. **Student join** — Join link → `/trip/{id}/today`; 2-tab nav; calendar button opens month sheet.
-5. **Pre-trip** — Countdown and next-meeting line on pre-trip days.
-6. **Viewer** — Viewer link shows itinerary; no student phones.
-7. **Photos** — Student upload compresses; host can hide from moderation page.
-8. **Offline** — Load trip online, airplane mode, Today/My Trip still work from cache.
-9. **Legacy redirects** — `/host`, `/app/today` still reach correct destinations.
-
-## Project layout
-
-- `src/app/api/auth/` — Host login/signup aliases
-- `src/app/api/trips/` — Trip CRUD, publish, AI chat, snapshots
-- `src/app/api/view/` — Viewer filtered snapshot
-- `src/components/marketing/` — Public site
-- `src/components/host/builder/` — AI split builder
-- `src/lib/publish/` — Snapshot build, diff, auto-publish, viewer filter
-- `src/lib/offline/` — IndexedDB sync for students
-- `src/lib/ai/mock-chat.ts` — Rule-based AI proposals (MVP)
+See `docs/PUBLISH_GOLDEN_TEST.md` and the checklist in this repo’s marketing/signup flows.

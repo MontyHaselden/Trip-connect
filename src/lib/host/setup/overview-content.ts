@@ -14,11 +14,35 @@ import {
   formatTripDateRangeLabel,
   tripDatesAreUnset,
 } from "@/lib/host/trip-date-display";
+import { transportRouteLabel, transportLabelContextFromBasics } from "@/lib/trip-engine/transport-route-label";
 
 export type OverviewSummaryLine = {
   id: string;
   label: string;
   value: string;
+};
+
+export type OverviewSummaryItem = {
+  id: string;
+  title: string;
+  detail: string;
+  badge?: string;
+};
+
+export type OverviewSummarySection = {
+  id: string;
+  title: string;
+  items: OverviewSummaryItem[];
+};
+
+export type OverviewTripStats = {
+  dates?: string;
+  locations?: string;
+};
+
+export type OverviewSummarySnapshot = {
+  stats: OverviewTripStats;
+  sections: OverviewSummarySection[];
 };
 
 export type OverviewNavTarget = SetupSectionId | "ingest" | "map";
@@ -30,8 +54,12 @@ export type OverviewNextStep = {
   section?: OverviewNavTarget;
 };
 
-function legRoute(from: string, to: string): string {
-  const route = [from.trim(), to.trim()].filter(Boolean).join(" → ");
+function legRoute(from: string, to: string, state: TripSetupState): string {
+  const route = transportRouteLabel({
+    from,
+    to,
+    ctx: transportLabelContextFromBasics(state.basics),
+  });
   return route || "Route TBC";
 }
 
@@ -46,72 +74,117 @@ function uniqueCities(days: TripSetupState["dayPlacesByGroupId"][string]): strin
   return [...cities];
 }
 
+function dedupeById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const unique: T[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    unique.push(item);
+  }
+  return unique;
+}
+
 /** Group-wide snapshot — only lines that have real data. */
-export function buildOverviewSummary(state: TripSetupState): OverviewSummaryLine[] {
-  const lines: OverviewSummaryLine[] = [];
+export function buildOverviewSummarySections(
+  state: TripSetupState,
+): OverviewSummarySnapshot {
+  const stats: OverviewTripStats = {};
+  const sections: OverviewSummarySection[] = [];
   const paintedDays = getVisibleCalendarDayPlaces(state);
 
   const tripBounds = effectiveTripBoundsFromState(state);
   if (!tripDatesAreUnset(tripBounds.startDate, tripBounds.endDate)) {
-    lines.push({
-      id: "dates",
-      label: "Dates",
-      value: formatTripDateRangeLabel(tripBounds.startDate, tripBounds.endDate),
-    });
+    stats.dates = formatTripDateRangeLabel(tripBounds.startDate, tripBounds.endDate);
   }
 
   if (paintedDays.length) {
     const cities = uniqueCities(paintedDays);
-    lines.push({
-      id: "locations",
-      label: "Locations",
-      value:
-        cities.length > 0
-          ? `${cities.join(", ")} · ${paintedDays.length} day${paintedDays.length === 1 ? "" : "s"}`
-          : `${paintedDays.length} day${paintedDays.length === 1 ? "" : "s"} planned`,
+    stats.locations =
+      cities.length > 0
+        ? `${cities.join(", ")} · ${paintedDays.length} day${paintedDays.length === 1 ? "" : "s"}`
+        : `${paintedDays.length} day${paintedDays.length === 1 ? "" : "s"} planned`;
+  }
+
+  const stays = dedupeById(mainAccommodationStays(state).filter((s) => s.name?.trim()));
+  if (stays.length) {
+    sections.push({
+      id: "accommodation",
+      title: "Where you're staying",
+      items: stays.map((stay) => ({
+        id: `stay-${stay.id}`,
+        title: stay.name!.trim(),
+        detail: `${stayCityLabel(stay)} · ${stay.checkInDate} – ${stay.checkOutDate}`,
+      })),
     });
   }
 
-  const stays = mainAccommodationStays(state).filter((s) => s.name?.trim());
-  for (const stay of stays) {
-    lines.push({
-      id: `stay-${stay.id}`,
-      label: "Accommodation",
-      value: `${stay.name!.trim()} · ${stayCityLabel(stay)} · ${stay.checkInDate} – ${stay.checkOutDate}`,
-    });
-  }
-
-  for (const leg of state.outboundLegs) {
-    lines.push({
+  const travelItems: OverviewSummaryItem[] = [];
+  for (const leg of dedupeById(state.outboundLegs)) {
+    travelItems.push({
       id: `out-${leg.id}`,
-      label: "Outbound",
-      value: `${legRoute(leg.fromCity, leg.toCity)} · ${leg.travelDate || "Date TBC"}`,
+      title: legRoute(leg.fromCity, leg.toCity, state),
+      detail: leg.travelDate || "Date TBC",
+      badge: "Outbound",
     });
   }
-  for (const leg of state.returnLegs) {
-    lines.push({
+  for (const leg of dedupeById(state.returnLegs)) {
+    travelItems.push({
       id: `ret-${leg.id}`,
-      label: "Return",
-      value: `${legRoute(leg.fromCity, leg.toCity)} · ${leg.travelDate || "Date TBC"}`,
+      title: legRoute(leg.fromCity, leg.toCity, state),
+      detail: leg.travelDate || "Date TBC",
+      badge: "Return",
     });
   }
-  for (const leg of state.intercityLegs) {
+  for (const leg of dedupeById(state.intercityLegs)) {
     if (leg.surfaceOnly) continue;
-    lines.push({
+    travelItems.push({
       id: `ic-${leg.id}`,
-      label: "Between cities",
-      value: `${legRoute(leg.intercityFromCity, leg.intercityToCity)} · ${leg.travelDate || "Date TBC"}`,
+      title: legRoute(leg.intercityFromCity, leg.intercityToCity, state),
+      detail: leg.travelDate || "Date TBC",
+      badge: "Between cities",
+    });
+  }
+  if (travelItems.length) {
+    sections.push({
+      id: "travel",
+      title: "How you're getting there",
+      items: travelItems,
     });
   }
 
   if (state.activities.length) {
-    lines.push({
+    sections.push({
       id: "activities",
-      label: "Activities",
-      value: `${state.activities.length} planned`,
+      title: "Activities",
+      items: [
+        {
+          id: "activities",
+          title: `${state.activities.length} planned`,
+          detail: "Open Activities to review the schedule",
+        },
+      ],
     });
   }
 
+  return { stats, sections };
+}
+
+/** @deprecated use buildOverviewSummarySections */
+export function buildOverviewSummary(state: TripSetupState): OverviewSummaryLine[] {
+  const { stats, sections } = buildOverviewSummarySections(state);
+  const lines: OverviewSummaryLine[] = [];
+  if (stats.dates) lines.push({ id: "dates", label: "Dates", value: stats.dates });
+  if (stats.locations) lines.push({ id: "locations", label: "Locations", value: stats.locations });
+  for (const section of sections) {
+    for (const item of section.items) {
+      lines.push({
+        id: item.id,
+        label: item.badge ?? section.title,
+        value: item.badge ? `${item.title} · ${item.detail}` : `${item.title} · ${item.detail}`,
+      });
+    }
+  }
   return lines;
 }
 

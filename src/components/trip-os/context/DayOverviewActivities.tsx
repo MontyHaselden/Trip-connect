@@ -7,6 +7,8 @@ import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import type { ActivityDraft } from "@/lib/host/wizard/types";
 import { newId } from "@/lib/host/wizard/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
+import { financeActivityLinesForDay } from "@/lib/trip-engine/cost-ledger/finance-section-readiness";
+import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import { activitiesOnDate } from "@/lib/trip-engine/selectors";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
@@ -27,11 +29,7 @@ function formatActivityTime(activity: ActivityDraft): string {
   return end ? `${start}–${end}` : start;
 }
 
-function isValidStartTime(value: string): boolean {
-  return /^\d{1,2}:\d{2}$/.test(value.trim());
-}
-
-function normalizeStartTime(value: string): string {
+function normalizeTime(value: string): string {
   const [h, m] = value.trim().split(":");
   return `${h!.padStart(2, "0")}:${m!.padStart(2, "0")}`;
 }
@@ -43,6 +41,7 @@ export function DayOverviewActivities(props: {
   groupId: string;
   rangeStart: string;
   rangeEnd: string;
+  costLedger?: CostLedgerProjection | null;
   saving?: boolean;
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
 }) {
@@ -88,6 +87,53 @@ export function DayOverviewActivities(props: {
   const activityCount = activitiesByDay.reduce((n, [, list]) => n + list.length, 0);
   const multiDay = props.rangeStart !== props.rangeEnd;
 
+  const financeActivitySuggestions = useMemo(
+    () => financeActivityLinesForDay(props.costLedger, props.graph, props.rangeStart),
+    [props.costLedger, props.graph, props.rangeStart],
+  );
+
+  async function addActivityFromFinance(lineId: string, lineTitle: string) {
+    setFormError(null);
+    const normalizedStart = normalizeTime(startTime);
+    const normalizedEnd = endTime.trim() ? normalizeTime(endTime) : null;
+    const activityId = newId();
+
+    const ok = await props.onDispatch([
+      {
+        type: "addActivity",
+        groupId: props.groupId,
+        linkFinanceLineId: lineId,
+        activity: {
+          id: activityId,
+          title: lineTitle.trim(),
+          date: props.rangeStart,
+          endDate: null,
+          startTime: normalizedStart,
+          endTime: normalizedEnd,
+          isTimeTbc: false,
+          category: "activity",
+          locationName: null,
+          address: null,
+          isLocationTbc: true,
+          transportNote: null,
+          leaveByTime: null,
+          bringNote: null,
+          description: null,
+          audienceType: "everyone",
+          audienceId: null,
+          bookingStatus: "not_booked",
+        },
+      },
+    ]);
+
+    if (ok) {
+      setTitle("");
+      setStartTime("10:00");
+      setEndTime("");
+      setAdding(false);
+    }
+  }
+
   async function addActivity() {
     setFormError(null);
     const trimmedTitle = title.trim();
@@ -95,14 +141,12 @@ export function DayOverviewActivities(props: {
       setFormError("Add a title.");
       return;
     }
-    if (!isValidStartTime(startTime)) {
-      setFormError("Start time is required (e.g. 10:00).");
+    if (!startTime.trim()) {
+      setFormError("Choose a start time.");
       return;
     }
-    const normalizedStart = normalizeStartTime(startTime);
-    const normalizedEnd = endTime.trim() && isValidStartTime(endTime)
-      ? normalizeStartTime(endTime)
-      : null;
+    const normalizedStart = normalizeTime(startTime);
+    const normalizedEnd = endTime.trim() ? normalizeTime(endTime) : null;
 
     const ok = await props.onDispatch([
       {
@@ -169,6 +213,34 @@ export function DayOverviewActivities(props: {
 
       {adding ? (
         <TripSoftPanel title="New activity" className="mb-4">
+          {financeActivitySuggestions.length > 0 ? (
+            <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50/80 px-3 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-800">
+                From Finance
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-violet-950">
+                These are already in Finance for this day — add them to the calendar instead of
+                creating a duplicate.
+              </p>
+              <ul className="mt-2 space-y-1">
+                {financeActivitySuggestions.map((line) => (
+                  <li key={line.id}>
+                    <button
+                      type="button"
+                      disabled={props.saving}
+                      onClick={() => void addActivityFromFinance(line.id, line.description)}
+                      className="flex w-full items-center justify-between gap-2 rounded-lg border border-violet-200 bg-white px-3 py-2 text-left text-sm text-zinc-900 hover:border-violet-300 hover:bg-violet-50 disabled:opacity-50"
+                    >
+                      <span className="font-medium">{line.description}</span>
+                      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                        Add to day
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="grid gap-2 sm:grid-cols-2">
             <TripInput
               value={title}
@@ -177,15 +249,19 @@ export function DayOverviewActivities(props: {
               className="sm:col-span-2"
             />
             <TripInput
+              type="time"
+              step={300}
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              placeholder="Start time (required)"
-              aria-required
+              label="Start time"
+              required
             />
             <TripInput
+              type="time"
+              step={300}
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              placeholder="End time (optional)"
+              label="End time (optional)"
             />
           </div>
           {formError ? <p className="mt-2 text-sm text-red-600">{formError}</p> : null}

@@ -1,7 +1,10 @@
 import { desc, eq, sql } from "drizzle-orm";
 
-import { calcGstAmount } from "@/lib/billing/gst";
+import { calcGstAmount, formatPublicPrice } from "@/lib/billing/gst";
 import { getGstSettings } from "@/lib/billing/settings";
+import { updateSubscriptionBillingStatus } from "@/lib/billing/subscriptions";
+import { getSupportEmail, sendEmail } from "@/lib/email/send-email";
+import { accountActivatedEmail, invoiceSentEmail } from "@/lib/email/templates";
 import { db } from "@/lib/db/client";
 import { hostAccounts, invoices } from "@/lib/db/schema";
 
@@ -69,6 +72,13 @@ export async function updateInvoiceStatus(params: {
   paymentReference?: string;
   internalNotes?: string;
 }) {
+  const before = await db
+    .select()
+    .from(invoices)
+    .where(eq(invoices.id, params.invoiceId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
   const [updated] = await db
     .update(invoices)
     .set({
@@ -79,6 +89,58 @@ export async function updateInvoiceStatus(params: {
     })
     .where(eq(invoices.id, params.invoiceId))
     .returning();
+
+  if (updated && params.status === "paid" && before?.status !== "paid") {
+    await updateSubscriptionBillingStatus({
+      accountId: updated.accountId,
+      billingStatus: "active",
+      clearTrial: true,
+    });
+
+    const account = await db
+      .select({ email: hostAccounts.email, fullName: hostAccounts.fullName })
+      .from(hostAccounts)
+      .where(eq(hostAccounts.id, updated.accountId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+
+    if (account?.email) {
+      const supportEmail = await getSupportEmail();
+      const mail = accountActivatedEmail({
+        fullName: account.fullName,
+        supportEmail,
+      });
+      void sendEmail({ to: account.email, ...mail });
+    }
+  }
+
+  if (updated && params.status === "sent" && before?.status !== "sent") {
+    const account = await db
+      .select({ email: hostAccounts.email, fullName: hostAccounts.fullName })
+      .from(hostAccounts)
+      .where(eq(hostAccounts.id, updated.accountId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+
+    if (account?.email) {
+      const gst = await getGstSettings();
+      const totalDisplay = formatPublicPrice({
+        basePriceCents: updated.subtotalCents,
+        billingPeriod: "year",
+        settings: gst,
+      }).display;
+      const supportEmail = await getSupportEmail();
+      const mail = invoiceSentEmail({
+        fullName: account.fullName,
+        invoiceNumber: updated.invoiceNumber,
+        totalDisplay,
+        dueDate: updated.dueDate,
+        supportEmail,
+      });
+      void sendEmail({ to: account.email, ...mail });
+    }
+  }
+
   return updated ?? null;
 }
 

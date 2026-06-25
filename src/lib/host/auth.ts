@@ -2,6 +2,13 @@ import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 
 import { createSubscriptionForAccount } from "@/lib/billing/subscriptions";
+import {
+  DEFAULT_SCHOOL_PLAN,
+  FOUNDING_SCHOOL_PRICE_CENTS,
+  TRIAL_DAYS,
+} from "@/lib/billing/launch-pricing";
+import { getSupportEmail, sendEmail } from "@/lib/email/send-email";
+import { welcomeEmail } from "@/lib/email/templates";
 import { acceptPendingInvitesForEmail } from "@/lib/host/accept-invites";
 import { db } from "@/lib/db/client";
 import { hostAccounts } from "@/lib/db/schema";
@@ -30,6 +37,7 @@ export async function createHostAccount(params: {
   jobTitle?: string | null;
   homeCity?: string | null;
   defaultAirport?: string | null;
+  foundingSchool?: boolean;
 }) {
   const email = params.email.trim().toLowerCase();
 
@@ -78,11 +86,12 @@ export async function createHostAccount(params: {
       fullName: params.fullName.trim(),
       role,
       accountType: params.accountType,
-      plan: params.plan,
+      plan: params.accountType === "school" ? DEFAULT_SCHOOL_PLAN : params.plan,
       schoolName: params.schoolName?.trim() || null,
       jobTitle: params.jobTitle?.trim() || null,
       homeCity: params.homeCity?.trim() || null,
       defaultAirport: params.defaultAirport?.trim() || null,
+      foundingSchool: params.foundingSchool ?? false,
       planExpiresAt: planExpiryDate(params.plan),
     })
     .returning({
@@ -97,11 +106,30 @@ export async function createHostAccount(params: {
   if (!created) throw new Error("Failed to create account.");
 
   try {
-    await createSubscriptionForAccount({
+    const isSchool = params.accountType === "school";
+    const planCode = isSchool ? DEFAULT_SCHOOL_PLAN : params.plan;
+    const sub = await createSubscriptionForAccount({
       accountId: created.id,
-      planCode: params.plan,
-      billingStatus: "manual",
+      planCode,
+      billingStatus: isSchool ? "trial" : "manual",
+      trialDays: isSchool ? TRIAL_DAYS : undefined,
+      foundingSchool: isSchool && params.foundingSchool,
+      foundingPriceCents:
+        isSchool && params.foundingSchool ? FOUNDING_SCHOOL_PRICE_CENTS : undefined,
     });
+
+    if (isSchool) {
+      const supportEmail = await getSupportEmail();
+      const trialEndsAt = sub.trialEndsAt?.toLocaleDateString("en-NZ", {
+        dateStyle: "long",
+      }) ?? "in 7 days";
+      const mail = welcomeEmail({
+        fullName: created.fullName,
+        trialEndsAt,
+        supportEmail,
+      });
+      void sendEmail({ to: created.email, ...mail });
+    }
   } catch {
     // Plans table may not be seeded yet in dev
   }

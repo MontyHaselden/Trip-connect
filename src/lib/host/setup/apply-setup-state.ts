@@ -21,6 +21,7 @@ import {
   syncTripDaysPatch,
   syncTransportLegsTable,
 } from "@/lib/host/locations/apply-location-state";
+import { syncTransportProductsTable } from "@/lib/host/locations/transport-products";
 import { reconcileImportedAccommodationStays } from "@/lib/host/import/reconcile-accommodation-stays";
 import { toDbBookingStatus, toDbTransportType } from "@/lib/host/wizard/db-enums";
 import { resolveItemVisibility, persistEntityVisibility } from "@/lib/visibility/item-visibility";
@@ -377,6 +378,7 @@ export async function applyTripSetupState(
 
   // Always sync main transport so removed legs are purged from Neon even when
   // saving from a subgroup context or before other group-scoped writes run.
+  await syncTransportProductsTable(tripId, inferred.transportProducts ?? []);
   await syncTransportLegsTable(
     tripId,
     state.mainGroupId,
@@ -408,6 +410,7 @@ export async function applyTripSetupState(
         returnLegs: main.returnLegs,
         intercityLegs: main.intercityLegs,
         accommodationStays,
+        transportProducts: inferred.transportProducts ?? [],
       },
       {
         syncTransportItems:

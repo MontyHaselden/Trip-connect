@@ -1,12 +1,9 @@
 import Link from "next/link";
 
-import { FaqSection } from "@/components/marketing/FaqSection";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
-import { PayShareSection } from "@/components/marketing/PayShareSection";
-import {
-  PersonalPricingSection,
-  SchoolPricingSection,
-} from "@/components/marketing/PricingSection";
+import { FaqSection } from "@/components/marketing/FaqSection";
+import { LaunchSchoolPricing } from "@/components/marketing/LaunchSchoolPricing";
+import { PRODUCT_NAME } from "@/lib/brand";
 
 export default function PricingPage() {
   return (
@@ -14,24 +11,23 @@ export default function PricingPage() {
       <div className="mx-auto max-w-6xl px-5 py-16">
         <h1 className="text-3xl font-semibold tracking-tight">Pricing</h1>
         <p className="mt-3 max-w-2xl text-zinc-600">
-          Simple yearly school licences with no per-student fees. Personal options for family and
-          group trips appear below.
-        </p>
-        <p className="mt-2 text-sm text-zinc-500">
-          Billing is placeholder for now — plans are selected at signup.
+          One simple school plan. No per-student fees. Start with a 7-day free trial — build your
+          trip and preview the student view before you pay.
         </p>
       </div>
-      <SchoolPricingSection showNotes />
-      <PersonalPricingSection />
-      <PayShareSection />
+      <LaunchSchoolPricing />
       <FaqSection />
       <div className="mx-auto max-w-3xl px-5 pb-16 text-center">
         <Link
           href="/signup?type=school"
           className="inline-flex h-11 items-center justify-center rounded-xl bg-zinc-900 px-6 text-sm font-medium text-white"
         >
-          Create school account
+          Start your 7-day free trial
         </Link>
+        <p className="mt-3 text-sm text-zinc-500">
+          Questions? <Link href="/contact" className="text-violet-700 hover:underline">Contact us</Link>{" "}
+          for founding-school pricing or a demo call.
+        </p>
       </div>
     </MarketingShell>
   );

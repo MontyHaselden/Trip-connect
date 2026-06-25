@@ -1,8 +1,10 @@
 import Link from "next/link";
 
+import { DEFAULT_SUPPORT_EMAIL, LEGAL_OPERATOR, PRODUCT_NAME } from "@/lib/brand";
+
 export function MarketingShell(props: {
   children: React.ReactNode;
-  active?: "home" | "features" | "pricing" | "demo";
+  active?: "home" | "features" | "pricing" | "demo" | "contact";
 }) {
   const { children, active } = props;
 
@@ -23,11 +25,12 @@ export function MarketingShell(props: {
       <header className="sticky top-0 z-30 border-b border-zinc-200/60 bg-white/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4">
           <Link href="/" className="text-lg font-semibold tracking-tight">
-            Trip Connect
+            {PRODUCT_NAME}
           </Link>
           <nav className="hidden items-center gap-6 sm:flex">
             {navLink("/features", "features", "Features")}
             {navLink("/pricing", "pricing", "Pricing")}
+            {navLink("/contact", "contact", "Contact")}
             {navLink("/demo", "demo", "Demo")}
           </nav>
           <div className="flex items-center gap-2">
@@ -41,33 +44,47 @@ export function MarketingShell(props: {
               href="/signup?type=school"
               className="inline-flex h-9 items-center justify-center rounded-full bg-violet-600 px-4 text-sm font-medium text-white hover:bg-violet-700"
             >
-              Start school account
+              Start free trial
             </Link>
           </div>
         </div>
       </header>
       <main>{children}</main>
       <footer className="border-t border-zinc-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-10 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-semibold">Trip Connect</p>
-            <p className="mt-1 text-sm text-zinc-600">
-              School trip itineraries, rebuilt for phones. No GPS tracking. No per-student fees.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-4 text-sm text-zinc-600">
-            <Link href="/features" className="hover:text-zinc-900">
-              Features
-            </Link>
-            <Link href="/pricing" className="hover:text-zinc-900">
-              Pricing
-            </Link>
-            <Link href="/demo" className="hover:text-zinc-900">
-              Demo
-            </Link>
-            <Link href="/login" className="hover:text-zinc-900">
-              Log in
-            </Link>
+        <div className="mx-auto max-w-6xl px-5 py-10">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="font-semibold">{PRODUCT_NAME}</p>
+              <p className="mt-1 text-sm text-zinc-600">
+                School trip itineraries, rebuilt for phones. No GPS tracking. No per-student fees.
+              </p>
+              <p className="mt-2 text-xs text-zinc-500">{LEGAL_OPERATOR}</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                <a href={`mailto:${DEFAULT_SUPPORT_EMAIL}`} className="hover:text-zinc-800">
+                  {DEFAULT_SUPPORT_EMAIL}
+                </a>
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-zinc-600">
+              <Link href="/features" className="hover:text-zinc-900">
+                Features
+              </Link>
+              <Link href="/pricing" className="hover:text-zinc-900">
+                Pricing
+              </Link>
+              <Link href="/contact" className="hover:text-zinc-900">
+                Contact
+              </Link>
+              <Link href="/terms" className="hover:text-zinc-900">
+                Terms
+              </Link>
+              <Link href="/privacy" className="hover:text-zinc-900">
+                Privacy
+              </Link>
+              <Link href="/login" className="hover:text-zinc-900">
+                Log in
+              </Link>
+            </div>
           </div>
         </div>
       </footer>

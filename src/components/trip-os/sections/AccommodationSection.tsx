@@ -2,21 +2,25 @@
 
 import { useMemo, useState } from "react";
 
-import {
-  homestayPeriodStays,
-  nonHomestayStays,
-} from "@/lib/host/accommodation/homestay-helpers";
+import { homestayPeriodStays, nonHomestayStays } from "@/lib/host/accommodation/homestay-helpers";
 import { stayTypeLabel } from "@/lib/host/accommodation/stay-type-labels";
 import type { AccommodationStayDraft } from "@/lib/host/wizard/types";
 import {
-  stayInheritsFromMainGroup,
-  staysForCalendarView,
-} from "@/lib/trip-engine/person-lens";
+  stayFinanceDisplayStatus,
+  stayFinanceAttentionById,
+  stayFinanceAttentionReason,
+  type EntityFinanceDisplayStatus,
+} from "@/lib/trip-engine/cost-ledger/finance-section-readiness";
+import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
+import type { FinanceBuiltInSection } from "@/lib/trip-engine/cost-ledger/finance-sections";
+import { staysListedByScope, type TripScopeSection } from "@/lib/trip-engine/section-scope-lists";
 import type { TripEntityGraph, RosterSummary } from "@/lib/trip-engine/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 
 import { AddRoomsModal } from "../accommodation/AddRoomsModal";
 import { AddHomestaysModal } from "../homestay/AddHomestaysModal";
+import { FinanceLineStatusBadge } from "../shared/FinanceLineStatusBadge";
+import { TripScopedSectionHeader } from "../shared/TripScopedSectionHeader";
 import { HomestaysPanel } from "./HomestaysPanel";
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 
@@ -41,10 +45,12 @@ function PanelActionButton(props: {
 
 function StayListItem(props: {
   stay: AccommodationStayDraft;
-  inherited: boolean;
-  onRemove?: () => void;
+  scopeHint?: string | null;
+  financeStatus: EntityFinanceDisplayStatus;
+  financeAttentionReason?: string | null;
+  onOpenFinance?: () => void;
 }) {
-  const { stay, inherited } = props;
+  const { stay } = props;
   return (
     <li className="flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm">
       <div className="min-w-0">
@@ -53,21 +59,17 @@ function StayListItem(props: {
           {stayTypeLabel(stay.stayType)} · {stay.cityLabel} · {stay.checkInDate} →{" "}
           {stay.checkOutDate}
         </p>
-        {inherited ? (
-          <p className="mt-1 text-xs text-violet-700">From main group — edit on Whole group calendar</p>
+        {props.scopeHint ? (
+          <p className="mt-1 text-xs text-violet-700">{props.scopeHint}</p>
         ) : stay.notes?.trim() ? (
           <p className="mt-1 text-xs text-amber-800">{stay.notes}</p>
         ) : null}
       </div>
-      {props.onRemove ? (
-        <button
-          type="button"
-          onClick={props.onRemove}
-          className="shrink-0 text-sm text-red-600 hover:text-red-700"
-        >
-          Delete
-        </button>
-      ) : null}
+      <FinanceLineStatusBadge
+        status={props.financeStatus}
+        attentionReason={props.financeAttentionReason}
+        onNeedsAttention={props.onOpenFinance}
+      />
     </li>
   );
 }
@@ -95,6 +97,16 @@ function homestayPeriodForAction(
   return periods[0] ?? null;
 }
 
+function scopeEditHint(
+  graph: TripEntityGraph,
+  viewGroupId: string,
+  scope: TripScopeSection<AccommodationStayDraft>,
+): string | null {
+  if (scope.groupId === graph.mainGroupId) return null;
+  if (viewGroupId === scope.groupId) return null;
+  return `Edit on ${scope.title}'s calendar`;
+}
+
 export function AccommodationSection(props: {
   graph: TripEntityGraph;
   groupId: string;
@@ -105,97 +117,132 @@ export function AccommodationSection(props: {
   saving?: boolean;
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
   onReload?: () => void;
+  costLedger?: CostLedgerProjection | null;
+  onOpenFinanceSection?: (section: FinanceBuiltInSection, lineId?: string) => void;
 }) {
   const [roomsModalOpen, setRoomsModalOpen] = useState(false);
   const [homestaysModalOpen, setHomestaysModalOpen] = useState(false);
+  const [actionScopeId, setActionScopeId] = useState<string | null>(null);
 
-  const calendarStays = staysForCalendarView(props.graph, props.groupId);
-  const hotelStays = nonHomestayStays(calendarStays).filter((s) => s.name?.trim());
-  const homestayPeriods = homestayPeriodStays(calendarStays);
   const roster = props.rosterSummary ?? { participants: [], groups: [], rooms: [] };
   const homestayStudents = useMemo(
     () => roster.participants.filter((p) => p.role === "student"),
     [roster.participants],
   );
 
-  const homestayTarget = homestayPeriodForAction(homestayPeriods, props.selectedDate);
-  const editingOwnGroup = props.groupId === props.graph.mainGroupId;
-  const hasAnyStays = hotelStays.length > 0 || homestayPeriods.length > 0;
+  const scopedStays = useMemo(
+    () => staysListedByScope(props.graph, roster, props.groupId),
+    [props.graph, roster, props.groupId],
+  );
 
-  function removeStay(stayId: string) {
-    void props.onDispatch([{ type: "removeStay", groupId: props.groupId, stayId }]);
+  const stayFinanceAttention = useMemo(
+    () => stayFinanceAttentionById(props.costLedger),
+    [props.costLedger],
+  );
+
+  const allScopes = useMemo(
+    () => [scopedStays.wholeGroup, ...scopedStays.otherScopes],
+    [scopedStays],
+  );
+
+  const actionScope =
+    allScopes.find((scope) => scope.groupId === (actionScopeId ?? props.groupId)) ??
+    scopedStays.wholeGroup;
+
+  const viewScope = allScopes.find((scope) => scope.groupId === props.groupId);
+  const viewStays = viewScope?.items ?? [];
+  const hotelStaysForRooms = nonHomestayStays(actionScope.items).filter((s) => s.name?.trim());
+
+  const homestayPeriods = homestayPeriodStays(viewStays);
+  const homestayTarget = homestayPeriodForAction(
+    homestayPeriodStays(actionScope.items),
+    props.selectedDate,
+  );
+  const hasAnyStays = allScopes.some((scope) => scope.items.length > 0);
+
+  function openStayFinance(stayId: string) {
+    props.onOpenFinanceSection?.("accommodation", stayFinanceAttention.get(stayId));
   }
 
-  function inherited(stay: AccommodationStayDraft) {
-    return stayInheritsFromMainGroup(props.graph, props.groupId, stay);
+  function scopeHeaderAction(scope: TripScopeSection<AccommodationStayDraft>) {
+    const isActiveScope = scope.groupId === props.groupId;
+    if (!isActiveScope) return undefined;
+
+    const hasHomestayPeriods = homestayPeriodStays(scope.items).length > 0;
+    const hasHotels = nonHomestayStays(scope.items).some((s) => s.name?.trim());
+
+    if (scope.groupId === props.graph.mainGroupId || hasHotels) {
+      return (
+        <PanelActionButton
+          onClick={() => {
+            setActionScopeId(scope.groupId);
+            setRoomsModalOpen(true);
+          }}
+        >
+          Add rooms
+        </PanelActionButton>
+      );
+    }
+
+    if (hasHomestayPeriods) {
+      return (
+        <PanelActionButton
+          onClick={() => {
+            setActionScopeId(scope.groupId);
+            setHomestaysModalOpen(true);
+          }}
+          disabled={!homestayPeriodForAction(homestayPeriodStays(scope.items), props.selectedDate)}
+          title="Add a homestay period on the calendar first"
+        >
+          Add homestays
+        </PanelActionButton>
+      );
+    }
+
+    return undefined;
+  }
+
+  function renderScope(scope: TripScopeSection<AccommodationStayDraft>) {
+    if (!scope.items.length) return null;
+
+    const isWholeGroup = scope.groupId === props.graph.mainGroupId;
+    const scopeHint = scopeEditHint(props.graph, props.groupId, scope);
+
+    return (
+      <div key={scope.groupId} className={isWholeGroup ? undefined : "mt-8"}>
+        <TripScopedSectionHeader
+          title={scope.title}
+          memberNames={scope.memberNames}
+          isWholeGroup={isWholeGroup}
+          headerAction={scopeHeaderAction(scope)}
+        />
+        <ul className="space-y-2">
+          {scope.items.map((s) => (
+            <StayListItem
+              key={s.id}
+              stay={s}
+              scopeHint={scopeHint}
+              financeStatus={stayFinanceDisplayStatus(s.id, props.costLedger)}
+              financeAttentionReason={stayFinanceAttentionReason(s.id, props.costLedger)}
+              onOpenFinance={() => openStayFinance(s.id)}
+            />
+          ))}
+        </ul>
+      </div>
+    );
   }
 
   return (
     <TripSectionShell
       title="Accommodation"
-      description="Stays as shown on the trip calendar. Add or change them by selecting days on the calendar."
+      description="Whole-group stays first, then personal or subgroup stays with who they belong to."
     >
       {!hasAnyStays ? (
         <TripSoftPanel>
           <AccommodationEmptyState />
         </TripSoftPanel>
       ) : (
-        <>
-          {hotelStays.length ? (
-            <TripSoftPanel
-              title="Hotels & group stays"
-              headerAction={
-                <PanelActionButton onClick={() => setRoomsModalOpen(true)}>
-                  Add rooms
-                </PanelActionButton>
-              }
-            >
-              <ul className="space-y-2">
-                {hotelStays.map((s) => (
-                  <StayListItem
-                    key={s.id}
-                    stay={s}
-                    inherited={inherited(s)}
-                    onRemove={inherited(s) ? undefined : () => removeStay(s.id)}
-                  />
-                ))}
-              </ul>
-            </TripSoftPanel>
-          ) : null}
-
-          {homestayPeriods.length ? (
-            <TripSoftPanel
-              title="Homestay periods"
-              className={hotelStays.length ? "mt-6" : undefined}
-              headerAction={
-                <PanelActionButton
-                  onClick={() => setHomestaysModalOpen(true)}
-                  disabled={!homestayTarget || !editingOwnGroup}
-                  title={
-                    !homestayTarget
-                      ? "Add a homestay period on the calendar first"
-                      : !editingOwnGroup
-                        ? "Switch to this group’s calendar to add host families"
-                        : "Add host families and assign students"
-                  }
-                >
-                  Add homestays
-                </PanelActionButton>
-              }
-            >
-              <ul className="space-y-2">
-                {homestayPeriods.map((s) => (
-                  <StayListItem
-                    key={s.id}
-                    stay={s}
-                    inherited={inherited(s)}
-                    onRemove={inherited(s) ? undefined : () => removeStay(s.id)}
-                  />
-                ))}
-              </ul>
-            </TripSoftPanel>
-          ) : null}
-        </>
+        <>{allScopes.map((scope) => renderScope(scope))}</>
       )}
 
       {homestayPeriods.length ? (
@@ -204,7 +251,7 @@ export function AccommodationSection(props: {
             tripId={props.tripId}
             groupId={props.groupId}
             graph={props.graph}
-            stays={calendarStays}
+            stays={viewStays}
             roster={roster}
             selectedDate={props.selectedDate}
             saving={props.saving}
@@ -218,7 +265,7 @@ export function AccommodationSection(props: {
         onClose={() => setRoomsModalOpen(false)}
         tripId={props.tripId}
         inviteCode={props.inviteCode}
-        hotelStays={hotelStays}
+        hotelStays={hotelStaysForRooms}
         roster={roster}
         onSaved={() => props.onReload?.()}
       />
@@ -227,7 +274,7 @@ export function AccommodationSection(props: {
         open={homestaysModalOpen}
         onClose={() => setHomestaysModalOpen(false)}
         tripId={props.tripId}
-        groupId={props.groupId}
+        groupId={actionScope.groupId}
         cityLabel={homestayTarget?.cityLabel ?? ""}
         checkIn={homestayTarget?.checkInDate ?? ""}
         checkOut={homestayTarget?.checkOutDate ?? ""}

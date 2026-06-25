@@ -4,7 +4,7 @@ import { useMemo } from "react";
 
 import {
   buildOverviewNextSteps,
-  buildOverviewSummary,
+  buildOverviewSummarySections,
   isTripWelcomeState,
 } from "@/lib/host/setup/overview-content";
 import { formatTripDateRangeLabel, tripDatesAreUnset } from "@/lib/host/trip-date-display";
@@ -26,6 +26,7 @@ import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import type { TripOsSection } from "../TripOsWorkspace";
 import { EditableTripName } from "../shared/EditableTripName";
 import { OverviewFinancePanel } from "../finance/OverviewFinancePanel";
+import { TripOverviewSections } from "./TripOverviewSections";
 import { WelcomeOverview } from "./WelcomeOverview";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -59,7 +60,7 @@ export function SmartOverview(props: {
 }) {
   const setupState = useMemo(() => graphToSetupState(props.graph), [props.graph]);
   const welcome = useMemo(() => isTripWelcomeState(setupState), [setupState]);
-  const summary = useMemo(() => buildOverviewSummary(setupState), [setupState]);
+  const tripSnapshot = useMemo(() => buildOverviewSummarySections(setupState), [setupState]);
   const suggestions = useMemo(() => buildOverviewNextSteps(setupState), [setupState]);
   const logisticsPrompts = useMemo(
     () => (welcome ? [] : computeLogisticsPrompts(props.graph)),
@@ -125,25 +126,12 @@ export function SmartOverview(props: {
         ) : null}
       </div>
 
-      {summary.length ? (
-        <section>
-          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
-            In this trip
-          </h3>
-          <ul className="space-y-3">
-            {summary.map((line) => (
-              <li key={line.id} className="flex gap-4 text-sm">
-                <span className="w-24 shrink-0 font-medium text-zinc-400">{line.label}</span>
-                <span className="min-w-0 text-zinc-800">{line.value}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      <TripOverviewSections snapshot={tripSnapshot} />
 
       <OverviewFinancePanel
         costLedger={props.costLedger ?? null}
         roster={props.rosterSummary ?? { participants: [], groups: [], rooms: [] }}
+        graph={props.graph}
         onNavigateSection={props.onNavigateSection}
       />
 

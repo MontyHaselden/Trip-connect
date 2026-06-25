@@ -15,6 +15,7 @@ export function TripConfirmModal(props: {
   confirmLabel: string;
   confirmLoading?: boolean;
   confirmDisabled?: boolean;
+  allowDismissWhileLoading?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
   children?: ReactNode;
@@ -30,6 +31,7 @@ export function TripConfirmModal(props: {
     confirmLabel,
     confirmLoading,
     confirmDisabled,
+    allowDismissWhileLoading,
     onCancel,
     onConfirm,
     children,
@@ -98,10 +100,14 @@ export function TripConfirmModal(props: {
           ) : null}
         </div>
 
-        {children ? <div className="px-6 py-5">{children}</div> : null}
+        {children ? <div className="px-6 py-5 text-zinc-900">{children}</div> : null}
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-100 bg-zinc-50/80 px-6 py-4">
-          <TripPrimaryButton variant="ghost" onClick={onCancel} disabled={confirmLoading}>
+          <TripPrimaryButton
+            variant="ghost"
+            onClick={onCancel}
+            disabled={confirmLoading && !allowDismissWhileLoading}
+          >
             {cancelLabel}
           </TripPrimaryButton>
           <TripPrimaryButton

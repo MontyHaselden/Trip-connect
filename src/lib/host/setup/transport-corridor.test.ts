@@ -3,6 +3,10 @@ import { describe, it } from "node:test";
 
 import { bangkokStay, patongStay } from "./calendar-fixtures";
 import {
+  computeTransitOverlays,
+  computeTravelDayLayouts,
+} from "@/lib/host/wizard/transport-day-placement";
+import {
   isAccommodationCrossoverDay,
   transferCityCode,
   TRANSPORT_CORRIDOR_LEFT_SHARE,
@@ -53,10 +57,55 @@ describe("transport-corridor", () => {
     assert.equal(isAccommodationCrossoverDay(day, acco, trip, stays), false);
   });
 
-  it("uses 40/20/40 corridor proportions", () => {
-    assert.equal(TRANSPORT_CORRIDOR_LEFT_SHARE, 0.4);
-    assert.equal(TRANSPORT_CORRIDOR_WIDTH, 0.2);
-    assert.equal(TRANSPORT_CORRIDOR_RIGHT_START, 0.6);
+  it("uses half-day split with overlay-only corridor (no middle band)", () => {
+    assert.equal(TRANSPORT_CORRIDOR_LEFT_SHARE, 0.5);
+    assert.equal(TRANSPORT_CORRIDOR_WIDTH, 0);
+    assert.equal(TRANSPORT_CORRIDOR_RIGHT_START, 0.5);
+  });
+
+  it("keeps intercity crossover days on location paint with a transit overlay", () => {
+    const day: DayPlaceDraft = {
+      date: "2026-12-13",
+      primaryCity: "Kagoshima",
+      secondaryCity: "Hiroshima",
+      primaryShare: TRANSPORT_CORRIDOR_LEFT_SHARE,
+      dayType: "trip",
+      includeBuffer: false,
+    };
+    const draft = {
+      outboundLegs: [],
+      returnLegs: [],
+      intercityLegs: [
+        {
+          id: "ic-kagoshima-hiroshima",
+          fromCity: "Kagoshima",
+          toCity: "Hiroshima",
+          intercityFromCity: "Kagoshima",
+          intercityToCity: "Hiroshima",
+          travelDate: "2026-12-13",
+          transportType: "train" as const,
+          bookingStatus: "not_booked" as const,
+          departureTime: "09:00",
+          arrivalTime: "12:00",
+          fromStation: null,
+          toStation: null,
+          carrier: null,
+          flightNumber: null,
+          notes: null,
+        },
+      ],
+      dayPlaces: [day],
+    };
+    const japanTrip = {
+      startDate: "2026-12-05",
+      endDate: "2026-12-21",
+      departureCity: "Christchurch",
+      returnCity: "Christchurch",
+    };
+    const layouts = computeTravelDayLayouts(draft, japanTrip);
+    const overlays = computeTransitOverlays(draft, japanTrip);
+    assert.equal(layouts.has("2026-12-13"), false);
+    assert.equal(overlays.has("2026-12-13"), false);
   });
 
   it("shortens city names for transfer route labels", () => {

@@ -78,6 +78,12 @@ export default async function AdminAccountDetailPage(props: {
               <div><dt className="text-zinc-500">Plan</dt><dd>{account.plan}</dd></div>
               <div><dt className="text-zinc-500">School</dt><dd>{account.schoolName ?? "—"}</dd></div>
               <div><dt className="text-zinc-500">Billing status</dt><dd>{sub?.subscription.billingStatus ?? "—"}</dd></div>
+              {sub?.subscription.trialEndsAt ? (
+                <div>
+                  <dt className="text-zinc-500">Trial ends</dt>
+                  <dd>{sub.subscription.trialEndsAt.toLocaleDateString("en-NZ")}</dd>
+                </div>
+              ) : null}
               {sub ? (
                 <div>
                   <dt className="text-zinc-500">Effective price (ex-GST)</dt>
@@ -135,6 +141,12 @@ export default async function AdminAccountDetailPage(props: {
           plan={account.plan}
           foundingSchool={account.foundingSchool}
           paused={!!account.pausedAt}
+          billingStatus={sub?.subscription.billingStatus ?? "manual"}
+          trialEndsAt={
+            sub?.subscription.trialEndsAt
+              ? sub.subscription.trialEndsAt.toLocaleDateString("en-NZ")
+              : null
+          }
           internalNotes={account.internalNotes}
           overrideAiBuilder={account.overrideAiBuilder}
           overrideViewerLinks={account.overrideViewerLinks}

@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { countFoundingSchools } from "@/lib/billing/subscriptions";
+import { getFoundingSchoolMaxSlots } from "@/lib/billing/settings";
 import { hostApiError } from "@/lib/host/api-errors";
 import { createHostAccount } from "@/lib/host/auth";
 import { setHostSessionCookie } from "@/lib/auth/host-session";
+import { DEFAULT_SCHOOL_PLAN } from "@/lib/billing/launch-pricing";
 
 const BodySchema = z.discriminatedUnion("accountType", [
   z.object({
@@ -16,7 +19,8 @@ const BodySchema = z.discriminatedUnion("accountType", [
     schoolName: z.string().trim().min(2).max(200),
     jobTitle: z.string().trim().min(2).max(120),
     role: z.enum(["teacher", "helper", "host", "admin"]).default("teacher"),
-    plan: z.enum(["school_starter", "school_pro", "school_pro_plus"]),
+    plan: z.enum(["school_starter", "school_pro", "school_pro_plus"]).optional(),
+    foundingSchool: z.boolean().optional(),
     homeCity: z.string().trim().min(2).max(200),
     defaultAirport: z.string().trim().min(2).max(200),
   }),
@@ -40,6 +44,21 @@ export async function POST(req: Request) {
     }
 
     const data = parsed.data;
+    if (data.accountType === "school" && data.foundingSchool) {
+      const [count, max] = await Promise.all([
+        countFoundingSchools(),
+        getFoundingSchoolMaxSlots(),
+      ]);
+      if (count >= max) {
+        return NextResponse.json(
+          {
+            error: `Founding school places are full (${max} schools). You can still start a 7-day trial at standard pricing — contact us to join the waitlist.`,
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     const host =
       data.accountType === "school"
         ? await createHostAccount({
@@ -50,11 +69,12 @@ export async function POST(req: Request) {
             password: data.password,
             fullName: data.fullName,
             role: data.role,
-            plan: data.plan,
+            plan: DEFAULT_SCHOOL_PLAN,
             schoolName: data.schoolName,
             jobTitle: data.jobTitle,
             homeCity: data.homeCity,
             defaultAirport: data.defaultAirport,
+            foundingSchool: data.foundingSchool ?? false,
           })
         : await createHostAccount({
             accountType: "personal",

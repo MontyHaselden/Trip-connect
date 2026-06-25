@@ -34,6 +34,8 @@ import { normalizeStoredTime } from "@/lib/utils/ai-time";
 import { assertValidIsoDate } from "@/lib/utils/iso-date";
 
 import type { TripLocationState } from "./types";
+import { syncTransportProductsTable } from "./transport-products";
+import { transportItineraryTitle } from "@/lib/trip-engine/transport-display";
 
 function addDays(iso: string, delta: number): string {
   const d = new Date(`${iso}T12:00:00Z`);
@@ -68,14 +70,11 @@ function wizardItemBookingStatus(
   return db;
 }
 
-function transportTitle(leg: TransportLegDraft): string {
-  const type = leg.transportType.charAt(0).toUpperCase() + leg.transportType.slice(1);
-  const from = leg.fromCity || leg.fromStation || "departure";
-  const to = leg.toCity || leg.toStation || "arrival";
-  if (leg.transportType === "plane" && leg.flightNumber) {
-    return `Flight ${leg.flightNumber}: ${from} → ${to}`;
-  }
-  return `${type}: ${from} → ${to}`;
+function transportTitle(
+  leg: TransportLegDraft,
+  products: TripLocationState["transportProducts"],
+): string {
+  return transportItineraryTitle(leg, products);
 }
 
 async function ensureDay(
@@ -306,6 +305,7 @@ function legToRow(
     intercityToCity: null as string | null,
     sortOrder: 0,
     visibilityMode: visibility.visibilityMode,
+    transportProductId: leg.transportProductId ?? null,
   };
 }
 
@@ -554,6 +554,7 @@ export async function applyTripLocationState(
     dayIdByDate.set(sorted[i]!.date, dayId);
   }
 
+  await syncTransportProductsTable(tripId, state.transportProducts ?? []);
   await syncTransportLegsTable(
     tripId,
     mainGroupId,
@@ -608,7 +609,7 @@ export async function applyTripLocationState(
         dayId,
         wizardSource: source,
         fingerprint: `${source}:${leg.id}:depart`,
-        title: transportTitle(leg),
+        title: transportTitle(leg, state.transportProducts ?? []),
         startTime: departTime,
         endTime: leg.arrivalTime ? defaultTime(leg.arrivalTime, "12:00:00") : null,
         locationName: leg.fromStation || leg.fromCity || null,

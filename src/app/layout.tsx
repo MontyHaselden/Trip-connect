@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Trip Connect",
+  title: "Itinerary Live",
   description:
-    "School trip planning for teachers and trip booklets for students.",
+    "School trip itineraries for phones — live and offline student booklets by Itinerary Live.",
   icons: {
     icon: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
   },

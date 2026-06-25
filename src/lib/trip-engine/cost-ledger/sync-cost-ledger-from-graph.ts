@@ -3,7 +3,7 @@ import { costLineItems } from "@/lib/db/schema";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 import { loadCostLedgerRaw } from "./load-cost-ledger";
-import { purgeLocationPlaceholderStayLines, purgeOrphanCostLines, graphEntityIdSets } from "./cost-line-cascade";
+import { purgeLocationPlaceholderStayLines, purgeOrphanCostLines, purgeDuplicatePersonalStayFinanceLines, graphEntityIdSets } from "./cost-line-cascade";
 import { buildSeedLineItems, seedItemsNotYetPresent } from "./seed-from-graph";
 import { syncLinkedCostLineMetadata } from "./sync-linked-cost-line-metadata";
 
@@ -14,6 +14,7 @@ export async function syncCostLedgerFromGraph(
   dismissedKeys: Set<string> = new Set(),
 ): Promise<number> {
   await purgeLocationPlaceholderStayLines(tripId, graph);
+  await purgeDuplicatePersonalStayFinanceLines(tripId, graph);
   const entityIds = graphEntityIdSets(graph);
   await purgeOrphanCostLines(
     tripId,

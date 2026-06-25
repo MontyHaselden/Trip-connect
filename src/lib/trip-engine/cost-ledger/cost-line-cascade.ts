@@ -2,11 +2,13 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { costLineItems } from "@/lib/db/schema";
+import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 import {
   clearFinanceDismissalsForEntity,
   type FinanceDismissedEntityType,
 } from "./finance-dismissals";
+import { duplicatePersonalStayIdsForFinance } from "./accommodation-finance-leg";
 
 export async function deleteCostLinesForStay(tripId: string, stayId: string): Promise<void> {
   await db
@@ -23,6 +25,16 @@ export async function deleteCostLinesForTransportLeg(
     .delete(costLineItems)
     .where(eq(costLineItems.linkedTransportLegId, legId));
   await clearFinanceDismissalsForEntity(tripId, "transport_leg", legId);
+}
+
+export async function deleteCostLinesForTransportProduct(
+  tripId: string,
+  productId: string,
+): Promise<void> {
+  await db
+    .delete(costLineItems)
+    .where(eq(costLineItems.linkedTransportProductId, productId));
+  await clearFinanceDismissalsForEntity(tripId, "transport_product", productId);
 }
 
 export async function deleteCostLinesForActivity(
@@ -97,6 +109,31 @@ export async function purgeOrphanCostLines(
       if (line.linkedActivityId && !validActivityIds.has(line.linkedActivityId)) return true;
       return false;
     })
+    .map((l) => l.id);
+
+  if (!orphanIds.length) return 0;
+
+  for (const id of orphanIds) {
+    await db.delete(costLineItems).where(eq(costLineItems.id, id));
+  }
+  return orphanIds.length;
+}
+
+/** Remove finance rows for personal stays that duplicate a main-group hotel leg. */
+export async function purgeDuplicatePersonalStayFinanceLines(
+  tripId: string,
+  graph: TripEntityGraph,
+): Promise<number> {
+  const duplicateStayIds = duplicatePersonalStayIdsForFinance(graph);
+  if (!duplicateStayIds.size) return 0;
+
+  const lines = await db
+    .select({ id: costLineItems.id, linkedStayId: costLineItems.linkedStayId })
+    .from(costLineItems)
+    .where(eq(costLineItems.tripId, tripId));
+
+  const orphanIds = lines
+    .filter((line) => line.linkedStayId && duplicateStayIds.has(line.linkedStayId))
     .map((l) => l.id);
 
   if (!orphanIds.length) return 0;

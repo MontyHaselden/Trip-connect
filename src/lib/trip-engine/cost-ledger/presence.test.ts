@@ -117,6 +117,79 @@ describe("presence eligibility", () => {
     assert.ok(!eligible.includes("p-monty"));
   });
 
+  it("includes independent participant on main stay when personal stay is same hotel leg", async () => {
+    const { buildParticipantPresenceMap, eligibleParticipantIdsForLine } = await import(
+      "./presence"
+    );
+    const graph = {
+      ...miniGraph(),
+      accommodationStays: [
+        {
+          id: "stay-tokyo",
+          name: "Tokyo Hotel",
+          cityLabel: "Tokyo",
+          checkInDate: "2026-12-10",
+          checkOutDate: "2026-12-12",
+          stayType: "hotel",
+          originGroupId: "main",
+        },
+        {
+          id: "stay-tokyo-monty",
+          name: "Tokyo Hotel",
+          cityLabel: "Tokyo",
+          checkInDate: "2026-12-10",
+          checkOutDate: "2026-12-14",
+          stayType: "hotel",
+          originGroupId: "monty",
+        },
+      ],
+    } as TripEntityGraph;
+    const roster = {
+      participants: [
+        {
+          id: "p-monty",
+          fullName: "Monty",
+          role: "student",
+          inCostSplit: true,
+          groupIds: ["monty"],
+          roomId: null,
+        },
+        {
+          id: "p-sam",
+          fullName: "Sam",
+          role: "student",
+          inCostSplit: true,
+          groupIds: [],
+          roomId: null,
+        },
+      ],
+      groups: [{ id: "monty", name: "Monty" }],
+      rooms: [],
+    };
+    const presence = buildParticipantPresenceMap(graph, roster);
+    const line = {
+      id: "line-1",
+      sortOrder: 0,
+      category: "accommodation" as const,
+      description: "Tokyo Hotel",
+      notes: null,
+      totalAmountCents: 10000,
+      currency: "NZD",
+      quantity: null,
+      allocationRuleType: "equal_present" as const,
+      allocationRulePayload: {},
+      linkedStayId: "stay-tokyo",
+      linkedTransportLegId: null,
+      linkedActivityId: null,
+      scope: "presence" as const,
+      supplierPaymentStatus: null,
+      ...defaultCostLineFinanceFields(),
+    };
+    const eligible = eligibleParticipantIdsForLine(line, graph, roster, presence);
+    assert.ok(eligible.includes("p-monty"));
+    assert.ok(eligible.includes("p-sam"));
+  });
+
   it("only includes participants whose calendar follows an intercity leg", async () => {
     const { buildParticipantPresenceMap, eligibleParticipantIdsForLine } = await import(
       "./presence"

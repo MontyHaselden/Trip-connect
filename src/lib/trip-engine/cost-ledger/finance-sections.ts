@@ -2,34 +2,123 @@ import type { StayType } from "@/lib/host/wizard/types";
 import type { TripEntityGraph } from "../types";
 import type { RosterSummary } from "../types";
 
+import { orderFinanceSectionLines } from "./finance-line-chronology";
 import { convertToBaseCents } from "./format-money";
 import { isFinanceAccommodationStay } from "./finance-accommodation-stay";
-import type { CostLedgerProjection, CostLineItemDraft } from "./types";
+import type {
+  CostLedgerProjection,
+  CostLineItemDraft,
+  FinanceBuiltInSection,
+  FinanceCalendarSection,
+  FinanceCustomSection,
+  FinanceViewGroup,
+  TripCostSettingsDraft,
+} from "./types";
 import {
   eligibleParticipantIdsForLine,
   type ParticipantPresenceMap,
 } from "./presence";
 
-/** Finance grid only shows trip logistics — not locations or misc buckets. */
-export type FinanceEntitySection = "accommodation" | "transport" | "activities";
+export type { FinanceBuiltInSection, FinanceCalendarSection };
 
-export const FINANCE_ENTITY_SECTIONS: FinanceEntitySection[] = [
+/** Built-in logistics tabs plus custom section ids (uuid strings). */
+export type FinanceEntitySection = FinanceBuiltInSection | string;
+
+/** Scope for finance exports — whole trip or one section tab. */
+export type FinanceExportScope = "all" | FinanceEntitySection;
+
+export const FINANCE_CALENDAR_SECTIONS: FinanceCalendarSection[] = [
   "accommodation",
   "transport",
   "activities",
 ];
 
-export const FINANCE_SECTION_LABELS: Record<FinanceEntitySection, string> = {
+export const FINANCE_BUILTIN_SECTIONS: FinanceBuiltInSection[] = [
+  ...FINANCE_CALENDAR_SECTIONS,
+  "other",
+];
+
+export const FINANCE_OTHER_SECTION: FinanceBuiltInSection = "other";
+
+/** @deprecated use FINANCE_BUILTIN_SECTIONS */
+export const FINANCE_ENTITY_SECTIONS = FINANCE_BUILTIN_SECTIONS;
+
+export const FINANCE_SECTION_LABELS: Record<FinanceBuiltInSection, string> = {
   accommodation: "Accommodation",
   transport: "Transport",
   activities: "Activities",
+  other: "Other",
 };
 
-export const FINANCE_SECTION_DESCRIPTIONS: Record<FinanceEntitySection, string> = {
+export const FINANCE_SECTION_DESCRIPTIONS: Record<FinanceBuiltInSection, string> = {
   accommodation: "Hotels, hostels, homestays, and group stays",
   transport: "Flights, trains, buses, and intercity legs",
   activities: "Scheduled activities and events",
+  other: "Fees, meals, insurance, and other trip costs not on the calendar",
 };
+
+export function financeSectionList(settings?: TripCostSettingsDraft): FinanceEntitySection[] {
+  const custom = settings?.financeCustomSections?.map((s) => s.id) ?? [];
+  return [...FINANCE_BUILTIN_SECTIONS, ...custom];
+}
+
+export function financeSectionLabel(
+  section: FinanceEntitySection,
+  settings?: TripCostSettingsDraft,
+): string {
+  if (section in FINANCE_SECTION_LABELS) {
+    return FINANCE_SECTION_LABELS[section as FinanceBuiltInSection];
+  }
+  return (
+    settings?.financeCustomSections?.find((s) => s.id === section)?.name ?? "Section"
+  );
+}
+
+export function financeSectionExpensesLabel(
+  section: FinanceEntitySection,
+  settings?: TripCostSettingsDraft,
+): string {
+  return `${financeSectionLabel(section, settings)} expenses`;
+}
+
+export function financeSectionFundingLabel(
+  section: FinanceEntitySection,
+  settings?: TripCostSettingsDraft,
+): string {
+  return `${financeSectionLabel(section, settings)} funding`;
+}
+
+export function financeSectionDescription(
+  section: FinanceEntitySection,
+  settings?: TripCostSettingsDraft,
+): string {
+  if (section in FINANCE_SECTION_DESCRIPTIONS) {
+    return FINANCE_SECTION_DESCRIPTIONS[section as FinanceBuiltInSection];
+  }
+  const custom = settings?.financeCustomSections?.find((s) => s.id === section);
+  return custom?.description?.trim() || "Custom trip costs";
+}
+
+export function isFinanceBuiltInSection(section: string): section is FinanceBuiltInSection {
+  return FINANCE_BUILTIN_SECTIONS.includes(section as FinanceBuiltInSection);
+}
+
+export function isFinanceCustomSection(
+  sectionId: string,
+  settings?: TripCostSettingsDraft,
+): boolean {
+  if (isFinanceBuiltInSection(sectionId)) return false;
+  return Boolean(settings?.financeCustomSections?.some((section) => section.id === sectionId));
+}
+
+export function isFinanceCalendarSection(section: string): section is FinanceCalendarSection {
+  return FINANCE_CALENDAR_SECTIONS.includes(section as FinanceCalendarSection);
+}
+
+/** Manual expense lines (+ button) — Other tab and any custom sections. */
+export function supportsManualExpenseLines(section: string): boolean {
+  return section === FINANCE_OTHER_SECTION || !isFinanceCalendarSection(section);
+}
 
 function linkedStayIsFinanceEligible(
   line: CostLineItemDraft,
@@ -54,6 +143,7 @@ export function isManualFinanceLine(line: CostLineItemDraft): boolean {
 export function financeSectionForLine(
   line: CostLineItemDraft,
   graph?: TripEntityGraph | null,
+  settings?: TripCostSettingsDraft,
 ): FinanceEntitySection | null {
   if (line.linkedStayId) {
     if (!linkedStayIsFinanceEligible(line, graph)) return null;
@@ -62,7 +152,21 @@ export function financeSectionForLine(
   if (line.linkedTransportLegId) return "transport";
   if (line.linkedActivityId) return "activities";
   const manualSection = line.allocationRulePayload.financeSection;
-  if (manualSection) return manualSection;
+  if (manualSection) {
+    if (isFinanceBuiltInSection(manualSection)) return manualSection;
+    if (settings?.financeCustomSections?.some((s) => s.id === manualSection)) {
+      return manualSection;
+    }
+    return manualSection;
+  }
+  if (
+    !line.linkedStayId &&
+    !line.linkedTransportLegId &&
+    !line.linkedActivityId &&
+    (line.category === "insurance" || /\binsurance\b/i.test(line.description))
+  ) {
+    return "transport";
+  }
   if (line.category === "accommodation") return "accommodation";
   if (line.category === "transport" || line.category === "flights") return "transport";
   if (line.category === "activities") return "activities";
@@ -72,13 +176,19 @@ export function financeSectionForLine(
 export function groupLinesByFinanceSection(
   lines: CostLineItemDraft[],
   graph?: TripEntityGraph | null,
+  settings?: TripCostSettingsDraft,
 ): Map<FinanceEntitySection, CostLineItemDraft[]> {
+  const sections = financeSectionList(settings);
   const grouped = new Map<FinanceEntitySection, CostLineItemDraft[]>(
-    FINANCE_ENTITY_SECTIONS.map((s) => [s, []]),
+    sections.map((s) => [s, []]),
   );
   for (const line of lines) {
-    const section = financeSectionForLine(line, graph);
+    const section = financeSectionForLine(line, graph, settings);
     if (section) grouped.get(section)!.push(line);
+  }
+  for (const section of sections) {
+    const bucket = grouped.get(section) ?? [];
+    grouped.set(section, orderFinanceSectionLines(bucket, graph));
   }
   return grouped;
 }
@@ -91,16 +201,16 @@ function stayPrepositionAndLabel(stay: {
   if (stay.stayType === "hotel" || stay.stayType === "multiple_hotels") {
     return { preposition: "at the", label: stay.name?.trim() || stay.cityLabel || "stay" };
   }
-  if (stay.stayType === "hostel") {
-    return {
-      preposition: "in a",
-      label: `${stay.cityLabel || "city"} hostel`.trim(),
-    };
-  }
   if (stay.stayType === "homestay") {
     return {
       preposition: "in a",
       label: `${stay.cityLabel || "city"} homestay`.trim(),
+    };
+  }
+  if (stay.stayType === "hostel") {
+    return {
+      preposition: "in a",
+      label: `${stay.cityLabel || "city"} hostel`.trim(),
     };
   }
   if (stay.stayType === "campground") {
@@ -185,7 +295,7 @@ export function sectionTotalForParticipant(
   );
 }
 
-/** Trip gross limited to accommodation + transport + activities lines. */
+/** Trip gross limited to finance grid lines. */
 export function logisticsGrossForParticipant(
   lines: CostLineItemDraft[],
   participantId: string,
@@ -193,6 +303,10 @@ export function logisticsGrossForParticipant(
   settings: CostLedgerProjection["settings"],
   graph?: TripEntityGraph | null,
 ): number {
-  const logistics = lines.filter((l) => financeSectionForLine(l, graph) != null);
+  const logistics = lines.filter(
+    (l) => financeSectionForLine(l, graph, settings) != null,
+  );
   return sectionTotalForParticipant(logistics, participantId, allocationByLine, settings);
 }
+
+export type { FinanceCustomSection, FinanceViewGroup };

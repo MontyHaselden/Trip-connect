@@ -257,3 +257,30 @@ html.student-app-viewport-lock body {
     opacity: 1;
   }
 }
+
+/* Finance spreadsheet — visible scrollbars */
+.finance-sheet-scroll {
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: #a1a1aa #e4e4e7;
+}
+
+.finance-sheet-scroll::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.finance-sheet-scroll::-webkit-scrollbar-track {
+  background: #e4e4e7;
+  border-radius: 999px;
+}
+
+.finance-sheet-scroll::-webkit-scrollbar-thumb {
+  background: #a1a1aa;
+  border: 3px solid #e4e4e7;
+  border-radius: 999px;
+}
+
+.finance-sheet-scroll::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
+}

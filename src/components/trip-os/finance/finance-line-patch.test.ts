@@ -76,6 +76,20 @@ describe("patchParticipantAllocation", () => {
       { participantId: "p2", amountCents: 209_500 },
     ]);
   });
+
+  it("replaces existing pins when applying a bulk modal split", () => {
+    const patch = patchBulkParticipantAllocations(
+      line(0),
+      lineAlloc({
+        allocations: { p1: 50_00, p2: 50_00, p3: 0 },
+        pinnedParticipantIds: ["p1", "p2"],
+      }),
+      [{ participantId: "p3", amountCents: 110_00 }],
+      { replacePins: true },
+    );
+    assert.equal(patch.totalAmountCents, 110_00);
+    assert.deepEqual(patch.overrides, [{ participantId: "p3", amountCents: 110_00 }]);
+  });
 });
 
 describe("patchLinePayload", () => {
@@ -83,5 +97,30 @@ describe("patchLinePayload", () => {
     const patch = patchLinePayload(line(100000), { totalAmountCents: 0 });
     assert.equal(patch.totalAmountCents, 0);
     assert.deepEqual(patch.overrides, []);
+    assert.equal(patch.allocationRulePayload, undefined);
+  });
+
+  it("does not send allocationRulePayload when only renaming a manual line", () => {
+    const manualLine: CostLineItemDraft = {
+      ...line(0),
+      linkedStayId: null,
+      category: "other",
+      allocationRulePayload: { financeSection: "transport" },
+    };
+    const patch = patchLinePayload(manualLine, { description: "Travel insurance" });
+    assert.equal(patch.description, "Travel insurance");
+    assert.equal(patch.allocationRulePayload, undefined);
+  });
+
+  it("preserves financeSection when allocation rule changes", () => {
+    const manualLine: CostLineItemDraft = {
+      ...line(0),
+      linkedStayId: null,
+      category: "other",
+      allocationRuleType: "equal_cost_participants",
+      allocationRulePayload: { financeSection: "transport" },
+    };
+    const patch = patchLinePayload(manualLine, { allocationRuleType: "manual" });
+    assert.deepEqual(patch.allocationRulePayload, { financeSection: "transport" });
   });
 });

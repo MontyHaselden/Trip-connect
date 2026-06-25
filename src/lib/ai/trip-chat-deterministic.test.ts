@@ -4,7 +4,12 @@ import { describe, it } from "node:test";
 import { setupStateToGraph } from "@/lib/trip-engine/adapters";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
-import { buildClearTripProposal, buildFillGapsProposal, tryDeterministicTripChat } from "./trip-chat-deterministic";
+import {
+  buildClearActivitiesProposal,
+  buildClearTripProposal,
+  buildFillGapsProposal,
+  tryDeterministicTripChat,
+} from "./trip-chat-deterministic";
 
 function sparseEuropeState(): TripSetupState {
   return {
@@ -89,6 +94,111 @@ describe("tryDeterministicTripChat", () => {
         : null,
       "2026-07-17",
     );
+  });
+
+  it("removes only activities when asked to delete all activities", () => {
+    const state = {
+      ...sparseEuropeState(),
+      activities: [
+        {
+          id: "act-1",
+          title: "Louvre",
+          date: "2026-07-18",
+          endDate: null,
+          startTime: "10:00",
+          endTime: null,
+          isTimeTbc: false,
+          category: "museum" as const,
+          locationName: "Paris",
+          address: null,
+          isLocationTbc: false,
+          transportNote: null,
+          leaveByTime: null,
+          bringNote: null,
+          description: null,
+          audienceType: "everyone" as const,
+          audienceId: null,
+          originGroupId: "main-group",
+          bookingStatus: "not_booked" as const,
+        },
+      ],
+    };
+    const graph = setupStateToGraph("trip-1", state);
+    const proposal = tryDeterministicTripChat("delete all activities", graph, "main-group");
+
+    assert.ok(proposal);
+    assert.equal(proposal?.proposedCommands.length, 1);
+    assert.equal(proposal?.proposedCommands[0]?.type, "removeActivity");
+    assert.match(proposal?.assistantReply ?? "", /stays, transport/i);
+    assert.doesNotMatch(proposal?.assistantReply ?? "", /clear the calendar/i);
+  });
+
+  it("removes only activities when activities is misspelled", () => {
+    const state = {
+      ...sparseEuropeState(),
+      activities: [
+        {
+          id: "act-1",
+          title: "Louvre",
+          date: "2026-07-18",
+          endDate: null,
+          startTime: "10:00",
+          endTime: null,
+          isTimeTbc: false,
+          category: "museum" as const,
+          locationName: "Paris",
+          address: null,
+          isLocationTbc: false,
+          transportNote: null,
+          leaveByTime: null,
+          bringNote: null,
+          description: null,
+          audienceType: "everyone" as const,
+          audienceId: null,
+          originGroupId: "main-group",
+          bookingStatus: "not_booked" as const,
+        },
+      ],
+    };
+    const graph = setupStateToGraph("trip-1", state);
+    const proposal = tryDeterministicTripChat("delete all activies", graph, "main-group");
+
+    assert.ok(proposal);
+    assert.equal(proposal?.proposedCommands[0]?.type, "removeActivity");
+    assert.doesNotMatch(proposal?.assistantReply ?? "", /clear the calendar/i);
+  });
+
+  it("buildClearActivitiesProposal removes each scheduled activity", () => {
+    const state = {
+      ...sparseEuropeState(),
+      activities: [
+        {
+          id: "act-1",
+          title: "Louvre",
+          date: "2026-07-18",
+          endDate: null,
+          startTime: "10:00",
+          endTime: null,
+          isTimeTbc: false,
+          category: "museum" as const,
+          locationName: "Paris",
+          address: null,
+          isLocationTbc: false,
+          transportNote: null,
+          leaveByTime: null,
+          bringNote: null,
+          description: null,
+          audienceType: "everyone" as const,
+          audienceId: null,
+          originGroupId: "main-group",
+          bookingStatus: "not_booked" as const,
+        },
+      ],
+    };
+    const graph = setupStateToGraph("trip-1", state);
+    const proposal = buildClearActivitiesProposal(graph, "main-group");
+    assert.equal(proposal.proposedCommands.length, 1);
+    assert.equal(proposal.proposedCommands[0]?.type, "removeActivity");
   });
 
   it("buildClearTripProposal clears the full trip window", () => {

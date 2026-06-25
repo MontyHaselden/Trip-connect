@@ -7,7 +7,8 @@ import type {
   ActivityMarker,
   TripEntityGraph,
 } from "./types";
-import { activitiesOnDate, calendarContentScopeForGroup, dayPlacesForGroup } from "./selectors";
+import { activitiesForCalendarView } from "./person-lens";
+import { calendarContentScopeForGroup, dayPlacesForGroup } from "./selectors";
 import { filterCalendarDotActivities, activityToMarker } from "./calendar-activity-dots";
 import { resolveDisplayDayPlaces } from "./resolve-display-day-places";
 import {
@@ -124,10 +125,14 @@ export function projectCalendar(
 
   const displayDays = resolveDisplayDayPlaces(storedDays, derived.dayPlaces, gridStart, gridEnd);
 
+  const groupActivities = activitiesForCalendarView(graph, groupId);
+
   const baseDays: ProjectedDay[] = displayDays.map((day) => {
-    const activities: ActivityMarker[] = filterCalendarDotActivities(
-      activitiesOnDate(graph, day.date),
-    ).map(activityToMarker);
+    const onDate = groupActivities.filter((a) => {
+      const end = a.endDate?.trim() || a.date;
+      return a.date <= day.date && day.date <= end;
+    });
+    const activities: ActivityMarker[] = filterCalendarDotActivities(onDate).map(activityToMarker);
 
     const warnings: ProjectedDay["warnings"] = [];
     if (derived.accommodationByDate.has(day.date) && !day.primaryCity.trim() && !day.secondaryCity?.trim()) {

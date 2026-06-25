@@ -10,6 +10,9 @@ export function emptyCostLedgerProjection(
     exchangeRate: null,
     exchangeRateDate: null,
     exchangeRateManual: false,
+    financeCustomSections: [],
+    financeViewGroups: [],
+    financeSectionExclusions: {},
     ...settings,
   };
   return {

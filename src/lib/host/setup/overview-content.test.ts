@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { buildOverviewNextSteps, buildOverviewSummary } from "./overview-content";
+import { buildOverviewNextSteps, buildOverviewSummarySections } from "./overview-content";
 import type { TripSetupState } from "./types";
 
 function emptyState(): TripSetupState {
@@ -36,7 +36,7 @@ describe("buildOverviewNextSteps", () => {
   });
 });
 
-describe("buildOverviewSummary", () => {
+describe("buildOverviewSummarySections", () => {
   it("lists stays and legs once added", () => {
     const state = {
       ...emptyState(),
@@ -77,8 +77,39 @@ describe("buildOverviewSummary", () => {
       ],
     } satisfies TripSetupState;
 
-    const summary = buildOverviewSummary(state);
-    assert.ok(summary.some((line) => line.label === "Accommodation"));
-    assert.ok(summary.some((line) => line.label === "Return"));
+    const snapshot = buildOverviewSummarySections(state);
+    assert.ok(snapshot.sections.some((section) => section.id === "accommodation"));
+    assert.ok(snapshot.sections.some((section) => section.id === "travel"));
+  });
+
+  it("dedupes duplicate transport leg ids", () => {
+    const legId = "99bd9981-c5fe-46de-97f3-dfcb5c1d42c2";
+    const leg = {
+      id: legId,
+      transportType: "train",
+      bookingStatus: "not_booked",
+      travelDate: "2026-12-05",
+      arrivalDate: null,
+      departureTime: null,
+      arrivalTime: null,
+      intercityFromCity: "Tokyo",
+      intercityToCity: "Kyoto",
+      fromStation: null,
+      toStation: null,
+      operator: null,
+      referenceNumber: null,
+      flightNumber: null,
+      notes: null,
+      surfaceOnly: false,
+    };
+    const state = {
+      ...emptyState(),
+      intercityLegs: [leg, { ...leg }],
+    } satisfies TripSetupState;
+
+    const snapshot = buildOverviewSummarySections(state);
+    const travel = snapshot.sections.find((section) => section.id === "travel");
+    const icItems = travel?.items.filter((item) => item.id === `ic-${legId}`) ?? [];
+    assert.equal(icItems.length, 1);
   });
 });

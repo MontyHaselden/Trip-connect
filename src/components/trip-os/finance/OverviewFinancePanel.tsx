@@ -1,33 +1,93 @@
 "use client";
 
+import { useMemo } from "react";
+
+import { participantHeaderLabel } from "@/lib/trip-engine/cost-ledger/display-utils";
+import {
+  financeSectionLabel,
+  financeSectionList,
+  groupLinesByFinanceSection,
+} from "@/lib/trip-engine/cost-ledger/finance-sections";
+import { convertToBaseCents, formatMoney } from "@/lib/trip-engine/cost-ledger/format-money";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
-import { formatMoney } from "@/lib/trip-engine/cost-ledger/format-money";
-import type { RosterSummary } from "@/lib/trip-engine/types";
+import type { RosterSummary, TripEntityGraph } from "@/lib/trip-engine/types";
 
 import type { TripOsSection } from "../TripOsWorkspace";
+
+const SECTION_ACCENT: Record<string, string> = {
+  accommodation: "bg-sky-50 text-sky-800 ring-sky-100",
+  transport: "bg-violet-50 text-violet-800 ring-violet-100",
+  activities: "bg-amber-50 text-amber-900 ring-amber-100",
+};
 
 export function OverviewFinancePanel(props: {
   costLedger: CostLedgerProjection | null;
   roster: RosterSummary;
+  graph?: TripEntityGraph | null;
   onNavigateSection?: (section: TripOsSection) => void;
 }) {
   const ledger = props.costLedger;
-  if (!ledger) return null;
+  const settings = ledger?.settings;
+  const participants = useMemo(
+    () => props.roster.participants.filter((p) => p.inCostSplit),
+    [props.roster.participants],
+  );
 
-  const settings = ledger.settings;
-  const participants = props.roster.participants.filter((p) => p.inCostSplit);
+  const sectionBreakdown = useMemo(() => {
+    if (!ledger || !settings) return [];
+    const lines = ledger.lineItems.filter((l) => l.totalAmountCents > 0);
+    const bySection = groupLinesByFinanceSection(lines, props.graph, settings);
+    return financeSectionList(settings)
+      .map((section) => {
+        const sectionLines = bySection.get(section) ?? [];
+        const cents = sectionLines.reduce(
+          (sum, line) =>
+            sum + convertToBaseCents(line.totalAmountCents, line.currency, settings),
+          0,
+        );
+        return {
+          section,
+          label: financeSectionLabel(section, settings),
+          cents,
+        };
+      })
+      .filter((row) => row.cents > 0);
+  }, [ledger, props.graph, settings]);
+
+  const balances = useMemo(() => {
+    if (!ledger) return [];
+    return participants
+      .map((participant) => {
+        const bal = ledger.personBalances.find((b) => b.participantId === participant.id);
+        return {
+          participant,
+          label: participantHeaderLabel(participant, participants),
+          balanceCents: bal?.balanceCents ?? 0,
+        };
+      })
+      .sort((a, b) => b.balanceCents - a.balanceCents);
+  }, [ledger, participants]);
+
+  if (!ledger || !settings) return null;
   if (participants.length === 0 && ledger.lineItems.length === 0) return null;
 
+  const currency = settings.baseCurrency;
   const lineCount = ledger.lineItems.filter((l) => l.totalAmountCents > 0).length;
+  const gross = ledger.tripGrossCents;
+  const collected = ledger.tripFundCreditsCents + ledger.tripPaidCents;
+  const outstanding = ledger.tripOutstandingCents;
+  const collectedPct = gross > 0 ? Math.min(100, Math.round((collected / gross) * 100)) : 0;
+  const owingCount = balances.filter((row) => row.balanceCents > 0).length;
+  const settledCount = balances.length - owingCount;
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
+    <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+      <div className="flex items-start justify-between gap-4 border-b border-zinc-100 px-5 py-4">
         <div>
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
             Trip finances
           </h3>
-          <p className="mt-1 text-sm text-zinc-600">
+          <p className="mt-1 text-sm text-zinc-500">
             {lineCount} expense line{lineCount === 1 ? "" : "s"} · {participants.length} in cost
             split
           </p>
@@ -43,82 +103,97 @@ export function OverviewFinancePanel(props: {
         ) : null}
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-4">
-        <FinanceStat label="Trip gross" value={formatMoney(ledger.tripGrossCents, settings.baseCurrency)} />
-        <FinanceStat
-          label="Fund credits"
-          value={formatMoney(ledger.tripFundCreditsCents, settings.baseCurrency)}
-        />
-        <FinanceStat label="Collected" value={formatMoney(ledger.tripPaidCents, settings.baseCurrency)} />
-        <FinanceStat
-          label="Outstanding"
-          value={formatMoney(ledger.tripOutstandingCents, settings.baseCurrency)}
-          highlight
-        />
+      <div className="px-5 py-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+              Trip total
+            </p>
+            <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-zinc-900">
+              {formatMoney(gross, currency)}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+              Still to collect
+            </p>
+            <p className="mt-1 text-xl font-semibold tabular-nums text-amber-700">
+              {formatMoney(outstanding, currency)}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="flex items-center justify-between text-[11px] text-zinc-500">
+            <span>{formatMoney(collected, currency)} collected</span>
+            <span>{collectedPct}%</span>
+          </div>
+          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-100">
+            <div
+              className="h-full rounded-full bg-violet-500 transition-all"
+              style={{ width: `${collectedPct}%` }}
+            />
+          </div>
+        </div>
+
+        {sectionBreakdown.length > 0 ? (
+          <div className="mt-5 flex flex-wrap gap-2">
+            {sectionBreakdown.map((row) => (
+              <div
+                key={row.section}
+                className={[
+                  "rounded-xl px-3 py-2 ring-1",
+                  SECTION_ACCENT[row.section] ?? "bg-zinc-50 text-zinc-800 ring-zinc-100",
+                ].join(" ")}
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-wide opacity-70">
+                  {row.label}
+                </p>
+                <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                  {formatMoney(row.cents, currency)}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
 
-      {participants.length > 0 ? (
-        <div className="mt-4 overflow-x-auto rounded-lg border border-zinc-200">
-          <table className="min-w-full text-left text-xs">
-            <thead className="bg-zinc-50 text-zinc-500">
-              <tr>
-                <th className="px-3 py-2 font-medium">Person</th>
-                <th className="px-3 py-2 font-medium">Gross</th>
-                <th className="px-3 py-2 font-medium">− Funds</th>
-                <th className="px-3 py-2 font-medium">− Paid</th>
-                <th className="px-3 py-2 font-semibold">Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {participants.map((p) => {
-                const bal = ledger.personBalances.find((b) => b.participantId === p.id);
-                const owed = (bal?.balanceCents ?? 0) > 0;
-                return (
-                  <tr key={p.id} className="border-t border-zinc-100">
-                    <td className="px-3 py-2 font-medium text-zinc-800">{p.fullName}</td>
-                    <td className="px-3 py-2 tabular-nums">{formatMoney(bal?.grossCents ?? 0)}</td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {formatMoney(bal?.fundCreditsCents ?? 0)}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">{formatMoney(bal?.paidCents ?? 0)}</td>
-                    <td
-                      className={[
-                        "px-3 py-2 font-semibold tabular-nums",
-                        owed ? "text-amber-700" : "text-emerald-700",
-                      ].join(" ")}
-                    >
-                      {formatMoney(bal?.balanceCents ?? 0)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {balances.length > 0 ? (
+        <div className="border-t border-zinc-100 bg-zinc-50/50 px-5 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold text-zinc-700">Balances</p>
+            <p className="text-[11px] text-zinc-500">
+              {owingCount > 0 ? `${owingCount} still owe` : `${settledCount} settled up`}
+            </p>
+          </div>
+          <ul className="mt-3 max-h-56 space-y-1 overflow-y-auto">
+            {balances.map((row) => {
+              const owes = row.balanceCents > 0;
+              return (
+                <li
+                  key={row.participant.id}
+                  className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 ring-1 ring-zinc-100"
+                >
+                  <span
+                    className="min-w-0 truncate text-sm font-medium text-zinc-800"
+                    title={row.participant.fullName}
+                  >
+                    {row.label}
+                  </span>
+                  <span
+                    className={[
+                      "shrink-0 text-sm font-semibold tabular-nums",
+                      owes ? "text-amber-700" : "text-emerald-700",
+                    ].join(" ")}
+                  >
+                    {formatMoney(row.balanceCents, currency)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       ) : null}
     </section>
-  );
-}
-
-function FinanceStat(props: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div
-      className={[
-        "rounded-xl px-3 py-2.5",
-        props.highlight ? "bg-violet-600 text-white" : "bg-zinc-50",
-      ].join(" ")}
-    >
-      <p className={props.highlight ? "text-[10px] text-violet-200" : "text-[10px] text-zinc-500"}>
-        {props.label}
-      </p>
-      <p
-        className={[
-          "mt-0.5 text-base font-semibold tabular-nums",
-          props.highlight ? "" : "text-zinc-900",
-        ].join(" ")}
-      >
-        {props.value}
-      </p>
-    </div>
   );
 }

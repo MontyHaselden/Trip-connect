@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireHostSessionHostId } from "@/lib/auth/host-session";
+import { requireActiveBilling } from "@/lib/billing/access";
 import { hostApiError } from "@/lib/host/api-errors";
 import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import { createPublishMobileLinks, ensureHostAdminMobileLink } from "@/lib/mobile/trip-links";
@@ -14,6 +15,8 @@ export async function GET(
     const hostId = await requireHostSessionHostId();
     const trip = await getTripByIdForHost(hostId, tripId);
     if (!trip) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+
+    await requireActiveBilling(hostId);
 
     const origin = new URL(req.url).origin;
     const admin = await ensureHostAdminMobileLink({

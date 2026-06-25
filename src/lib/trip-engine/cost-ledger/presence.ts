@@ -1,7 +1,8 @@
 import { placesShareMetro } from "@/lib/geo/airport-codes";
 import { addDays, locationPaletteKey, locationsMatch } from "@/lib/host/wizard/location-stays";
 import type { TransportLegDraft } from "@/lib/host/wizard/types";
-import type { RosterSummary, TripEntityGraph } from "../types";
+import type { TransportProductDraft } from "@/lib/host/wizard/types";
+import { legsForTransportProduct } from "@/lib/host/locations/transport-products";
 
 import { costSplitParticipants } from "./allocate";
 import {
@@ -9,6 +10,9 @@ import {
   resolveAllParticipantPlans,
   type ResolvedParticipantPlan,
 } from "../resolve-participant-graph";
+import { participantSharesMainContextOnDate } from "../match-main-accommodation-stay";
+import { personalGroupForParticipant } from "../person-lens";
+import { isSameFinanceAccommodationLeg } from "./accommodation-finance-leg";
 import type { CostLineItemDraft } from "./types";
 
 export type ParticipantPresenceMap = Map<string, ResolvedParticipantPlan>;
@@ -31,9 +35,18 @@ export function participantEligibleForStay(
     cityLabel: string;
     checkInDate: string;
     checkOutDate: string;
+    name?: string | null;
   },
+  graph?: TripEntityGraph,
 ): boolean {
   if (plan.stayIds.has(stay.id)) return true;
+  if (graph) {
+    for (const personalStay of graph.accommodationStays) {
+      if (!plan.stayIds.has(personalStay.id)) continue;
+      if (personalStay.id === stay.id) return true;
+      if (isSameFinanceAccommodationLeg(personalStay, stay)) return true;
+    }
+  }
   const stayCity = locationPaletteKey(stay.cityLabel);
   if (!stayCity) return false;
   for (const [date] of plan.daysByDate) {
@@ -50,19 +63,32 @@ function stayEligible(
     cityLabel: string;
     checkInDate: string;
     checkOutDate: string;
+    name?: string | null;
   },
+  graph: TripEntityGraph,
 ): boolean {
-  return participantEligibleForStay(plan, stay);
+  return participantEligibleForStay(plan, stay, graph);
 }
 
 function activityEligible(
   plan: ResolvedParticipantPlan,
   activity: TripEntityGraph["activities"][number],
+  graph?: TripEntityGraph,
 ): boolean {
   if (!plan.activityIds.has(activity.id)) return false;
   const end = activity.endDate?.trim() || activity.date;
   for (const [date] of plan.daysByDate) {
     if (date >= activity.date && date <= end) return true;
+  }
+  if (graph && plan.mode === "independent") {
+    const personal = personalGroupForParticipant(graph, plan.participantId);
+    if (personal) {
+      let cur = activity.date;
+      while (cur <= end) {
+        if (participantSharesMainContextOnDate(graph, personal.id, cur)) return true;
+        cur = addDays(cur, 1);
+      }
+    }
   }
   return activity.date <= (plan.daysByDate.size ? [...plan.daysByDate.keys()].sort().at(-1)! : activity.date);
 }
@@ -207,6 +233,19 @@ function legEligible(
   return plan.legIds.has(legId) && plan.mode === "independent";
 }
 
+function transportProductEligible(
+  plan: ResolvedParticipantPlan,
+  graph: TripEntityGraph,
+  product: TransportProductDraft,
+): boolean {
+  if (product.kind === "flight_package") {
+    const legIds = legsForTransportProduct(graph, product.id);
+    if (!legIds.length) return false;
+    return legIds.every((legId) => legEligible(plan, graph, legId));
+  }
+  return product.participantIds.includes(plan.participantId);
+}
+
 export function eligibleParticipantIdsForLine(
   line: CostLineItemDraft,
   graph: TripEntityGraph,
@@ -219,6 +258,7 @@ export function eligibleParticipantIdsForLine(
     if (
       !line.linkedStayId &&
       !line.linkedTransportLegId &&
+      !line.linkedTransportProductId &&
       !line.linkedActivityId
     ) {
       return pool.map((p) => p.id);
@@ -242,9 +282,22 @@ export function eligibleParticipantIdsForLine(
     return pool
       .filter((p) => {
         const plan = presence.get(p.id);
-        return plan ? stayEligible(plan, stay) : false;
+        return plan ? stayEligible(plan, stay, graph) : false;
       })
       .map((p) => p.id);
+  }
+
+  if (line.linkedTransportProductId) {
+    const product = (graph.transportProducts ?? []).find(
+      (row) => row.id === line.linkedTransportProductId,
+    );
+    if (!product) return [];
+    return pool
+      .filter((participant) => {
+        const plan = presence.get(participant.id);
+        return plan ? transportProductEligible(plan, graph, product) : false;
+      })
+      .map((participant) => participant.id);
   }
 
   if (line.linkedTransportLegId) {
@@ -262,7 +315,7 @@ export function eligibleParticipantIdsForLine(
     return pool
       .filter((p) => {
         const plan = presence.get(p.id);
-        return plan ? activityEligible(plan, activity) : false;
+        return plan ? activityEligible(plan, activity, graph) : false;
       })
       .map((p) => p.id);
   }
@@ -277,7 +330,7 @@ export function presenceHintForLine(
   presence: ParticipantPresenceMap,
 ): string | null {
   const pool = costSplitParticipants(roster);
-  if (!line.linkedStayId && !line.linkedActivityId && !line.linkedTransportLegId) {
+  if (!line.linkedStayId && !line.linkedActivityId && !line.linkedTransportLegId && !line.linkedTransportProductId) {
     return null;
   }
   const eligible = eligibleParticipantIdsForLine(line, graph, roster, presence);
@@ -298,6 +351,16 @@ export function lineDateSpanLabel(
     const activity = graph.activities.find((a) => a.id === line.linkedActivityId);
     if (!activity) return null;
     return activity.date;
+  }
+  if (line.linkedTransportProductId) {
+    const product = (graph.transportProducts ?? []).find(
+      (row) => row.id === line.linkedTransportProductId,
+    );
+    if (!product) return null;
+    const routeCount = legsForTransportProduct(graph, line.linkedTransportProductId).length;
+    return routeCount
+      ? `${product.name} · ${routeCount} leg${routeCount === 1 ? "" : "s"}`
+      : product.name;
   }
   if (line.linkedTransportLegId) {
     const leg = [

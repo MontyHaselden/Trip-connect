@@ -1,35 +1,16 @@
 import type { RosterSummary, TripEntityGraph } from "../types";
 
 import { reorderFinanceSectionLines } from "./finance-line-order";
+import { applySectionExclusionPatch } from "./finance-section-exclusions";
+import { applyDeleteFinanceCustomSection } from "./delete-finance-custom-section";
+import { financeSectionForLine } from "./finance-sections";
+import { projectionToRaw } from "./projection-to-raw";
 import { projectCostLedger } from "./project";
 import type {
-  CostAllocationOverrideDraft,
   CostLedgerProjection,
-  CostLedgerRaw,
   CostLineItemDraft,
+  TripFundDraft,
 } from "./types";
-
-function projectionToRaw(ledger: CostLedgerProjection): CostLedgerRaw {
-  const overrides: CostAllocationOverrideDraft[] = [];
-  for (const alloc of ledger.lineAllocations) {
-    for (const participantId of alloc.pinnedParticipantIds) {
-      overrides.push({
-        lineItemId: alloc.lineItemId,
-        participantId,
-        amountCents: alloc.allocations[participantId] ?? 0,
-      });
-    }
-  }
-
-  return {
-    settings: ledger.settings,
-    lineItems: ledger.lineItems.map((line) => ({ ...line })),
-    overrides,
-    funds: ledger.funds.map((fund) => ({ ...fund })),
-    payments: ledger.payments.map((payment) => ({ ...payment })),
-    supplierPayments: ledger.supplierPayments.map((payment) => ({ ...payment })),
-  };
-}
 
 function applyLinePatch(
   line: CostLineItemDraft,
@@ -53,7 +34,26 @@ function applyLinePatch(
       ...(patch.allocationRulePayload as CostLineItemDraft["allocationRulePayload"]),
     };
   }
+  if (typeof patch.costStatus === "string") {
+    next.costStatus = patch.costStatus as CostLineItemDraft["costStatus"];
+  }
   return next;
+}
+
+export function isOptimisticFinanceLineId(id: string): boolean {
+  return id.startsWith("optimistic-");
+}
+
+export function isOptimisticFinanceFundId(id: string): boolean {
+  return id.startsWith("optimistic-fund-");
+}
+
+export function resolveOptimisticFinanceLineId(
+  lineId: string,
+  mapping: ReadonlyMap<string, string>,
+): string | null {
+  if (!isOptimisticFinanceLineId(lineId)) return lineId;
+  return mapping.get(lineId) ?? null;
 }
 
 /** Apply a finance PATCH payload locally so the grid updates instantly. */
@@ -82,7 +82,6 @@ export function applyOptimisticFinancePatch(
     const orderedIds = payload.orderedIds;
     if (
       typeof section !== "string" ||
-      !["accommodation", "transport", "activities"].includes(section) ||
       !Array.isArray(orderedIds) ||
       !orderedIds.every((id) => typeof id === "string")
     ) {
@@ -91,13 +90,80 @@ export function applyOptimisticFinancePatch(
     try {
       raw.lineItems = reorderFinanceSectionLines(
         raw.lineItems,
-        section as "accommodation" | "transport" | "activities",
+        section,
         orderedIds as string[],
         graph,
+        raw.settings,
       );
     } catch {
       return null;
     }
+    return projectCostLedger(raw, roster, graph ?? undefined);
+  }
+
+  if (action === "addFinanceSection") {
+    const name = payload.name;
+    if (typeof name !== "string" || !name.trim()) return null;
+    const description =
+      typeof payload.description === "string" ? payload.description.trim() : "";
+    const id = `optimistic-section-${Date.now()}`;
+    raw.settings = {
+      ...raw.settings,
+      financeCustomSections: [
+        ...raw.settings.financeCustomSections,
+        { id, name: name.trim(), description: description || null },
+      ],
+    };
+    return projectCostLedger(raw, roster, graph ?? undefined);
+  }
+
+  if (action === "deleteFinanceSection") {
+    const sectionId = payload.sectionId;
+    if (typeof sectionId !== "string" || !sectionId.trim()) return null;
+    const next = applyDeleteFinanceCustomSection(raw, sectionId.trim());
+    if (!next) return null;
+    return projectCostLedger(next, roster, graph ?? undefined);
+  }
+
+  if (action === "updateFinanceViewGroups") {
+    const groups = payload.groups;
+    if (!Array.isArray(groups)) return null;
+    raw.settings = {
+      ...raw.settings,
+      financeViewGroups: groups as typeof raw.settings.financeViewGroups,
+    };
+    return projectCostLedger(raw, roster, graph ?? undefined);
+  }
+
+  if (action === "setFinanceSectionParticipant") {
+    const section = payload.section;
+    const participantId = payload.participantId;
+    const excluded = payload.excluded === true;
+    if (typeof section !== "string" || typeof participantId !== "string") return null;
+
+    raw.settings = {
+      ...raw.settings,
+      financeSectionExclusions: applySectionExclusionPatch(
+        raw.settings.financeSectionExclusions,
+        section,
+        participantId,
+        excluded,
+      ),
+    };
+
+    if (excluded && graph) {
+      const lineIds = new Set(
+        raw.lineItems
+          .filter((line) => financeSectionForLine(line, graph, raw.settings) === section)
+          .map((line) => line.id),
+      );
+      if (lineIds.size) {
+        raw.overrides = raw.overrides.filter(
+          (row) => !(row.participantId === participantId && lineIds.has(row.lineItemId)),
+        );
+      }
+    }
+
     return projectCostLedger(raw, roster, graph ?? undefined);
   }
 
@@ -142,6 +208,83 @@ export function applyOptimisticFinancePatch(
     return projectCostLedger(raw, roster, graph ?? undefined);
   }
 
+  if (action === "addFund") {
+    const fund = payload.fund;
+    if (!fund || typeof fund !== "object") return null;
+    const parsed = fund as Record<string, unknown>;
+    const rulePayload = (parsed.allocationRulePayload as Record<string, unknown>) ?? {};
+    const tempId = `optimistic-fund-${Date.now()}`;
+    raw.funds.push({
+      id: tempId,
+      name: typeof parsed.name === "string" ? parsed.name : "New line",
+      amountCents: typeof parsed.amountCents === "number" ? parsed.amountCents : 0,
+      currency:
+        typeof parsed.currency === "string" ? parsed.currency : raw.settings.baseCurrency,
+      allocationRuleType:
+        (parsed.allocationRuleType as TripFundDraft["allocationRuleType"]) ??
+        "equal_cost_participants",
+      allocationRulePayload: {
+        groupId: typeof rulePayload.groupId === "string" ? rulePayload.groupId : undefined,
+        participantId:
+          typeof rulePayload.participantId === "string" ? rulePayload.participantId : undefined,
+        financeSection: rulePayload.financeSection as CostLineItemDraft["allocationRulePayload"]["financeSection"],
+      },
+      sortOrder: raw.funds.length,
+      notes: null,
+    });
+    return projectCostLedger(raw, roster, graph ?? undefined);
+  }
+
+  if (action === "deleteFund") {
+    const fundId = payload.fundId;
+    if (typeof fundId !== "string") return null;
+    raw.funds = raw.funds.filter((fund) => fund.id !== fundId);
+    return projectCostLedger(raw, roster, graph ?? undefined);
+  }
+
+  if (action === "deleteFunds") {
+    const fundIds = payload.fundIds;
+    if (!Array.isArray(fundIds) || !fundIds.every((id) => typeof id === "string")) {
+      return null;
+    }
+    const remove = new Set(fundIds as string[]);
+    raw.funds = raw.funds.filter((fund) => !remove.has(fund.id));
+    return projectCostLedger(raw, roster, graph ?? undefined);
+  }
+
+  if (action === "deletePayment") {
+    const paymentId = payload.paymentId;
+    if (typeof paymentId !== "string") return null;
+    raw.payments = raw.payments.filter((payment) => payment.id !== paymentId);
+    return projectCostLedger(raw, roster, graph ?? undefined);
+  }
+
+  if (action === "updateFund") {
+    const fundId = payload.fundId;
+    const patch = payload.fund;
+    if (typeof fundId !== "string" || !patch || typeof patch !== "object") return null;
+    const index = raw.funds.findIndex((fund) => fund.id === fundId);
+    if (index < 0) return null;
+    const current = raw.funds[index]!;
+    const parsed = patch as Record<string, unknown>;
+    const rulePatch = parsed.allocationRulePayload;
+    raw.funds[index] = {
+      ...current,
+      ...(typeof parsed.name === "string" ? { name: parsed.name } : {}),
+      ...(typeof parsed.amountCents === "number" ? { amountCents: parsed.amountCents } : {}),
+      ...(typeof parsed.currency === "string" ? { currency: parsed.currency } : {}),
+      ...(rulePatch && typeof rulePatch === "object"
+        ? {
+            allocationRulePayload: {
+              ...current.allocationRulePayload,
+              ...(rulePatch as TripFundDraft["allocationRulePayload"]),
+            },
+          }
+        : {}),
+    };
+    return projectCostLedger(raw, roster, graph ?? undefined);
+  }
+
   if (action !== "updateLine") return null;
 
   const lineId = payload.lineId;
@@ -163,6 +306,13 @@ export function applyOptimisticFinancePatch(
         participantId: override.participantId,
         amountCents: override.amountCents,
       });
+    }
+    const pinnedSum = overrides.reduce((sum, row) => sum + row.amountCents, 0);
+    if (pinnedSum > 0 && raw.lineItems[lineIndex]!.totalAmountCents < pinnedSum) {
+      raw.lineItems[lineIndex] = {
+        ...raw.lineItems[lineIndex]!,
+        totalAmountCents: pinnedSum,
+      };
     }
   }
 

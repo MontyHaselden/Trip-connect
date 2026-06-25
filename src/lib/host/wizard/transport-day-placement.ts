@@ -283,7 +283,9 @@ function intercityCrossoverTransitLabel(leg: IntercityLegDraft): string {
   return MODE_TRANSIT_LABELS[leg.transportType] ?? "Travel";
 }
 
-function buildIntercityCrossoverLayout(leg: IntercityLegDraft): CalendarDaySegment[] {
+function buildIntercityCrossoverLayout(leg: IntercityLegDraft): CalendarDaySegment[] | null {
+  if (TRANSPORT_CORRIDOR_WIDTH <= 0) return null;
+
   const left = TRANSPORT_CORRIDOR_LEFT_SHARE;
   const right = TRANSPORT_CORRIDOR_RIGHT_START;
   return [
@@ -1252,7 +1254,8 @@ export function computeTravelDayLayouts(
 
     const day = (draft.dayPlaces ?? []).find((d) => d.date === date);
     if (isIntercityCrossoverDay(day, leg)) {
-      map.set(date, buildIntercityCrossoverLayout(leg));
+      const layout = buildIntercityCrossoverLayout(leg);
+      if (layout) map.set(date, layout);
     }
   }
 
@@ -1313,7 +1316,13 @@ export function computeTransitOverlays(
 
     if (depDate === arrDate) {
       if (inCalendarRange(depDate, trip, draft)) {
-        pushDepartureOverlay(map, depDate, depLabel, depShare);
+        const intercity = draft.intercityLegs.find((row) => row.id === leg.id);
+        const day = (draft.dayPlaces ?? []).find((d) => d.date === depDate);
+        const skipDepartChip =
+          Boolean(intercity && day && isIntercityCrossoverDay(day, intercity));
+        if (!skipDepartChip) {
+          pushDepartureOverlay(map, depDate, depLabel, depShare);
+        }
       }
       continue;
     }

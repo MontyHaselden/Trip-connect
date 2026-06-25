@@ -2,7 +2,10 @@ import type { RosterSummary, TripEntityGraph } from "../types";
 
 import { buildParticipantPresenceMap, computeItemAllocations } from "./allocate";
 import { convertToBaseCents } from "./format-money";
+import { effectiveLineTotalCents } from "./finance-grid-totals";
+import { isAllocationBalanced } from "./smart-split";
 import type {
+  CostAllocationOverrideDraft,
   CostLedgerProjection,
   CostLedgerRaw,
   CostLineCategory,
@@ -18,24 +21,42 @@ function toBaseCents(
   return convertToBaseCents(amountCents, currency, settings);
 }
 
+function fundAllocationOverrides(
+  fund: CostLedgerRaw["funds"][number],
+): CostAllocationOverrideDraft[] {
+  const pinned = fund.allocationRulePayload.pinnedAllocations;
+  if (!pinned) return [];
+  return Object.entries(pinned)
+    .filter(([, amountCents]) => amountCents > 0)
+    .map(([participantId, amountCents]) => ({
+      lineItemId: fund.id,
+      participantId,
+      amountCents,
+    }));
+}
+
 export function projectCostLedger(
   raw: CostLedgerRaw,
   roster: RosterSummary,
   graph?: TripEntityGraph,
 ): CostLedgerProjection {
   const presence = graph ? buildParticipantPresenceMap(graph, roster) : undefined;
-  const ctx = graph && presence ? { graph, presence } : {};
+  const ctx: AllocationContext = { settings: raw.settings, graph, presence };
 
   const lineAllocations = raw.lineItems.map((line) => {
-    const { allocations, eligibleParticipantIds, pinnedParticipantIds, balanced } =
+    const { allocations, eligibleParticipantIds, pinnedParticipantIds } =
       computeItemAllocations(line, roster, raw.overrides, ctx);
     const allocatedTotalCents = Object.values(allocations).reduce((sum, n) => sum + n, 0);
+    const effectiveTotal = effectiveLineTotalCents(line, {
+      allocatedTotalCents,
+      pinnedParticipantIds,
+    });
     return {
       lineItemId: line.id,
       allocations,
       eligibleParticipantIds,
       pinnedParticipantIds,
-      balanced,
+      balanced: isAllocationBalanced(effectiveTotal, allocations),
       allocatedTotalCents,
     };
   });
@@ -51,7 +72,7 @@ export function projectCostLedger(
         allocationRulePayload: fund.allocationRulePayload,
       },
       roster,
-      [],
+      fundAllocationOverrides(fund),
       ctx,
     );
     fundAllocations[fund.id] = allocations;

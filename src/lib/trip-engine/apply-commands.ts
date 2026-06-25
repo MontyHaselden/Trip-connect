@@ -28,6 +28,7 @@ import { personalGroupForGroupId } from "./person-lens";
 import { normalizeCommand, type TripCommand } from "./commands";
 import type { CommandResult, EngineConflict, EngineWarning, TripEntityGraph } from "./types";
 import type { TripSetupState } from "@/lib/host/setup/types";
+import type { TransportProductDraft } from "@/lib/host/wizard/types";
 import { newId } from "@/lib/host/wizard/types";
 
 function mergeGraphState(graph: TripEntityGraph, state: TripSetupState): TripEntityGraph {
@@ -117,8 +118,21 @@ function applyPersonalLocationPaint(
   };
 }
 
+function detachLegFromProduct<T extends { transportProductId?: string | null; billingMode?: string }>(
+  leg: T,
+  productId: string,
+): T {
+  if (leg.transportProductId !== productId) return leg;
+  return {
+    ...leg,
+    transportProductId: null,
+    billingMode: "single",
+  };
+}
+
 function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandResult {
   const command = normalizeCommand(raw as TripCommand & { type: string });
+  graph = { ...graph, transportProducts: graph.transportProducts ?? [] };
   const warnings: EngineWarning[] = [];
   const conflicts: EngineConflict[] = [];
 
@@ -273,8 +287,38 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         warnings.push(warn("leg-missing", `Leg ${command.legId} not found`, "transport"));
         return { graph, warnings, conflicts };
       }
-      const updated = legs.map((l, i) => (i === idx ? { ...l, ...command.patch } : l));
-      const next = { ...graph, [listKey]: updated } as TripEntityGraph;
+      const current = legs[idx];
+      let updatedLeg = { ...current, ...command.patch } as typeof current;
+      const targetBucket = command.targetBucket ?? bucket;
+
+      if (targetBucket === "intercity" && bucket !== "intercity") {
+        const ic = updatedLeg as typeof graph.intercityLegs[number];
+        updatedLeg = {
+          ...updatedLeg,
+          intercityFromCity: ic.intercityFromCity?.trim() || updatedLeg.fromCity || "",
+          intercityToCity: ic.intercityToCity?.trim() || updatedLeg.toCity || "",
+          originGroupId: command.groupId,
+        } as typeof updatedLeg;
+      }
+
+      let next: TripEntityGraph;
+      if (targetBucket !== bucket) {
+        const targetKey =
+          targetBucket === "outbound"
+            ? "outboundLegs"
+            : targetBucket === "return"
+              ? "returnLegs"
+              : "intercityLegs";
+        next = {
+          ...graph,
+          [listKey]: legs.filter((_, i) => i !== idx),
+          [targetKey]: [...graph[targetKey], updatedLeg],
+        } as TripEntityGraph;
+      } else {
+        const updated = legs.map((l, i) => (i === idx ? updatedLeg : l));
+        next = { ...graph, [listKey]: updated } as TripEntityGraph;
+      }
+
       const derived = applySetupTransportChange(
         next,
         {
@@ -303,6 +347,53 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         { preserveCalendarPaint: true },
       );
       return ok(finalizeTransportChange(graph, derived), warnings);
+    }
+
+    case "addTransportProduct": {
+      const product: TransportProductDraft = {
+        ...command.product,
+        id: command.product.id || newId(),
+        participantIds: command.product.participantIds ?? [],
+      };
+      return ok(
+        {
+          ...graph,
+          transportProducts: [...graph.transportProducts, product],
+        },
+        warnings,
+      );
+    }
+
+    case "updateTransportProduct": {
+      const products = graph.transportProducts.map((product) =>
+        product.id === command.productId ? { ...product, ...command.patch } : product,
+      );
+      if (!products.some((product) => product.id === command.productId)) {
+        warnings.push(
+          warn("product-missing", `Transport product ${command.productId} not found`, "transport"),
+        );
+        return { graph, warnings, conflicts };
+      }
+      return ok({ ...graph, transportProducts: products }, warnings);
+    }
+
+    case "removeTransportProduct": {
+      const products = graph.transportProducts.filter(
+        (product) => product.id !== command.productId,
+      );
+      const detach = <T extends { transportProductId?: string | null; billingMode?: string }>(
+        leg: T,
+      ) => detachLegFromProduct(leg, command.productId);
+      return ok(
+        {
+          ...graph,
+          transportProducts: products,
+          outboundLegs: graph.outboundLegs.map(detach),
+          returnLegs: graph.returnLegs.map(detach),
+          intercityLegs: graph.intercityLegs.map(detach),
+        },
+        warnings,
+      );
     }
 
     case "paintDayRange": {

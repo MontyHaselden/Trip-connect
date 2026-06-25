@@ -7,6 +7,7 @@ import type {
   DayPlaceDraft,
   IntercityLegDraft,
   TransportLegDraft,
+  TransportProductDraft,
 } from "@/lib/host/wizard/types";
 
 export type UpdateBasicsCommand = {
@@ -57,6 +58,8 @@ export type UpdateTransportLegCommand = {
   bucket: "outbound" | "return" | "intercity";
   legId: string;
   patch: Partial<TransportLegDraft>;
+  /** When set and different from `bucket`, moves the leg between outbound / return / intercity lists. */
+  targetBucket?: "outbound" | "return" | "intercity";
 };
 
 export type RemoveTransportLegCommand = {
@@ -64,6 +67,22 @@ export type RemoveTransportLegCommand = {
   groupId: string;
   bucket: "outbound" | "return" | "intercity";
   legId: string;
+};
+
+export type AddTransportProductCommand = {
+  type: "addTransportProduct";
+  product: TransportProductDraft;
+};
+
+export type UpdateTransportProductCommand = {
+  type: "updateTransportProduct";
+  productId: string;
+  patch: Partial<TransportProductDraft>;
+};
+
+export type RemoveTransportProductCommand = {
+  type: "removeTransportProduct";
+  productId: string;
 };
 
 /** @deprecated alias */
@@ -106,6 +125,8 @@ export type AddActivityCommand = {
   type: "addActivity";
   groupId: string;
   activity: ActivityDraft;
+  /** Link an existing manual finance row instead of seeding a duplicate. */
+  linkFinanceLineId?: string;
 };
 
 export type UpdateActivityCommand = {
@@ -239,6 +260,9 @@ export type TripCommand =
   | AddClassifiedTransportLegsCommand
   | UpdateTransportLegCommand
   | RemoveTransportLegCommand
+  | AddTransportProductCommand
+  | UpdateTransportProductCommand
+  | RemoveTransportProductCommand
   | PaintDayRangeCommand
   | ClearDayRangeCommand
   | SetDayPlacesCommand

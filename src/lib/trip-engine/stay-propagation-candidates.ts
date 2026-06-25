@@ -56,12 +56,16 @@ export function findMainGroupPropagationCandidates(
     if (!plan) continue;
 
     const onTrip = options?.stayCityLabel
-      ? participantEligibleForStay(plan, {
-          id: "__draft__",
-          cityLabel: options.stayCityLabel,
-          checkInDate: range.checkIn,
-          checkOutDate: range.checkOut,
-        })
+      ? participantEligibleForStay(
+          plan,
+          {
+            id: "__draft__",
+            cityLabel: options.stayCityLabel,
+            checkInDate: range.checkIn,
+            checkOutDate: range.checkOut,
+          },
+          graph,
+        )
       : participantPresentDuringRange(plan, range);
     if (!onTrip) continue;
 

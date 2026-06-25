@@ -4,7 +4,10 @@ import { describe, it } from "node:test";
 import {
   absenceMessageForParticipant,
   financeSectionForLine,
+  financeSectionList,
   groupLinesByFinanceSection,
+  isFinanceCalendarSection,
+  supportsManualExpenseLines,
 } from "./finance-sections";
 import { buildParticipantPresenceMap } from "./presence";
 import type { CostLineItemDraft } from "./types";
@@ -170,5 +173,30 @@ describe("groupLinesByFinanceSection", () => {
     ]);
     assert.equal(grouped.get("accommodation")?.length, 1);
     assert.equal(grouped.get("transport")?.length, 0);
+  });
+});
+
+describe("finance section tabs", () => {
+  it("always includes permanent Other alongside calendar sections", () => {
+    const sections = financeSectionList({
+      baseCurrency: "NZD",
+      foreignCurrency: null,
+      exchangeRate: null,
+      exchangeRateDate: null,
+      exchangeRateManual: false,
+      financeCustomSections: [],
+      financeViewGroups: [],
+      financeSectionExclusions: {},
+    });
+    assert.ok(sections.includes("other"));
+    assert.ok(sections.includes("accommodation"));
+  });
+
+  it("allows manual expense lines on Other and custom sections only", () => {
+    assert.equal(supportsManualExpenseLines("other"), true);
+    assert.equal(supportsManualExpenseLines("accommodation"), false);
+    assert.equal(supportsManualExpenseLines(crypto.randomUUID()), true);
+    assert.equal(isFinanceCalendarSection("other"), false);
+    assert.equal(isFinanceCalendarSection("transport"), true);
   });
 });

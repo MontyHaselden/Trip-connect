@@ -8,11 +8,7 @@ export function FinanceWarningsPanel(props: {
   onSelectLine?: (lineId: string) => void;
 }) {
   const warnings = computeFinanceWarnings(props.ledger);
-  if (!warnings.length) {
-    return (
-      <p className="mb-2 text-[10px] text-zinc-500">No finance checklist items right now.</p>
-    );
-  }
+  if (!warnings.length) return null;
 
   return (
     <ul className="mb-2 space-y-1">

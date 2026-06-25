@@ -74,7 +74,8 @@ export function buildTripChatContext(graph: TripEntityGraph, groupId: string): s
     );
   const activityLines = activities.map((a) => {
     const time = a.startTime ? a.startTime.slice(0, 5) : "TBC";
-    return `${a.date} ${time} ${a.title}`;
+    const place = a.locationName?.trim() ? ` @ ${shortCity(a.locationName)}` : "";
+    return `${a.date} ${time} ${a.title}${place}`;
   });
 
   const stayLines = stays.map(
@@ -149,4 +150,45 @@ export function buildTripChatContext(graph: TripEntityGraph, groupId: string): s
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/** Lean context for "add visit X on the 14th" style requests — calendar + existing activities only. */
+export function buildFocusedActivityEditContext(
+  graph: TripEntityGraph,
+  groupId: string,
+): string {
+  const { basics } = graph;
+  const dayPlaces = dayPlacesForGroup(graph, groupId);
+
+  const calendarLines = [...dayPlaces]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(
+      (day) =>
+        `${day.date}: ${dayLabel(day)}${day.dayType !== "trip" ? ` [${day.dayType}]` : ""}`,
+    );
+
+  const activities = graph.activities
+    .slice()
+    .sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? ""),
+    );
+  const activityLines = activities.map((a) => {
+    const time = a.startTime ? a.startTime.slice(0, 5) : "TBC";
+    const place = a.locationName?.trim() ? ` @ ${shortCity(a.locationName)}` : "";
+    return `${a.date} ${time} ${a.title}${place}`;
+  });
+
+  return [
+    `Trip: ${basics.name}`,
+    `Trip bounds: ${basics.startDate} to ${basics.endDate}`,
+    `Reference year when host says "the 14th" without a year: ${basics.startDate.slice(0, 4)}`,
+    `Group id for commands: ${groupId}`,
+    "",
+    "Calendar — where the group is each day (place each new activity on a sensible date):",
+    calendarLines.length ? calendarLines.join("\n") : "(no days painted yet)",
+    "",
+    `Activities already on the trip (${activities.length}):`,
+    activityLines.length ? activityLines.join("\n") : "(none)",
+  ].join("\n");
 }

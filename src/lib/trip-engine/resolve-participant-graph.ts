@@ -1,3 +1,6 @@
+import {
+  borrowedMainActivitiesForParticipant,
+} from "./match-main-accommodation-stay";
 import { locationPaletteKey } from "@/lib/host/wizard/location-stays";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import type { SetupGroup } from "@/lib/host/setup/types";
@@ -163,6 +166,12 @@ export function resolveParticipantPlan(
       }
     }
     if (mainOwned || ownedBySubgroup) activityIds.add(activity.id);
+  }
+
+  if (mode === "independent" && personal) {
+    for (const activity of borrowedMainActivitiesForParticipant(graph, personal.id)) {
+      activityIds.add(activity.id);
+    }
   }
 
   return {

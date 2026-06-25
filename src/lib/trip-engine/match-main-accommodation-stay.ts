@@ -1,8 +1,8 @@
 import { stayCityLabel } from "@/lib/host/setup/accommodation-calendar";
-import { addDays, locationsMatch } from "@/lib/host/wizard/location-stays";
-import type { AccommodationStayDraft, DayPlaceDraft } from "@/lib/host/wizard/types";
+import { addDays, enumerateDates, locationsMatch } from "@/lib/host/wizard/location-stays";
+import type { AccommodationStayDraft, ActivityDraft, DayPlaceDraft } from "@/lib/host/wizard/types";
 
-import { dayPlacesForGroup, staysForGroup } from "./selectors";
+import { activitiesForGroup, dayPlacesForGroup, staysForGroup } from "./selectors";
 import { personalGroupForGroupId } from "./person-lens";
 import type { TripEntityGraph } from "./types";
 
@@ -35,6 +35,54 @@ export function stayDateRangesEqual(
   b: Pick<AccommodationStayDraft, "checkInDate" | "checkOutDate">,
 ): boolean {
   return a.checkInDate === b.checkInDate && a.checkOutDate === b.checkOutDate;
+}
+
+export function stayRangesOverlap(
+  a: Pick<AccommodationStayDraft, "checkInDate" | "checkOutDate">,
+  b: Pick<AccommodationStayDraft, "checkInDate" | "checkOutDate">,
+): boolean {
+  return a.checkInDate < b.checkOutDate && b.checkInDate < a.checkOutDate;
+}
+
+export function mainStaysOverlappingRange(
+  graph: TripEntityGraph,
+  checkIn: string,
+  checkOut: string,
+): AccommodationStayDraft[] {
+  if (!checkIn || !checkOut || checkIn >= checkOut) return [];
+  return mainNamedStays(graph).filter((stay) =>
+    stayRangesOverlap(stay, { checkInDate: checkIn, checkOutDate: checkOut }),
+  );
+}
+
+/** Main-group hotels overlapping the participant's selected dates — for add-stay prompts. */
+export function suggestedMainStaysForParticipantEdit(
+  graph: TripEntityGraph,
+  groupId: string,
+  checkIn: string,
+  checkOut: string,
+  typedName?: string,
+): AccommodationStayDraft[] {
+  if (groupId === graph.mainGroupId) return [];
+
+  const personal = personalGroupForGroupId(graph, groupId);
+  if (!personal?.personalForParticipantId || personal.inheritMode !== "independent") {
+    return [];
+  }
+
+  const overlapping = mainStaysOverlappingRange(graph, checkIn, checkOut);
+  const ownStays = staysForGroup(graph, groupId).filter((s) => s.name?.trim());
+
+  return overlapping.filter((main) => {
+    if (typedName?.trim() && stayNamesMatch(typedName, main.name ?? "")) {
+      return false;
+    }
+    const hasOwnSameHotel = ownStays.some(
+      (stay) =>
+        stayNamesMatch(stay.name ?? "", main.name ?? "") && stayRangesOverlap(stay, main),
+    );
+    return !hasOwnSameHotel;
+  });
 }
 
 export function stayNightDates(checkIn: string, checkOut: string): string[] {
@@ -128,6 +176,29 @@ export function borrowedMainStaysForParticipant(
   });
 }
 
+/** True when adopting the main stay would show it on the participant calendar (same dates + aligned cities). */
+export function canAdoptMainGroupStayForParticipant(
+  graph: TripEntityGraph,
+  groupId: string,
+  mainStay: AccommodationStayDraft,
+  participantDates: Pick<AccommodationStayDraft, "checkInDate" | "checkOutDate">,
+): boolean {
+  if (groupId === graph.mainGroupId) return false;
+  if (!stayDateRangesEqual(mainStay, participantDates)) return false;
+
+  const personalDays = dayPlacesForGroup(graph, groupId);
+  const mainDays = dayPlacesForGroup(graph, graph.mainGroupId);
+  const merged = mergePersonalDayPlacesFromMain(personalDays, mainDays, mainStay);
+  const nights = stayNightDates(mainStay.checkInDate, mainStay.checkOutDate);
+  if (!nights.length) return false;
+
+  return nights.every((date) => {
+    const personal = merged.find((d) => d.date === date);
+    const main = mainDays.find((d) => d.date === date);
+    return dayPlacesMatch(personal, main);
+  });
+}
+
 export function mergePersonalDayPlacesFromMain(
   personalDays: DayPlaceDraft[],
   mainDays: DayPlaceDraft[],
@@ -148,4 +219,75 @@ export function mergePersonalDayPlacesFromMain(
 
 export function formatStayNightSpan(checkIn: string, checkOut: string): string {
   return `${checkIn} → ${checkOut}`;
+}
+
+/** True when a participant's painted day matches the main group on that date. */
+export function participantAlignedWithMainOnDate(
+  graph: TripEntityGraph,
+  groupId: string,
+  date: string,
+): boolean {
+  const personalDay = dayPlacesForGroup(graph, groupId).find((d) => d.date === date);
+  const mainDay = dayPlacesForGroup(graph, graph.mainGroupId).find((d) => d.date === date);
+  return dayPlacesMatch(personalDay, mainDay);
+}
+
+/** True when participant shares main-group context on a date (same cities or aligned main stay). */
+export function participantSharesMainContextOnDate(
+  graph: TripEntityGraph,
+  groupId: string,
+  date: string,
+): boolean {
+  if (participantAlignedWithMainOnDate(graph, groupId, date)) return true;
+  return borrowedMainStaysForParticipant(graph, groupId).some(
+    (stay) => date >= stay.checkInDate && date < stay.checkOutDate,
+  );
+}
+
+function isMainGroupSharedActivity(activity: ActivityDraft, graph: TripEntityGraph): boolean {
+  const mainOwned = !activity.originGroupId || activity.originGroupId === graph.mainGroupId;
+  if (!mainOwned) return false;
+  if (activity.audienceType === "everyone") return true;
+  return activity.audienceType === "group" && activity.audienceId === graph.mainGroupId;
+}
+
+function activitySpansDate(activity: ActivityDraft, date: string): boolean {
+  const end = activity.endDate?.trim() || activity.date;
+  return activity.date <= date && date <= end;
+}
+
+/** Main-group activities inherited when an independent participant is co-located on those dates. */
+export function borrowedMainActivitiesForParticipant(
+  graph: TripEntityGraph,
+  groupId: string,
+): ActivityDraft[] {
+  if (groupId === graph.mainGroupId) return [];
+
+  const personal = personalGroupForGroupId(graph, groupId);
+  if (!personal?.personalForParticipantId || personal.inheritMode !== "independent") {
+    return [];
+  }
+
+  const ownIds = new Set(activitiesForGroup(graph, groupId).map((activity) => activity.id));
+
+  return activitiesForGroup(graph, graph.mainGroupId).filter((activity) => {
+    if (ownIds.has(activity.id)) return false;
+    if (!isMainGroupSharedActivity(activity, graph)) return false;
+
+    const end = activity.endDate?.trim() || activity.date;
+    for (const date of enumerateDates(activity.date, end)) {
+      if (participantSharesMainContextOnDate(graph, groupId, date)) return true;
+    }
+    return false;
+  });
+}
+
+export function mainActivitiesOnDateForParticipant(
+  graph: TripEntityGraph,
+  groupId: string,
+  date: string,
+): ActivityDraft[] {
+  return borrowedMainActivitiesForParticipant(graph, groupId).filter((activity) =>
+    activitySpansDate(activity, date),
+  );
 }

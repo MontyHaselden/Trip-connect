@@ -6,18 +6,28 @@ import { runImportChat, type ImportChatTurn } from "@/lib/client/run-import-chat
 import {
   clearAssistantChat,
   loadAssistantChat,
+  readLocalAssistantChat,
   saveAssistantChat,
 } from "@/lib/client/assistant-chat-session";
 import { runTripChat } from "@/lib/client/run-trip-chat";
 import { runTripDocumentImport } from "@/lib/client/run-trip-document-import";
 import { tripBuildPhaseComplete } from "@/lib/client/trip-build-phase";
 import { isImageUploadFile, isItineraryDocumentFile } from "@/lib/documents/is-image-upload";
+import { coerceProposedCommands } from "@/lib/trip-engine/coerce-proposed-command";
 import type { TripCommand } from "@/lib/trip-engine/commands";
+import type { TripEntityGraph } from "@/lib/trip-engine/types";
+import { activitiesForGroup } from "@/lib/trip-engine/selectors";
+import { waitForTripPersist } from "@/lib/trip-os/persist-queue";
 import type { TripImportProgress } from "@/types/trip-import-progress";
 
 import { AsyncButton } from "../shared/AsyncButton";
 import { TripPrimaryButton } from "../shared/TripPrimaryButton";
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
+import { ChatThinkingIndicator } from "./ChatThinkingIndicator";
+import {
+  useChatThinkingStatus,
+  type ChatThinkingMode,
+} from "./useChatThinkingStatus";
 
 const EXAMPLE_PROMPTS = [
   "Fill in the gaps on the calendar.",
@@ -107,72 +117,125 @@ function renderAssistantText(text: string) {
   });
 }
 
+function stripUnappliedProposals(messages: ImportChatTurn[]): ImportChatTurn[] {
+  return messages.map((message) =>
+    message.role === "assistant" &&
+    message.proposedCommands?.length &&
+    !message.applied
+      ? {
+          ...message,
+          proposedCommands: undefined,
+          commandSummaries: undefined,
+          dismissed: true,
+        }
+      : message,
+  );
+}
+
 function looksLikeTripEditRequest(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
-  return /\b(remove|clear|delete|reset|start\s+over|fill|fix|move|change|wrong|calendar|leg|stay|activity|transport|everything|all|wipe|undo|still\s+there|gap|tokyo|kyoto|extend|trim|shift)\b/i.test(
+  return /\b(add|remove|clear|delete|reset|start\s+over|fill|fix|move|change|wrong|calendar|leg|stay|activit|transport|everything|all|wipe|undo|still\s+there|gap|tokyo|kyoto|extend|trim|shift)\b/i.test(
     trimmed,
   );
+}
+
+function applyAssistantSessionToState(
+  session: ReturnType<typeof readLocalAssistantChat>,
+  calendarHasPaint: boolean,
+  tripId: string,
+  setters: {
+    setMessages: (messages: ImportChatTurn[]) => void;
+    setSourceText: (text: string) => void;
+    setDocumentFileName: (name: string | null) => void;
+  },
+) {
+  const buildComplete = tripBuildPhaseComplete(session.messages);
+  const skipDocumentState = buildComplete || calendarHasPaint;
+  setters.setMessages(session.messages);
+  setters.setSourceText(skipDocumentState ? "" : session.sourceText);
+  if (skipDocumentState) {
+    setters.setDocumentFileName(null);
+    if (session.sourceText.trim()) {
+      void saveAssistantChat(tripId, {
+        messages: session.messages,
+        sourceText: "",
+      });
+    }
+  } else {
+    const lastAttachment = [...session.messages]
+      .reverse()
+      .find((message) => message.role === "user" && message.attachedFileName);
+    if (lastAttachment?.attachedFileName) {
+      setters.setDocumentFileName(lastAttachment.attachedFileName);
+    } else if (session.sourceText.trim()) {
+      setters.setDocumentFileName("Attached document");
+    } else {
+      setters.setDocumentFileName(null);
+    }
+  }
 }
 
 export function IngestPanel(props: {
   tripId: string;
   groupId: string;
+  graph: TripEntityGraph;
   timezone: string;
   calendarHasPaint: boolean;
   onReload: () => void;
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
 }) {
-  const [messages, setMessages] = useState<ImportChatTurn[]>([]);
+  const [messages, setMessages] = useState<ImportChatTurn[]>(
+    () => readLocalAssistantChat(props.tripId).messages,
+  );
   const [draftText, setDraftText] = useState("");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [documentFileName, setDocumentFileName] = useState<string | null>(null);
-  const [sourceText, setSourceText] = useState("");
+  const [sourceText, setSourceText] = useState(
+    () => readLocalAssistantChat(props.tripId).sourceText,
+  );
   const [chatBusy, setChatBusy] = useState(false);
+  const [chatRequestMode, setChatRequestMode] = useState<ChatThinkingMode | null>(null);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState<TripImportProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [applyingCommands, setApplyingCommands] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [sessionSyncing, setSessionSyncing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const chatAbortRef = useRef<AbortController | null>(null);
+  const thinkingStatus = useChatThinkingStatus(chatBusy, chatRequestMode);
 
   useEffect(() => {
     let cancelled = false;
-    void loadAssistantChat(props.tripId).then((result) => {
-      if (cancelled) return;
-      if (result.ok) {
-        const buildComplete = tripBuildPhaseComplete(result.session.messages);
-        const skipDocumentState = buildComplete || props.calendarHasPaint;
-        setMessages(result.session.messages);
-        setSourceText(skipDocumentState ? "" : result.session.sourceText);
-        if (skipDocumentState) {
-          setDocumentFileName(null);
-          if (result.session.sourceText.trim()) {
-            void saveAssistantChat(props.tripId, {
-              messages: result.session.messages,
-              sourceText: "",
-            });
-          }
-        } else {
-          const lastAttachment = [...result.session.messages]
-            .reverse()
-            .find((message) => message.role === "user" && message.attachedFileName);
-          if (lastAttachment?.attachedFileName) {
-            setDocumentFileName(lastAttachment.attachedFileName);
-          } else if (result.session.sourceText.trim()) {
-            setDocumentFileName("Attached document");
-          }
-        }
-      }
-      setSessionLoaded(true);
-    });
+    const setters = { setMessages, setSourceText, setDocumentFileName };
+    const local = readLocalAssistantChat(props.tripId);
+    applyAssistantSessionToState(local, props.calendarHasPaint, props.tripId, setters);
+    setSessionSyncing(true);
+
+    void loadAssistantChat(props.tripId)
+      .then((result) => {
+        if (cancelled || !result.ok) return;
+        applyAssistantSessionToState(
+          result.session,
+          props.calendarHasPaint,
+          props.tripId,
+          setters,
+        );
+      })
+      .catch(() => {
+        // Local cache already applied — server sync is best-effort.
+      })
+      .finally(() => {
+        if (!cancelled) setSessionSyncing(false);
+      });
+
     return () => {
       cancelled = true;
     };
-  }, [props.tripId, props.calendarHasPaint]);
+  }, [props.tripId]);
 
   async function persistSession(
     nextMessages: ImportChatTurn[],
@@ -265,12 +328,53 @@ export function IngestPanel(props: {
     return "I wasn't able to work that out just now. Tell me the dates, cities, or activities you want changed — I'll propose changes for you to confirm.";
   }
 
+  function clientActivitiesSnapshot() {
+    return activitiesForGroup(props.graph, props.groupId);
+  }
+
+  function cancelChatRequest() {
+    chatAbortRef.current?.abort();
+  }
+
+  async function dismissPendingProposal(messageIndex: number) {
+    const message = messages[messageIndex];
+    if (
+      !message ||
+      message.role !== "assistant" ||
+      !message.proposedCommands?.length ||
+      message.applied
+    ) {
+      return;
+    }
+
+    const updatedMessages: ImportChatTurn[] = messages.map((entry, index) =>
+      index === messageIndex
+        ? {
+            ...entry,
+            proposedCommands: undefined,
+            commandSummaries: undefined,
+            dismissed: true,
+          }
+        : entry,
+    );
+    setMessages(updatedMessages);
+    setError(null);
+    await persistSession(updatedMessages);
+  }
+
   async function applyProposedCommands(commands: TripCommand[], messageIndex: number) {
     if (!commands.length || applyingCommands) return;
     setApplyingCommands(true);
     setError(null);
     try {
-      const ok = await props.onDispatch(commands);
+      const { commands: coerced, warnings } = coerceProposedCommands(
+        commands as Array<Record<string, unknown>>,
+        props.groupId,
+      );
+      if (!coerced.length) {
+        throw new Error(warnings[0] ?? "No valid changes to apply.");
+      }
+      const ok = await props.onDispatch(coerced);
       if (!ok) throw new Error("Could not apply changes.");
 
       const updatedMessages: ImportChatTurn[] = messages.map((message, index) =>
@@ -287,7 +391,7 @@ export function IngestPanel(props: {
       ];
       setMessages(withFollowUp);
       await persistSession(withFollowUp);
-      props.onReload();
+      await waitForTripPersist(props.tripId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Could not apply changes.";
       const withFollowUp: ImportChatTurn[] = [
@@ -335,7 +439,7 @@ export function IngestPanel(props: {
     }
 
     const nextMessages: ImportChatTurn[] = [
-      ...messages,
+      ...stripUnappliedProposals(messages),
       {
         role: "user",
         text: chatUserLine,
@@ -347,6 +451,11 @@ export function IngestPanel(props: {
     setDraftText("");
     setChatBusy(true);
     setError(null);
+
+    chatAbortRef.current?.abort();
+    const abortController = new AbortController();
+    chatAbortRef.current = abortController;
+    setChatRequestMode(useImport ? "import" : "trip");
 
     try {
       let finalMessages: ImportChatTurn[] = nextMessages;
@@ -363,6 +472,8 @@ export function IngestPanel(props: {
           })),
           pastedText: nextSourceText || sourceText,
           file: fileForChat,
+          clientActivities: clientActivitiesSnapshot(),
+          signal: abortController.signal,
         });
         if (!result.ok) {
           finalMessages = [
@@ -420,6 +531,8 @@ export function IngestPanel(props: {
                 ? message.fullText
                 : message.text,
           })),
+          clientActivities: clientActivitiesSnapshot(),
+          signal: abortController.signal,
         });
         if (!result.ok) {
           finalMessages = [
@@ -459,7 +572,10 @@ export function IngestPanel(props: {
       if (!useImport) {
         await persistSession(finalMessages, nextSourceText);
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
       const finalMessages: ImportChatTurn[] = [
         ...nextMessages,
         { role: "assistant", text: assistantFallbackReply() },
@@ -467,6 +583,8 @@ export function IngestPanel(props: {
       setMessages(finalMessages);
       await persistSession(finalMessages, nextSourceText);
     } finally {
+      chatAbortRef.current = null;
+      setChatRequestMode(null);
       setChatBusy(false);
     }
   }
@@ -537,11 +655,7 @@ export function IngestPanel(props: {
       setDocumentFileName(null);
       attachFile(null);
       await persistSession(importMessages, "");
-      try {
-        props.onReload();
-      } catch {
-        // Import succeeded; calendar refresh is best-effort.
-      }
+      await waitForTripPersist(props.tripId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed");
     } finally {
@@ -586,10 +700,11 @@ export function IngestPanel(props: {
             ref={messagesScrollRef}
             className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1"
           >
-            {!sessionLoaded ? (
-              <p className="text-sm text-zinc-500">Loading conversation…</p>
-            ) : messages.length === 0 ? (
+            {messages.length === 0 ? (
               <div className="space-y-3">
+                {sessionSyncing ? (
+                  <p className="text-xs text-zinc-400">Syncing conversation…</p>
+                ) : null}
                 <p className="text-sm text-zinc-600">
                   Ask me to change the trip, fill calendar gaps, or add activities. Paste a full
                   itinerary or drop a PDF when you want to import from scratch — I&apos;ll ask for
@@ -643,9 +758,20 @@ export function IngestPanel(props: {
                         ) : null}
                         {message.applied ? (
                           <p className="text-xs font-medium text-emerald-700">Applied</p>
+                        ) : message.dismissed ? (
+                          <p className="text-xs text-zinc-500">Suggestion dismissed.</p>
                         ) : index === latestPendingApplyIndex ? (
                           <p className="text-xs text-zinc-500">
-                            Use <span className="font-medium">Apply changes</span> below to confirm.
+                            Use <span className="font-medium">Apply changes</span> below to confirm, or{" "}
+                            <button
+                              type="button"
+                              onClick={() => void dismissPendingProposal(index)}
+                              disabled={chatBusy || importing || applyingCommands}
+                              className="font-medium text-violet-700 hover:underline disabled:opacity-50"
+                            >
+                              dismiss
+                            </button>
+                            .
                           </p>
                         ) : null}
                       </div>
@@ -665,8 +791,11 @@ export function IngestPanel(props: {
                 ))}
               </>
             )}
-            {chatBusy ? (
-              <p className="text-sm text-zinc-500">Thinking…</p>
+            {chatBusy && chatRequestMode ? (
+              <ChatThinkingIndicator
+                mode={chatRequestMode}
+                onCancel={cancelChatRequest}
+              />
             ) : null}
           </div>
 
@@ -680,20 +809,30 @@ export function IngestPanel(props: {
                   ))}
                 </ul>
               ) : null}
-              <AsyncButton
-                onClick={() =>
-                  void applyProposedCommands(
-                    latestPendingApply.proposedCommands!,
-                    latestPendingApplyIndex,
-                  )
-                }
-                loading={applyingCommands}
-                loadingLabel="Applying…"
-                disabled={chatBusy || importing}
-                className="inline-flex h-10 w-full items-center justify-center rounded-full bg-violet-600 px-5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
-              >
-                Apply changes
-              </AsyncButton>
+              <div className="flex flex-wrap items-center gap-2">
+                <AsyncButton
+                  onClick={() =>
+                    void applyProposedCommands(
+                      latestPendingApply.proposedCommands!,
+                      latestPendingApplyIndex,
+                    )
+                  }
+                  loading={applyingCommands}
+                  loadingLabel="Applying…"
+                  disabled={chatBusy || importing}
+                  className="inline-flex h-10 min-w-0 flex-1 items-center justify-center rounded-full bg-violet-600 px-5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                >
+                  Apply changes
+                </AsyncButton>
+                <button
+                  type="button"
+                  onClick={() => void dismissPendingProposal(latestPendingApplyIndex)}
+                  disabled={chatBusy || importing || applyingCommands}
+                  className="inline-flex h-10 shrink-0 items-center rounded-full border border-violet-300 bg-white px-5 text-sm font-medium text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
           ) : null}
           {(() => {
@@ -767,7 +906,7 @@ export function IngestPanel(props: {
             <AsyncButton
               onClick={() => void sendMessage(draftText)}
               loading={chatBusy}
-              loadingLabel="Thinking…"
+              loadingLabel={thinkingStatus.label}
               disabled={!canSend}
               className="inline-flex h-10 items-center rounded-full bg-violet-600 px-5 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -784,7 +923,7 @@ export function IngestPanel(props: {
                 Import trip
               </AsyncButton>
             ) : null}
-            {hasSource && !chatBusy && !importing ? (
+            {(hasSource || messages.length > 0) && !chatBusy && !importing ? (
               <button
                 type="button"
                 onClick={() => {
@@ -800,7 +939,7 @@ export function IngestPanel(props: {
                 }}
                 className="text-sm text-zinc-600 hover:underline"
               >
-                Start over
+                Clear chat
               </button>
             ) : null}
             <input

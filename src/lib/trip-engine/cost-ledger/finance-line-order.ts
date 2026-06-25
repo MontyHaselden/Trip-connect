@@ -2,7 +2,7 @@ import {
   financeSectionForLine,
   type FinanceEntitySection,
 } from "./finance-sections";
-import type { CostLineItemDraft } from "./types";
+import type { CostLineItemDraft, TripCostSettingsDraft } from "./types";
 import type { TripEntityGraph } from "../types";
 
 function sortedLines(lines: CostLineItemDraft[]): CostLineItemDraft[] {
@@ -15,9 +15,12 @@ export function reorderFinanceSectionLines(
   section: FinanceEntitySection,
   orderedIds: string[],
   graph?: TripEntityGraph | null,
+  settings?: TripCostSettingsDraft,
 ): CostLineItemDraft[] {
   const sorted = sortedLines(lines);
-  const sectionLines = sorted.filter((line) => financeSectionForLine(line, graph) === section);
+  const sectionLines = sorted.filter(
+    (line) => financeSectionForLine(line, graph, settings) === section,
+  );
   const sectionIdSet = new Set(sectionLines.map((line) => line.id));
 
   if (orderedIds.length !== sectionLines.length) {
@@ -32,7 +35,7 @@ export function reorderFinanceSectionLines(
 
   let sectionIdx = 0;
   const merged = sorted.map((line) => {
-    if (financeSectionForLine(line, graph) !== section) return line;
+    if (financeSectionForLine(line, graph, settings) !== section) return line;
     return reorderedSection[sectionIdx++]!;
   });
 
@@ -44,11 +47,12 @@ export function sortOrderForSectionAppend(
   lines: CostLineItemDraft[],
   section: FinanceEntitySection,
   graph?: TripEntityGraph | null,
+  settings?: TripCostSettingsDraft,
 ): number {
   const sorted = sortedLines(lines);
   let lastIdx = -1;
   for (let i = 0; i < sorted.length; i++) {
-    if (financeSectionForLine(sorted[i], graph) === section) lastIdx = i;
+    if (financeSectionForLine(sorted[i], graph, settings) === section) lastIdx = i;
   }
   return lastIdx < 0 ? sorted.length : lastIdx + 1;
 }

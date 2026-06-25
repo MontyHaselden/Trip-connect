@@ -44,12 +44,13 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
   const [organisationName, setOrganisationName] = useState("");
   const [interestMessage, setInterestMessage] = useState("");
   const [role, setRole] = useState<"teacher" | "helper" | "host">("teacher");
+  const [foundingSchool, setFoundingSchool] = useState(false);
   const [plan, setPlan] = useState<SubscriptionPlan>(
     initialPlan && [...SCHOOL_PLANS, ...PERSONAL_PLANS].includes(initialPlan)
       ? initialPlan
       : signupKind === "personal"
         ? "personal"
-        : "school_starter",
+        : "school_pro_plus",
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +124,8 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
               jobTitle,
               homeCity,
               defaultAirport,
-              plan: plan as "school_starter" | "school_pro" | "school_pro_plus",
+              plan: "school_pro_plus" as const,
+              foundingSchool,
             }
           : {
               accountType: "personal" as const,
@@ -174,7 +176,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
               ? "Organisation plans are coming later. Tell us about your group trips."
               : signupKind === "personal"
                 ? "For family holidays, friend trips, and small group travel."
-                : "Built for schools — no per-student fees, no GPS tracking."}
+                : "7-day free trial · $400/year + GST after trial · founding schools $240 first year"}
         </p>
 
         {mode === "signup" ? (
@@ -191,7 +193,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                 type="button"
                 onClick={() => {
                   setSignupKind(kind);
-                  setPlan(kind === "personal" ? "personal" : "school_starter");
+                  setPlan(kind === "personal" ? "personal" : "school_pro_plus");
                 }}
                 className={[
                   "rounded-lg px-3 py-2 text-sm font-medium",
@@ -341,7 +343,29 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
             </label>
           ) : null}
 
-          {mode === "signup" && signupKind !== "organisation" ? (
+          {mode === "signup" && signupKind === "school" ? (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+              <p className="font-medium">School plan — $400 NZD + GST / year</p>
+              <p className="mt-1 text-xs text-zinc-600">
+                Includes AI builder, unlimited students on invite links, and full trip tools. No card
+                required — start your 7-day trial now.
+              </p>
+              <label className="mt-3 flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={foundingSchool}
+                  onChange={(e) => setFoundingSchool(e.target.checked)}
+                  className="mt-1"
+                />
+                <span>
+                  Request <strong>founding school</strong> pricing ($240 NZD + GST first year, limited
+                  places)
+                </span>
+              </label>
+            </div>
+          ) : null}
+
+          {mode === "signup" && signupKind === "personal" ? (
             <label className="block">
               <span className="text-sm font-medium">Plan</span>
               <select
@@ -355,9 +379,6 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-zinc-500">
-                Billing placeholder — no payment required during prototype.
-              </p>
             </label>
           ) : null}
 

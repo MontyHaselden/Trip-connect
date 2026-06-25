@@ -1,7 +1,8 @@
-import type { AccommodationStayDraft } from "@/lib/host/wizard/types";
+import type { AccommodationStayDraft, ActivityDraft } from "@/lib/host/wizard/types";
 
-import { borrowedMainStaysForParticipant } from "./match-main-accommodation-stay";
-import { staysForGroup } from "./selectors";
+import { borrowedMainStaysForParticipant, borrowedMainActivitiesForParticipant } from "./match-main-accommodation-stay";
+import { mergeActivitiesById } from "./merge-graph-activities";
+import { activitiesForGroup, staysForGroup } from "./selectors";
 import type { TripEntityGraph, RosterSummary } from "./types";
 
 /** Stays visible on the calendar for this group (includes main-group stays for location overlays). */
@@ -17,6 +18,22 @@ export function staysForCalendarView(
   if (own.length > 0) return own;
   if (participantUsesLocationOverlayProjection(graph, groupId)) {
     return staysForGroup(graph, graph.mainGroupId);
+  }
+  return own;
+}
+
+export function activitiesForCalendarView(
+  graph: TripEntityGraph,
+  groupId: string,
+): ActivityDraft[] {
+  if (groupId === graph.mainGroupId) return activitiesForGroup(graph, groupId);
+
+  const own = activitiesForGroup(graph, groupId);
+  const borrowed = borrowedMainActivitiesForParticipant(graph, groupId);
+  if (borrowed.length) return mergeActivitiesById(own, borrowed);
+  if (own.length > 0) return own;
+  if (participantUsesLocationOverlayProjection(graph, groupId)) {
+    return activitiesForGroup(graph, graph.mainGroupId);
   }
   return own;
 }

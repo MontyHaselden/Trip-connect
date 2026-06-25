@@ -12,6 +12,7 @@ import {
   readTripLocalDraft,
 } from "@/lib/trip-os/local-draft";
 import { tripOsHomePath } from "@/lib/trip-os/paths";
+import { TRIP_OS_AI_IMPORT_ENABLED } from "@/lib/trip-os/feature-flags";
 
 import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import type { TripCommand } from "@/lib/trip-engine/commands";
@@ -22,6 +23,10 @@ import { InteractiveTripCalendar } from "./calendar/InteractiveTripCalendar";
 import { useCalendarScroll } from "./calendar/useCalendarScroll";
 import { useCalendarSelection } from "./calendar/useCalendarSelection";
 import { DayContextPanel } from "./context/DayContextPanel";
+import { financeSectionAllocationStatus } from "@/lib/trip-engine/cost-ledger/finance-section-readiness";
+import type { FinanceBuiltInSection } from "@/lib/trip-engine/cost-ledger/finance-sections";
+import type { EngineSectionReadiness } from "@/lib/trip-engine/types";
+
 import { TripOsNav } from "./TripOsNav";
 import { TripOsWorkspace, type TripOsSection } from "./TripOsWorkspace";
 import { useTripOsEngine } from "./useTripOsEngine";
@@ -34,6 +39,10 @@ export function TripOsBoard(props: { tripId: string }) {
   const [middleView, setMiddleView] = useState<MiddleView>("section");
   const [activeSection, setActiveSection] = useState<TripOsSection>("overview");
   const [participantViewRefreshKey, setParticipantViewRefreshKey] = useState(0);
+  const [financeFocus, setFinanceFocus] = useState<{
+    tab: FinanceBuiltInSection;
+    lineId?: string;
+  } | null>(null);
   const [calendarLens, setCalendarLens] = useState<CalendarLens>({ kind: "whole_group" });
   const activeSectionRef = useRef(activeSection);
   const previewRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -77,6 +86,12 @@ export function TripOsBoard(props: { tripId: string }) {
   useEffect(() => {
     void engine.load();
   }, [props.tripId]); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only initial load
+
+  useEffect(() => {
+    if (!TRIP_OS_AI_IMPORT_ENABLED && activeSection === "ingest") {
+      setActiveSection("overview");
+    }
+  }, [activeSection]);
 
   useEffect(() => {
     const draft = readTripLocalDraft(props.tripId);
@@ -124,7 +139,8 @@ export function TripOsBoard(props: { tripId: string }) {
   const handleNavSelect = useCallback(
     (section: TripOsSection) => {
       calendar.clearSelection();
-      const resolved = section;
+      const resolved =
+        section === "ingest" && !TRIP_OS_AI_IMPORT_ENABLED ? "overview" : section;
       setActiveSection(resolved);
       setMiddleView("section");
       if (resolved === "participant-view") {
@@ -135,6 +151,46 @@ export function TripOsBoard(props: { tripId: string }) {
       }
     },
     [calendar, engine.load],
+  );
+
+  const handleOpenFinanceSection = useCallback(
+    (tab: FinanceBuiltInSection, lineId?: string) => {
+      setFinanceFocus({ tab, lineId });
+      calendar.clearSelection();
+      setActiveSection("finance");
+      setMiddleView("section");
+      void engine.load(undefined, { silent: true });
+    },
+    [calendar, engine.load],
+  );
+
+  const handleReadinessIndicator = useCallback(
+    (section: TripOsSection, _meta: EngineSectionReadiness) => {
+      const data = engine.data;
+      if (!data) {
+        handleNavSelect(section);
+        return;
+      }
+      const linked = ["accommodation", "transport", "activities"] as const;
+      if ((linked as readonly string[]).includes(section)) {
+        const status = financeSectionAllocationStatus(
+          section as FinanceBuiltInSection,
+          data.costLedger,
+          data.graph,
+        );
+        if (status?.financeOnlyCount) {
+          handleNavSelect(section);
+          return;
+        }
+        if (status?.unallocatedCount) {
+          setFinanceFocus({ tab: section as FinanceBuiltInSection });
+          handleNavSelect("finance");
+          return;
+        }
+      }
+      handleNavSelect(section);
+    },
+    [engine.data, handleNavSelect],
   );
 
   if (!engine.data && engine.loading) {
@@ -220,6 +276,7 @@ export function TripOsBoard(props: { tripId: string }) {
           readiness={readiness}
           activeSection={activeSection}
           onSelect={handleNavSelect}
+          onReadinessIndicator={handleReadinessIndicator}
           onBackHome={() => router.push(tripOsHomePath())}
           saving={engine.saving || engine.refreshing}
           calmNav={calmNav}
@@ -249,6 +306,7 @@ export function TripOsBoard(props: { tripId: string }) {
               selection={calendar.selection}
               conflicts={conflicts}
               rosterSummary={roster}
+              costLedger={costLedger}
               saving={engine.saving}
               error={engine.error}
               onDispatch={dispatchWithPreviewRefresh}
@@ -269,12 +327,17 @@ export function TripOsBoard(props: { tripId: string }) {
               saving={engine.saving}
               onDispatch={dispatchWithPreviewRefresh}
               onNavigateSection={handleNavSelect}
+              onOpenFinanceSection={handleOpenFinanceSection}
+              financeFocusTab={financeFocus?.tab ?? null}
+              financeFocusLineId={financeFocus?.lineId ?? null}
+              onFinanceFocusConsumed={() => setFinanceFocus(null)}
               onReload={() => void engine.load(undefined, { silent: true })}
               onRosterChanged={handleRosterChanged}
               participantViewRefreshKey={participantViewRefreshKey}
               rosterSummary={roster}
               costLedger={costLedger}
               onCostsAction={engine.patchCosts}
+              resolveFinanceLineId={engine.resolveFinanceLineId}
               calendarSelection={calendar.selection}
               onHighlightDayFromMap={calendar.highlightDayFromMap}
               onGoToDateFromMap={calendar.goToDateFromMap}

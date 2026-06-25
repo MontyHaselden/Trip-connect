@@ -35,6 +35,11 @@ export function studentAppMyTripPath(inviteCode: string) {
   return `/s/${encodeURIComponent(inviteCode)}/my-trip`;
 }
 
+/** Full-screen join screen with QR code and live roster for shared displays. */
+export function studentJoinBoardPath(inviteCode: string) {
+  return `/display/${encodeURIComponent(inviteCode)}`;
+}
+
 export function studentAppManifestId(inviteCode: string) {
   return studentAppPath(inviteCode);
 }

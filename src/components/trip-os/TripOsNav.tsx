@@ -4,6 +4,7 @@ import type { EngineReadinessStatus, EngineSectionReadiness } from "@/lib/trip-e
 
 import type { TripOsSection } from "./TripOsWorkspace";
 import { TripOsParticipantUpdate } from "./TripOsParticipantUpdate";
+import { TRIP_OS_AI_IMPORT_ENABLED } from "@/lib/trip-os/feature-flags";
 
 const SECTIONS: Array<{ id: TripOsSection; label: string }> = [
   { id: "overview", label: "Overview" },
@@ -25,23 +26,15 @@ function showStatus(status: EngineReadinessStatus, calmNav: boolean): boolean {
   return status !== "idle";
 }
 
-function statusDot(status: EngineReadinessStatus): string {
-  switch (status) {
-    case "complete":
-      return "bg-emerald-400";
-    case "mostly_complete":
-      return "bg-emerald-400/70";
-    case "conflict":
-      return "bg-red-400";
-    default:
-      return "bg-amber-400/80";
-  }
+function isActionableStatus(status: EngineReadinessStatus): boolean {
+  return status === "conflict" || status === "warning";
 }
 
 export function TripOsNav(props: {
   readiness?: EngineSectionReadiness[];
   activeSection?: TripOsSection;
   onSelect?: (id: TripOsSection) => void;
+  onReadinessIndicator?: (id: TripOsSection, meta: EngineSectionReadiness) => void;
   onBackHome?: () => void;
   saving?: boolean;
   calmNav?: boolean;
@@ -54,6 +47,9 @@ export function TripOsNav(props: {
 }) {
   const variant = props.variant ?? "board";
   const byId = new Map((props.readiness ?? []).map((r) => [r.id, r]));
+  const navSections = TRIP_OS_AI_IMPORT_ENABLED
+    ? SECTIONS
+    : SECTIONS.filter((s) => s.id !== "ingest");
 
   return (
     <aside className="trip-os-nav flex w-[15.5rem] shrink-0 flex-col text-indigo-200/60">
@@ -68,7 +64,7 @@ export function TripOsNav(props: {
 
       {variant === "board" && props.onSelect ? (
         <nav className="flex-1 overflow-y-auto px-3">
-          {SECTIONS.map((s) => {
+          {navSections.map((s) => {
             const meta =
               s.id === "ingest" ||
               s.id === "map" ||
@@ -79,11 +75,15 @@ export function TripOsNav(props: {
                 : byId.get(s.id);
             const status = meta?.status ?? "idle";
             const active = props.activeSection === s.id;
+            const show = meta && showStatus(status, props.calmNav ?? false);
+            const actionable = meta && isActionableStatus(status) && Boolean(meta.message);
+
             return (
               <button
                 key={s.id}
                 type="button"
                 onClick={() => props.onSelect!(s.id)}
+                title={meta?.message}
                 className={[
                   "mb-0.5 flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[13px] font-medium transition",
                   active
@@ -92,8 +92,44 @@ export function TripOsNav(props: {
                 ].join(" ")}
               >
                 <span>{s.label}</span>
-                {meta && showStatus(status, props.calmNav ?? false) ? (
-                  <span className={["h-1.5 w-1.5 shrink-0 rounded-full", statusDot(status)].join(" ")} />
+                {show ? (
+                  actionable && props.onReadinessIndicator ? (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        props.onReadinessIndicator!(s.id, meta);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          props.onReadinessIndicator!(s.id, meta);
+                        }
+                      }}
+                      title={meta.message ?? "Needs attention"}
+                      className={[
+                        "flex h-4 w-4 shrink-0 items-center justify-center rounded text-[11px] font-bold leading-none",
+                        status === "conflict"
+                          ? "bg-red-500/20 text-red-300 hover:bg-red-500/30"
+                          : "bg-amber-500/20 text-amber-200 hover:bg-amber-500/30",
+                      ].join(" ")}
+                    >
+                      !
+                    </span>
+                  ) : status === "complete" || status === "mostly_complete" ? (
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                  ) : (
+                    <span
+                      className={[
+                        "flex h-4 w-4 shrink-0 items-center justify-center text-[11px] font-bold leading-none",
+                        status === "conflict" ? "text-red-300" : "text-amber-200",
+                      ].join(" ")}
+                    >
+                      !
+                    </span>
+                  )
                 ) : null}
               </button>
             );

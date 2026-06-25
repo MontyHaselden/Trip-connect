@@ -1,5 +1,6 @@
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
-import type { CostLineItemDraft, FinanceManualSection, LineAllocationResult } from "@/lib/trip-engine/cost-ledger/types";
+import type { FinanceEntitySection } from "@/lib/trip-engine/cost-ledger/finance-sections";
+import type { CostLineItemDraft, LineAllocationResult } from "@/lib/trip-engine/cost-ledger/types";
 
 export function lineToFormValues(
   line: CostLineItemDraft,
@@ -39,7 +40,7 @@ export function linePayload(values: CostLineFormValues): Record<string, unknown>
 }
 
 export function extraLinePayload(
-  section: FinanceManualSection,
+  section: FinanceEntitySection,
   baseCurrency: string,
 ): Record<string, unknown> {
   return {
@@ -54,26 +55,33 @@ export function extraLinePayload(
   };
 }
 
+function toWholeCents(value: number): number {
+  return Math.trunc(value);
+}
+
 export function patchBulkParticipantAllocations(
   line: CostLineItemDraft,
   lineAlloc: LineAllocationResult,
   updates: { participantId: string; amountCents: number | null }[],
-  options?: { syncTotalToPins?: boolean },
+  options?: { syncTotalToPins?: boolean; replacePins?: boolean },
 ): Record<string, unknown> {
   const pinned = new Map<string, number>();
-  for (const id of lineAlloc.pinnedParticipantIds) {
-    pinned.set(id, lineAlloc.allocations[id] ?? 0);
+  if (!options?.replacePins) {
+    for (const id of lineAlloc.pinnedParticipantIds) {
+      const cents = toWholeCents(lineAlloc.allocations[id] ?? 0);
+      if (cents > 0) pinned.set(id, cents);
+    }
   }
   for (const { participantId, amountCents } of updates) {
     if (amountCents == null || amountCents <= 0) pinned.delete(participantId);
-    else pinned.set(participantId, amountCents);
+    else pinned.set(participantId, toWholeCents(amountCents));
   }
 
   const overrides = [...pinned.entries()].map(([participantId, amountCents]) => ({
     participantId,
     amountCents,
   }));
-  const pinnedSum = [...pinned.values()].reduce((sum, cents) => sum + cents, 0);
+  const pinnedSum = overrides.reduce((sum, row) => sum + row.amountCents, 0);
 
   const payload: Record<string, unknown> = { overrides };
   const syncTotal = options?.syncTotalToPins !== false;
@@ -100,20 +108,42 @@ export function patchParticipantAllocation(
   );
 }
 
+/** Send only the fields being edited — never blank out financeSection with an empty payload. */
 export function patchLinePayload(
   line: CostLineItemDraft,
   patch: Partial<CostLineFormValues>,
 ): Record<string, unknown> {
-  const current = lineToFormValues(line);
-  const payload = linePayload({ ...current, ...patch, lineId: line.id });
-  if (line.allocationRulePayload.financeSection) {
-    payload.allocationRulePayload = {
-      ...(payload.allocationRulePayload as Record<string, unknown>),
-      financeSection: line.allocationRulePayload.financeSection,
-    };
+  const payload: Record<string, unknown> = {};
+
+  if (patch.description !== undefined) {
+    const trimmed = patch.description.trim();
+    if (trimmed) payload.description = trimmed;
   }
-  if (patch.totalAmountCents === 0) {
-    payload.overrides = [];
+  if (patch.notes !== undefined) payload.notes = patch.notes || null;
+  if (patch.totalAmountCents !== undefined) {
+    payload.totalAmountCents = patch.totalAmountCents;
+    if (patch.totalAmountCents === 0) payload.overrides = [];
   }
+  if (patch.currency !== undefined) payload.currency = patch.currency.toUpperCase();
+  if (patch.quantity !== undefined) payload.quantity = patch.quantity;
+
+  const ruleTouched =
+    patch.allocationRuleType !== undefined ||
+    patch.groupId !== undefined ||
+    patch.participantId !== undefined;
+
+  if (ruleTouched) {
+    const merged = { ...lineToFormValues(line), ...patch, lineId: line.id };
+    const built = linePayload(merged);
+    payload.allocationRuleType = built.allocationRuleType;
+    payload.allocationRulePayload = built.allocationRulePayload;
+    if (line.allocationRulePayload.financeSection) {
+      payload.allocationRulePayload = {
+        ...(payload.allocationRulePayload as Record<string, unknown>),
+        financeSection: line.allocationRulePayload.financeSection,
+      };
+    }
+  }
+
   return payload;
 }

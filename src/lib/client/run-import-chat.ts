@@ -1,5 +1,6 @@
 import type { ImportReadinessResult as ServerImportReadinessResult } from "@/lib/ai/assess-import-readiness";
 
+import type { ActivityDraft } from "@/lib/host/wizard/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 
 export type ImportChatTurn = {
@@ -12,6 +13,7 @@ export type ImportChatTurn = {
   proposedCommands?: TripCommand[];
   commandSummaries?: string[];
   applied?: boolean;
+  dismissed?: boolean;
 };
 
 export type ImportReadinessResult = ServerImportReadinessResult & {
@@ -28,11 +30,16 @@ export async function runImportChat(params: {
   messages: Array<{ role: "user" | "assistant"; text: string }>;
   pastedText?: string | null;
   file?: File | null;
+  clientActivities?: ActivityDraft[];
+  signal?: AbortSignal;
 }): Promise<{ ok: true; result: ImportReadinessResult } | { ok: false; error: string }> {
   const form = new FormData();
   form.set("messages", JSON.stringify(params.messages));
   if (params.pastedText?.trim()) {
     form.set("pastedText", params.pastedText.trim());
+  }
+  if (params.clientActivities?.length) {
+    form.set("clientActivities", JSON.stringify(params.clientActivities));
   }
   if (params.file) {
     form.set("file", params.file, params.file.name);
@@ -41,6 +48,7 @@ export async function runImportChat(params: {
   const res = await fetch(`/api/trips/${params.tripId}/import-chat`, {
     method: "POST",
     body: form,
+    signal: params.signal,
   });
 
   const body = await res.json().catch(() => ({}));

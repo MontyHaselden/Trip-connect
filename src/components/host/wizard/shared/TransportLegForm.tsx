@@ -41,6 +41,8 @@ const TRANSPORT_LABELS: Record<TransportType, string> = {
 
 const inputClass =
   "h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-100";
+const compactInputClass =
+  "h-9 w-full rounded-lg border border-zinc-200 bg-white px-2.5 text-sm text-zinc-900 focus:border-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-100";
 
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
@@ -60,6 +62,8 @@ export function TransportLegForm({
   tripLookup,
   chainFromLeg,
   onFlightResolved,
+  compact = false,
+  hideHeader = false,
 }: {
   leg: TransportLegDraft;
   onChange: (leg: TransportLegDraft) => void;
@@ -68,6 +72,8 @@ export function TransportLegForm({
   countryNames?: string[];
   legTitle: string;
   legHint?: string;
+  compact?: boolean;
+  hideHeader?: boolean;
   roster?: {
     groups: Array<{ id: string; name: string }>;
     participants: Array<{ id: string; fullName: string }>;
@@ -93,6 +99,14 @@ export function TransportLegForm({
     leg.bookingStatus === "not_booked" ? "placeholder" : leg.bookingStatus;
 
   const resolvedArrivalDate = leg.arrivalDate ?? arrivalDate(leg);
+  const fieldClass = compact ? compactInputClass : inputClass;
+  const shellClass = compact
+    ? "overflow-visible"
+    : "overflow-visible rounded-xl border border-zinc-200 bg-white";
+  const bodyClass = compact ? "space-y-3" : "space-y-5 p-4";
+  const sectionLabelClass = compact
+    ? "text-[10px] font-semibold uppercase tracking-wide text-zinc-400"
+    : "text-xs font-semibold uppercase tracking-wide text-zinc-400";
 
   useEffect(() => {
     setFromQuery(leg.fromCity);
@@ -181,27 +195,35 @@ export function TransportLegForm({
   }
 
   return (
-    <div className="overflow-visible rounded-xl border border-zinc-200 bg-white">
-      <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-4 py-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-zinc-900">{legTitle}</p>
-          {legHint ? <p className="mt-0.5 text-xs text-indigo-700">{legHint}</p> : null}
+    <div className={shellClass}>
+      {!hideHeader ? (
+        <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-zinc-900">{legTitle}</p>
+            {legHint ? <p className="mt-0.5 text-xs text-indigo-700">{legHint}</p> : null}
+          </div>
+          {showRemove && onRemove ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="shrink-0 text-xs font-medium text-red-600 hover:underline"
+            >
+              Remove
+            </button>
+          ) : null}
         </div>
-        {showRemove && onRemove ? (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="shrink-0 text-xs font-medium text-red-600 hover:underline"
-          >
-            Remove
-          </button>
-        ) : null}
-      </div>
+      ) : null}
 
-      <div className="space-y-5 p-4">
-        <section className="space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Route</p>
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
+      <div className={compact ? bodyClass : `space-y-5 p-4`}>
+        <section className={compact ? "space-y-2" : "space-y-3"}>
+          {!compact ? <p className={sectionLabelClass}>Route</p> : null}
+          <div
+            className={
+              compact
+                ? "grid gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-end"
+                : "grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end"
+            }
+          >
             <label className="block min-w-0">
               <FieldLabel>{isPlane ? "From airport" : "From"}</FieldLabel>
               {isPlane ? (
@@ -212,7 +234,7 @@ export function TransportLegForm({
                   onBlur={() => {
                     if (fromQuery.trim() !== leg.fromCity.trim()) commitFromCity(fromQuery.trim());
                   }}
-                  inputClassName={inputClass}
+                  inputClassName={fieldClass}
                 />
               ) : (
                 <PlacePicker
@@ -223,7 +245,7 @@ export function TransportLegForm({
                     if (fromQuery.trim() !== leg.fromCity.trim()) commitFromCity(fromQuery.trim());
                   }}
                   countryNames={countryNames}
-                  inputClassName={inputClass}
+                  inputClassName={fieldClass}
                 />
               )}
             </label>
@@ -243,7 +265,7 @@ export function TransportLegForm({
                   onBlur={() => {
                     if (toQuery.trim() !== leg.toCity.trim()) commitToCity(toQuery.trim());
                   }}
-                  inputClassName={inputClass}
+                  inputClassName={fieldClass}
                 />
               ) : (
                 <PlacePicker
@@ -254,7 +276,7 @@ export function TransportLegForm({
                     if (toQuery.trim() !== leg.toCity.trim()) commitToCity(toQuery.trim());
                   }}
                   countryNames={countryNames}
-                  inputClassName={inputClass}
+                  inputClassName={fieldClass}
                 />
               )}
             </label>
@@ -262,11 +284,11 @@ export function TransportLegForm({
         </section>
 
         {isPlane ? (
-          <section className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Flight</p>
+          <section className={compact ? "space-y-2" : "space-y-3"}>
+            {!compact ? <p className={sectionLabelClass}>Flight</p> : null}
             <label className="block">
-              <FieldLabel>Flight number</FieldLabel>
-              <div className="flex flex-col gap-2 sm:flex-row">
+              {!compact ? <FieldLabel>Flight number</FieldLabel> : null}
+              <div className={compact ? "flex gap-2" : "flex flex-col gap-2 sm:flex-row"}>
                 <input
                   value={leg.flightNumber ?? ""}
                   onChange={(e) => {
@@ -280,16 +302,19 @@ export function TransportLegForm({
                       void runFlightLookup();
                     }
                   }}
-                  placeholder="e.g. NZ123"
-                  className={inputClass}
+                  placeholder={compact ? "Flight no." : "e.g. NZ123"}
+                  className={fieldClass}
                 />
                 <button
                   type="button"
                   disabled={lookupLoading || !leg.flightNumber?.trim()}
                   onClick={() => void runFlightLookup()}
-                  className="h-10 shrink-0 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50 sm:w-28"
+                  className={[
+                    "shrink-0 rounded-lg border border-zinc-200 bg-white px-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50",
+                    compact ? "h-9" : "h-10 sm:w-28",
+                  ].join(" ")}
                 >
-                  {lookupLoading ? "Looking up…" : "Look up"}
+                  {lookupLoading ? "…" : "Look up"}
                 </button>
               </div>
               {lookupError ? <p className="mt-1.5 text-xs text-red-600">{lookupError}</p> : null}
@@ -300,10 +325,16 @@ export function TransportLegForm({
           </section>
         ) : null}
 
-        <section className="min-w-0 space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/60 p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Schedule</p>
+        <section
+          className={
+            compact
+              ? "min-w-0 space-y-2"
+              : "min-w-0 space-y-3 rounded-lg border border-zinc-100 bg-zinc-50/60 p-3"
+          }
+        >
+          {!compact ? <p className={sectionLabelClass}>Schedule</p> : null}
           {isPlane ? (
-            <div className="grid grid-cols-1 gap-4">
+            <div className={compact ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-4"}>
               <div className="min-w-0 space-y-2">
                 <FieldLabel>Depart</FieldLabel>
                 <input
@@ -319,7 +350,7 @@ export function TransportLegForm({
                       withSuggestedPlaneArrival({ ...leg, travelDate, arrivalDate: nextArrival }),
                     );
                   }}
-                  className={inputClass}
+                  className={fieldClass}
                 />
                 <input
                   type="time"
@@ -333,7 +364,7 @@ export function TransportLegForm({
                       }),
                     )
                   }
-                  className={inputClass}
+                  className={fieldClass}
                   aria-label="Departure time"
                 />
               </div>
@@ -352,7 +383,7 @@ export function TransportLegForm({
                       arrivalDate: picked && picked !== leg.travelDate ? picked : null,
                     });
                   }}
-                  className={inputClass}
+                  className={fieldClass}
                 />
                 <input
                   type="time"
@@ -366,7 +397,7 @@ export function TransportLegForm({
                       }),
                     )
                   }
-                  className={inputClass}
+                  className={fieldClass}
                   aria-label="Arrival time"
                 />
               </div>
@@ -404,7 +435,7 @@ export function TransportLegForm({
                   onChange={(e) =>
                     onChange({ ...leg, transportType: e.target.value as TransportType })
                   }
-                  className={inputClass}
+                  className={fieldClass}
                 >
                   {TRANSPORT_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -420,7 +451,7 @@ export function TransportLegForm({
                   onChange={(e) =>
                     onChange({ ...leg, bookingStatus: e.target.value as BookingStatus })
                   }
-                  className={inputClass}
+                  className={fieldClass}
                 >
                   <option value="booked">Booked</option>
                   <option value="placeholder">Placeholder</option>
@@ -434,7 +465,7 @@ export function TransportLegForm({
                 <input
                   value={leg.referenceNumber ?? ""}
                   onChange={(e) => onChange({ ...leg, referenceNumber: e.target.value || null })}
-                  className={inputClass}
+                  className={fieldClass}
                 />
               </label>
             ) : null}

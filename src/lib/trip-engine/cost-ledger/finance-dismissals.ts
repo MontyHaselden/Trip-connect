@@ -6,6 +6,7 @@ import { tripFinanceDismissals } from "@/lib/db/schema";
 export type FinanceDismissedEntityType =
   | "accommodation_stay"
   | "transport_leg"
+  | "transport_product"
   | "itinerary_item";
 
 export type FinanceDismissalKey = {
@@ -16,10 +17,14 @@ export type FinanceDismissalKey = {
 export function dismissalKeyFromLine(line: {
   linkedStayId?: string | null;
   linkedTransportLegId?: string | null;
+  linkedTransportProductId?: string | null;
   linkedActivityId?: string | null;
 }): FinanceDismissalKey | null {
   if (line.linkedStayId) {
     return { entityType: "accommodation_stay", entityId: line.linkedStayId };
+  }
+  if (line.linkedTransportProductId) {
+    return { entityType: "transport_product", entityId: line.linkedTransportProductId };
   }
   if (line.linkedTransportLegId) {
     return { entityType: "transport_leg", entityId: line.linkedTransportLegId };

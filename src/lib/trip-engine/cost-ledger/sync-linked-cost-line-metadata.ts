@@ -6,10 +6,8 @@ import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 import { loadCostLedgerRaw } from "./load-cost-ledger";
 import { countStayNights } from "./accommodation-nights";
-
-function legDescription(from: string, to: string, date: string): string {
-  return `${date}: ${from} → ${to}`;
-}
+import { productLegRoutesSummary } from "./transport-finance-product";
+import { transportLegFinanceDescription } from "../transport-route-label";
 
 /** Keep finance row labels in sync when linked trip entities change. */
 export async function syncLinkedCostLineMetadata(
@@ -58,19 +56,25 @@ export async function syncLinkedCostLineMetadata(
     const line = raw.lineItems.find((l) => l.linkedTransportLegId === leg.id);
     if (!line) continue;
 
-    const from =
-      "intercityFromCity" in leg && leg.intercityFromCity
-        ? String(leg.intercityFromCity)
-        : String(leg.fromCity ?? "Unknown");
-    const to =
-      "intercityToCity" in leg && leg.intercityToCity
-        ? String(leg.intercityToCity)
-        : String(leg.toCity ?? "Unknown");
-    const description = legDescription(from, to, String(leg.travelDate ?? ""));
+    const description = transportLegFinanceDescription(leg, graph);
     if (line.description !== description) {
       await db
         .update(costLineItems)
         .set({ description, updatedAt: new Date() })
+        .where(eq(costLineItems.id, line.id));
+      updates++;
+    }
+  }
+
+  for (const product of graph.transportProducts ?? []) {
+    const line = raw.lineItems.find((l) => l.linkedTransportProductId === product.id);
+    if (!line) continue;
+    const description = product.name.trim() || "Transport product";
+    const notes = productLegRoutesSummary(graph, product.id) || product.notes?.trim() || null;
+    if (line.description !== description || line.notes !== notes) {
+      await db
+        .update(costLineItems)
+        .set({ description, notes, updatedAt: new Date() })
         .where(eq(costLineItems.id, line.id));
       updates++;
     }

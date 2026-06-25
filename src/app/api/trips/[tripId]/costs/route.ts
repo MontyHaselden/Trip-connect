@@ -17,8 +17,10 @@ import { suggestLinePaymentStatus } from "@/lib/trip-engine/cost-ledger/finance-
 import { hostApiError } from "@/lib/host/api-errors";
 import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import { loadTripGraph } from "@/lib/trip-engine";
+import { loadRosterSummary } from "@/lib/trip-engine/roster-summary";
 import { loadCostLedgerProjection } from "@/lib/trip-engine/cost-ledger/index";
-import { loadCostLedgerRaw } from "@/lib/trip-engine/cost-ledger/load-cost-ledger";
+import { projectCostLedger } from "@/lib/trip-engine/cost-ledger/project";
+import { ensureCostSettings, loadCostLedgerRaw } from "@/lib/trip-engine/cost-ledger/load-cost-ledger";
 import {
   applySortOrderInsert,
   reorderFinanceSectionLines,
@@ -26,12 +28,19 @@ import {
 } from "@/lib/trip-engine/cost-ledger/finance-line-order";
 import type { FinanceEntitySection } from "@/lib/trip-engine/cost-ledger/finance-sections";
 import {
+  FINANCE_BUILTIN_SECTIONS,
+  financeSectionForLine,
+} from "@/lib/trip-engine/cost-ledger/finance-sections";
+import { applySectionExclusionPatch } from "@/lib/trip-engine/cost-ledger/finance-section-exclusions";
+import { primaryMiscFinanceSection } from "@/lib/trip-engine/cost-ledger/finance-fund-sections";
+import {
   dismissalKeyFromLine,
   dismissFromFinance,
   loadFinanceDismissals,
 } from "@/lib/trip-engine/cost-ledger/finance-dismissals";
 import { syncCostLedgerFromGraph } from "@/lib/trip-engine/cost-ledger/sync-cost-ledger-from-graph";
 import { bulkDeleteFinanceLines } from "@/lib/trip-engine/cost-ledger/bulk-delete-finance-lines";
+import { deleteFinanceCustomSection } from "@/lib/trip-engine/cost-ledger/delete-finance-custom-section";
 import { persistCommands } from "@/lib/trip-engine/persist-command";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 
@@ -53,12 +62,27 @@ const CategorySchema = z.enum([
   "other",
 ]);
 
+const FinanceCustomSectionSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(1).max(80),
+  description: z.string().trim().max(200).nullable().optional(),
+});
+
+const FinanceViewGroupSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(1).max(80),
+  participantIds: z.array(z.string().uuid()),
+});
+
 const SettingsSchema = z.object({
   baseCurrency: z.string().trim().min(3).max(3).optional(),
   foreignCurrency: z.string().trim().min(3).max(3).nullable().optional(),
   exchangeRate: z.number().positive().nullable().optional(),
   exchangeRateDate: z.string().nullable().optional(),
   exchangeRateManual: z.boolean().optional(),
+  financeCustomSections: z.array(FinanceCustomSectionSchema).optional(),
+  financeViewGroups: z.array(FinanceViewGroupSchema).optional(),
+  financeSectionExclusions: z.record(z.string(), z.array(z.string().uuid())).optional(),
 });
 
 const LineItemSchema = z.object({
@@ -73,7 +97,12 @@ const LineItemSchema = z.object({
     .object({
       groupId: z.string().uuid().optional(),
       participantId: z.string().uuid().optional(),
-      financeSection: z.enum(["accommodation", "transport", "activities"]).optional(),
+      financeSection: z
+        .union([
+          z.enum(["accommodation", "transport", "activities", "other"]),
+          z.string().uuid(),
+        ])
+        .optional(),
     })
     .default({}),
   linkedStayId: z.string().uuid().nullable().optional(),
@@ -81,7 +110,16 @@ const LineItemSchema = z.object({
   linkedActivityId: z.string().uuid().nullable().optional(),
   supplierPaymentStatus: z.enum(["estimated", "invoiced", "paid"]).nullable().optional(),
   costStatus: z
-    .enum(["unknown", "estimate", "quoted", "confirmed", "invoiced", "paid", "cancelled"])
+    .enum([
+      "unknown",
+      "estimate",
+      "quoted",
+      "confirmed",
+      "invoiced",
+      "paid",
+      "cancelled",
+      "no_cost",
+    ])
     .optional(),
   linePaymentStatus: z
     .enum(["unpaid", "deposit_paid", "part_paid", "paid", "reimbursable"])
@@ -102,11 +140,55 @@ const LineItemSchema = z.object({
     .array(
       z.object({
         participantId: z.string().uuid(),
-        amountCents: z.number().int(),
+        amountCents: z.coerce.number().int(),
       }),
     )
     .optional(),
 });
+
+function dedupeAllocationOverrides(
+  overrides: { participantId: string; amountCents: number }[],
+): { participantId: string; amountCents: number }[] {
+  const byParticipant = new Map<string, number>();
+  for (const row of overrides) {
+    const amountCents = Math.trunc(row.amountCents);
+    if (amountCents > 0) byParticipant.set(row.participantId, amountCents);
+  }
+  return [...byParticipant.entries()].map(([participantId, amountCents]) => ({
+    participantId,
+    amountCents,
+  }));
+}
+
+async function replaceLineAllocationOverrides(
+  lineId: string,
+  overrides: { participantId: string; amountCents: number }[],
+) {
+  const rows = dedupeAllocationOverrides(overrides);
+  await db
+    .delete(costAllocationOverrides)
+    .where(eq(costAllocationOverrides.lineItemId, lineId));
+  if (rows.length) {
+    await db.insert(costAllocationOverrides).values(
+      rows.map((o) => ({
+        lineItemId: lineId,
+        participantId: o.participantId,
+        amountCents: o.amountCents,
+      })),
+    );
+  }
+}
+
+function invalidLineUpdateResponse(parsed: { success: false; error: z.ZodError }) {
+  const firstIssue = parsed.error.issues[0];
+  const detail = firstIssue
+    ? `${firstIssue.path.join(".") || "line"}: ${firstIssue.message}`
+    : undefined;
+  return NextResponse.json(
+    { error: detail ? `Invalid line update (${detail}).` : "Invalid line update." },
+    { status: 400 },
+  );
+}
 
 const FundSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -117,6 +199,8 @@ const FundSchema = z.object({
     .object({
       groupId: z.string().uuid().optional(),
       participantId: z.string().uuid().optional(),
+      financeSection: z.string().optional(),
+      pinnedAllocations: z.record(z.string(), z.number().int().min(0)).optional(),
     })
     .default({}),
   notes: z.string().trim().max(2000).nullable().optional(),
@@ -157,6 +241,17 @@ const SupplierPaymentSchema = z.object({
   reimbursementNeeded: z.boolean().default(false),
   notes: z.string().trim().max(2000).nullable().optional(),
 });
+
+function allocationRulePayloadHasKeys(
+  payload: z.infer<typeof LineItemSchema>["allocationRulePayload"] | undefined,
+): boolean {
+  if (!payload) return false;
+  return (
+    payload.financeSection !== undefined ||
+    payload.groupId !== undefined ||
+    payload.participantId !== undefined
+  );
+}
 
 function financeLineSet(data: Partial<z.infer<typeof LineItemSchema>>) {
   return {
@@ -215,6 +310,37 @@ async function requireTrip(tripId: string) {
   return trip;
 }
 
+function allowedFinanceSections(
+  settings: Awaited<ReturnType<typeof loadCostLedgerRaw>>["settings"],
+): Set<string> {
+  return new Set([
+    ...FINANCE_BUILTIN_SECTIONS,
+    ...settings.financeCustomSections.map((s) => s.id),
+  ]);
+}
+
+async function clearSectionOverrides(
+  section: string,
+  participantIds: string[],
+  graph: NonNullable<Awaited<ReturnType<typeof loadTripGraph>>>,
+  settings: Awaited<ReturnType<typeof loadCostLedgerRaw>>["settings"],
+  lineItems: Awaited<ReturnType<typeof loadCostLedgerRaw>>["lineItems"],
+) {
+  if (!participantIds.length) return;
+  const lineIds = lineItems
+    .filter((line) => financeSectionForLine(line, graph, settings) === section)
+    .map((line) => line.id);
+  if (!lineIds.length) return;
+  await db
+    .delete(costAllocationOverrides)
+    .where(
+      and(
+        inArray(costAllocationOverrides.lineItemId, lineIds),
+        inArray(costAllocationOverrides.participantId, participantIds),
+      ),
+    );
+}
+
 function settingsForDb(settings: z.infer<typeof SettingsSchema>) {
   return {
     ...settings,
@@ -251,6 +377,7 @@ export async function PATCH(
 
     const json = await req.json().catch(() => null);
     const action = json?.action as string | undefined;
+    let skipLedgerGraphSync = false;
 
     if (action === "updateSettings") {
       const parsed = SettingsSchema.safeParse(json.settings);
@@ -265,6 +392,7 @@ export async function PATCH(
           target: tripCostSettings.tripId,
           set: { ...settings, updatedAt: new Date() },
         });
+      skipLedgerGraphSync = true;
     } else if (action === "addLine") {
       const parsed = LineItemSchema.safeParse(json.line);
       if (!parsed.success) {
@@ -274,7 +402,7 @@ export async function PATCH(
       const raw = await loadCostLedgerRaw(tripId);
       const manualSection = parsed.data.allocationRulePayload.financeSection;
       const insertAt = manualSection
-        ? sortOrderForSectionAppend(raw.lineItems, manualSection, graph)
+        ? sortOrderForSectionAppend(raw.lineItems, manualSection, graph, raw.settings)
         : raw.lineItems.length;
       const bumped = applySortOrderInsert(raw.lineItems, insertAt);
       await Promise.all(
@@ -310,19 +438,28 @@ export async function PATCH(
         })
         .returning();
       if (created && parsed.data.overrides?.length) {
-        await db.insert(costAllocationOverrides).values(
-          parsed.data.overrides.map((o) => ({
-            lineItemId: created.id,
-            participantId: o.participantId,
-            amountCents: o.amountCents,
-          })),
-        );
+        await replaceLineAllocationOverrides(created.id, parsed.data.overrides);
       }
+      skipLedgerGraphSync = true;
     } else if (action === "updateLine") {
       const lineId = json.lineId as string | undefined;
+      if (!lineId) {
+        return NextResponse.json({ error: "Line id required." }, { status: 400 });
+      }
       const parsed = LineItemSchema.partial().safeParse(json.line);
-      if (!lineId || !parsed.success) {
-        return NextResponse.json({ error: "Invalid line update." }, { status: 400 });
+      if (!parsed.success) {
+        return invalidLineUpdateResponse(parsed);
+      }
+      let mergedAllocationRulePayload:
+        | z.infer<typeof LineItemSchema>["allocationRulePayload"]
+        | undefined;
+      if (allocationRulePayloadHasKeys(parsed.data.allocationRulePayload)) {
+        const raw = await loadCostLedgerRaw(tripId);
+        const existing = raw.lineItems.find((line) => line.id === lineId);
+        mergedAllocationRulePayload = {
+          ...(existing?.allocationRulePayload ?? {}),
+          ...parsed.data.allocationRulePayload,
+        };
       }
       await db
         .update(costLineItems)
@@ -340,8 +477,8 @@ export async function PATCH(
           ...(parsed.data.allocationRuleType
             ? { allocationRuleType: parsed.data.allocationRuleType }
             : {}),
-          ...(parsed.data.allocationRulePayload
-            ? { allocationRulePayload: parsed.data.allocationRulePayload }
+          ...(mergedAllocationRulePayload
+            ? { allocationRulePayload: mergedAllocationRulePayload }
             : {}),
           ...(parsed.data.supplierPaymentStatus !== undefined
             ? { supplierPaymentStatus: parsed.data.supplierPaymentStatus }
@@ -351,25 +488,27 @@ export async function PATCH(
         })
         .where(eq(costLineItems.id, lineId));
       if (parsed.data.overrides) {
-        await db
-          .delete(costAllocationOverrides)
-          .where(eq(costAllocationOverrides.lineItemId, lineId));
-        if (parsed.data.overrides.length) {
-          await db.insert(costAllocationOverrides).values(
-            parsed.data.overrides.map((o) => ({
-              lineItemId: lineId,
-              participantId: o.participantId,
-              amountCents: o.amountCents,
-            })),
+        await replaceLineAllocationOverrides(lineId, parsed.data.overrides);
+        if (parsed.data.totalAmountCents === undefined) {
+          const pinnedSum = parsed.data.overrides.reduce(
+            (sum, row) => sum + Math.trunc(row.amountCents),
+            0,
           );
+          if (pinnedSum > 0) {
+            await db
+              .update(costLineItems)
+              .set({ totalAmountCents: pinnedSum, updatedAt: new Date() })
+              .where(eq(costLineItems.id, lineId));
+          }
         }
       }
+      skipLedgerGraphSync = true;
     } else if (action === "reorderSectionLines") {
       const section = json.section as FinanceEntitySection | undefined;
       const orderedIds = json.orderedIds;
       if (
         !section ||
-        !["accommodation", "transport", "activities"].includes(section) ||
+        typeof section !== "string" ||
         !Array.isArray(orderedIds) ||
         !orderedIds.every((id) => typeof id === "string")
       ) {
@@ -377,6 +516,16 @@ export async function PATCH(
       }
       const graph = await loadTripGraph(tripId);
       const raw = await loadCostLedgerRaw(tripId);
+      const allowed = new Set([
+        "accommodation",
+        "transport",
+        "activities",
+        "other",
+        ...raw.settings.financeCustomSections.map((s) => s.id),
+      ]);
+      if (!allowed.has(section)) {
+        return NextResponse.json({ error: "Invalid section reorder." }, { status: 400 });
+      }
       let next;
       try {
         next = reorderFinanceSectionLines(
@@ -384,6 +533,7 @@ export async function PATCH(
           section,
           orderedIds as string[],
           graph,
+          raw.settings,
         );
       } catch {
         return NextResponse.json({ error: "Invalid section reorder." }, { status: 400 });
@@ -396,12 +546,91 @@ export async function PATCH(
             .where(eq(costLineItems.id, line.id)),
         ),
       );
+      skipLedgerGraphSync = true;
+    } else if (action === "addFinanceSection") {
+      const name = typeof json.name === "string" ? json.name.trim() : "";
+      const description =
+        typeof json.description === "string" ? json.description.trim() : undefined;
+      if (!name) {
+        return NextResponse.json({ error: "Section name required." }, { status: 400 });
+      }
+      await ensureCostSettings(tripId);
+      const raw = await loadCostLedgerRaw(tripId);
+      const id = crypto.randomUUID();
+      const nextSections = [
+        ...raw.settings.financeCustomSections,
+        { id, name, description: description || null },
+      ];
+      await db
+        .update(tripCostSettings)
+        .set({ financeCustomSections: nextSections, updatedAt: new Date() })
+        .where(eq(tripCostSettings.tripId, tripId));
+      skipLedgerGraphSync = true;
+    } else if (action === "deleteFinanceSection") {
+      const sectionId = typeof json.sectionId === "string" ? json.sectionId.trim() : "";
+      if (!sectionId) {
+        return NextResponse.json({ error: "Section id required." }, { status: 400 });
+      }
+      const result = await deleteFinanceCustomSection(tripId, sectionId);
+      if (result === "builtin") {
+        return NextResponse.json({ error: "Built-in sections cannot be deleted." }, { status: 400 });
+      }
+      if (result === "not_found") {
+        return NextResponse.json({ error: "Section not found." }, { status: 404 });
+      }
+      skipLedgerGraphSync = true;
+    } else if (action === "updateFinanceViewGroups") {
+      const parsed = z.array(FinanceViewGroupSchema).safeParse(json.groups);
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid view groups." }, { status: 400 });
+      }
+      await ensureCostSettings(tripId);
+      await db
+        .update(tripCostSettings)
+        .set({ financeViewGroups: parsed.data, updatedAt: new Date() })
+        .where(eq(tripCostSettings.tripId, tripId));
+      skipLedgerGraphSync = true;
+    } else if (action === "setFinanceSectionParticipant") {
+      const section = json.section as FinanceEntitySection | undefined;
+      const participantId = json.participantId as string | undefined;
+      const excluded = json.excluded === true;
+      if (!section || !participantId) {
+        return NextResponse.json({ error: "Section and participant required." }, { status: 400 });
+      }
+      await ensureCostSettings(tripId);
+      const graph = await loadTripGraph(tripId);
+      if (!graph) {
+        return NextResponse.json({ error: "Trip not found." }, { status: 404 });
+      }
+      const raw = await loadCostLedgerRaw(tripId);
+      if (!allowedFinanceSections(raw.settings).has(section)) {
+        return NextResponse.json({ error: "Invalid finance section." }, { status: 400 });
+      }
+      const wasExcluded = (raw.settings.financeSectionExclusions[section] ?? []).includes(
+        participantId,
+      );
+      const nextExclusions = applySectionExclusionPatch(
+        raw.settings.financeSectionExclusions,
+        section,
+        participantId,
+        excluded,
+      );
+      const nextSettings = { ...raw.settings, financeSectionExclusions: nextExclusions };
+      await db
+        .update(tripCostSettings)
+        .set({ financeSectionExclusions: nextExclusions, updatedAt: new Date() })
+        .where(eq(tripCostSettings.tripId, tripId));
+      if (excluded && !wasExcluded) {
+        await clearSectionOverrides(section, [participantId], graph, nextSettings, raw.lineItems);
+      }
+      skipLedgerGraphSync = true;
     } else if (action === "deleteLine") {
       const lineId = json.lineId as string | undefined;
       if (!lineId) {
         return NextResponse.json({ error: "Line id required." }, { status: 400 });
       }
       await db.delete(costLineItems).where(eq(costLineItems.id, lineId));
+      skipLedgerGraphSync = true;
     } else if (action === "dismissAndDeleteLine") {
       const lineId = json.lineId as string | undefined;
       if (!lineId) {
@@ -415,6 +644,7 @@ export async function PATCH(
       const key = dismissalKeyFromLine(line);
       if (key) await dismissFromFinance(tripId, key);
       await db.delete(costLineItems).where(eq(costLineItems.id, lineId));
+      skipLedgerGraphSync = true;
     } else if (action === "removeLineFromTrip") {
       const lineId = json.lineId as string | undefined;
       if (!lineId) {
@@ -463,20 +693,51 @@ export async function PATCH(
       if (commands.length) {
         await persistCommands(tripId, graph, commands);
       }
+      skipLedgerGraphSync = true;
     } else if (action === "deleteLines") {
-      const lineIds = z.array(z.string().uuid()).min(1).parse(json.lineIds);
+      const parsed = z.array(z.string().uuid()).min(1).safeParse(json.lineIds);
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid finance row id." }, { status: 400 });
+      }
       const mode = json.mode === "removeFromTrip" ? "removeFromTrip" : "financeOnly";
-      await bulkDeleteFinanceLines(tripId, lineIds, mode);
+      await bulkDeleteFinanceLines(tripId, parsed.data, mode);
+      skipLedgerGraphSync = true;
+    } else if (action === "dismissLinkedEntities") {
+      const parsed = z
+        .array(
+          z.object({
+            entityType: z.enum([
+              "accommodation_stay",
+              "transport_leg",
+              "transport_product",
+              "itinerary_item",
+            ]),
+            entityId: z.string().uuid(),
+          }),
+        )
+        .min(1)
+        .safeParse(json.keys);
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid finance dismissal." }, { status: 400 });
+      }
+      await Promise.all(parsed.data.map((key) => dismissFromFinance(tripId, key)));
+      skipLedgerGraphSync = true;
     } else if (action === "deleteEmptyLines") {
       await db
         .delete(costLineItems)
         .where(and(eq(costLineItems.tripId, tripId), eq(costLineItems.totalAmountCents, 0)));
+      skipLedgerGraphSync = true;
     } else if (action === "addFund") {
       const parsed = FundSchema.safeParse(json.fund);
       if (!parsed.success) {
         return NextResponse.json({ error: "Invalid fund." }, { status: 400 });
       }
       const raw = await loadCostLedgerRaw(tripId);
+      let allocationRulePayload = parsed.data.allocationRulePayload;
+      if (!allocationRulePayload.financeSection) {
+        const misc = primaryMiscFinanceSection(raw.settings);
+        if (misc) allocationRulePayload = { ...allocationRulePayload, financeSection: misc };
+      }
       await db.insert(tripFunds).values({
         tripId,
         sortOrder: raw.funds.length,
@@ -484,15 +745,62 @@ export async function PATCH(
         amountCents: parsed.data.amountCents,
         currency: parsed.data.currency,
         allocationRuleType: parsed.data.allocationRuleType,
-        allocationRulePayload: parsed.data.allocationRulePayload,
+        allocationRulePayload,
         notes: parsed.data.notes ?? null,
       });
+      skipLedgerGraphSync = true;
     } else if (action === "deleteFund") {
       const fundId = json.fundId as string | undefined;
       if (!fundId) {
         return NextResponse.json({ error: "Fund id required." }, { status: 400 });
       }
       await db.delete(tripFunds).where(eq(tripFunds.id, fundId));
+      skipLedgerGraphSync = true;
+    } else if (action === "deleteFunds") {
+      const fundIds = json.fundIds;
+      if (
+        !Array.isArray(fundIds) ||
+        !fundIds.length ||
+        !fundIds.every((id) => typeof id === "string")
+      ) {
+        return NextResponse.json({ error: "Fund ids required." }, { status: 400 });
+      }
+      await db
+        .delete(tripFunds)
+        .where(and(eq(tripFunds.tripId, tripId), inArray(tripFunds.id, fundIds as string[])));
+      skipLedgerGraphSync = true;
+    } else if (action === "updateFund") {
+      const fundId = z.string().uuid().parse(json.fundId);
+      const patch = FundSchema.partial().parse(json.fund);
+      if (!Object.keys(patch).length) {
+        return NextResponse.json({ error: "No fund fields to update." }, { status: 400 });
+      }
+      const raw = await loadCostLedgerRaw(tripId);
+      const existing = raw.funds.find((fund) => fund.id === fundId);
+      const mergedAllocationRulePayload =
+        patch.allocationRulePayload && existing
+          ? {
+              ...existing.allocationRulePayload,
+              ...patch.allocationRulePayload,
+            }
+          : patch.allocationRulePayload;
+      await db
+        .update(tripFunds)
+        .set({
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.amountCents !== undefined ? { amountCents: patch.amountCents } : {}),
+          ...(patch.currency !== undefined ? { currency: patch.currency } : {}),
+          ...(patch.allocationRuleType !== undefined
+            ? { allocationRuleType: patch.allocationRuleType }
+            : {}),
+          ...(mergedAllocationRulePayload
+            ? { allocationRulePayload: mergedAllocationRulePayload }
+            : {}),
+          ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(tripFunds.id, fundId), eq(tripFunds.tripId, tripId)));
+      skipLedgerGraphSync = true;
     } else if (action === "addPayment") {
       const parsed = PaymentSchema.safeParse(json.payment);
       if (!parsed.success) {
@@ -507,12 +815,14 @@ export async function PATCH(
         label: parsed.data.label,
         notes: parsed.data.notes ?? null,
       });
+      skipLedgerGraphSync = true;
     } else if (action === "deletePayment") {
       const paymentId = json.paymentId as string | undefined;
       if (!paymentId) {
         return NextResponse.json({ error: "Payment id required." }, { status: 400 });
       }
       await db.delete(participantPayments).where(eq(participantPayments.id, paymentId));
+      skipLedgerGraphSync = true;
     } else if (action === "addSupplierPayment") {
       const parsed = SupplierPaymentSchema.safeParse(json.supplierPayment);
       if (!parsed.success) {
@@ -534,6 +844,7 @@ export async function PATCH(
         notes: parsed.data.notes ?? null,
       });
       await maybeAutoUpdateLinePaymentStatus(tripId, parsed.data.costLineItemId);
+      skipLedgerGraphSync = true;
     } else if (action === "deleteSupplierPayment") {
       const paymentId = json.supplierPaymentId as string | undefined;
       if (!paymentId) {
@@ -549,6 +860,7 @@ export async function PATCH(
       if (existing?.costLineItemId) {
         await maybeAutoUpdateLinePaymentStatus(tripId, existing.costLineItemId);
       }
+      skipLedgerGraphSync = true;
     } else if (action === "seedFromTrip") {
       const graph = await loadTripGraph(tripId);
       if (!graph) {
@@ -557,6 +869,17 @@ export async function PATCH(
       await syncCostLedgerFromGraph(tripId, graph, await loadFinanceDismissals(tripId));
     } else {
       return NextResponse.json({ error: "Unknown action." }, { status: 400 });
+    }
+
+    if (skipLedgerGraphSync) {
+      const [raw, roster, graph] = await Promise.all([
+        loadCostLedgerRaw(tripId),
+        loadRosterSummary(tripId),
+        loadTripGraph(tripId),
+      ]);
+      return NextResponse.json({
+        costLedger: projectCostLedger(raw, roster, graph ?? undefined),
+      });
     }
 
     const graph = await loadTripGraph(tripId);

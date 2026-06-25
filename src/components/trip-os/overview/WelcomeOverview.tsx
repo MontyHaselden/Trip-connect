@@ -7,6 +7,7 @@ import { TripActionRow } from "../shared/TripActionRow";
 import { EditableTripName } from "../shared/EditableTripName";
 import { TripEyebrow } from "../shared/TripEyebrow";
 import type { TripOsSection } from "../TripOsWorkspace";
+import { TRIP_OS_AI_IMPORT_ENABLED } from "@/lib/trip-os/feature-flags";
 
 export function WelcomeOverview(props: {
   graph: TripEntityGraph;
@@ -65,25 +66,40 @@ export function WelcomeOverview(props: {
           </div>
         </div>
 
-        <div className="mt-8 border-t border-zinc-100 pt-6">
-          <TripEyebrow>Or</TripEyebrow>
-          <div className="mt-2 space-y-0.5">
-            <TripActionRow
-              label="Import a document"
-              hint="PDF, spreadsheet, or email — AI reads it for you."
-              accent="indigo"
-              icon="import"
-              onClick={() => props.onNavigateSection?.("ingest")}
-            />
-            <TripActionRow
-              label="Add travel on the calendar"
-              hint="Select a travel day on the calendar — Depart for Tokyo, flights, and transfers live there."
-              accent="zinc"
-              icon="plane"
-              onClick={() => props.onNavigateSection?.("locations")}
-            />
+        {TRIP_OS_AI_IMPORT_ENABLED ? (
+          <div className="mt-8 border-t border-zinc-100 pt-6">
+            <TripEyebrow>Or</TripEyebrow>
+            <div className="mt-2 space-y-0.5">
+              <TripActionRow
+                label="Import a document"
+                hint="PDF, spreadsheet, or email — AI reads it for you."
+                accent="indigo"
+                icon="import"
+                onClick={() => props.onNavigateSection?.("ingest")}
+              />
+              <TripActionRow
+                label="Add travel on the calendar"
+                hint="Select a travel day on the calendar — Depart for Tokyo, flights, and transfers live there."
+                accent="zinc"
+                icon="plane"
+                onClick={() => props.onNavigateSection?.("locations")}
+              />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="mt-8 border-t border-zinc-100 pt-6">
+            <TripEyebrow>Or</TripEyebrow>
+            <div className="mt-2 space-y-0.5">
+              <TripActionRow
+                label="Add travel on the calendar"
+                hint="Select a travel day on the calendar — Depart for Tokyo, flights, and transfers live there."
+                accent="zinc"
+                icon="plane"
+                onClick={() => props.onNavigateSection?.("locations")}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

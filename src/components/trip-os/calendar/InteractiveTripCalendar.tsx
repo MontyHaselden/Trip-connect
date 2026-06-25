@@ -71,14 +71,18 @@ export function InteractiveTripCalendar(props: {
 
   function renderCell(cell: WeekCell) {
     const day = dayByDate.get(cell.iso) ?? emptyGridDay(cell.iso);
+    const travelSegments = model.travelLayoutsByDate.get(cell.iso);
+    const transitOverlays = model.transitByDate.get(cell.iso) ?? [];
+    const hasTransport = Boolean(travelSegments?.length || transitOverlays.length);
     const isHomeEdge = cell.iso === model.tripStart || cell.iso === model.tripEnd;
     const edgePaintable =
       isHomeEdge &&
-      Boolean(day.primaryCity.trim() || day.secondaryCity?.trim());
+      (Boolean(day.primaryCity.trim() || day.secondaryCity?.trim()) || hasTransport);
     const isInteractive = isTripOsDayInteractive({
       iso: cell.iso,
       model,
       day,
+      travelSegments,
     });
     const primaryCity = day.primaryCity.trim();
     const secondaryCity = day.secondaryCity?.trim() ?? "";
@@ -119,24 +123,24 @@ export function InteractiveTripCalendar(props: {
         locationColorByKey={model.locationColorByKey}
         pendingFillHalf={props.pendingFillHalf}
         onDayClick={props.onDayClick}
+        transitOverlays={transitOverlays}
+        travelSegments={travelSegments}
       />
     );
   }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-white">
-      <div className="shrink-0 px-4 py-3" onClick={handleEmptyAreaClick}>
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <TripEyebrow>Trip calendar</TripEyebrow>
-            {props.statusLine ? (
-              <p className="mt-1 text-xs text-zinc-500">{props.statusLine}</p>
-            ) : (
-              <p className="mt-1 text-xs text-zinc-400">Scroll to browse the full trip</p>
-            )}
-          </div>
-          {props.headerAside}
-        </div>
+      <div className="shrink-0 border-b border-zinc-100 px-4 py-5" onClick={handleEmptyAreaClick}>
+        <TripEyebrow>Trip calendar</TripEyebrow>
+        {props.statusLine ? (
+          <p className="mt-1 text-xs text-zinc-500">{props.statusLine}</p>
+        ) : (
+          <p className="mt-1 text-xs text-zinc-400">
+            Click days for a range, or a half on split days
+          </p>
+        )}
+        {props.headerAside ? <div className="mt-4">{props.headerAside}</div> : null}
       </div>
 
       <div

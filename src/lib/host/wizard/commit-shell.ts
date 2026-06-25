@@ -79,6 +79,7 @@ export async function commitWizardShell(tripId: string, draft: TripWizardDraft) 
     returnLegs: draft.returnLegs,
     intercityLegs: draft.intercityLegs,
     accommodationStays: draft.accommodationStays,
+    transportProducts: [],
   });
 }
 

@@ -14,6 +14,7 @@ import {
   loadVisibilityTargetsForTrip,
 } from "@/lib/visibility/persistence";
 import { hydrateAccommodationCoordinates } from "@/lib/host/locations/hydrate-accommodation-coordinates";
+import { loadTransportProducts } from "@/lib/host/locations/transport-products";
 import { decodeTransportLegNotes } from "@/lib/host/setup/transport-leg-notes";
 import type {
   AccommodationStayDraft,
@@ -56,8 +57,10 @@ function rowToTransportLeg(row: {
   referenceNumber: string | null;
   flightNumber: string | null;
   notes: string | null;
+  transportProductId?: string | null;
 }): TransportLegDraft {
   const decoded = decodeTransportLegNotes(row.notes);
+  const productId = row.transportProductId ?? null;
   return {
     id: row.id,
     transportType: row.transportType,
@@ -80,6 +83,8 @@ function rowToTransportLeg(row: {
     flightNumber: row.flightNumber,
     notes: decoded.notes,
     surfaceOnly: decoded.surfaceOnly || undefined,
+    transportProductId: productId,
+    billingMode: productId ? "product" : "single",
   };
 }
 
@@ -141,6 +146,8 @@ export async function loadTripLocationState(tripId: string): Promise<TripLocatio
     .from(tripTransportLegs)
     .where(eq(tripTransportLegs.tripId, tripId))
     .orderBy(asc(tripTransportLegs.sortOrder));
+
+  const transportProducts = await loadTransportProducts(tripId);
 
   const stayRows = await hydrateAccommodationCoordinates(
     await db
@@ -260,6 +267,7 @@ export async function loadTripLocationState(tripId: string): Promise<TripLocatio
     returnLegs,
     intercityLegs,
     accommodationStays,
+    transportProducts,
   };
 }
 

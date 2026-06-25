@@ -1,3 +1,4 @@
+import { consolidateFinanceOtherSection } from "@/lib/trip-engine/cost-ledger/consolidate-finance-other-section";
 import { loadCostLedgerRaw, ensureCostSettings } from "@/lib/trip-engine/cost-ledger/load-cost-ledger";
 import { projectCostLedger } from "@/lib/trip-engine/cost-ledger/project";
 import { syncCostLedgerFromGraph } from "@/lib/trip-engine/cost-ledger/sync-cost-ledger-from-graph";
@@ -18,10 +19,14 @@ export async function loadCostLedgerProjection(
     await syncCostLedgerFromGraph(tripId, tripGraph, dismissals);
   }
 
-  const [raw, roster] = await Promise.all([
+  const [rawInitial, roster] = await Promise.all([
     loadCostLedgerRaw(tripId),
     loadRosterSummary(tripId),
   ]);
+  let raw = rawInitial;
+  if (await consolidateFinanceOtherSection(tripId)) {
+    raw = await loadCostLedgerRaw(tripId);
+  }
   return projectCostLedger(raw, roster, tripGraph ?? undefined);
 }
 

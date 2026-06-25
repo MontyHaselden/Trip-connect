@@ -162,6 +162,7 @@ export const costStatus = pgEnum("cost_status", [
   "invoiced",
   "paid",
   "cancelled",
+  "no_cost",
 ]);
 
 export const linePaymentStatus = pgEnum("line_payment_status", [
@@ -233,6 +234,13 @@ export const transportLegKind = pgEnum("transport_leg_kind", [
   "outbound",
   "return",
   "intercity",
+]);
+
+export const transportProductKind = pgEnum("transport_product_kind", [
+  "flight_package",
+  "train_pass",
+  "ic_card",
+  "bus_pass",
 ]);
 
 export const transportType = pgEnum("transport_type", [
@@ -420,6 +428,9 @@ export const tripCostSettings = pgTable("trip_cost_settings", {
   exchangeRate: numeric("exchange_rate", { precision: 12, scale: 6 }),
   exchangeRateDate: date("exchange_rate_date"),
   exchangeRateManual: boolean("exchange_rate_manual").notNull().default(false),
+  financeCustomSections: jsonb("finance_custom_sections").notNull().default([]),
+  financeViewGroups: jsonb("finance_view_groups").notNull().default([]),
+  financeSectionExclusions: jsonb("finance_section_exclusions").notNull().default({}),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -445,6 +456,7 @@ export const costLineItems = pgTable(
     allocationRulePayload: jsonb("allocation_rule_payload").notNull().default({}),
     linkedStayId: uuid("linked_stay_id"),
     linkedTransportLegId: uuid("linked_transport_leg_id"),
+    linkedTransportProductId: uuid("linked_transport_product_id"),
     linkedActivityId: uuid("linked_activity_id"),
     scope: costLineScope("scope").notNull().default("presence"),
     supplierPaymentStatus: supplierPaymentStatus("supplier_payment_status"),
@@ -718,6 +730,27 @@ export const tripWizardDrafts = pgTable("trip_wizard_drafts", {
     .defaultNow(),
 });
 
+export const tripTransportProducts = pgTable(
+  "trip_transport_products",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    kind: transportProductKind("kind").notNull(),
+    name: text("name").notNull(),
+    participantIds: jsonb("participant_ids").notNull().default([]),
+    notes: text("notes"),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (p) => ({
+    tripSortIndex: index("trip_transport_products_trip_id_sort_order_idx").on(
+      p.tripId,
+      p.sortOrder,
+    ),
+  }),
+);
+
 export const tripTransportLegs = pgTable(
   "trip_transport_legs",
   {
@@ -747,6 +780,10 @@ export const tripTransportLegs = pgTable(
       onDelete: "set null",
     }),
     sourceEntityId: uuid("source_entity_id"),
+    transportProductId: uuid("transport_product_id").references(
+      () => tripTransportProducts.id,
+      { onDelete: "set null" },
+    ),
   },
   (l) => ({
     tripSortIndex: index("trip_transport_legs_trip_id_sort_order_idx").on(
@@ -1479,6 +1516,7 @@ export const subscriptions = pgTable(
       onDelete: "set null",
     }),
     foundingPriceLocked: boolean("founding_price_locked").notNull().default(false),
+    trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

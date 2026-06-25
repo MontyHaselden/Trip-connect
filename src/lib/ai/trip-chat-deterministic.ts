@@ -3,28 +3,28 @@ import { summarizeTripDateRangeChange } from "@/lib/host/setup/set-trip-date-ran
 import { fillSparseCalendarAnchors } from "@/lib/host/import/sanitize-imported-locations";
 import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import type { TripCommand } from "@/lib/trip-engine/commands";
-import { dayPlacesForGroup, staysForGroup } from "@/lib/trip-engine/selectors";
+import { dayPlacesForGroup, staysForGroup, activitiesForGroup } from "@/lib/trip-engine/selectors";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 import { findUnpaintedTripDays } from "./trip-chat-context";
 import { summarizeSetupCalendarGaps } from "@/lib/host/import/post-import-reconcile";
 import { parseDayMonthRangeFromMessage, parseMonthShiftFromMessage } from "./parse-trip-date-range";
+import {
+  CLEAR_ACTIVITIES_RE,
+  CLEAR_STAYS_RE,
+  CLEAR_TRANSPORT_RE,
+  CLEAR_TRIP_RE,
+  normalizeChatTypos,
+  SCOPED_CLEAR_ENTITY_RE,
+} from "./scoped-delete-intent";
+import type { TripChatProposal } from "./trip-chat-proposal";
 
 /** Fast-path helpers kept for tests and optional offline use — trip chat is AI-first in production. */
 
-export type TripChatProposal = {
-  assistantReply: string;
-  needsClarification: boolean;
-  proposedCommands: TripCommand[];
-  commandSummaries: string[];
-  warnings: string[];
-};
+export type { TripChatProposal } from "./trip-chat-proposal";
 
 const FILL_GAPS_RE =
   /\b(fill\s+(in\s+)?(the\s+)?gaps?|complete\s+(the\s+)?calendar|extend\s+(the\s+)?stays?|paint\s+(the\s+)?missing\s+days?)\b/i;
-
-const CLEAR_TRIP_RE =
-  /\b(clear|remove|delete|wipe|reset|start\s+over|empty|undo\s+import)\b.*\b(everything|all|calendar|trip|itinerary|import|content|this|data)\b|\b(start\s+over|reset\s+(the\s+)?trip|clear\s+(the\s+)?(calendar|trip)|remove\s+all|delete\s+all|wipe\s+(the\s+)?calendar)\b/i;
 
 const WHAT_NEXT_RE =
   /\b(what\s*next|what'?s\s*next|what\s*now|now\s*what|help\s*me\s*fix|anything\s*else)\b/i;
@@ -48,14 +48,26 @@ export function tryDeterministicTripChat(
   graph: TripEntityGraph,
   groupId: string,
 ): TripChatProposal | null {
-  const trimmed = message.trim();
+  const trimmed = normalizeChatTypos(message.trim());
   if (!trimmed) return null;
 
   if (FILL_GAPS_RE.test(trimmed)) {
     return buildFillGapsProposal(graph, groupId);
   }
 
-  if (CLEAR_TRIP_RE.test(trimmed)) {
+  if (CLEAR_ACTIVITIES_RE.test(trimmed)) {
+    return buildClearActivitiesProposal(graph, groupId);
+  }
+
+  if (CLEAR_STAYS_RE.test(trimmed)) {
+    return buildClearStaysProposal(graph, groupId);
+  }
+
+  if (CLEAR_TRANSPORT_RE.test(trimmed)) {
+    return buildClearTransportProposal(graph, groupId);
+  }
+
+  if (CLEAR_TRIP_RE.test(trimmed) && !SCOPED_CLEAR_ENTITY_RE.test(trimmed)) {
     return buildClearTripProposal(graph, groupId);
   }
 
@@ -75,6 +87,27 @@ export function tryDeterministicTripChat(
   const reschedule = buildRescheduleProposal(trimmed, graph, groupId);
   if (reschedule) return reschedule;
 
+  return null;
+}
+
+/** Scoped delete only — used to correct AI overreach on activity/stay/transport requests. */
+export function tryDeterministicScopedDelete(
+  message: string,
+  graph: TripEntityGraph,
+  groupId: string,
+): TripChatProposal | null {
+  const trimmed = normalizeChatTypos(message.trim());
+  if (!trimmed) return null;
+
+  if (CLEAR_ACTIVITIES_RE.test(trimmed)) {
+    return buildClearActivitiesProposal(graph, groupId);
+  }
+  if (CLEAR_STAYS_RE.test(trimmed)) {
+    return buildClearStaysProposal(graph, groupId);
+  }
+  if (CLEAR_TRANSPORT_RE.test(trimmed)) {
+    return buildClearTransportProposal(graph, groupId);
+  }
   return null;
 }
 
@@ -98,6 +131,118 @@ export function buildClearTripProposal(
       },
     ],
     commandSummaries: ["Clear all trip content on the calendar"],
+    warnings: [],
+  };
+}
+
+export function buildClearActivitiesProposal(
+  graph: TripEntityGraph,
+  groupId: string,
+): TripChatProposal {
+  const activities = activitiesForGroup(graph, groupId);
+  if (!activities.length) {
+    return {
+      assistantReply:
+        "There are no scheduled activities on this trip right now — stays, transport, and calendar locations are unchanged.",
+      needsClarification: false,
+      proposedCommands: [],
+      commandSummaries: [],
+      warnings: [],
+    };
+  }
+
+  const count = activities.length;
+  return {
+    assistantReply: [
+      `I'll remove **${count}** scheduled activit${count === 1 ? "y" : "ies"}.`,
+      "Stays, transport legs, and calendar locations will stay as they are.",
+      "Review the changes, then click **Apply changes**.",
+    ].join(" "),
+    needsClarification: false,
+    proposedCommands: activities.map((activity) => ({
+      type: "removeActivity",
+      groupId,
+      activityId: activity.id,
+    })),
+    commandSummaries: [`Remove ${count} activit${count === 1 ? "y" : "ies"}`],
+    warnings: [],
+  };
+}
+
+export function buildClearStaysProposal(
+  graph: TripEntityGraph,
+  groupId: string,
+): TripChatProposal {
+  const stays = staysForGroup(graph, groupId);
+  if (!stays.length) {
+    return {
+      assistantReply:
+        "There are no accommodation stays to remove — activities, transport, and calendar locations are unchanged.",
+      needsClarification: false,
+      proposedCommands: [],
+      commandSummaries: [],
+      warnings: [],
+    };
+  }
+
+  const count = stays.length;
+  return {
+    assistantReply: [
+      `I'll remove **${count}** accommodation stay${count === 1 ? "" : "s"}.`,
+      "Activities, transport legs, and calendar locations will stay as they are.",
+      "Review the changes, then click **Apply changes**.",
+    ].join(" "),
+    needsClarification: false,
+    proposedCommands: stays.map((stay) => ({
+      type: "removeStay",
+      groupId,
+      stayId: stay.id,
+    })),
+    commandSummaries: [`Remove ${count} accommodation stay${count === 1 ? "" : "s"}`],
+    warnings: [],
+  };
+}
+
+export function buildClearTransportProposal(
+  graph: TripEntityGraph,
+  groupId: string,
+): TripChatProposal {
+  const legs = [
+    ...graph.outboundLegs,
+    ...graph.returnLegs,
+    ...graph.intercityLegs,
+  ];
+  if (!legs.length) {
+    return {
+      assistantReply:
+        "There are no transport legs to remove — stays, activities, and calendar locations are unchanged.",
+      needsClarification: false,
+      proposedCommands: [],
+      commandSummaries: [],
+      warnings: [],
+    };
+  }
+
+  const count = legs.length;
+  return {
+    assistantReply: [
+      `I'll remove **${count}** transport leg${count === 1 ? "" : "s"}.`,
+      "Stays, activities, and calendar locations will stay as they are.",
+      "Review the changes, then click **Apply changes**.",
+    ].join(" "),
+    needsClarification: false,
+    proposedCommands: legs.map((leg) => ({
+      type: "removeTransportLeg",
+      groupId,
+      legId: leg.id,
+      bucket:
+        graph.outboundLegs.some((entry) => entry.id === leg.id)
+          ? "outbound"
+          : graph.returnLegs.some((entry) => entry.id === leg.id)
+            ? "return"
+            : "intercity",
+    })),
+    commandSummaries: [`Remove ${count} transport leg${count === 1 ? "" : "s"}`],
     warnings: [],
   };
 }

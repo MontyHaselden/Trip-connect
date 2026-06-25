@@ -77,6 +77,24 @@ export type LayerEntityDraft = {
   sourceEntityId?: string | null;
 };
 
+export const TRANSPORT_PRODUCT_KINDS = [
+  "flight_package",
+  "train_pass",
+  "ic_card",
+  "bus_pass",
+] as const;
+export type TransportProductKind = (typeof TRANSPORT_PRODUCT_KINDS)[number];
+
+export type TransportProductDraft = {
+  id: string;
+  kind: TransportProductKind;
+  name: string;
+  participantIds: string[];
+  notes?: string | null;
+};
+
+export type TransportLegBillingMode = "single" | "product";
+
 export type TransportLegDraft = EntityVisibilityDraft & LayerEntityDraft & {
   id: string;
   transportType: TransportType;
@@ -97,6 +115,8 @@ export type TransportLegDraft = EntityVisibilityDraft & LayerEntityDraft & {
   notes: string | null;
   /** When true, leg is kept in transport data but does not paint the group calendar. */
   surfaceOnly?: boolean;
+  billingMode?: TransportLegBillingMode;
+  transportProductId?: string | null;
 };
 
 export type DayPlaceDraft = {

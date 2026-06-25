@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { hostJson } from "@/components/host/shared/host-fetch";
 import type { RosterPayload } from "@/components/host/roster/types";
-import { studentAppPath } from "@/lib/mobile/student-app-paths";
+import { studentAppPath, studentJoinBoardPath } from "@/lib/mobile/student-app-paths";
 
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 
@@ -63,6 +63,7 @@ export function JoinLinksSection(props: { inviteCode: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tripJoinUrl, setTripJoinUrl] = useState(() => studentAppPath(inviteCode));
+  const [boardUrl, setBoardUrl] = useState(() => studentJoinBoardPath(inviteCode));
 
   const load = useCallback(async () => {
     setError(null);
@@ -82,6 +83,11 @@ export function JoinLinksSection(props: { inviteCode: string }) {
 
   useEffect(() => {
     setTripJoinUrl(joinUrl(inviteCode));
+    setBoardUrl(
+      typeof window === "undefined"
+        ? studentJoinBoardPath(inviteCode)
+        : `${window.location.origin}${studentJoinBoardPath(inviteCode)}`,
+    );
   }, [inviteCode]);
 
   const joinStats = useMemo(() => {
@@ -121,6 +127,32 @@ export function JoinLinksSection(props: { inviteCode: string }) {
         <p className="mt-2 text-xs text-zinc-500">
           Invite code: <span className="font-mono">{inviteCode}</span>
         </p>
+      </TripSoftPanel>
+
+      <TripSoftPanel title="Join screen">
+        <p className="text-sm text-zinc-600">
+          Open on a projector or shared screen — shows a QR code students can scan, plus a live
+          list of who has joined and who is still waiting.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <a
+            href={boardUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700"
+          >
+            Open join screen
+          </a>
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard.writeText(boardUrl);
+            }}
+            className="rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-50"
+          >
+            Copy join screen link
+          </button>
+        </div>
       </TripSoftPanel>
     </TripSectionShell>
   );

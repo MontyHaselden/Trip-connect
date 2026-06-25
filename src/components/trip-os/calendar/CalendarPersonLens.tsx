@@ -196,9 +196,16 @@ export function CalendarPersonLens(props: {
   const lensBusy = Boolean(props.saving);
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex flex-wrap items-center justify-end gap-1.5">
+    <div className="flex w-full flex-col gap-3">
+      <div>
+        <label
+          htmlFor="trip-os-calendar-lens"
+          className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500"
+        >
+          Viewing calendar
+        </label>
         <select
+          id="trip-os-calendar-lens"
           value={props.lens.kind === "whole_group" ? "" : props.lens.participantId}
           disabled={lensBusy}
           onChange={(e) => {
@@ -211,7 +218,7 @@ export function CalendarPersonLens(props: {
             }
             void selectPerson(id);
           }}
-          className="rounded-full border-0 bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+          className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-semibold text-zinc-900 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <option value="">Whole group</option>
           {participants.map((p) => (
@@ -220,7 +227,9 @@ export function CalendarPersonLens(props: {
             </option>
           ))}
         </select>
+      </div>
 
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
         {selectedPerson ? (
           <div className="relative">
             <button

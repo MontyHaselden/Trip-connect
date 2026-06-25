@@ -14,12 +14,50 @@ import type {
   CostAllocationOverrideDraft,
   CostLedgerRaw,
   CostLineItemDraft,
+  FinanceCustomSection,
+  FinanceViewGroup,
   ParticipantPaymentDraft,
   SupplierPaymentDraft,
   TripCostSettingsDraft,
   TripFundDraft,
 } from "./types";
 import type { PaidByType, SupplierPaymentMethod } from "./finance-metadata";
+import { parseFinanceSectionExclusions } from "./finance-section-exclusions";
+
+function parseCustomSections(value: unknown): FinanceCustomSection[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((row): row is FinanceCustomSection => {
+      if (!row || typeof row !== "object") return false;
+      const r = row as Record<string, unknown>;
+      return typeof r.id === "string" && typeof r.name === "string";
+    })
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: typeof row.description === "string" ? row.description : null,
+    }));
+}
+
+function parseViewGroups(value: unknown): FinanceViewGroup[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((row): row is FinanceViewGroup => {
+      if (!row || typeof row !== "object") return false;
+      const r = row as Record<string, unknown>;
+      return (
+        typeof r.id === "string" &&
+        typeof r.name === "string" &&
+        Array.isArray(r.participantIds) &&
+        r.participantIds.every((id) => typeof id === "string")
+      );
+    })
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      participantIds: row.participantIds,
+    }));
+}
 
 function mapSettings(row: typeof tripCostSettings.$inferSelect | undefined): TripCostSettingsDraft {
   return {
@@ -28,6 +66,9 @@ function mapSettings(row: typeof tripCostSettings.$inferSelect | undefined): Tri
     exchangeRate: row?.exchangeRate ? Number(row.exchangeRate) : null,
     exchangeRateDate: row?.exchangeRateDate ?? null,
     exchangeRateManual: row?.exchangeRateManual ?? false,
+    financeCustomSections: parseCustomSections(row?.financeCustomSections),
+    financeViewGroups: parseViewGroups(row?.financeViewGroups),
+    financeSectionExclusions: parseFinanceSectionExclusions(row?.financeSectionExclusions),
   };
 }
 
@@ -50,6 +91,7 @@ function mapLine(row: typeof costLineItems.$inferSelect): CostLineItemDraft {
     },
     linkedStayId: row.linkedStayId,
     linkedTransportLegId: row.linkedTransportLegId,
+    linkedTransportProductId: row.linkedTransportProductId,
     linkedActivityId: row.linkedActivityId,
     scope: row.scope ?? "presence",
     supplierPaymentStatus: row.supplierPaymentStatus,
@@ -69,7 +111,17 @@ function mapLine(row: typeof costLineItems.$inferSelect): CostLineItemDraft {
 }
 
 function mapFund(row: typeof tripFunds.$inferSelect): TripFundDraft {
-  const payload = (row.allocationRulePayload ?? {}) as Record<string, string>;
+  const payload = (row.allocationRulePayload ?? {}) as Record<string, unknown>;
+  const pinnedRaw = payload.pinnedAllocations;
+  const pinnedAllocations =
+    pinnedRaw && typeof pinnedRaw === "object" && !Array.isArray(pinnedRaw)
+      ? Object.fromEntries(
+          Object.entries(pinnedRaw as Record<string, unknown>).filter(
+            (entry): entry is [string, number] =>
+              typeof entry[1] === "number" && entry[1] >= 0,
+          ),
+        )
+      : undefined;
   return {
     id: row.id,
     name: row.name,
@@ -77,8 +129,11 @@ function mapFund(row: typeof tripFunds.$inferSelect): TripFundDraft {
     currency: row.currency,
     allocationRuleType: row.allocationRuleType,
     allocationRulePayload: {
-      groupId: payload.groupId,
-      participantId: payload.participantId,
+      groupId: typeof payload.groupId === "string" ? payload.groupId : undefined,
+      participantId:
+        typeof payload.participantId === "string" ? payload.participantId : undefined,
+      financeSection: payload.financeSection as CostLineItemDraft["allocationRulePayload"]["financeSection"],
+      pinnedAllocations,
     },
     sortOrder: row.sortOrder,
     notes: row.notes,

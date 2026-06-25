@@ -7,9 +7,14 @@ import { adminApiError } from "@/lib/admin/api-errors";
 import { canEditBilling, requireAdminRole } from "@/lib/admin/permissions";
 import { getAccountUsage } from "@/lib/admin/stats";
 import { listInvoices } from "@/lib/billing/invoices";
+import { getSupportEmail, sendEmail } from "@/lib/email/send-email";
+import { accountActivatedEmail } from "@/lib/email/templates";
 import {
   changeAccountPlan,
+  extendAccountTrial,
+  applyFoundingSchoolPricing,
   getSubscriptionForAccount,
+  updateSubscriptionBillingStatus,
 } from "@/lib/billing/subscriptions";
 import { db } from "@/lib/db/client";
 import {
@@ -35,6 +40,12 @@ const PatchSchema = z.object({
   billingContactName: z.string().nullable().optional(),
   billingEmail: z.string().nullable().optional(),
   billingAddress: z.string().nullable().optional(),
+  billingStatus: z
+    .enum(["trial", "active", "manual", "past_due", "cancelled", "expired", "comped"])
+    .optional(),
+  extendTrialDays: z.number().int().min(1).max(90).optional(),
+  activateAccount: z.boolean().optional(),
+  applyFoundingPricing: z.boolean().optional(),
 });
 
 export async function GET(
@@ -149,6 +160,44 @@ export async function PATCH(
     if (data.billingContactName !== undefined) updates.billingContactName = data.billingContactName;
     if (data.billingEmail !== undefined) updates.billingEmail = data.billingEmail;
     if (data.billingAddress !== undefined) updates.billingAddress = data.billingAddress;
+
+    if (data.billingStatus && canEditBilling(admin.role)) {
+      await updateSubscriptionBillingStatus({
+        accountId,
+        billingStatus: data.billingStatus,
+        clearTrial: data.billingStatus === "active",
+      });
+    }
+
+    if (data.extendTrialDays && canEditBilling(admin.role)) {
+      await extendAccountTrial({ accountId, extraDays: data.extendTrialDays });
+    }
+
+    if (data.activateAccount && canEditBilling(admin.role)) {
+      await updateSubscriptionBillingStatus({
+        accountId,
+        billingStatus: "active",
+        clearTrial: true,
+      });
+      const acct = await db
+        .select({ email: hostAccounts.email, fullName: hostAccounts.fullName })
+        .from(hostAccounts)
+        .where(eq(hostAccounts.id, accountId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+      if (acct?.email) {
+        const supportEmail = await getSupportEmail();
+        const mail = accountActivatedEmail({
+          fullName: acct.fullName,
+          supportEmail,
+        });
+        void sendEmail({ to: acct.email, ...mail });
+      }
+    }
+
+    if (data.applyFoundingPricing && canEditBilling(admin.role)) {
+      await applyFoundingSchoolPricing(accountId);
+    }
 
     const [after] = await db
       .update(hostAccounts)

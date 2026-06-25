@@ -1,5 +1,6 @@
 import type { RosterSummary, TripEntityGraph } from "../types";
 
+import { financeSectionForLine } from "./finance-sections";
 import {
   buildParticipantPresenceMap,
   eligibleParticipantIdsForLine,
@@ -18,6 +19,7 @@ import type {
   CostAllocationRulePayload,
   CostAllocationRuleType,
   CostLineItemDraft,
+  TripCostSettingsDraft,
 } from "./types";
 
 export function costSplitParticipants(roster: RosterSummary): RosterSummary["participants"] {
@@ -27,7 +29,18 @@ export function costSplitParticipants(roster: RosterSummary): RosterSummary["par
 export type AllocationContext = {
   graph?: TripEntityGraph;
   presence?: ParticipantPresenceMap;
+  settings?: TripCostSettingsDraft;
 };
+
+function sectionExcludedParticipantIds(
+  line: CostLineItemDraft,
+  ctx: AllocationContext,
+): Set<string> {
+  if (!ctx.settings || !ctx.graph) return new Set();
+  const section = financeSectionForLine(line, ctx.graph, ctx.settings);
+  if (!section) return new Set();
+  return new Set(ctx.settings.financeSectionExclusions[section] ?? []);
+}
 
 export function participantsForRule(
   roster: RosterSummary,
@@ -79,7 +92,11 @@ export function computeItemAllocations(
   balanced: boolean;
 } {
   const line = item as CostLineItemDraft;
-  const itemOverrides = overrides.filter((o) => o.lineItemId === item.id);
+  const sectionExcluded = line.id ? sectionExcludedParticipantIds(line, ctx) : new Set<string>();
+  let itemOverrides = overrides.filter((o) => o.lineItemId === item.id);
+  if (sectionExcluded.size) {
+    itemOverrides = itemOverrides.filter((o) => !sectionExcluded.has(o.participantId));
+  }
   const pinnedParticipantIds = itemOverrides.map((o) => o.participantId);
   const pinnedOverrides = Object.fromEntries(
     itemOverrides.map((o) => [o.participantId, o.amountCents]),
@@ -115,7 +132,9 @@ export function computeItemAllocations(
     targets = targets.filter((p) => eligibleIds.includes(p.id));
   }
 
-  const eligibleParticipantIds = targets.map((p) => p.id);
+  const eligibleParticipantIds = targets
+    .map((p) => p.id)
+    .filter((id) => !sectionExcluded.has(id));
 
   if (itemOverrides.length > 0) {
     const allocations =

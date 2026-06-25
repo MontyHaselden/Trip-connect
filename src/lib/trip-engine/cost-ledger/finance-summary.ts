@@ -8,10 +8,17 @@ import type {
 
 export type FinanceTripSummary = {
   totalTripCostCents: number;
+  /** Trip-level funds (grants, school pool, etc.) — not supplier payouts. */
   totalFundedCents: number;
+  /** Family / student payments recorded against participants. */
+  totalFamilyPaymentsCents: number;
+  /** All money collected toward the trip (funds + family payments). */
+  totalCollectedCents: number;
+  /** Money paid out to suppliers (separate from funding). */
   totalPaidOutCents: number;
   outstandingToSuppliersCents: number;
-  stillToFundCents: number;
+  remainingToFundCents: number;
+  surplusOrShortfallCents: number;
   reimbursableCents: number;
   unknownCostCount: number;
   missingInvoiceCount: number;
@@ -50,6 +57,11 @@ export function computeFinanceTripSummary(
     (sum, f) => sum + convertToBaseCents(f.amountCents, f.currency, settings),
     0,
   );
+  const totalFamilyPaymentsCents = ledger.payments.reduce(
+    (sum, p) => sum + convertToBaseCents(p.amountCents, p.currency, settings),
+    0,
+  );
+  const totalCollectedCents = totalFundedCents + totalFamilyPaymentsCents;
   const totalPaidOutCents = supplierPayments.reduce(
     (sum, p) => sum + convertToBaseCents(p.amountCents, p.currency, settings),
     0,
@@ -65,7 +77,12 @@ export function computeFinanceTripSummary(
     const paid = paidOutForLine(line.id, supplierPayments, settings);
     outstandingToSuppliersCents += Math.max(0, cost - paid);
 
-    if (line.totalAmountCents === 0 && line.costStatus === "unknown") unknownCostCount += 1;
+    if (
+      line.totalAmountCents === 0 &&
+      line.costStatus === "unknown"
+    ) {
+      unknownCostCount += 1;
+    }
     if (
       (line.costStatus === "confirmed" ||
         line.costStatus === "invoiced" ||
@@ -82,7 +99,8 @@ export function computeFinanceTripSummary(
     }
   }
 
-  const stillToFundCents = Math.max(0, totalTripCostCents - totalFundedCents);
+  const remainingToFundCents = Math.max(0, totalTripCostCents - totalCollectedCents);
+  const surplusOrShortfallCents = totalCollectedCents - totalTripCostCents;
   const reimbursableCents = supplierPayments
     .filter((p) => p.reimbursementNeeded)
     .reduce(
@@ -93,9 +111,12 @@ export function computeFinanceTripSummary(
   return {
     totalTripCostCents,
     totalFundedCents,
+    totalFamilyPaymentsCents,
+    totalCollectedCents,
     totalPaidOutCents,
     outstandingToSuppliersCents,
-    stillToFundCents,
+    remainingToFundCents,
+    surplusOrShortfallCents,
     reimbursableCents,
     unknownCostCount,
     missingInvoiceCount,
@@ -110,7 +131,7 @@ export function computeFinanceWarnings(
   const { settings, lineItems, supplierPayments } = ledger;
 
   for (const line of lineItems) {
-    if (line.totalAmountCents === 0) {
+    if (line.totalAmountCents === 0 && line.costStatus !== "no_cost") {
       warnings.push({
         id: `no-cost-${line.id}`,
         severity: "info",
@@ -151,15 +172,6 @@ export function computeFinanceWarnings(
         id: `reimburse-${line.id}`,
         severity: "info",
         message: `"${line.description}" has ${linkedPayments.length} payment(s) needing reimbursement`,
-        lineId: line.id,
-      });
-    }
-
-    if (line.taxTreatment === "unknown" && line.totalAmountCents > 0) {
-      warnings.push({
-        id: `tax-${line.id}`,
-        severity: "info",
-        message: `"${line.description}" has unknown tax treatment`,
         lineId: line.id,
       });
     }

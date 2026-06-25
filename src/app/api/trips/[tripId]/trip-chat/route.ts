@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { proposeTripCommands } from "@/lib/ai/propose-trip-commands";
+import { parseClientActivities } from "@/lib/ai/client-activities-payload";
 import { friendlyTripChatFailure } from "@/lib/ai/trip-chat-fallback";
 import { requireHostSessionHostId } from "@/lib/auth/host-session";
 import { hostApiError } from "@/lib/host/api-errors";
@@ -17,6 +18,7 @@ const MessageSchema = z.object({
 const BodySchema = z.object({
   messages: z.array(MessageSchema).min(1).max(40),
   groupId: z.string().uuid().optional(),
+  clientActivities: z.array(z.record(z.string(), z.unknown())).max(500).optional(),
 });
 
 export async function POST(
@@ -55,6 +57,7 @@ export async function POST(
       messages: parsed.data.messages,
       graph,
       groupId,
+      clientActivities: parseClientActivities(parsed.data.clientActivities),
     });
 
     return NextResponse.json(result);

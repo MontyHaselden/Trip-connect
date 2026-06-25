@@ -1,12 +1,14 @@
 import type { TripEntityGraph } from "../types";
+import { transportLegFinanceDescription } from "../transport-route-label";
 
 import { countStayNights } from "./accommodation-nights";
+import { financeSeedAccommodationStays } from "./accommodation-finance-leg";
+import {
+  buildTransportProductSeeds,
+  financeSeedTransportLegs,
+} from "./transport-finance-product";
 import type { CostLineItemDraft } from "./types";
 import { defaultCostLineFinanceFields } from "./finance-metadata";
-
-function legDescription(from: string, to: string, date: string): string {
-  return `${date}: ${from} → ${to}`;
-}
 
 function seedStay(stay: TripEntityGraph["accommodationStays"][number], sortOrder: number) {
   if (!stay.name?.trim()) return null;
@@ -22,6 +24,7 @@ function seedStay(stay: TripEntityGraph["accommodationStays"][number], sortOrder
     allocationRulePayload: {},
     linkedStayId: stay.id,
     linkedTransportLegId: null,
+    linkedTransportProductId: null,
     linkedActivityId: null,
     scope: "presence" as const,
     supplierPaymentStatus: null,
@@ -31,21 +34,13 @@ function seedStay(stay: TripEntityGraph["accommodationStays"][number], sortOrder
 
 function seedLeg(
   leg: TripEntityGraph["outboundLegs"][number] | TripEntityGraph["intercityLegs"][number],
+  graph: TripEntityGraph,
   sortOrder: number,
 ) {
-  const from =
-    "intercityFromCity" in leg && leg.intercityFromCity
-      ? String(leg.intercityFromCity)
-      : String(leg.fromCity ?? "Unknown");
-  const to =
-    "intercityToCity" in leg && leg.intercityToCity
-      ? String(leg.intercityToCity)
-      : String(leg.toCity ?? "Unknown");
-  const travelDate = String(leg.travelDate ?? "");
   return {
     sortOrder,
     category: "transport" as const,
-    description: legDescription(from, to, travelDate),
+    description: transportLegFinanceDescription(leg, graph),
     notes: null,
     totalAmountCents: 0,
     currency: "NZD",
@@ -54,6 +49,7 @@ function seedLeg(
     allocationRulePayload: {},
     linkedStayId: null,
     linkedTransportLegId: leg.id,
+    linkedTransportProductId: null,
     linkedActivityId: null,
     scope: "presence" as const,
     supplierPaymentStatus: null,
@@ -75,6 +71,7 @@ function seedActivity(activity: TripEntityGraph["activities"][number], sortOrder
     allocationRulePayload: {},
     linkedStayId: null,
     linkedTransportLegId: null,
+    linkedTransportProductId: null,
     linkedActivityId: activity.id,
     scope: "presence" as const,
     supplierPaymentStatus: null,
@@ -86,18 +83,18 @@ export function buildSeedLineItems(graph: TripEntityGraph): Omit<CostLineItemDra
   const items: Omit<CostLineItemDraft, "id">[] = [];
   let sortOrder = 0;
 
-  for (const stay of graph.accommodationStays) {
+  for (const stay of financeSeedAccommodationStays(graph)) {
     const seed = seedStay(stay, sortOrder++);
     if (seed) items.push(seed);
   }
 
-  const transportLegs = [
-    ...graph.outboundLegs,
-    ...graph.returnLegs,
-    ...graph.intercityLegs,
-  ];
-  for (const leg of transportLegs) {
-    items.push(seedLeg(leg, sortOrder++));
+  for (const productSeed of buildTransportProductSeeds(graph, sortOrder)) {
+    items.push(productSeed);
+    sortOrder += 1;
+  }
+
+  for (const leg of financeSeedTransportLegs(graph)) {
+    items.push(seedLeg(leg, graph, sortOrder++));
   }
 
   for (const activity of graph.activities) {
@@ -117,10 +114,18 @@ export function seedItemsNotYetPresent(
   const linkedLegIds = new Set(existing.map((l) => l.linkedTransportLegId).filter(Boolean));
   const linkedActivityIds = new Set(existing.map((l) => l.linkedActivityId).filter(Boolean));
 
+  const linkedProductIds = new Set(
+    existing.map((l) => l.linkedTransportProductId).filter(Boolean),
+  );
+
   return seeds.filter((seed) => {
     if (seed.linkedStayId) {
       if (linkedStayIds.has(seed.linkedStayId)) return false;
       if (dismissedKeys.has(`accommodation_stay:${seed.linkedStayId}`)) return false;
+    }
+    if (seed.linkedTransportProductId) {
+      if (linkedProductIds.has(seed.linkedTransportProductId)) return false;
+      if (dismissedKeys.has(`transport_product:${seed.linkedTransportProductId}`)) return false;
     }
     if (seed.linkedTransportLegId) {
       if (linkedLegIds.has(seed.linkedTransportLegId)) return false;

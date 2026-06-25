@@ -14,12 +14,35 @@ import {
   waitForTripPersist,
 } from "@/lib/trip-os/persist-queue";
 import { deriveEngineViewFromGraph } from "@/lib/trip-engine/build-setup-response";
-import { applyCommands } from "@/lib/trip-engine/apply-commands";
+import { applyCommandBatch } from "@/lib/trip-engine/apply-command-batch";
 import { computeReadiness } from "@/lib/trip-engine/compute-readiness";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 import { groupIdFromCommands } from "@/lib/trip-engine/persist-command";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
-import { applyOptimisticFinancePatch } from "@/lib/trip-engine/cost-ledger/optimistic-finance-patch";
+import {
+  localCostLedgerIsAhead,
+  mergePreferLocalCostLedger,
+} from "@/lib/trip-engine/cost-ledger/merge-local-cost-ledger";
+import { mergeFinancePatchResult } from "@/lib/trip-engine/cost-ledger/merge-finance-patch-result";
+import { mergeActivitiesById } from "@/lib/trip-engine/merge-graph-activities";
+import { mergeOptimisticSeedsIntoCostLedger } from "@/lib/trip-engine/cost-ledger/optimistic-seed-cost-ledger";
+import { pruneCostLedgerLinkedOrphans } from "@/lib/trip-engine/cost-ledger/prune-cost-ledger-orphans";
+import {
+  isServerFinanceLineId,
+  planFinanceLineDeletes,
+  removeFromTripCommandsForLines,
+} from "@/lib/trip-engine/cost-ledger/finance-line-delete-plan";
+import {
+  ledgerHasUnmaterializedLinkedLines,
+  remapOptimisticFinanceLineIds,
+  resolveFinanceLineIdForServer,
+} from "@/lib/trip-engine/cost-ledger/finance-line-resolve";
+import {
+  applyOptimisticFinancePatch,
+  isOptimisticFinanceFundId,
+  isOptimisticFinanceLineId,
+  resolveOptimisticFinanceLineId,
+} from "@/lib/trip-engine/cost-ledger/optimistic-finance-patch";
 import type {
   CalendarProjection,
   CalendarRenderModel,
@@ -45,11 +68,37 @@ type EngineState = {
 
 export type TripSaveStatus = "idle" | "syncing" | "sync_error";
 
+export type CostsPatchResult = { ok: true } | { ok: false; error: string };
+
 /** Debounce before background server sync — local draft is written immediately. */
 const PERSIST_DEBOUNCE_MS = 400;
 const PERSIST_RETRY_MS = 8000;
 
 const EMPTY_ROSTER: RosterSummary = { participants: [], groups: [], rooms: [] };
+
+function commandsNeedCostLedgerSeed(commands: TripCommand[]): boolean {
+  return commands.some((c) =>
+    [
+      "addActivity",
+      "addStay",
+      "addTransportLeg",
+      "addClassifiedTransportLegs",
+      "removeActivity",
+      "removeStay",
+      "removeTransportLeg",
+    ].includes(c.type),
+  );
+}
+
+function mergeCostLedgerForGraph(
+  local: CostLedgerProjection | null | undefined,
+  server: CostLedgerProjection | null | undefined,
+  graph: TripEntityGraph,
+  options?: { forceKeepLocal?: boolean },
+): CostLedgerProjection | null | undefined {
+  const merged = mergePreferLocalCostLedger(local, server, { ...options, graph });
+  return pruneCostLedgerLinkedOrphans(merged, graph);
+}
 
 export function useTripOsEngine(tripId: string) {
   const [data, setData] = useState<EngineState | null>(null);
@@ -72,6 +121,8 @@ export function useTripOsEngine(tripId: string) {
   const runPersistRef = useRef<
     (commands: TripCommand[], persistGroupId: string) => Promise<boolean>
   >(async () => true);
+  const financePatchInFlightRef = useRef(0);
+  const optimisticLineMapRef = useRef(new Map<string, string>());
 
   const buildStateFromGraph = useCallback(
     (
@@ -156,12 +207,20 @@ export function useTripOsEngine(tripId: string) {
     ) => {
       const viewGroupId =
         context?.viewGroupId ?? activeGroupIdRef.current ?? body.graph.mainGroupId;
+      const mergedCostLedger = mergeCostLedgerForGraph(
+        dataRef.current?.costLedger,
+        body.costLedger,
+        body.graph,
+        {
+          forceKeepLocal: financePatchInFlightRef.current > 0,
+        },
+      );
       const next = buildStateFromGraph(body.graph, {
         viewGroupId,
         warnings: body.warnings,
         inviteCode: body.inviteCode,
         rosterSummary: body.rosterSummary,
-        costLedger: body.costLedger,
+        costLedger: mergedCostLedger,
         prev: dataRef.current,
       });
       setActiveGroupId(viewGroupId);
@@ -195,22 +254,54 @@ export function useTripOsEngine(tripId: string) {
         if (generation !== loadGenerationRef.current || !res.ok) return;
 
         if (options?.keepLocalGraph && dataRef.current) {
+          const mergedActivities = mergeActivitiesById(
+            dataRef.current.graph.activities,
+            body.graph.activities,
+          );
+          const mergedGraph = {
+            ...dataRef.current.graph,
+            activities: mergedActivities,
+          };
+          const mergedCostLedger = mergeCostLedgerForGraph(
+            dataRef.current.costLedger,
+            body.costLedger,
+            mergedGraph,
+            {
+              forceKeepLocal:
+                financePatchInFlightRef.current > 0 ||
+                localCostLedgerIsAhead(
+                  dataRef.current.costLedger,
+                  body.costLedger,
+                  dataRef.current.graph,
+                ),
+            },
+          );
+          let nextCostLedger = mergedCostLedger ?? dataRef.current.costLedger;
+          if (
+            mergedActivities.length > dataRef.current.graph.activities.length &&
+            nextCostLedger
+          ) {
+            nextCostLedger = mergeOptimisticSeedsIntoCostLedger(
+              nextCostLedger,
+              mergedGraph,
+              dataRef.current.rosterSummary ?? EMPTY_ROSTER,
+            );
+          }
           setData((prev) =>
             prev
               ? {
                   ...prev,
+                  graph: mergedGraph,
                   inviteCode: body.inviteCode ?? prev.inviteCode,
                   rosterSummary: body.rosterSummary ?? prev.rosterSummary,
-                  costLedger:
-                    body.costLedger !== undefined ? body.costLedger : prev.costLedger,
+                  costLedger: nextCostLedger ?? prev.costLedger,
                 }
               : prev,
           );
-          persistLocalSnapshot(dataRef.current.graph, {
+          persistLocalSnapshot(mergedGraph, {
             inviteCode: body.inviteCode ?? dataRef.current.inviteCode,
             rosterSummary: body.rosterSummary ?? dataRef.current.rosterSummary,
-            costLedger:
-              body.costLedger !== undefined ? body.costLedger : dataRef.current.costLedger,
+            costLedger: nextCostLedger,
           });
           return;
         }
@@ -243,7 +334,9 @@ export function useTripOsEngine(tripId: string) {
           setRefreshing(false);
           if (draft.pendingCommands.length) scheduleFlushRef.current();
           void fetchServerMetadata(generation, groupId, {
-            keepLocalGraph: draft.pendingCommands.length > 0,
+            keepLocalGraph:
+              draft.pendingCommands.length > 0 ||
+              localCostLedgerIsAhead(draft.costLedger, undefined, draft.graph),
           });
           return;
         }
@@ -341,27 +434,42 @@ export function useTripOsEngine(tripId: string) {
               });
             }
           } else if (body.activitySync && dataRef.current) {
+            const graph = dataRef.current.graph;
             setData((prev) => {
               if (!prev) return prev;
               const costLedger =
-                body.costLedger !== undefined ? body.costLedger : prev.costLedger;
+                body.costLedger !== undefined
+                  ? mergeCostLedgerForGraph(prev.costLedger, body.costLedger, prev.graph, {
+                      forceKeepLocal: financePatchInFlightRef.current > 0,
+                    })
+                  : pruneCostLedgerLinkedOrphans(prev.costLedger, prev.graph);
               const readiness =
                 body.costLedger !== undefined
-                  ? computeReadiness(prev.graph, prev.calendarProjection, costLedger)
+                  ? computeReadiness(prev.graph, prev.calendarProjection, costLedger ?? null)
                   : prev.readiness;
               return {
                 ...prev,
-                costLedger,
+                costLedger: costLedger ?? prev.costLedger,
                 readiness,
                 warnings: body.warnings ?? prev.warnings,
                 conflicts: body.conflicts ?? prev.conflicts,
               };
             });
+            const mergedCostLedger =
+              body.costLedger !== undefined
+                ? mergeCostLedgerForGraph(
+                    dataRef.current.costLedger,
+                    body.costLedger,
+                    graph,
+                    {
+                      forceKeepLocal: financePatchInFlightRef.current > 0,
+                    },
+                  )
+                : pruneCostLedgerLinkedOrphans(dataRef.current.costLedger, graph);
             persistLocalSnapshot(dataRef.current.graph, {
               pendingCommands: [],
               pendingGroupId: "",
-              costLedger:
-                body.costLedger !== undefined ? body.costLedger : dataRef.current.costLedger,
+              costLedger: mergedCostLedger,
             });
           } else if (body.graph) {
             applyResponse(body as SetupEngineResponse, {
@@ -369,7 +477,13 @@ export function useTripOsEngine(tripId: string) {
             });
           } else {
             await fetchServerMetadata(loadGenerationRef.current, activeGroupIdRef.current, {
-              keepLocalGraph: false,
+              keepLocalGraph:
+                financePatchInFlightRef.current > 0 ||
+                localCostLedgerIsAhead(
+                  dataRef.current?.costLedger,
+                  undefined,
+                  dataRef.current?.graph,
+                ),
             });
           }
           setSaveStatus("idle");
@@ -472,11 +586,22 @@ export function useTripOsEngine(tripId: string) {
       const viewGroupId =
         activeGroupIdRef.current || dataRef.current.graph.mainGroupId;
       const persistGroupId = groupIdFromCommands(commands) ?? viewGroupId;
-      const optimistic = applyCommands(dataRef.current.graph, commands);
+      const optimistic = applyCommandBatch(dataRef.current.graph, commands);
+      const rosterSummary = dataRef.current.rosterSummary ?? EMPTY_ROSTER;
+      let nextCostLedger = dataRef.current.costLedger;
+      if (commandsNeedCostLedgerSeed(commands)) {
+        nextCostLedger = mergeOptimisticSeedsIntoCostLedger(
+          nextCostLedger,
+          optimistic.graph,
+          rosterSummary,
+        );
+      }
+      nextCostLedger = pruneCostLedgerLinkedOrphans(nextCostLedger, optimistic.graph);
       const nextState = buildStateFromGraph(optimistic.graph, {
         viewGroupId,
         warnings: optimistic.warnings,
         prev: dataRef.current,
+        costLedger: nextCostLedger,
       });
 
       pendingCommandsRef.current.push(...commands);
@@ -516,55 +641,412 @@ export function useTripOsEngine(tripId: string) {
     [buildStateFromGraph, persistLocalSnapshot],
   );
 
-  const patchCosts = useCallback(
-    async (payload: Record<string, unknown>) => {
-      const snapshot = dataRef.current;
-      if (!snapshot?.costLedger) {
-        setError("Finance data is not loaded yet.");
-        return false;
-      }
+  const patchChainRef = useRef(Promise.resolve<CostsPatchResult>({ ok: true }));
 
-      const optimistic = applyOptimisticFinancePatch(
-        snapshot.costLedger,
-        snapshot.rosterSummary,
-        snapshot.graph,
-        payload,
-      );
-
-      if (optimistic) {
-        setData((prev) => (prev ? { ...prev, costLedger: optimistic } : prev));
-        persistLocalSnapshot(snapshot.graph, { costLedger: optimistic });
-      }
-
-      try {
-        const res = await fetch(`/api/trips/${tripId}/costs`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(payload),
+  const refreshCostLedgerFromServer = useCallback(async (): Promise<CostLedgerProjection | null> => {
+    try {
+      const res = await fetch(`/api/trips/${tripId}/costs`);
+      const body = (await res.json().catch(() => ({}))) as {
+        costLedger?: CostLedgerProjection;
+      };
+      if (!res.ok || !body.costLedger) return null;
+      setData((prev) => {
+        if (!prev) return prev;
+        const merged = mergeCostLedgerForGraph(prev.costLedger, body.costLedger, prev.graph, {
+          forceKeepLocal: financePatchInFlightRef.current > 0,
         });
-        const body = (await res.json().catch(() => ({}))) as {
-          error?: string;
-          costLedger?: CostLedgerProjection;
-        };
-        if (!res.ok) throw new Error(body.error || "Costs update failed");
-        if (body.costLedger) {
-          setData((prev) => {
-            if (!prev) return prev;
-            persistLocalSnapshot(prev.graph, { costLedger: body.costLedger! });
-            return { ...prev, costLedger: body.costLedger! };
-          });
+        const costLedger = merged ?? body.costLedger!;
+        remapOptimisticFinanceLineIds(costLedger, optimisticLineMapRef.current);
+        persistLocalSnapshot(prev.graph, { costLedger });
+        return { ...prev, costLedger };
+      });
+      return body.costLedger;
+    } catch {
+      return null;
+    }
+  }, [tripId, persistLocalSnapshot]);
+
+  const materializeLinkedFinanceLines = useCallback(async (): Promise<void> => {
+    const ledger = dataRef.current?.costLedger;
+    if (!ledger || !ledgerHasUnmaterializedLinkedLines(ledger)) return;
+    try {
+      const res = await fetch(`/api/trips/${tripId}/costs`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "seedFromTrip" }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        costLedger?: CostLedgerProjection;
+      };
+      if (!res.ok || !body.costLedger) return;
+      setData((prev) => {
+        if (!prev) return prev;
+        const merged = mergeCostLedgerForGraph(prev.costLedger, body.costLedger, prev.graph, {
+          forceKeepLocal: financePatchInFlightRef.current > 0,
+        });
+        const costLedger = merged ?? body.costLedger!;
+        remapOptimisticFinanceLineIds(costLedger, optimisticLineMapRef.current);
+        persistLocalSnapshot(prev.graph, { costLedger });
+        return { ...prev, costLedger };
+      });
+    } catch {
+      // Background materialization — local optimistic rows remain editable.
+    }
+  }, [tripId, persistLocalSnapshot]);
+
+  const resolveFinancePayload = useCallback(
+    (payload: Record<string, unknown>): { payload: Record<string, unknown> } => {
+      const action = payload.action;
+      if (action === "updateLine" && typeof payload.lineId === "string") {
+        const resolved = resolveOptimisticFinanceLineId(
+          payload.lineId,
+          optimisticLineMapRef.current,
+        );
+        if (resolved && resolved !== payload.lineId) {
+          return { payload: { ...payload, lineId: resolved } };
         }
-        setError(null);
-        return true;
-      } catch (e) {
-        setData(snapshot);
-        persistLocalSnapshot(snapshot.graph, { costLedger: snapshot.costLedger });
-        setError(e instanceof Error ? e.message : "Costs update failed");
-        return false;
       }
+      if (action === "reorderSectionLines" && Array.isArray(payload.orderedIds)) {
+        const ledger = dataRef.current?.costLedger;
+        const orderedIds = (payload.orderedIds as string[])
+          .map((id) => {
+            const mapped = resolveOptimisticFinanceLineId(id, optimisticLineMapRef.current);
+            if (mapped) return mapped;
+            if (ledger) {
+              return resolveFinanceLineIdForServer(id, ledger, optimisticLineMapRef.current) ?? id;
+            }
+            return id;
+          })
+          .filter((id) => isServerFinanceLineId(id));
+        return { payload: { ...payload, orderedIds } };
+      }
+      return { payload };
     },
-    [tripId, persistLocalSnapshot],
+    [],
   );
+
+  const patchCosts = useCallback(
+    async (payload: Record<string, unknown>): Promise<CostsPatchResult> => {
+      const resolved = resolveFinancePayload(payload);
+      const serverPayload = resolved.payload;
+
+      let ledgerBeforeOptimistic: CostLedgerProjection | null = null;
+      let appliedOptimisticImmediately = false;
+
+      const snapBeforeQueue = dataRef.current;
+      if (snapBeforeQueue?.costLedger) {
+        const immediate = applyOptimisticFinancePatch(
+          snapBeforeQueue.costLedger,
+          snapBeforeQueue.rosterSummary,
+          snapBeforeQueue.graph,
+          serverPayload,
+        );
+        if (immediate) {
+          ledgerBeforeOptimistic = snapBeforeQueue.costLedger;
+          appliedOptimisticImmediately = true;
+          setData((prev) => (prev ? { ...prev, costLedger: immediate } : prev));
+          persistLocalSnapshot(snapBeforeQueue.graph, { costLedger: immediate });
+        }
+      }
+
+      const run = async (): Promise<CostsPatchResult> => {
+        financePatchInFlightRef.current += 1;
+        const snapshot = dataRef.current;
+        if (!snapshot?.costLedger) {
+          financePatchInFlightRef.current -= 1;
+          const error = "Finance data is not loaded yet.";
+          setError(error);
+          return { ok: false, error };
+        }
+
+        const beforeLineIds =
+          appliedOptimisticImmediately && ledgerBeforeOptimistic
+            ? new Set(ledgerBeforeOptimistic.lineItems.map((line) => line.id))
+            : new Set(snapshot.costLedger.lineItems.map((line) => line.id));
+        let pendingOptimisticLineId: string | null = null;
+
+        let optimistic: CostLedgerProjection | null = null;
+        if (!appliedOptimisticImmediately) {
+          optimistic = applyOptimisticFinancePatch(
+            snapshot.costLedger,
+            snapshot.rosterSummary,
+            snapshot.graph,
+            serverPayload,
+          );
+          if (optimistic) {
+            if (serverPayload.action === "addLine") {
+              const added = optimistic.lineItems.find((line) => !beforeLineIds.has(line.id));
+              if (added && isOptimisticFinanceLineId(added.id)) {
+                pendingOptimisticLineId = added.id;
+              }
+            }
+            setData((prev) => (prev ? { ...prev, costLedger: optimistic } : prev));
+            persistLocalSnapshot(snapshot.graph, { costLedger: optimistic });
+          }
+        } else if (serverPayload.action === "addLine") {
+          const added = snapshot.costLedger.lineItems.find((line) => !beforeLineIds.has(line.id));
+          if (added && isOptimisticFinanceLineId(added.id)) {
+            pendingOptimisticLineId = added.id;
+          }
+        }
+
+        const skipServerSync =
+          (serverPayload.action === "deleteFund" &&
+            typeof serverPayload.fundId === "string" &&
+            isOptimisticFinanceFundId(serverPayload.fundId)) ||
+          (serverPayload.action === "deleteFund" &&
+            typeof serverPayload.fundId === "string" &&
+            !snapshot.costLedger.funds.some((fund) => fund.id === serverPayload.fundId)) ||
+          (serverPayload.action === "deleteFunds" &&
+            Array.isArray(serverPayload.fundIds) &&
+            (serverPayload.fundIds as string[]).every(
+              (fundId) =>
+                isOptimisticFinanceFundId(fundId) ||
+                !snapshot.costLedger.funds.some((fund) => fund.id === fundId),
+            ));
+
+        if (skipServerSync) {
+          setError(null);
+          financePatchInFlightRef.current -= 1;
+          return { ok: true };
+        }
+
+        const deleteActions = new Set([
+          "deleteLines",
+          "deleteLine",
+          "dismissAndDeleteLine",
+          "removeLineFromTrip",
+        ]);
+        const ledgerForPlan = snapshot.costLedger;
+        let payloadForServer = serverPayload;
+
+        if (
+          serverPayload.action === "updateLine" &&
+          typeof serverPayload.lineId === "string"
+        ) {
+          let serverLineId = resolveFinanceLineIdForServer(
+            serverPayload.lineId,
+            ledgerForPlan,
+            optimisticLineMapRef.current,
+          );
+          if (!serverLineId && isOptimisticFinanceLineId(serverPayload.lineId)) {
+            try {
+              const seedRes = await fetch(`/api/trips/${tripId}/costs`, {
+                method: "PATCH",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ action: "seedFromTrip" }),
+              });
+              const seedBody = (await seedRes.json().catch(() => ({}))) as {
+                costLedger?: CostLedgerProjection;
+              };
+              if (seedRes.ok && seedBody.costLedger) {
+                remapOptimisticFinanceLineIds(
+                  seedBody.costLedger,
+                  optimisticLineMapRef.current,
+                );
+                serverLineId = resolveFinanceLineIdForServer(
+                  serverPayload.lineId,
+                  seedBody.costLedger,
+                  optimisticLineMapRef.current,
+                );
+                if (serverLineId) {
+                  setData((prev) => {
+                    if (!prev) return prev;
+                    const merged = mergeCostLedgerForGraph(
+                      prev.costLedger,
+                      seedBody.costLedger!,
+                      prev.graph,
+                      { forceKeepLocal: true },
+                    );
+                    const costLedger = merged ?? seedBody.costLedger!;
+                    persistLocalSnapshot(prev.graph, { costLedger });
+                    return { ...prev, costLedger };
+                  });
+                }
+              }
+            } catch {
+              // Local optimistic edit already applied — sync in background.
+            }
+          }
+          if (serverLineId && serverLineId !== serverPayload.lineId) {
+            payloadForServer = { ...serverPayload, lineId: serverLineId };
+          } else if (
+            !serverLineId &&
+            isOptimisticFinanceLineId(serverPayload.lineId)
+          ) {
+            setError(null);
+            financePatchInFlightRef.current -= 1;
+            void materializeLinkedFinanceLines();
+            return { ok: true };
+          }
+        }
+
+        if (deleteActions.has(String(serverPayload.action))) {
+          const actionName = String(serverPayload.action);
+          const lineIds =
+            actionName === "deleteLines"
+              ? (serverPayload.lineIds as string[])
+              : [serverPayload.lineId as string];
+          const mode =
+            actionName === "removeLineFromTrip" ||
+            (actionName === "deleteLines" && serverPayload.mode === "removeFromTrip")
+              ? "removeFromTrip"
+              : "financeOnly";
+
+          const plan = planFinanceLineDeletes(
+            lineIds,
+            mode,
+            ledgerForPlan,
+            optimisticLineMapRef.current,
+          );
+
+          if (plan.removeFromTripLines.length) {
+            const commands = removeFromTripCommandsForLines(
+              snapshot.graph,
+              plan.removeFromTripLines,
+            );
+            if (commands.length) {
+              const tripOk = await dispatch(commands);
+              if (!tripOk) {
+                financePatchInFlightRef.current -= 1;
+                const error = "Could not remove linked trip items.";
+                setError(error);
+                return { ok: false, error };
+              }
+            }
+          }
+
+          if (plan.dismissKeys.length) {
+            const dismissRes = await fetch(`/api/trips/${tripId}/costs`, {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                action: "dismissLinkedEntities",
+                keys: plan.dismissKeys,
+              }),
+            });
+            const dismissBody = (await dismissRes.json().catch(() => ({}))) as {
+              error?: string;
+            };
+            if (!dismissRes.ok) {
+              financePatchInFlightRef.current -= 1;
+              const error = dismissBody.error || "Could not update finance.";
+              setError(error);
+              return { ok: false, error };
+            }
+          }
+
+          if (!plan.serverLineIds.length) {
+            if (plan.removeFromTripLines.length) {
+              void flushPendingRef.current();
+            }
+            setError(null);
+            financePatchInFlightRef.current -= 1;
+            return { ok: true };
+          }
+
+          if (actionName === "deleteLines") {
+            payloadForServer = { ...serverPayload, lineIds: plan.serverLineIds };
+          } else {
+            payloadForServer = { ...serverPayload, lineId: plan.serverLineIds[0] };
+          }
+        }
+
+        try {
+          const res = await fetch(`/api/trips/${tripId}/costs`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payloadForServer),
+          });
+          const body = (await res.json().catch(() => ({}))) as {
+            error?: string;
+            costLedger?: CostLedgerProjection;
+          };
+          if (!res.ok) throw new Error(body.error || "Costs update failed");
+          if (body.costLedger) {
+            if (pendingOptimisticLineId) {
+              const created = body.costLedger.lineItems.filter((line) => !beforeLineIds.has(line.id));
+              if (created.length >= 1) {
+                const addPayload = serverPayload.line as {
+                  description?: string;
+                  allocationRulePayload?: { financeSection?: string };
+                };
+                const match =
+                  created.find(
+                    (line) =>
+                      line.description === (addPayload.description ?? "New line") &&
+                      line.allocationRulePayload?.financeSection ===
+                        addPayload.allocationRulePayload?.financeSection,
+                  ) ?? created[created.length - 1];
+                if (match) {
+                  optimisticLineMapRef.current.set(pendingOptimisticLineId, match.id);
+                }
+              }
+            }
+            setData((prev) => {
+              if (!prev) return prev;
+              const latestLedger = dataRef.current?.costLedger ?? prev.costLedger;
+              const costLedger = mergeFinancePatchResult(latestLedger, body.costLedger!);
+              persistLocalSnapshot(prev.graph, { costLedger });
+              return { ...prev, costLedger };
+            });
+          }
+          setError(null);
+          return { ok: true };
+        } catch (e) {
+          const refreshed = await refreshCostLedgerFromServer();
+          const keepOptimisticAdd =
+            appliedOptimisticImmediately && serverPayload.action === "addLine";
+          if (!refreshed && !keepOptimisticAdd && ledgerBeforeOptimistic) {
+            setData((prev) =>
+              prev ? { ...prev, costLedger: ledgerBeforeOptimistic! } : prev,
+            );
+            persistLocalSnapshot(snapshot.graph, { costLedger: ledgerBeforeOptimistic });
+          } else if (!refreshed && !keepOptimisticAdd && !appliedOptimisticImmediately) {
+            setData(snapshot);
+            persistLocalSnapshot(snapshot.graph, { costLedger: snapshot.costLedger });
+          }
+          const error = e instanceof Error ? e.message : "Costs update failed";
+          setError(error);
+          return { ok: false, error };
+        } finally {
+          financePatchInFlightRef.current -= 1;
+        }
+      };
+
+      // Instant UI for lightweight toggles — fund/payment deletes queue like other patches.
+      if (payload.action === "setFinanceSectionParticipant") {
+        return run();
+      }
+
+      const result = patchChainRef.current.then(run, run);
+      patchChainRef.current = result.then(
+        () => ({ ok: true }) as CostsPatchResult,
+        () => ({ ok: true }) as CostsPatchResult,
+      );
+      return result;
+    },
+    [tripId, persistLocalSnapshot, refreshCostLedgerFromServer, resolveFinancePayload, dispatch, materializeLinkedFinanceLines],
+  );
+
+  const resolveFinanceLineId = useCallback((lineId: string): string => {
+    const ledger = dataRef.current?.costLedger;
+    if (ledger) {
+      const resolved = resolveFinanceLineIdForServer(
+        lineId,
+        ledger,
+        optimisticLineMapRef.current,
+      );
+      if (resolved) return resolved;
+    }
+    return resolveOptimisticFinanceLineId(lineId, optimisticLineMapRef.current) ?? lineId;
+  }, []);
+
+  useEffect(() => {
+    const ledger = data?.costLedger;
+    if (!ledger || !ledgerHasUnmaterializedLinkedLines(ledger)) return;
+    void materializeLinkedFinanceLines();
+  }, [data?.costLedger, materializeLinkedFinanceLines]);
 
   return {
     data,
@@ -580,5 +1062,6 @@ export function useTripOsEngine(tripId: string) {
     dispatch,
     switchGroup,
     patchCosts,
+    resolveFinanceLineId,
   };
 }

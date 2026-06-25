@@ -25,6 +25,11 @@ function readLocalSession(tripId: string): AssistantChatSession | null {
   }
 }
 
+/** Instant client cache — used so the assistant UI is not blocked on the server. */
+export function readLocalAssistantChat(tripId: string): AssistantChatSession {
+  return readLocalSession(tripId) ?? { messages: [], sourceText: "" };
+}
+
 function writeLocalSession(tripId: string, session: AssistantChatSession): void {
   if (typeof window === "undefined") return;
   try {
@@ -46,8 +51,20 @@ function clearLocalSession(tripId: string): void {
 export async function loadAssistantChat(
   tripId: string,
 ): Promise<{ ok: true; session: AssistantChatSession } | { ok: false; error: string }> {
+  const localFallback = readLocalAssistantChat(tripId);
+
   try {
-    const res = await fetch(`/api/trips/${tripId}/assistant-chat`);
+    const controller = new AbortController();
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (typeof window !== "undefined") {
+      timeoutId = window.setTimeout(() => controller.abort(), 12_000);
+    }
+    const res = await fetch(`/api/trips/${tripId}/assistant-chat`, {
+      signal: controller.signal,
+    });
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+    }
     const body = await res.json().catch(() => ({}));
     if (res.ok) {
       const session = {
@@ -61,12 +78,7 @@ export async function loadAssistantChat(
     // fall through to local cache
   }
 
-  const local = readLocalSession(tripId);
-  if (local) {
-    return { ok: true, session: local };
-  }
-
-  return { ok: true, session: { messages: [], sourceText: "" } };
+  return { ok: true, session: localFallback };
 }
 
 export async function saveAssistantChat(

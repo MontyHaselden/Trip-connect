@@ -8,13 +8,17 @@ import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import { purgeTransportItineraryForRemovedLeg, reconcileTransportItineraryItems } from "@/lib/host/import/transport-itinerary-reconcile";
 import { graphToSetupState } from "./adapters";
 import { applyCommands } from "./apply-commands";
-import { syncActivitiesForTrip } from "./activities-persistence";
+import { syncActivitiesForTrip, loadActivitiesForTrip } from "./activities-persistence";
+import { mergeActivitiesById } from "./merge-graph-activities";
+import { linkCostLineToActivity } from "./cost-ledger/link-cost-line-to-entity";
 import { loadTripGraph } from "./load-trip-graph";
 import { normalizeCommand, type TripCommand } from "./commands";
+import { coerceProposedCommands } from "./coerce-proposed-command";
 import {
   deleteCostLinesForActivity,
   deleteCostLinesForStay,
   deleteCostLinesForTransportLeg,
+  deleteCostLinesForTransportProduct,
 } from "./cost-ledger/cost-line-cascade";
 import { dayPlacesForGroup } from "./selectors";
 import {
@@ -439,14 +443,30 @@ export async function persistCommands(
   graph: TripEntityGraph,
   commands: TripCommand[],
 ): Promise<CommandResult> {
+  const { commands: coerced } = coerceProposedCommands(
+    commands as Array<Record<string, unknown>>,
+    graph.mainGroupId,
+  );
   const normalized = repairCommandsForPersist(
-    commands.map((c) => normalizeCommand(c as TripCommand & { type: string })),
+    coerced.map((c) => normalizeCommand(c as TripCommand & { type: string })),
     graph,
   );
 
+  const dbActivities = await loadActivitiesForTrip(tripId);
+  const activityAdds = normalized
+    .filter((command) => command.type === "addActivity")
+    .map((command) => command.activity);
+  const workingGraph: TripEntityGraph = {
+    ...graph,
+    activities: mergeActivitiesById(dbActivities, graph.activities, activityAdds),
+  };
+
   for (const command of normalized) {
+    if (command.type === "removeTransportProduct") {
+      await deleteCostLinesForTransportProduct(tripId, command.productId);
+    }
     if (command.type === "removeTransportLeg") {
-      const leg = findTransportLeg(graph, command.legId, command.bucket);
+      const leg = findTransportLeg(workingGraph, command.legId, command.bucket);
       await purgeTransportItineraryForRemovedLeg(tripId, command.legId, leg);
       await deleteCostLinesForTransportLeg(tripId, command.legId);
     }
@@ -458,7 +478,7 @@ export async function persistCommands(
     }
   }
 
-  const result = applyCommands(graph, normalized);
+  const result = applyCommands(workingGraph, normalized);
 
   for (const command of normalized) {
     if (command.type === "resetGroupFromMain") {
@@ -540,6 +560,17 @@ export async function persistCommands(
         warnings: result.warnings,
         conflicts: result.conflicts ?? [],
       };
+    }
+  }
+
+  for (const command of normalized) {
+    if (command.type === "addActivity" && command.linkFinanceLineId) {
+      await linkCostLineToActivity(
+        tripId,
+        command.linkFinanceLineId,
+        command.activity.id,
+        command.activity.date,
+      );
     }
   }
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { assessImportReadiness } from "@/lib/ai/assess-import-readiness";
 import { proposeTripCommands } from "@/lib/ai/propose-trip-commands";
+import { parseClientActivities } from "@/lib/ai/client-activities-payload";
 import { friendlyImportChatFailure } from "@/lib/ai/trip-chat-fallback";
 import { requireHostSessionHostId } from "@/lib/auth/host-session";
 import { extractTextFromUpload } from "@/lib/documents/extract-text";
@@ -78,6 +79,16 @@ export async function POST(
     const groupId = graph?.mainGroupId ?? "";
     const builtCalendar = graph ? calendarHasPaint(graph, groupId) : false;
 
+    const clientActivities = (() => {
+      const raw = form.get("clientActivities");
+      if (typeof raw !== "string" || !raw.trim()) return undefined;
+      try {
+        return parseClientActivities(JSON.parse(raw));
+      } catch {
+        return undefined;
+      }
+    })();
+
     if (file instanceof File && file.size > 0) {
       attachedFileName = file.name;
       if (isImageUploadFile(file)) {
@@ -86,6 +97,7 @@ export async function POST(
             messages: parsed.data.messages,
             graph,
             groupId,
+            clientActivities,
           });
           return NextResponse.json({
             status: "needs_clarification",
@@ -114,6 +126,7 @@ export async function POST(
             messages: parsed.data.messages,
             graph,
             groupId,
+            clientActivities,
           });
           return NextResponse.json({
             status: "needs_clarification",
@@ -161,6 +174,7 @@ export async function POST(
         messages: parsed.data.messages,
         graph,
         groupId: graph.mainGroupId,
+        clientActivities,
       });
       return NextResponse.json({
         status: "needs_clarification",

@@ -25,13 +25,31 @@ export type CostAllocationRuleType =
 
 export type CostLineScope = "presence" | "trip_wide";
 
-export type FinanceManualSection = "accommodation" | "transport" | "activities";
+export type FinanceBuiltInSection = "accommodation" | "transport" | "activities" | "other";
+
+export type FinanceCalendarSection = "accommodation" | "transport" | "activities";
+
+export type FinanceManualSection = FinanceBuiltInSection | string;
+
+export type FinanceCustomSection = {
+  id: string;
+  name: string;
+  description?: string | null;
+};
+
+export type FinanceViewGroup = {
+  id: string;
+  name: string;
+  participantIds: string[];
+};
 
 export type CostAllocationRulePayload = {
   groupId?: string;
   participantId?: string;
   /** Tab for unlinked manual extras (insurance, fees, etc.). */
   financeSection?: FinanceManualSection;
+  /** Per-person pinned amounts for trip funds (payments). */
+  pinnedAllocations?: Record<string, number>;
 };
 
 export type CostLineItemDraft = {
@@ -46,7 +64,8 @@ export type CostLineItemDraft = {
   allocationRuleType: CostAllocationRuleType;
   allocationRulePayload: CostAllocationRulePayload;
   linkedStayId: string | null;
-  linkedTransportLegId: string | null;
+    linkedTransportLegId: string | null;
+  linkedTransportProductId?: string | null;
   linkedActivityId: string | null;
   scope: CostLineScope;
   supplierPaymentStatus: "estimated" | "invoiced" | "paid" | null;
@@ -113,6 +132,10 @@ export type TripCostSettingsDraft = {
   exchangeRate: number | null;
   exchangeRateDate: string | null;
   exchangeRateManual: boolean;
+  financeCustomSections: FinanceCustomSection[];
+  financeViewGroups: FinanceViewGroup[];
+  /** Participant ids hidden from a finance tab (transport, accommodation, etc.). */
+  financeSectionExclusions: Record<string, string[]>;
 };
 
 export type CostLedgerRaw = {

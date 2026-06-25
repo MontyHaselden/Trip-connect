@@ -92,6 +92,7 @@ describe("buildCalendarRenderModel", () => {
     assert.equal(model.scrollAnchorDate, "2026-08-26");
     assert.ok(model.activitiesByDate.has("2026-08-26"));
     assert.equal(model.activitiesByDate.get("2026-08-26")?.[0]?.title, "Temple");
+    assert.ok(model.travelLayoutsByDate.size > 0 || model.transitByDate.size > 0);
     assert.ok(model.days.length > 0);
     assert.ok(model.boundaries.length >= 0);
     assert.ok(model.todayIso);
@@ -109,5 +110,50 @@ describe("buildCalendarRenderModel", () => {
     assert.ok(model.gridStart >= todayMonday);
     assert.equal(model.interactionStart, model.todayIso);
     assert.ok(!model.gridStart.startsWith("1999"));
+  });
+
+  it("paints overnight return arrival on the landing day", () => {
+    const state = baseState();
+    state.basics.startDate = "2026-12-04";
+    state.basics.endDate = "2026-12-22";
+    state.basics.departureCity = "Christchurch, New Zealand";
+    state.basics.returnCity = "Christchurch, New Zealand";
+    state.returnLegs = [
+      {
+        id: newId(),
+        transportType: "plane",
+        bookingStatus: "booked",
+        travelDate: "2026-12-21",
+        arrivalDate: "2026-12-22",
+        departureTime: "20:00",
+        arrivalTime: "10:00",
+        fromCity: "Tokyo, Japan",
+        toCity: "Christchurch, New Zealand",
+        fromStation: null,
+        toStation: null,
+        operator: null,
+        referenceNumber: null,
+        flightNumber: "NZ123",
+        notes: null,
+      },
+    ];
+    state.dayPlacesByGroupId.g1 = [
+      {
+        date: "2026-12-21",
+        primaryCity: "Tokyo, Japan",
+        secondaryCity: "Christchurch, New Zealand",
+        primaryShare: 0.5,
+        dayType: "travel",
+        includeBuffer: false,
+      },
+    ];
+
+    const graph = setupStateToGraph("t1", state);
+    const model = buildCalendarRenderModel(graph);
+    const dec22 = model.transitByDate.get("2026-12-22") ?? [];
+    assert.ok(
+      dec22.some((overlay) => overlay.label === "Arrive in Christchurch"),
+      `expected arrival overlay on 2026-12-22, got ${JSON.stringify(dec22)}`,
+    );
   });
 });

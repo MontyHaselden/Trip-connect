@@ -94,8 +94,9 @@ export async function GET() {
       subtotalCents: sub?.subscription.basePriceCents ?? null,
       overrideActive: !!sub?.subscription.priceOverrideId,
       renewsAt: sub?.subscription.renewsAt?.toISOString() ?? null,
+      trialEndsAt: sub?.subscription.trialEndsAt?.toISOString() ?? null,
+      foundingSchool: hostAccount?.foundingSchool ?? false,
     },
     warnings,
-    billingPlaceholder: false,
   });
 }

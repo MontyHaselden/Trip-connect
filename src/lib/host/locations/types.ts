@@ -3,6 +3,7 @@ import type {
   DayPlaceDraft,
   IntercityLegDraft,
   TransportLegDraft,
+  TransportProductDraft,
   WizardBasics,
 } from "@/lib/host/wizard/types";
 
@@ -26,4 +27,5 @@ export type TripLocationState = {
   returnLegs: TransportLegDraft[];
   intercityLegs: IntercityLegDraft[];
   accommodationStays: AccommodationStayDraft[];
+  transportProducts?: TransportProductDraft[];
 };

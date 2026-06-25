@@ -4,6 +4,7 @@ import type {
   DayPlaceDraft,
   IntercityLegDraft,
   TransportLegDraft,
+  TransportProductDraft,
 } from "@/lib/host/wizard/types";
 import type { TripLocationBasics } from "@/lib/host/locations/types";
 
@@ -39,6 +40,7 @@ export type TripSetupState = {
   intercityLegs: IntercityLegDraft[];
   accommodationStays: AccommodationStayDraft[];
   activities: ActivityDraft[];
+  transportProducts?: TransportProductDraft[];
   overlayOps: GroupOverlayOpDraft[];
 };
 

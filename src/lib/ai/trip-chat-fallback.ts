@@ -1,4 +1,4 @@
-import type { TripChatProposal } from "./trip-chat-deterministic";
+import type { TripChatProposal } from "./trip-chat-proposal";
 
 export function friendlyTripChatFailure(err: unknown): TripChatProposal {
   const detail = err instanceof Error ? err.message : "";

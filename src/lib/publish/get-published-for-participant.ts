@@ -1,5 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 
+import { getTripOwnerAccountId } from "@/lib/plans/account-usage";
+import { canUseLiveParticipantLinks } from "@/lib/billing/access";
 import { db } from "@/lib/db/client";
 import { publishedTripSnapshots } from "@/lib/db/schema";
 import type { PublishedTripSnapshotV1 } from "@/types/published-trip";
@@ -37,6 +39,11 @@ export async function getPublishedForParticipant(
   version: number;
   publishedAt: Date;
 } | null> {
+  const ownerId = await getTripOwnerAccountId(tripId);
+  if (ownerId && !(await canUseLiveParticipantLinks(ownerId))) {
+    return null;
+  }
+
   const snapRow = await loadLatestSnapshot(tripId);
   if (!snapRow) return null;
 

@@ -6,10 +6,8 @@ import { MarketingShell } from "./MarketingShell";
 import { MockDesktopBuilder } from "./MockDesktopBuilder";
 import { MockPhoneItinerary } from "./MockPhoneItinerary";
 import { PayShareSection } from "./PayShareSection";
-import {
-  PersonalPricingSection,
-  SchoolPricingSection,
-} from "./PricingSection";
+import { LaunchSchoolPricing } from "./LaunchSchoolPricing";
+import { PersonalPricingSection } from "./PricingSection";
 import {
   BUILT_FOR_SCHOOLS,
   FEATURES,
@@ -72,7 +70,7 @@ export function LandingPage() {
             ))}
           </ul>
           <p className="mt-8 font-medium text-zinc-900">
-            Trip Connect gives every trip one simple source of truth.
+            Itinerary Live gives every trip one simple source of truth.
           </p>
         </div>
       </section>
@@ -97,7 +95,7 @@ export function LandingPage() {
         <div className="mx-auto max-w-6xl px-5">
           <h2 className="text-2xl font-semibold">Built for school trips, not generic travel.</h2>
           <p className="mt-4 max-w-3xl text-zinc-600 leading-relaxed">
-            Trip Connect is designed around how school trips actually work. Teachers need control,
+            Itinerary Live is designed around how school trips actually work. Teachers need control,
             students need clarity, parents need reassurance, and schools need privacy.
           </p>
           <ul className="mt-6 grid gap-2 sm:grid-cols-2">
@@ -145,7 +143,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      <SchoolPricingSection showNotes />
+      <LaunchSchoolPricing />
 
       <PersonalPricingSection />
 
@@ -155,7 +153,7 @@ export function LandingPage() {
         <div className="mx-auto max-w-3xl px-5 text-center">
           <h2 className="text-2xl font-semibold">Running group trips outside a school?</h2>
           <p className="mt-4 text-sm leading-relaxed text-zinc-600">
-            Trip Connect can also work for sports clubs, youth groups, churches, tour organisers,
+            Itinerary Live can also work for sports clubs, youth groups, churches, tour organisers,
             language schools, exchange programmes, and corporate retreats.
           </p>
           <p className="mt-2 text-xs font-medium uppercase tracking-wide text-zinc-500">

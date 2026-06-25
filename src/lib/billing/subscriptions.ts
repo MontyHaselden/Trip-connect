@@ -1,6 +1,10 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import { calcGstAmount, calcTotalIncGst } from "@/lib/billing/gst";
+import {
+  FOUNDING_SCHOOL_PRICE_CENTS,
+  TRIAL_DAYS,
+} from "@/lib/billing/launch-pricing";
 import { getGstSettings } from "@/lib/billing/settings";
 import { db } from "@/lib/db/client";
 import {
@@ -80,27 +84,46 @@ export async function createSubscriptionForAccount(params: {
   accountId: string;
   planCode: SubscriptionPlan;
   billingStatus?: "trial" | "active" | "manual";
+  trialDays?: number;
+  foundingSchool?: boolean;
+  foundingPriceCents?: number;
 }) {
   const plan = await getPlanByCode(params.planCode);
   if (!plan) throw new Error(`Plan not found: ${params.planCode}`);
 
   const gst = await getGstSettings();
-  const basePriceCents = plan.basePriceCents;
+  let basePriceCents = plan.basePriceCents;
+  let foundingPriceLocked = false;
+
+  if (params.foundingSchool && params.foundingPriceCents != null) {
+    basePriceCents = params.foundingPriceCents;
+    foundingPriceLocked = true;
+  }
+
   const gstAmountCents = gst.gstEnabled
     ? calcGstAmount(basePriceCents, gst.gstRate)
     : 0;
   const totalCents = calcTotalIncGst(basePriceCents, gst.gstEnabled ? gst.gstRate : 0);
+
+  const billingStatus = params.billingStatus ?? "manual";
+  const trialDays = params.trialDays ?? (billingStatus === "trial" ? TRIAL_DAYS : 0);
+  const trialEndsAt =
+    billingStatus === "trial" && trialDays > 0
+      ? new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000)
+      : null;
 
   const [sub] = await db
     .insert(subscriptions)
     .values({
       accountId: params.accountId,
       planId: plan.id,
-      billingStatus: params.billingStatus ?? "manual",
+      billingStatus,
       basePriceCents,
       gstRate: String(gst.gstRate),
       gstAmountCents,
       totalCents,
+      foundingPriceLocked,
+      trialEndsAt,
     })
     .returning();
 
@@ -171,4 +194,105 @@ export async function changeAccountPlan(params: {
     accountId: params.accountId,
     planCode: params.planCode,
   });
+}
+
+export async function countFoundingSchools(): Promise<number> {
+  const row = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(hostAccounts)
+    .where(eq(hostAccounts.foundingSchool, true))
+    .then((rows) => rows[0]);
+  return row?.count ?? 0;
+}
+
+export async function updateSubscriptionBillingStatus(params: {
+  accountId: string;
+  billingStatus: (typeof subscriptions.$inferSelect)["billingStatus"];
+  clearTrial?: boolean;
+}) {
+  const existing = await getSubscriptionForAccount(params.accountId);
+  if (!existing) throw new Error("No subscription for account.");
+
+  const renewsAt =
+    params.billingStatus === "active"
+      ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      : existing.subscription.renewsAt;
+
+  const [updated] = await db
+    .update(subscriptions)
+    .set({
+      billingStatus: params.billingStatus,
+      trialEndsAt: params.clearTrial ? null : existing.subscription.trialEndsAt,
+      renewsAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptions.id, existing.subscription.id))
+    .returning();
+
+  if (params.billingStatus === "active") {
+    const expires = new Date();
+    expires.setFullYear(expires.getFullYear() + 1);
+    await db
+      .update(hostAccounts)
+      .set({ planExpiresAt: expires, updatedAt: new Date() })
+      .where(eq(hostAccounts.id, params.accountId));
+  }
+
+  return updated;
+}
+
+export async function extendAccountTrial(params: {
+  accountId: string;
+  extraDays: number;
+}) {
+  const existing = await getSubscriptionForAccount(params.accountId);
+  if (!existing) throw new Error("No subscription for account.");
+
+  const now = Date.now();
+  const currentEnd = existing.subscription.trialEndsAt?.getTime() ?? now;
+  const base = Math.max(currentEnd, now);
+  const trialEndsAt = new Date(base + params.extraDays * 24 * 60 * 60 * 1000);
+
+  const [updated] = await db
+    .update(subscriptions)
+    .set({
+      billingStatus: "trial",
+      trialEndsAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptions.id, existing.subscription.id))
+    .returning();
+
+  return updated;
+}
+
+export async function applyFoundingSchoolPricing(accountId: string) {
+  const existing = await getSubscriptionForAccount(accountId);
+  if (!existing) throw new Error("No subscription for account.");
+
+  const gst = await getGstSettings();
+  const basePriceCents = FOUNDING_SCHOOL_PRICE_CENTS;
+  const gstAmountCents = gst.gstEnabled
+    ? calcGstAmount(basePriceCents, gst.gstRate)
+    : 0;
+  const totalCents = basePriceCents + gstAmountCents;
+
+  const [updated] = await db
+    .update(subscriptions)
+    .set({
+      basePriceCents,
+      gstAmountCents,
+      totalCents,
+      foundingPriceLocked: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(subscriptions.id, existing.subscription.id))
+    .returning();
+
+  await db
+    .update(hostAccounts)
+    .set({ foundingSchool: true, updatedAt: new Date() })
+    .where(eq(hostAccounts.id, accountId));
+
+  return updated;
 }

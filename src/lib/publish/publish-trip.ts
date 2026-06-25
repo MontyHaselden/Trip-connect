@@ -1,5 +1,7 @@
 import { eq } from "drizzle-orm";
 
+import { getTripOwnerAccountId } from "@/lib/plans/account-usage";
+import { requireActiveBilling } from "@/lib/billing/access";
 import { db } from "@/lib/db/client";
 import { publishedTripSnapshots, trips } from "@/lib/db/schema";
 import { buildSnapshotV1 } from "@/lib/publish/build-snapshot";
@@ -20,6 +22,9 @@ export async function publishTrip(tripId: string): Promise<PublishTripResult> {
     .then((rows) => rows[0] ?? null);
 
   if (!locked) throw new Error("Trip not found");
+
+  const ownerId = await getTripOwnerAccountId(tripId);
+  if (ownerId) await requireActiveBilling(ownerId);
 
   const nextVersion = locked.publishedVersion + 1;
   await refreshTripWeather(tripId);

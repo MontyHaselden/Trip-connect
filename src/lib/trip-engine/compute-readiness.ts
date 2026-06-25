@@ -10,6 +10,11 @@ import type {
 } from "./types";
 import type { CostLedgerProjection } from "./cost-ledger/types";
 import { hasUnbalancedLines } from "./cost-ledger/project";
+import {
+  financeSectionAllocationMessage,
+  financeSectionAllocationStatuses,
+  type FinanceBuiltInSection,
+} from "./cost-ledger/finance-section-readiness";
 import { detectGraphConflicts } from "./conflicts";
 import { allLegs } from "./selectors";
 
@@ -123,6 +128,33 @@ export function computeReadiness(
         ? "warning"
         : "complete";
 
+  const financeAllocationBySection = new Map(
+    financeSectionAllocationStatuses(costLedger, graph).map((row) => [row.section, row]),
+  );
+
+  function mergeFinanceAllocationStatus(
+    section: FinanceBuiltInSection,
+    tripStatus: EngineReadinessStatus,
+    tripMessage?: string,
+  ): { status: EngineReadinessStatus; message?: string } {
+    const financeStatus = financeAllocationBySection.get(section);
+    if (!financeStatus || financeStatus.unallocatedCount === 0) {
+      return { status: tripStatus, message: tripMessage };
+    }
+    const financeMessage = financeSectionAllocationMessage(financeStatus);
+    return {
+      status: worstStatus([tripStatus, "conflict"]),
+      message: tripMessage ? `${tripMessage} · ${financeMessage}` : financeMessage,
+    };
+  }
+
+  const accommodationReadiness = mergeFinanceAllocationStatus(
+    "accommodation",
+    accommodation,
+  );
+  const transportReadiness = mergeFinanceAllocationStatus("transport", transport, missingTimes ? `${missingTimes} leg(s) missing departure time` : undefined);
+  const activitiesReadiness = mergeFinanceAllocationStatus("activities", activityStatus);
+
   const rows: Array<{ id: SetupSectionId; status: EngineReadinessStatus; message?: string }> = [
     { id: "overview", status: overview },
     {
@@ -130,13 +162,17 @@ export function computeReadiness(
       status: locations,
       message: uncovered.length ? `${uncovered.length} day(s) without a location` : undefined,
     },
-    { id: "accommodation", status: accommodation },
+    {
+      id: "accommodation",
+      status: accommodationReadiness.status,
+      message: accommodationReadiness.message,
+    },
     {
       id: "transport",
-      status: transport,
-      message: missingTimes ? `${missingTimes} leg(s) missing departure time` : undefined,
+      status: transportReadiness.status,
+      message: transportReadiness.message,
     },
-    { id: "activities", status: activityStatus },
+    { id: "activities", status: activitiesReadiness.status, message: activitiesReadiness.message },
     { id: "groups", status: groups },
     { id: "participants", status: "idle" },
     {

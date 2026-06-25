@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 
+import { BillingAccessError } from "@/lib/billing/access";
+
 export function hostApiError(err: unknown, fallback = "Request failed.") {
+  if (err instanceof BillingAccessError) {
+    return NextResponse.json({ error: err.message, code: err.code }, { status: 402 });
+  }
   const msg = sanitizeHostApiErrorMessage(collectErrorText(err), fallback);
   const status =
     msg === "Unauthorized" ? 401 : msg === "Forbidden" ? 403 : 400;
@@ -9,6 +14,17 @@ export function hostApiError(err: unknown, fallback = "Request failed.") {
 
 function collectErrorText(err: unknown): string {
   if (!(err instanceof Error)) return String(err ?? "");
+
+  if (err.name === "ZodError" && "issues" in err && Array.isArray(err.issues)) {
+    const first = err.issues[0] as { path?: unknown[]; message?: string } | undefined;
+    if (first?.message) {
+      const path =
+        Array.isArray(first.path) && first.path.length
+          ? first.path.map(String).join(".")
+          : "value";
+      return `Invalid ${path}: ${first.message}`;
+    }
+  }
 
   const parts: string[] = [];
   let current: unknown = err;
@@ -31,7 +47,10 @@ function sanitizeHostApiErrorMessage(raw: string, fallback: string) {
 
   // Common Postgres unique constraint violation (sometimes wrapped in Drizzle "Failed query: ...").
   if (/duplicate key value violates unique constraint/i.test(msg)) {
-    return "An account already exists with that email or phone number. Try logging in instead.";
+    if (/cost_allocation_overrides/i.test(msg)) {
+      return "Could not save per-person prices for this row. Try again.";
+    }
+    return "That value is already in use.";
   }
 
   if (/column "[^"]+" does not exist/i.test(msg)) {

@@ -8,10 +8,11 @@ import {
 } from "./finance-metadata";
 import { computeFinanceTripSummary } from "./finance-summary";
 import {
-  FINANCE_SECTION_LABELS,
   financeSectionForLine,
+  financeSectionLabel,
 } from "./finance-sections";
 import { convertToBaseCents, formatMoneyAmount } from "./format-money";
+import { downloadFinancePortraitReport } from "./export-finance-portrait";
 import type { CostLedgerProjection } from "./types";
 import type { RosterSummary, TripEntityGraph } from "../types";
 
@@ -44,7 +45,11 @@ export function buildTripFinanceSummaryCsv(
     rowToCsv(["Funded", centsDisplay(s.totalFundedCents, currency)]),
     rowToCsv(["Paid out to suppliers", centsDisplay(s.totalPaidOutCents, currency)]),
     rowToCsv(["Outstanding to suppliers", centsDisplay(s.outstandingToSuppliersCents, currency)]),
-    rowToCsv(["Still to fund", centsDisplay(s.stillToFundCents, currency)]),
+    rowToCsv(["Remaining to fund / collect", centsDisplay(s.remainingToFundCents, currency)]),
+    rowToCsv([
+      s.surplusOrShortfallCents >= 0 ? "Surplus" : "Shortfall",
+      centsDisplay(Math.abs(s.surplusOrShortfallCents), currency),
+    ]),
     rowToCsv(["Reimbursements needed", centsDisplay(s.reimbursableCents, currency)]),
     rowToCsv(["Rows with no cost", s.unknownCostCount]),
     rowToCsv(["Missing invoices", s.missingInvoiceCount]),
@@ -79,11 +84,11 @@ export function buildCostItemsCsv(
     "Notes",
   ]);
   const lines = ledger.lineItems.map((line) => {
-    const section = financeSectionForLine(line, graph);
+    const section = financeSectionForLine(line, graph, ledger.settings);
     return rowToCsv([
       line.description,
       line.category,
-      section ? FINANCE_SECTION_LABELS[section] : "",
+      section ? financeSectionLabel(section, ledger.settings) : "",
       line.supplierName,
       centsDisplay(line.totalAmountCents, line.currency),
       line.currency,
@@ -253,8 +258,10 @@ export function buildXeroBillsCsv(
   const rows = ledger.lineItems
     .filter((line) => line.totalAmountCents > 0)
     .map((line) => {
-      const section = financeSectionForLine(line, graph);
-      const sectionLabel = section ? FINANCE_SECTION_LABELS[section] : line.category;
+      const section = financeSectionForLine(line, graph, ledger.settings);
+      const sectionLabel = section
+        ? financeSectionLabel(section, ledger.settings)
+        : line.category;
       const description = `${tripName} — ${sectionLabel} — ${line.description}`;
       return rowToCsv([
         line.supplierName ?? "",
@@ -284,26 +291,121 @@ export function downloadCsv(filename: string, content: string): void {
   URL.revokeObjectURL(url);
 }
 
-export function downloadFinancePack(options: {
+export type FinanceExportKind =
+  | "portrait"
+  | "summary"
+  | "cost_items"
+  | "supplier_payments"
+  | "participant_payments"
+  | "funds"
+  | "participant_balances"
+  | "xero_bills";
+
+export type FinanceExportContext = {
   ledger: CostLedgerProjection;
   roster: RosterSummary;
   tripName: string;
   graph?: TripEntityGraph | null;
-}): void {
-  const slug = options.tripName.replace(/[^\w-]+/g, "_").slice(0, 40) || "trip";
-  const files: [string, string][] = [
-    [`${slug}_finance_summary.csv`, buildTripFinanceSummaryCsv(options.ledger, options.tripName)],
-    [`${slug}_cost_items.csv`, buildCostItemsCsv(options.ledger, options.graph)],
-    [`${slug}_supplier_payments.csv`, buildPaymentsCsv(options.ledger)],
-    [`${slug}_participant_payments.csv`, buildParticipantPaymentsCsv(options.ledger, options.roster)],
-    [`${slug}_funds.csv`, buildFundsCsv(options.ledger)],
-    [
-      `${slug}_participant_balances.csv`,
-      buildParticipantBalancesCsv(options.ledger, options.roster, options.graph),
-    ],
-    [`${slug}_xero_bills.csv`, buildXeroBillsCsv(options.ledger, options.tripName, options.graph)],
-  ];
-  for (const [name, content] of files) {
-    downloadCsv(name, content);
+};
+
+export const FINANCE_EXPORT_OPTIONS: {
+  id: FinanceExportKind;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "portrait",
+    label: "Finance report (HTML)",
+    description: "Printable spreadsheet-style report with sections and per-person totals",
+  },
+  {
+    id: "summary",
+    label: "Trip finance summary (CSV)",
+    description: "Totals, funding, outstanding, and checklist counts",
+  },
+  {
+    id: "cost_items",
+    label: "Cost items (CSV)",
+    description: "Every finance row with status, supplier, and export fields",
+  },
+  {
+    id: "supplier_payments",
+    label: "Supplier payments (CSV)",
+    description: "Money paid out to hotels, operators, etc.",
+  },
+  {
+    id: "participant_payments",
+    label: "Parent / participant payments (CSV)",
+    description: "Deposits and payments received from families",
+  },
+  {
+    id: "funds",
+    label: "Funds (CSV)",
+    description: "Grants, school contributions, and other funding",
+  },
+  {
+    id: "participant_balances",
+    label: "Participant balances (CSV)",
+    description: "Per-person shares, credits, paid amounts, and balance owing",
+  },
+  {
+    id: "xero_bills",
+    label: "Xero-ready bills (CSV)",
+    description: "Supplier bills formatted for manual import into Xero",
+  },
+];
+
+function tripExportSlug(tripName: string): string {
+  return tripName.replace(/[^\w-]+/g, "_").slice(0, 40) || "trip";
+}
+
+/** Download only the export types the user selected. */
+export function downloadFinanceExports(
+  kinds: FinanceExportKind[],
+  options: FinanceExportContext,
+): void {
+  if (!kinds.length) return;
+
+  const slug = tripExportSlug(options.tripName);
+  const { ledger, roster, tripName, graph } = options;
+
+  for (const kind of kinds) {
+    switch (kind) {
+      case "portrait":
+        downloadFinancePortraitReport(options);
+        break;
+      case "summary":
+        downloadCsv(`${slug}_finance_summary.csv`, buildTripFinanceSummaryCsv(ledger, tripName));
+        break;
+      case "cost_items":
+        downloadCsv(`${slug}_cost_items.csv`, buildCostItemsCsv(ledger, graph));
+        break;
+      case "supplier_payments":
+        downloadCsv(`${slug}_supplier_payments.csv`, buildPaymentsCsv(ledger));
+        break;
+      case "participant_payments":
+        downloadCsv(
+          `${slug}_participant_payments.csv`,
+          buildParticipantPaymentsCsv(ledger, roster),
+        );
+        break;
+      case "funds":
+        downloadCsv(`${slug}_funds.csv`, buildFundsCsv(ledger));
+        break;
+      case "participant_balances":
+        downloadCsv(
+          `${slug}_participant_balances.csv`,
+          buildParticipantBalancesCsv(ledger, roster, graph),
+        );
+        break;
+      case "xero_bills":
+        downloadCsv(`${slug}_xero_bills.csv`, buildXeroBillsCsv(ledger, tripName, graph));
+        break;
+    }
   }
+}
+
+/** @deprecated Use downloadFinanceExports with explicit kinds. */
+export function downloadFinancePack(options: FinanceExportContext): void {
+  downloadFinanceExports(["portrait", "cost_items", "xero_bills"], options);
 }

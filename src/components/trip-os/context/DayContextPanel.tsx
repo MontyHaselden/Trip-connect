@@ -36,9 +36,11 @@ import {
 import { shortCityName } from "@/lib/host/setup/location-range-display";
 import { dayPlacesForGroup, staysForGroup } from "@/lib/trip-engine/selectors";
 import {
+  canAdoptMainGroupStayForParticipant,
   findMatchingMainStay,
   formatStayNightSpan,
   mergePersonalDayPlacesFromMain,
+  suggestedMainStaysForParticipantEdit,
   type MainStayMatch,
 } from "@/lib/trip-engine/match-main-accommodation-stay";
 import {
@@ -55,6 +57,7 @@ import {
   type HalfSide,
 } from "@/lib/host/wizard/location-stays";
 import type { TripCommand } from "@/lib/trip-engine/commands";
+import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import type {
   AccommodationStayDraft,
   DayPlaceDraft,
@@ -157,6 +160,23 @@ function applyAccommodationSearchToDraft(
       address: selection.address,
       existingCity: draft.city,
     }),
+  };
+}
+
+function applyMainStayHotelToDraft(
+  draft: LocalStayDraft,
+  mainStay: AccommodationStayDraft,
+): LocalStayDraft {
+  return {
+    ...draft,
+    name: mainStay.name?.trim() ?? "",
+    city: stayCityLabel(mainStay),
+    address: mainStay.address,
+    googlePlaceId: mainStay.googlePlaceId,
+    latitude: mainStay.latitude,
+    longitude: mainStay.longitude,
+    stayType: mainStay.stayType,
+    isHomestayGroup: mainStay.isHomestayGroup ?? false,
   };
 }
 
@@ -283,6 +303,7 @@ export function DayContextPanel(props: {
   selection: CalendarSelection;
   conflicts: EngineConflict[];
   rosterSummary?: RosterSummary;
+  costLedger?: CostLedgerProjection | null;
   saving?: boolean;
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
   onClearSelection: () => void;
@@ -387,6 +408,27 @@ export function DayContextPanel(props: {
     });
   }, [stayDraft, graph, isIndependentPersonal, isGroupHomestayDraft]);
 
+  const suggestedMainStays = useMemo(() => {
+    if (!stayDraft || !isIndependentPersonal || isGroupHomestayDraft || mainStayMatch) {
+      return [];
+    }
+    if (!stayDraft.checkIn || !stayDraft.checkOut) return [];
+    return suggestedMainStaysForParticipantEdit(
+      graph,
+      groupId,
+      stayDraft.checkIn,
+      stayDraft.checkOut,
+      stayDraft.name,
+    );
+  }, [
+    stayDraft,
+    graph,
+    groupId,
+    isIndependentPersonal,
+    isGroupHomestayDraft,
+    mainStayMatch,
+  ]);
+
   const rangeConflicts = useMemo(() => {
     if (!rangeStart) return [];
     return props.conflicts.filter(
@@ -450,6 +492,15 @@ export function DayContextPanel(props: {
     () => Boolean(linkedStay && stayInheritsFromMainGroup(graph, groupId, linkedStay!)),
     [graph, groupId, linkedStay],
   );
+
+  const canFollowMainGroupStay = useMemo(() => {
+    if (!stayDraft?.checkIn || !stayDraft.checkOut || !mainStayMatch) return false;
+    if (mainStayMatch.kind !== "exact" || linkedStayIsInherited) return false;
+    return canAdoptMainGroupStayForParticipant(graph, groupId, mainStayMatch.mainStay, {
+      checkInDate: stayDraft.checkIn,
+      checkOutDate: stayDraft.checkOut,
+    });
+  }, [stayDraft, mainStayMatch, linkedStayIsInherited, graph, groupId]);
 
   const dayCount = overviewDays.length;
   const isMultiDayRange = Boolean(rangeStart) && rangeStart !== rangeEnd;
@@ -939,7 +990,7 @@ export function DayContextPanel(props: {
       setStayConflictDialog({ cityLabel, conflicts });
       return;
     }
-    if (mainStayMatch?.kind === "exact" && !linkedStayIsInherited) {
+    if (canFollowMainGroupStay) {
       await adoptMainGroupStay(mainStayMatch.mainStay);
       return;
     }
@@ -1298,42 +1349,68 @@ export function DayContextPanel(props: {
                 </div>
               </>
             ) : (
-              <label className="block space-y-1.5">
-                <span className="text-xs text-zinc-500">
-                  {accommodationSearchMode(stayDraft.stayType).fieldLabel}
-                </span>
-                <HotelNamePicker
-                  value={stayDraft.name}
-                  onChange={(name) => setStayDraft({ ...stayDraft, name })}
-                  onSelectHotel={(selection) =>
-                    setStayDraft(applyAccommodationSearchToDraft(stayDraft, selection))
-                  }
-                  stayType={stayDraft.stayType}
-                  countryNames={props.graph.basics.destinationCountries ?? []}
-                  stayCity={stayDraftCityLabel(stayDraft) || undefined}
-                  placeholder={accommodationSearchMode(stayDraft.stayType).placeholder}
-                  inputClassName={inputClass}
-                />
-              </label>
+              <>
+                {suggestedMainStays.map((mainStay) => (
+                    <div
+                      key={mainStay.id}
+                      className="rounded-md border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs leading-relaxed text-violet-950"
+                    >
+                      <p className="font-medium">Main group hotel</p>
+                      <p className="mt-1">
+                        The whole group is at{" "}
+                        <span className="font-medium">{mainStay.name}</span> in{" "}
+                        {stayCityLabel(mainStay)} (
+                        {formatStayNightSpan(mainStay.checkInDate, mainStay.checkOutDate)}).
+                        Fill the form below with this hotel, adjust dates if needed, then apply.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setStayDraft(applyMainStayHotelToDraft(stayDraft, mainStay))
+                        }
+                        className="mt-2 font-medium text-violet-800 hover:underline"
+                      >
+                        Fill with {mainStay.name}
+                      </button>
+                    </div>
+                  ))}
+                <label className="block space-y-1.5">
+                  <span className="text-xs text-zinc-500">
+                    {accommodationSearchMode(stayDraft.stayType).fieldLabel}
+                  </span>
+                  <HotelNamePicker
+                    value={stayDraft.name}
+                    onChange={(name) => setStayDraft({ ...stayDraft, name })}
+                    onSelectHotel={(selection) =>
+                      setStayDraft(applyAccommodationSearchToDraft(stayDraft, selection))
+                    }
+                    stayType={stayDraft.stayType}
+                    countryNames={props.graph.basics.destinationCountries ?? []}
+                    stayCity={stayDraftCityLabel(stayDraft) || undefined}
+                    placeholder={accommodationSearchMode(stayDraft.stayType).placeholder}
+                    inputClassName={inputClass}
+                  />
+                </label>
+              </>
             )}
-            {mainStayMatch?.kind === "exact" ? (
+            {canFollowMainGroupStay ? (
               <div className="rounded-md border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs leading-relaxed text-violet-950">
                 <p className="font-medium">Same as main group for these dates</p>
                 <p className="mt-1">
                   The main trip already has{" "}
-                  <span className="font-medium">{mainStayMatch.mainStay.name}</span> (
+                  <span className="font-medium">{mainStayMatch!.mainStay.name}</span> (
                   {formatStayNightSpan(
-                    mainStayMatch.mainStay.checkInDate,
-                    mainStayMatch.mainStay.checkOutDate,
+                    mainStayMatch!.mainStay.checkInDate,
+                    mainStayMatch!.mainStay.checkOutDate,
                   )}
-                  ). Use the main group stay instead of duplicating it for {participantLabel}.
+                  ). {participantLabel} can follow that stay instead of duplicating it.
                 </p>
                 <button
                   type="button"
-                  onClick={() => void adoptMainGroupStay(mainStayMatch.mainStay)}
+                  onClick={() => void adoptMainGroupStay(mainStayMatch!.mainStay)}
                   className="mt-2 font-medium text-violet-800 hover:underline"
                 >
-                  Use main group stay
+                  Follow main group stay
                 </button>
               </div>
             ) : mainStayMatch?.kind === "name_only" ? (
@@ -1443,8 +1520,8 @@ export function DayContextPanel(props: {
               </label>
             ) : null}
             <p className="text-xs text-zinc-500">
-              {mainStayMatch?.kind === "exact"
-                ? `Save will use the main group stay for ${participantLabel} — no duplicate row.`
+              {canFollowMainGroupStay
+                ? `Apply will follow the main group stay for ${participantLabel} — no duplicate row.`
                 : linkedStayIsInherited
                 ? "Saving creates a personal stay for this participant — the main group homestay is unchanged."
                 : linkedStay && linkedStay.checkInDate > rangeStart
@@ -1460,7 +1537,7 @@ export function DayContextPanel(props: {
                 onClick={() => void saveStay()}
                 className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
               >
-                {mainStayMatch?.kind === "exact" ? "Use main group stay" : `${applyLabel} stay`}
+                {canFollowMainGroupStay ? "Follow main group stay" : `${applyLabel} stay`}
               </AsyncButton>
               {linkedStay && !linkedStayIsInherited ? (
                 <button
@@ -1489,6 +1566,7 @@ export function DayContextPanel(props: {
           groupId={groupId}
           rangeStart={rangeStart}
           rangeEnd={rangeEnd}
+          costLedger={props.costLedger}
           saving={props.saving}
           onDispatch={props.onDispatch}
         />

@@ -3,9 +3,9 @@ export const HERO = {
   headline: "School trip itineraries, rebuilt for phones.",
   altHeadline: "The live school trip booklet students can actually use.",
   subheadline:
-    "Trip Connect gives teachers, students, helpers, parents, and school staff one clear place for the itinerary, emergency info, rooms, groups, weather, trip photos, and updates — even when students have no mobile data.",
+    "Itinerary Live gives teachers, students, helpers, parents, and school staff one clear place for the itinerary, emergency info, rooms, groups, weather, trip photos, and updates — even when students have no mobile data.",
   positioning:
-    "Trip Connect is a school trip management platform that replaces paper booklets, messy email threads, scattered WhatsApp updates, and outdated itineraries with one simple live/offline trip hub.",
+    "Itinerary Live is a school trip management platform that replaces paper booklets, messy email threads, scattered WhatsApp updates, and outdated itineraries with one simple live/offline trip hub.",
 } as const;
 
 export const PROBLEMS = [
@@ -248,11 +248,11 @@ export const PERSONAL_PRICING = [
 export const FAQS = [
   {
     q: "Do students need to download an app?",
-    a: "No. Students join with a link and can save Trip Connect to their phone like an app.",
+    a: "No. Students join with a link and can save Itinerary Live to their phone like an app.",
   },
   {
-    q: "Does Trip Connect track student locations?",
-    a: "No. Trip Connect does not include GPS tracking or live student location monitoring.",
+    q: "Does Itinerary Live track student locations?",
+    a: "No. Itinerary Live does not include GPS tracking or live student location monitoring.",
   },
   {
     q: "Does it work without mobile data?",
@@ -275,7 +275,7 @@ export const FAQS = [
     a: "Yes. Hosts and approved helpers can hide or delete photos from the gallery.",
   },
   {
-    q: "Can we use Trip Connect without AI?",
+    q: "Can we use Itinerary Live without AI?",
     a: "Yes. The setup wizard works without AI. AI tools are available on higher plans to speed up itinerary creation and editing.",
   },
   {
@@ -290,5 +290,5 @@ export const FAQS = [
 
 export const PRICING_NOTES = [
   "An active trip is a trip currently being planned, live, or open for updates/photo uploads. Once a trip is completed, it moves to Trip History and no longer counts toward your active trip limit.",
-  "Early school pricing shown. Pricing may change as Trip Connect grows.",
+  "School plan is $400 NZD + GST per year. Founding schools (limited places) pay $240 NZD + GST for year one.",
 ] as const;

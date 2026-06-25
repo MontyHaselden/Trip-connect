@@ -117,6 +117,8 @@ export function TravelSegments({
         }
 
         const tentative = segment.kind === "transit" && segment.tentative;
+        if (widthShare < 0.02) return null;
+
         return (
           <div
             key={`seg-${i}`}

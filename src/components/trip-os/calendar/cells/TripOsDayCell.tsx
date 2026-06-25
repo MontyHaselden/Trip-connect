@@ -18,6 +18,14 @@ import type { CalendarSelection } from "../useCalendarSelection";
 import { ActivityChips } from "./ActivityChips";
 import { LocationBand } from "./LocationBand";
 import { StayBand, stayBandStyleForCity } from "./StayBand";
+import { TransitOverlay } from "./TransitOverlay";
+import { TransportBand } from "./TransportBand";
+import { destinationCoveredByOverlays } from "./transit-overlay-labels";
+import type { CalendarDaySegment, TransitOverlay as TransitOverlayType } from "@/lib/host/wizard/transport-day-placement";
+import {
+  mergeTravelWithPaintedStay,
+  travelLayoutBlocksPainting,
+} from "@/lib/host/wizard/transport-day-placement";
 
 export function TripOsDayCell(props: {
   iso: string;
@@ -37,6 +45,8 @@ export function TripOsDayCell(props: {
   pendingFillHalf: (iso: string) => HalfSide | "full" | null;
   onDayClick: (iso: string, half?: HalfSide) => boolean;
   isToday?: boolean;
+  transitOverlays?: TransitOverlayType[];
+  travelSegments?: CalendarDaySegment[];
 }) {
   const cellRef = useRef<HTMLDivElement>(null);
   const { iso, day, selection } = props;
@@ -48,14 +58,36 @@ export function TripOsDayCell(props: {
   const secondary = day.secondaryCity?.trim()
     ? canonicalStayCity(day.secondaryCity, stayCtx)
     : "";
+  const transitOverlays = props.transitOverlays ?? [];
+  const travelSegments = props.travelSegments;
+  const displayPrimary =
+    primary && destinationCoveredByOverlays(primary, transitOverlays) ? "" : primary;
+  const displaySecondary =
+    secondary && destinationCoveredByOverlays(secondary, transitOverlays) ? "" : secondary;
   const displayShare = normalizeDayShare(day.primaryShare ?? 1);
+  const mergedDay = {
+    ...day,
+    primaryCity: displayPrimary,
+    secondaryCity: displaySecondary || null,
+  };
+  const hasFullStayDay = Boolean(displayPrimary) && !displaySecondary && displayShare >= 0.99;
+  const activeTravelSegments = hasFullStayDay ? undefined : travelSegments;
+  const { segments: displayTravelSegments, hideMergedStayCity } = mergeTravelWithPaintedStay(
+    activeTravelSegments,
+    mergedDay,
+  );
+  const layoutSegments = displayTravelSegments ?? activeTravelSegments;
+  const hasTravelLayout = Boolean(layoutSegments?.length);
+  const travelBlocksPainting = travelLayoutBlocksPainting(layoutSegments);
+  const hasTransitChip = transitOverlays.length > 0 && !hasTravelLayout;
 
   const isInPendingRange =
     Boolean(selection.rangeStart) &&
     iso >= selection.rangeStart! &&
     iso <= (selection.rangeEnd || selection.rangeStart!);
 
-  const showStayPaint = Boolean(primary || secondary);
+  const showStayPaint = Boolean(displayPrimary || displaySecondary);
+  const showLocationBand = showStayPaint && !travelBlocksPainting && !hideMergedStayCity;
 
   const pendingFillHalf = props.pendingFillHalf(iso);
   const resolvedFillHalf = pendingFillHalf;
@@ -72,23 +104,23 @@ export function TripOsDayCell(props: {
   const rightCityPaintHeight =
     rightHasAccommodation || fullDayAccommodation ? "75%" : "100%";
   const locationSplit =
-    Boolean(primary && secondary) ||
-    (Boolean(primary) && isSplitDay(day) && displayShare < 0.99);
+    Boolean(displayPrimary && displaySecondary) ||
+    (Boolean(displayPrimary) && isSplitDay(day) && displayShare < 0.99);
   const isBuffer = day.dayType === "buffer";
   const isHalfPending =
     isInPendingRange && (resolvedFillHalf === "left" || resolvedFillHalf === "right");
   const halfSelectionDivider =
     isSplitDay(day) && displayShare < 0.99 ? displayShare : DEFAULT_HALF_SHARE;
 
-  const accommodationLeftColors = primary
-    ? stayBandStyleForCity(primary, props.locationColorByKey)
+  const accommodationLeftColors = displayPrimary
+    ? stayBandStyleForCity(displayPrimary, props.locationColorByKey)
     : null;
-  const accommodationRightColors = secondary
-    ? stayBandStyleForCity(secondary, props.locationColorByKey)
+  const accommodationRightColors = displaySecondary
+    ? stayBandStyleForCity(displaySecondary, props.locationColorByKey)
     : null;
   const accommodationSingleColors =
-    primary || secondary
-      ? stayBandStyleForCity(primary || secondary, props.locationColorByKey)
+    displayPrimary || displaySecondary
+      ? stayBandStyleForCity(displayPrimary || displaySecondary, props.locationColorByKey)
       : null;
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -110,9 +142,9 @@ export function TripOsDayCell(props: {
   const dayNumSelected = isInPendingRange && !isHalfPending;
 
   const title =
-    primary && secondary
-      ? `${primary} / ${secondary}`
-      : primary || secondary || undefined;
+    displayPrimary && displaySecondary
+      ? `${displayPrimary} / ${displaySecondary}`
+      : displayPrimary || displaySecondary || transitOverlays[0]?.label || undefined;
 
   return (
     <div className="flex min-h-[5.75rem] flex-col p-0.5" data-calendar-day-cell={iso}>
@@ -175,17 +207,23 @@ export function TripOsDayCell(props: {
         ) : null}
 
         <LocationBand
-          day={{
-            ...day,
-            primaryCity: primary,
-            secondaryCity: secondary || null,
-          }}
+          day={mergedDay}
           displayShare={displayShare}
-          showStayPaint={showStayPaint}
+          showStayPaint={showLocationBand}
           leftCityPaintHeight={leftCityPaintHeight}
           rightCityPaintHeight={rightCityPaintHeight}
           locationColorByKey={props.locationColorByKey}
         />
+
+        <TransportBand
+          segments={layoutSegments}
+          showTransportCorridor={false}
+          primary={displayPrimary}
+          secondary={displaySecondary}
+          locationColorByKey={props.locationColorByKey}
+        />
+
+        {hasTransitChip ? <TransitOverlay overlays={transitOverlays} /> : null}
 
         {locationSplit ? (
           <div
@@ -202,8 +240,8 @@ export function TripOsDayCell(props: {
           leftOnly={props.accommodationLeftOnly}
           rightOnly={props.accommodationRightOnly}
           displayShare={displayShare}
-          primary={primary}
-          secondary={secondary}
+          primary={displayPrimary}
+          secondary={displaySecondary}
           leftColors={accommodationLeftColors}
           rightColors={accommodationRightColors}
           singleColors={accommodationSingleColors}

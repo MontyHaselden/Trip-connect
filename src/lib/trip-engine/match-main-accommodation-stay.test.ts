@@ -4,13 +4,17 @@ import { describe, it } from "node:test";
 import { setupStateToGraph } from "./adapters";
 import { applyCommands } from "./apply-commands";
 import {
+  borrowedMainActivitiesForParticipant,
   borrowedMainStaysForParticipant,
+  canAdoptMainGroupStayForParticipant,
   findMatchingMainStay,
+  mainStaysOverlappingRange,
   mergePersonalDayPlacesFromMain,
   participantLocationsAlignWithMainStay,
   stayNamesMatch,
+  suggestedMainStaysForParticipantEdit,
 } from "./match-main-accommodation-stay";
-import { staysForCalendarView } from "./person-lens";
+import { activitiesForCalendarView, staysForCalendarView } from "./person-lens";
 import { staysForGroup } from "./selectors";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
@@ -113,6 +117,25 @@ describe("match-main-accommodation-stay", () => {
     assert.equal(match?.mainStay.name, "The Knot");
   });
 
+  it("suggestedMainStaysForParticipantEdit lists overlapping main hotel before typing", () => {
+    const graph = setupStateToGraph("trip-1", macyIndependentFixture());
+    const suggestions = suggestedMainStaysForParticipantEdit(
+      graph,
+      "g-macy",
+      "2026-12-13",
+      "2026-12-15",
+    );
+    assert.equal(suggestions.length, 1);
+    assert.equal(suggestions[0]?.name, "The Knot");
+  });
+
+  it("mainStaysOverlappingRange returns stays that share any night", () => {
+    const graph = setupStateToGraph("trip-1", macyIndependentFixture());
+    const overlapping = mainStaysOverlappingRange(graph, "2026-12-14", "2026-12-16");
+    assert.equal(overlapping.length, 1);
+    assert.equal(overlapping[0]?.name, "The Knot");
+  });
+
   it("borrowedMainStaysForParticipant surfaces aligned main stay without duplicate row", () => {
     const graph = setupStateToGraph("trip-1", macyIndependentFixture());
     const borrowed = borrowedMainStaysForParticipant(graph, "g-macy");
@@ -209,6 +232,24 @@ describe("match-main-accommodation-stay", () => {
     );
   });
 
+  it("canAdoptMainGroupStayForParticipant requires matching dates and aligned cities", () => {
+    const graph = setupStateToGraph("trip-1", macyIndependentFixture());
+    const mainStay = graph.accommodationStays[0]!;
+    assert.ok(
+      canAdoptMainGroupStayForParticipant(graph, "g-macy", mainStay, {
+        checkInDate: "2026-12-13",
+        checkOutDate: "2026-12-15",
+      }),
+    );
+    assert.equal(
+      canAdoptMainGroupStayForParticipant(graph, "g-macy", mainStay, {
+        checkInDate: "2026-12-15",
+        checkOutDate: "2026-12-17",
+      }),
+      false,
+    );
+  });
+
   it("mergePersonalDayPlacesFromMain copies main nights into personal overlay", () => {
     const graph = setupStateToGraph("trip-1", macyIndependentFixture());
     const mainStay = graph.accommodationStays[0]!;
@@ -217,5 +258,90 @@ describe("match-main-accommodation-stay", () => {
     const merged = mergePersonalDayPlacesFromMain(personalDays, mainDays, mainStay);
     assert.ok(merged.some((d) => d.date === "2026-12-13" && d.primaryCity === "Hiroshima"));
     assert.ok(merged.some((d) => d.date === "2026-12-14" && d.primaryCity === "Hiroshima"));
+  });
+
+  it("borrowedMainActivitiesForParticipant includes main activities on aligned dates", () => {
+    const base = macyIndependentFixture();
+    base.dayPlacesByGroupId["g-main"] = [
+      ...(base.dayPlacesByGroupId["g-main"] ?? []),
+      { date: "2026-12-18", primaryCity: "Tokyo", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-12-19", primaryCity: "Tokyo", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+    ];
+    base.dayPlacesByGroupId["g-macy"] = [
+      ...(base.dayPlacesByGroupId["g-macy"] ?? []),
+      { date: "2026-12-18", primaryCity: "Tokyo", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-12-19", primaryCity: "Tokyo", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+    ];
+    base.activities = [
+      {
+        id: "act-tower",
+        title: "Tokyo tower",
+        date: "2026-12-18",
+        endDate: null,
+        startTime: "10:00",
+        endTime: null,
+        isTimeTbc: false,
+        category: "activity",
+        locationName: null,
+        address: null,
+        isLocationTbc: true,
+        transportNote: null,
+        leaveByTime: null,
+        bringNote: null,
+        description: null,
+        audienceType: "everyone",
+        audienceId: null,
+        bookingStatus: "not_booked",
+      },
+      {
+        id: "act-shibuya",
+        title: "Shibuya day",
+        date: "2026-12-19",
+        endDate: null,
+        startTime: "10:00",
+        endTime: null,
+        isTimeTbc: false,
+        category: "activity",
+        locationName: null,
+        address: null,
+        isLocationTbc: true,
+        transportNote: null,
+        leaveByTime: null,
+        bringNote: null,
+        description: null,
+        audienceType: "everyone",
+        audienceId: null,
+        bookingStatus: "not_booked",
+      },
+      {
+        id: "act-usj",
+        title: "Visit USJ",
+        date: "2026-12-16",
+        endDate: null,
+        startTime: "10:00",
+        endTime: null,
+        isTimeTbc: false,
+        category: "activity",
+        locationName: null,
+        address: null,
+        isLocationTbc: true,
+        transportNote: null,
+        leaveByTime: null,
+        bringNote: null,
+        description: null,
+        audienceType: "everyone",
+        audienceId: null,
+        bookingStatus: "not_booked",
+      },
+    ];
+    const graph = setupStateToGraph("trip-1", base);
+    const borrowed = borrowedMainActivitiesForParticipant(graph, "g-macy");
+    assert.deepEqual(
+      borrowed.map((a) => a.id).sort(),
+      ["act-shibuya", "act-tower"],
+    );
+    const calendarActivities = activitiesForCalendarView(graph, "g-macy");
+    assert.equal(calendarActivities.length, 2);
+    assert.equal(activitiesForCalendarView(graph, "g-macy").some((a) => a.id === "act-usj"), false);
   });
 });

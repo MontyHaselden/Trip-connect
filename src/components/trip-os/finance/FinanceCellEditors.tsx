@@ -13,11 +13,12 @@ import {
   quantityUnitLabel,
   totalFromUnitCents,
 } from "@/lib/trip-engine/cost-ledger/line-quantity-rate";
-import { isManualFinanceLine } from "@/lib/trip-engine/cost-ledger/finance-sections";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import type { RosterSummary } from "@/lib/trip-engine/types";
 
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
+import { financeLineDisplayDescription } from "@/lib/trip-engine/transport-route-label";
+import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import { FinanceCellPopover, popoverOptionClass } from "./FinanceCellPopover";
 import { FinanceInlineMoneyCell } from "./FinanceInlineMoneyCell";
 
@@ -149,37 +150,49 @@ export function FinanceRuleCell(props: {
 export function FinanceAmountCell(props: {
   line: CostLineItemDraft;
   graph?: TripEntityGraph | null;
-  displaySecondary?: string;
+  displayTotalCents?: number | null;
+  displayCurrency?: string;
+  baseCurrency?: string;
+  ratesFromBase?: Record<string, number>;
   onPatch: (lineId: string, patch: Partial<CostLineFormValues>) => void;
 }) {
   const quantity = effectiveLineQuantity(props.line, props.graph);
   const unitLabel = quantityUnitLabel(props.line, props.graph);
+  const rowTotalCents =
+    props.displayTotalCents != null && props.displayTotalCents > 0
+      ? props.displayTotalCents
+      : props.line.totalAmountCents;
   const perUnit =
-    quantity && props.line.totalAmountCents > 0
-      ? perUnitCents(props.line.totalAmountCents, quantity)
+    quantity && rowTotalCents > 0
+      ? perUnitCents(rowTotalCents, quantity)
       : null;
   const showUnitRow = quantity != null && quantity > 0;
+  const moneyProps = {
+    currency: props.line.currency,
+    displayCurrency: props.displayCurrency,
+    baseCurrency: props.baseCurrency,
+    ratesFromBase: props.ratesFromBase,
+  };
 
   return (
-    <div>
+    <div className="flex flex-col items-center justify-center gap-0.5">
       <FinanceInlineMoneyCell
-        valueCents={props.line.totalAmountCents > 0 ? props.line.totalAmountCents : null}
-        currency={props.line.currency}
-        showCurrencyCode
+        align="center"
+        valueCents={rowTotalCents > 0 ? rowTotalCents : null}
+        {...moneyProps}
         onCommit={(cents) => {
           props.onPatch(props.line.id, {
             totalAmountCents: cents ?? 0,
           });
         }}
-        onCurrencyChange={(currency) => {
-          props.onPatch(props.line.id, { currency: currency.toUpperCase() });
-        }}
       />
-      {showUnitRow ? (
-        <div className="mt-0.5 flex justify-end">
+      {showUnitRow && perUnit != null ? (
+        <div className="flex items-baseline justify-center gap-0.5 text-[9px] text-zinc-500">
           <FinanceInlineMoneyCell
+            compact
+            align="center"
             valueCents={perUnit}
-            currency={props.line.currency}
+            {...moneyProps}
             onCommit={(cents) => {
               if (!quantity || cents == null) return;
               props.onPatch(props.line.id, {
@@ -187,10 +200,8 @@ export function FinanceAmountCell(props: {
               });
             }}
           />
-          <span className="ml-1 self-end pb-0.5 text-[9px] text-zinc-500">/{unitLabel}</span>
+          <span>/{unitLabel}</span>
         </div>
-      ) : props.displaySecondary ? (
-        <div className="text-[9px] text-zinc-500">{props.displaySecondary}</div>
       ) : null}
     </div>
   );
@@ -274,19 +285,21 @@ export function FinanceQtyCell(props: {
 
 export function FinanceDescriptionCell(props: {
   line: CostLineItemDraft;
+  graph?: TripEntityGraph | null;
   openCell: OpenCell;
   setOpenCell: (cell: OpenCell) => void;
   onPatch: (lineId: string, patch: Partial<CostLineFormValues>) => void;
 }) {
-  const open =
-    props.openCell?.lineId === props.line.id && props.openCell.field === "description";
-  const [text, setText] = useState(props.line.description);
+  const calendarLinkedTransport = Boolean(props.line.linkedTransportLegId && props.graph);
+  const displayDescription = financeLineDisplayDescription(props.line, props.graph);
+  const [text, setText] = useState(displayDescription);
 
   useEffect(() => {
-    if (!open) setText(props.line.description);
-  }, [props.line.description, open]);
+    setText(displayDescription);
+  }, [displayDescription, props.line.id]);
 
   function save(nextText?: string) {
+    if (calendarLinkedTransport) return;
     const trimmed = (nextText ?? text).trim();
     if (!trimmed) return;
     if (trimmed === props.line.description) return;
@@ -294,78 +307,71 @@ export function FinanceDescriptionCell(props: {
     props.setOpenCell(null);
   }
 
-  if (isManualFinanceLine(props.line)) {
-    return (
-      <input
-        type="text"
-        value={text}
-        placeholder="Name this line…"
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => save()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            save();
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full min-w-[10rem] rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-zinc-800 outline-none hover:border-zinc-200 focus:border-sky-300 focus:bg-white"
-        data-finance-cell
-      />
-    );
-  }
+  return (
+    <input
+      type="text"
+      value={text}
+      readOnly={calendarLinkedTransport}
+      placeholder="New line"
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => save()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          save();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onFocus={(e) => {
+        if (calendarLinkedTransport) return;
+        e.currentTarget.select();
+      }}
+      className={[
+        "w-full min-w-[10rem] rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-zinc-800 outline-none hover:border-zinc-200 focus:border-sky-300 focus:bg-white",
+        calendarLinkedTransport ? "cursor-default text-zinc-700" : "",
+      ].join(" ")}
+      data-finance-cell
+    />
+  );
+}
 
-  function openEditor() {
-    setText(props.line.description);
-    props.setOpenCell({ lineId: props.line.id, field: "description" });
+export function FinanceFundNameCell(props: {
+  fundId: string;
+  name: string;
+  onSave: (name: string) => void;
+}) {
+  const [text, setText] = useState(props.name);
+
+  useEffect(() => {
+    setText(props.name);
+  }, [props.name, props.fundId]);
+
+  function save(nextText?: string) {
+    const trimmed = (nextText ?? text).trim();
+    if (!trimmed || trimmed === props.name.trim()) return;
+    props.onSave(trimmed);
   }
 
   return (
-    <FinanceCellPopover
-      open={open}
-      onClose={() => props.setOpenCell(null)}
-      minWidth="14rem"
-      trigger={
-        <button
-          type="button"
-          className={[cellButtonClass(open), "font-medium"].join(" ")}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (open) props.setOpenCell(null);
-            else openEditor();
-          }}
-        >
-          <span className="whitespace-nowrap text-left" title={props.line.description}>
-            {props.line.description}
-          </span>
-        </button>
-      }
-    >
-      <div className="px-2 py-2">
-        <textarea
-          autoFocus
-          value={text}
-          rows={2}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              save();
-            }
-            if (e.key === "Escape") props.setOpenCell(null);
-          }}
-          className="w-full rounded border border-zinc-200 px-2 py-1 text-[11px]"
-        />
-        <button
-          type="button"
-          onClick={() => save()}
-          className="mt-2 w-full rounded bg-violet-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-violet-700"
-        >
-          Apply
-        </button>
-      </div>
-    </FinanceCellPopover>
+    <input
+      type="text"
+      value={text}
+      placeholder="New line"
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => save()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          save();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onFocus={(e) => e.currentTarget.select()}
+      className="w-full min-w-[10rem] rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-zinc-800 outline-none hover:border-zinc-200 focus:border-sky-300 focus:bg-white"
+      data-finance-cell
+    />
   );
 }
 
@@ -377,20 +383,30 @@ export function FinanceParticipantAmountCell(props: {
   isPinned: boolean;
   nightsLabel?: string | null;
   disabled?: boolean;
+  displayCurrency?: string;
+  baseCurrency?: string;
+  ratesFromBase?: Record<string, number>;
   onSave: (amountCents: number | null) => void;
+  onDraftChange?: (amountCents: number | null) => void;
+  onDraftEnd?: () => void;
 }) {
   return (
     <div className="flex flex-col items-end">
       <FinanceInlineMoneyCell
         valueCents={props.amountCents}
         currency={props.currency}
+        displayCurrency={props.displayCurrency}
+        baseCurrency={props.baseCurrency}
+        ratesFromBase={props.ratesFromBase}
         isPinned={props.isPinned}
         disabled={props.disabled}
         allowClear
         onCommit={props.onSave}
+        onDraftChange={props.onDraftChange}
+        onDraftEnd={props.onDraftEnd}
       />
       {props.nightsLabel ? (
-        <span className="mt-0.5 text-[9px] font-medium text-zinc-500">{props.nightsLabel}</span>
+        <span className="mt-0.5 text-[9px] font-medium text-amber-700">{props.nightsLabel}</span>
       ) : null}
     </div>
   );
