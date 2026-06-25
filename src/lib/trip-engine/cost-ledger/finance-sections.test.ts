@@ -174,6 +174,28 @@ describe("groupLinesByFinanceSection", () => {
     assert.equal(grouped.get("accommodation")?.length, 1);
     assert.equal(grouped.get("transport")?.length, 0);
   });
+
+  it("buckets orphan custom section lines into Other after tab delete", () => {
+    const deletedSectionId = "section-other-2";
+    const settings = {
+      baseCurrency: "NZD",
+      foreignCurrency: null,
+      exchangeRate: null,
+      exchangeRateDate: null,
+      exchangeRateManual: false,
+      financeCustomSections: [],
+      financeViewGroups: [],
+      financeSectionExclusions: {},
+    };
+    const orphanLine = line({
+      category: "other",
+      allocationRulePayload: { financeSection: deletedSectionId },
+    });
+    assert.equal(financeSectionForLine(orphanLine, undefined, settings), "other");
+    const grouped = groupLinesByFinanceSection([orphanLine], undefined, settings);
+    assert.equal(grouped.get("other")?.length, 1);
+    assert.equal(grouped.get(deletedSectionId as "other"), undefined);
+  });
 });
 
 describe("finance section tabs", () => {

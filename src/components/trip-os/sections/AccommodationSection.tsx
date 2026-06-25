@@ -9,6 +9,7 @@ import {
   stayFinanceDisplayStatus,
   stayFinanceAttentionById,
   stayFinanceAttentionReason,
+  stayFinanceLineId,
   type EntityFinanceDisplayStatus,
 } from "@/lib/trip-engine/cost-ledger/finance-section-readiness";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
@@ -20,9 +21,11 @@ import type { TripCommand } from "@/lib/trip-engine/commands";
 import { AddRoomsModal } from "../accommodation/AddRoomsModal";
 import { AddHomestaysModal } from "../homestay/AddHomestaysModal";
 import { FinanceLineStatusBadge } from "../shared/FinanceLineStatusBadge";
+import { FinanceEntityQuickActions } from "../shared/FinanceEntityQuickActions";
 import { TripScopedSectionHeader } from "../shared/TripScopedSectionHeader";
 import { HomestaysPanel } from "./HomestaysPanel";
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
+import type { CostsPatchResult } from "../useTripOsEngine";
 
 function PanelActionButton(props: {
   children: React.ReactNode;
@@ -49,6 +52,9 @@ function StayListItem(props: {
   financeStatus: EntityFinanceDisplayStatus;
   financeAttentionReason?: string | null;
   onOpenFinance?: () => void;
+  showFinanceActions?: boolean;
+  saving?: boolean;
+  onMarkTbc?: () => void;
 }) {
   const { stay } = props;
   return (
@@ -65,11 +71,18 @@ function StayListItem(props: {
           <p className="mt-1 text-xs text-amber-800">{stay.notes}</p>
         ) : null}
       </div>
-      <FinanceLineStatusBadge
-        status={props.financeStatus}
-        attentionReason={props.financeAttentionReason}
-        onNeedsAttention={props.onOpenFinance}
-      />
+      <div className="flex shrink-0 items-center gap-2">
+        <FinanceEntityQuickActions
+          show={Boolean(props.showFinanceActions)}
+          saving={props.saving}
+          onTbc={props.onMarkTbc}
+        />
+        <FinanceLineStatusBadge
+          status={props.financeStatus}
+          attentionReason={props.financeAttentionReason}
+          onNeedsAttention={props.onOpenFinance}
+        />
+      </div>
     </li>
   );
 }
@@ -119,6 +132,7 @@ export function AccommodationSection(props: {
   onReload?: () => void;
   costLedger?: CostLedgerProjection | null;
   onOpenFinanceSection?: (section: FinanceBuiltInSection, lineId?: string) => void;
+  onCostsAction?: (payload: Record<string, unknown>) => Promise<CostsPatchResult>;
 }) {
   const [roomsModalOpen, setRoomsModalOpen] = useState(false);
   const [homestaysModalOpen, setHomestaysModalOpen] = useState(false);
@@ -161,7 +175,21 @@ export function AccommodationSection(props: {
   const hasAnyStays = allScopes.some((scope) => scope.items.length > 0);
 
   function openStayFinance(stayId: string) {
-    props.onOpenFinanceSection?.("accommodation", stayFinanceAttention.get(stayId));
+    const lineId =
+      stayFinanceAttention.get(stayId) ?? stayFinanceLineId(stayId, props.costLedger);
+    props.onOpenFinanceSection?.("accommodation", lineId ?? undefined);
+  }
+
+  async function markStayTbc(stayId: string) {
+    if (!props.onCostsAction) return;
+    const lineId =
+      stayFinanceAttention.get(stayId) ?? stayFinanceLineId(stayId, props.costLedger);
+    if (!lineId) return;
+    await props.onCostsAction({
+      action: "updateLine",
+      lineId,
+      line: { costStatus: "tbc" },
+    });
   }
 
   function scopeHeaderAction(scope: TripScopeSection<AccommodationStayDraft>) {
@@ -225,6 +253,12 @@ export function AccommodationSection(props: {
               financeStatus={stayFinanceDisplayStatus(s.id, props.costLedger)}
               financeAttentionReason={stayFinanceAttentionReason(s.id, props.costLedger)}
               onOpenFinance={() => openStayFinance(s.id)}
+              showFinanceActions={
+                stayFinanceDisplayStatus(s.id, props.costLedger) === "needs_attention" &&
+                Boolean(props.onCostsAction)
+              }
+              saving={props.saving}
+              onMarkTbc={() => void markStayTbc(s.id)}
             />
           ))}
         </ul>

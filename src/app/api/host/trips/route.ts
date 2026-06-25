@@ -67,6 +67,7 @@ export async function GET() {
         ...row,
         canDelete: deleteStatus.canDelete,
         deleteBlockedReason: deleteStatus.reason,
+        deleteWarning: deleteStatus.deleteWarning,
         status: lifecycle.status,
         statusLabel: TRIP_STATUS_LABELS[lifecycle.status],
         wizardStep: lifecycle.wizardStep,

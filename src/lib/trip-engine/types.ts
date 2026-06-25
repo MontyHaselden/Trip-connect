@@ -52,6 +52,8 @@ export type TripEntityGraph = TripSetupState & {
   bookingsSummary: BookingDetailsSummary[];
   emergencySummary: EmergencySummary;
   publishSummary: PublishSummary;
+  /** Stable keys for calendar transport suggestions the host chose to hide. */
+  hiddenPendingTransportNeedKeys?: string[];
 };
 
 export type EngineWarningSeverity = "error" | "warning" | "info";

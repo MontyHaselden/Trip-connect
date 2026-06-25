@@ -36,7 +36,8 @@ export const SOLUTIONS = [
 ] as const;
 
 export const BUILT_FOR_SCHOOLS = [
-  "No location tracking",
+  "No live GPS tracking",
+  "Finance exports for school trip costs (no per-student fees)",
   "Role-based access",
   "Students only see what they need",
   "Parents/viewers have read-only access",
@@ -59,9 +60,9 @@ export const FEATURES = [
       "Build the trip step by step without needing AI. Add trip dates, transport, accommodation, cities, pre-trip meetings, rooms, groups, and activities through a guided school-trip setup flow.",
   },
   {
-    title: "AI itinerary builder",
+    title: "AI itinerary builder (beta)",
     description:
-      "Available on higher plans. Paste messy trip notes, documents, or changes and let AI help structure the itinerary, detect clashes, suggest categories, and generate emergency phrases.",
+      "Paste messy trip notes or documents and let AI help structure days, detect clashes, and draft emergency phrases. Available on the school plan — best for a first draft, then review in Trip OS.",
   },
   {
     title: "Compact daily schedule",
@@ -89,9 +90,9 @@ export const FEATURES = [
       "Students can access an offline emergency card with teacher contacts, hotel address, school details, and useful local-language phrases.",
   },
   {
-    title: "Daily weather",
+    title: "Trip finance & exports",
     description:
-      "Each day can show local weather for the city or town the group is in, helping students prepare with jackets, umbrellas, water, or warmer clothes.",
+      "Spreadsheet-style cost splits by accommodation, transport, and activities — plus printable reports and CSV exports for school finance teams. Xero-ready export files; no automatic accounting sync yet.",
   },
   {
     title: "Pre-trip meetings",

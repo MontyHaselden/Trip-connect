@@ -33,7 +33,7 @@ export function LandingPage() {
               href="/signup?type=school"
               className="inline-flex h-11 items-center justify-center rounded-xl bg-zinc-900 px-6 text-sm font-medium text-white"
             >
-              Start your school account
+              Start 7-day free trial
             </Link>
             <Link
               href="/demo"
@@ -174,8 +174,8 @@ export function LandingPage() {
         <div className="mx-auto max-w-3xl px-5 text-center">
           <h2 className="text-2xl font-semibold">Start with one school trip.</h2>
           <p className="mt-3 text-zinc-600">
-            Create a school account, build your first trip, and give students a clearer way to
-            travel.
+            Create a school account with a 7-day free trial — no card required. Build your first
+            trip and preview what students will see.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link

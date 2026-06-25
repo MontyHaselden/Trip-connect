@@ -1,5 +1,4 @@
 import { effectiveStayNights, nightsLabel } from "./accommodation-nights";
-import { participantHeaderLabel } from "./display-utils";
 import { filterParticipantsForFinanceSection } from "./finance-section-exclusions";
 import {
   financeSectionDescription,
@@ -8,7 +7,6 @@ import {
   financeSectionList,
   groupLinesByFinanceSection,
   logisticsGrossForParticipant,
-  participantAllocationCents,
   sectionTotalForParticipant,
 } from "./finance-sections";
 import { computeFinanceTripSummary } from "./finance-summary";
@@ -130,11 +128,11 @@ function portraitStyles(): string {
     }
     .hero-title {
       margin: 0;
-      font-family: Georgia, "Times New Roman", serif;
-      font-size: 28pt;
-      font-weight: 600;
+      font-family: inherit;
+      font-size: 22pt;
+      font-weight: 700;
       letter-spacing: -0.02em;
-      line-height: 1.1;
+      line-height: 1.15;
       color: var(--ink);
     }
     .hero-meta {
@@ -159,13 +157,13 @@ function portraitStyles(): string {
       gap: 12px;
       margin-bottom: 14px;
       padding-bottom: 8px;
-      border-bottom: 2px solid var(--accent-mid);
+      border-bottom: 1px solid var(--line);
     }
     .section-title {
       margin: 0;
-      font-size: 14pt;
+      font-size: 12pt;
       font-weight: 700;
-      letter-spacing: -0.01em;
+      letter-spacing: 0.01em;
     }
     .section-desc {
       margin: 4px 0 0;
@@ -175,7 +173,7 @@ function portraitStyles(): string {
     .section-total {
       font-size: 11pt;
       font-weight: 700;
-      color: var(--accent);
+      color: var(--ink);
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }
@@ -231,50 +229,25 @@ function portraitStyles(): string {
     table.data td.num,
     table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
     table.data tr.subtotal td {
-      background: var(--accent-soft);
+      background: #f4f4f5;
       font-weight: 700;
+      border-top: 2px solid #d4d4d8;
     }
     table.data tr.line-row td:first-child { font-weight: 600; }
+    table.data td.muted { color: var(--muted); font-size: 8.5pt; }
+    table.data td.line-detail { color: var(--muted); font-size: 8.5pt; max-width: 9rem; }
 
-    .line-card {
+    .matrix-wrap {
+      overflow-x: auto;
       border: 1px solid var(--line);
       border-radius: 10px;
-      margin-bottom: 12px;
-      overflow: hidden;
-      background: #fff;
     }
-    .line-card-head {
-      display: grid;
-      grid-template-columns: 1fr auto auto;
-      gap: 8px 14px;
-      align-items: baseline;
-      padding: 10px 12px;
-      background: linear-gradient(180deg, #fff 0%, var(--panel) 100%);
-      border-bottom: 1px solid var(--line);
-    }
-    .line-title { font-weight: 700; font-size: 10.5pt; }
-    .line-meta { font-size: 8.5pt; color: var(--muted); margin-top: 2px; }
-    .line-qty, .line-total {
-      font-size: 9pt;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
-    .line-total { color: var(--accent); font-size: 10pt; }
-
-    .alloc-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 9pt;
-    }
-    .alloc-table td {
-      padding: 5px 12px;
-      border-top: 1px solid #f4f4f5;
-      font-variant-numeric: tabular-nums;
-    }
-    .alloc-table td:first-child { color: #3f3f46; }
-    .alloc-table td:last-child { text-align: right; font-weight: 500; }
-    .alloc-table tr:nth-child(even) td { background: #fafafa; }
+    .matrix-wrap table.data { border: 0; }
+    .matrix-wrap table.data th,
+    .matrix-wrap table.data td { border-left: 0; border-right: 0; }
+    .matrix-wrap table.data th:first-child,
+    .matrix-wrap table.data td:first-child { border-left: 0; }
+    .matrix-wrap table.data tr:last-child td { border-bottom: 0; }
 
     .footnote {
       margin-top: 18px;
@@ -313,9 +286,9 @@ function portraitStyles(): string {
     }
     .personal-summary-card .value {
       margin-top: 6px;
-      font-family: Georgia, "Times New Roman", serif;
-      font-size: 22pt;
-      font-weight: 600;
+      font-family: inherit;
+      font-size: 20pt;
+      font-weight: 700;
       font-variant-numeric: tabular-nums;
       color: var(--ink);
     }
@@ -615,46 +588,28 @@ function participantOverviewHtml(
     </section>`;
 }
 
-function lineAllocationsHtml(
+function lineDetailMeta(
   line: CostLineItemDraft,
-  participants: RosterSummary["participants"],
-  allocationByLine: Map<string, Record<string, number>>,
-  settings: CostLedgerProjection["settings"],
-  currency: string,
+  graph: TripEntityGraph | null | undefined,
 ): string {
-  const rows = participants
-    .map((participant) => {
-      const cents = participantAllocationCents(
-        line,
-        participant.id,
-        allocationByLine,
-        settings,
-      );
-      if (cents <= 0) return "";
-      const label = participantHeaderLabel(participant, participants);
-      return `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(formatMoney(cents, currency))}</td></tr>`;
-    })
-    .filter(Boolean)
-    .join("");
-
-  if (!rows) return `<p class="line-meta" style="padding:8px 12px">No per-person allocations recorded.</p>`;
-
-  return `<table class="alloc-table">${rows}</table>`;
+  const metaParts: string[] = [];
+  if (graph) {
+    const span = lineDateSpanLabel(line, graph);
+    if (span) metaParts.push(span);
+  }
+  if (line.supplierName?.trim()) metaParts.push(line.supplierName.trim());
+  return metaParts.join(" · ");
 }
 
 function financeSectionBlockHtml(
   section: string,
   sectionLines: CostLineItemDraft[],
   ledger: CostLedgerProjection,
-  roster: RosterSummary,
   graph: TripEntityGraph | null | undefined,
-  pool: RosterSummary["participants"],
-  allocationByLine: Map<string, Record<string, number>>,
 ): string {
   if (!sectionLines.length) return "";
 
   const currency = ledger.settings.baseCurrency;
-  const sectionPool = filterParticipantsForFinanceSection(pool, ledger.settings, section);
   const label = financeSectionLabel(section, ledger.settings);
   const description = financeSectionDescription(section, ledger.settings);
 
@@ -663,46 +618,19 @@ function financeSectionBlockHtml(
     sectionTotal += convertToBaseCents(line.totalAmountCents, line.currency, ledger.settings);
   }
 
-  const lineCards = sectionLines
+  const lineRows = sectionLines
     .map((line) => {
-      const metaParts: string[] = [];
-      if (graph) {
-        const span = lineDateSpanLabel(line, graph);
-        if (span) metaParts.push(span);
-      }
-      if (line.supplierName?.trim()) metaParts.push(line.supplierName.trim());
-
+      const detail = lineDetailMeta(line, graph);
       const totalBase = convertToBaseCents(line.totalAmountCents, line.currency, ledger.settings);
 
       return `
-        <div class="line-card avoid-break">
-          <div class="line-card-head">
-            <div>
-              <div class="line-title">${escapeHtml(line.description)}</div>
-              ${metaParts.length ? `<div class="line-meta">${escapeHtml(metaParts.join(" · "))}</div>` : ""}
-            </div>
-            <div class="line-qty">${escapeHtml(lineQtyLabel(line, graph))}</div>
-            <div class="line-total">${escapeHtml(totalBase > 0 ? formatMoney(totalBase, currency) : "—")}</div>
-          </div>
-          ${lineAllocationsHtml(line, sectionPool, allocationByLine, ledger.settings, currency)}
-        </div>`;
+        <tr class="line-row">
+          <td>${escapeHtml(line.description)}</td>
+          <td class="line-detail">${escapeHtml(detail || "—")}</td>
+          <td class="num">${escapeHtml(lineQtyLabel(line, graph))}</td>
+          <td class="num">${escapeHtml(totalBase > 0 ? formatMoney(totalBase, currency) : "—")}</td>
+        </tr>`;
     })
-    .join("");
-
-  const subtotalCells = sectionPool
-    .map((participant) => {
-      const total = sectionTotalForParticipant(
-        sectionLines,
-        participant.id,
-        allocationByLine,
-        ledger.settings,
-      );
-      return `<td class="num">${escapeHtml(total > 0 ? formatMoney(total, currency) : "—")}</td>`;
-    })
-    .join("");
-
-  const participantHeaders = sectionPool
-    .map((p) => `<th class="num">${escapeHtml(participantHeaderLabel(p, sectionPool))}</th>`)
     .join("");
 
   return `
@@ -714,23 +642,25 @@ function financeSectionBlockHtml(
         </div>
         <div class="section-total">${escapeHtml(formatMoney(sectionTotal, currency))}</div>
       </div>
-      ${lineCards}
-      <table class="data avoid-break" style="margin-top:4px">
-        <thead>
-          <tr>
-            <th>Section subtotal</th>
-            ${participantHeaders}
-            <th class="num">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr class="subtotal">
-            <td>${escapeHtml(label)}</td>
-            ${subtotalCells}
-            <td class="num">${escapeHtml(formatMoney(sectionTotal, currency))}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="matrix-wrap avoid-break">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Details</th>
+              <th class="num">Qty</th>
+              <th class="num">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lineRows}
+            <tr class="subtotal">
+              <td colspan="3">Section total</td>
+              <td class="num">${escapeHtml(formatMoney(sectionTotal, currency))}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>`;
 }
 
@@ -888,15 +818,7 @@ export function buildFinancePortraitHtml(options: {
 
   const sectionBlocks = sectionsToRender
     .map((section) =>
-      financeSectionBlockHtml(
-        section,
-        linesBySection.get(section) ?? [],
-        ledger,
-        roster,
-        graph,
-        pool,
-        allocationByLine,
-      ),
+      financeSectionBlockHtml(section, linesBySection.get(section) ?? [], ledger, graph),
     )
     .filter(Boolean)
     .join("");

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { DateTime } from "luxon";
 
+import { VenueNamePicker } from "@/components/geo/VenueNamePicker";
 import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import type { ActivityDraft } from "@/lib/host/wizard/types";
 import { newId } from "@/lib/host/wizard/types";
@@ -13,9 +14,63 @@ import { activitiesOnDate } from "@/lib/trip-engine/selectors";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 import { AsyncButton } from "../shared/AsyncButton";
-import { TripInput } from "../shared/TripInput";
+import { tripFieldClass, TripInput } from "../shared/TripInput";
 import { TripPrimaryButton } from "../shared/TripPrimaryButton";
 import { TripSoftPanel } from "../shared/TripSectionShell";
+
+function ActivityAddressField(props: {
+  value: string;
+  onChange: (value: string) => void;
+  countryNames: string[];
+  cityHint?: string;
+  onBlur?: () => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-sm font-medium text-zinc-700">Address (optional)</span>
+      <VenueNamePicker
+        value={props.value}
+        onChange={props.onChange}
+        onSelectVenue={({ address }) => {
+          if (address) props.onChange(address);
+        }}
+        countryNames={props.countryNames}
+        cityHint={props.cityHint}
+        placeholder="Search or type an address…"
+        inputClassName={tripFieldClass}
+        onBlur={props.onBlur}
+      />
+      <p className="mt-1 text-[11px] text-zinc-400">
+        For maps and student directions — does not affect setup status.
+      </p>
+    </label>
+  );
+}
+
+function newActivityPayload(
+  partial: Pick<ActivityDraft, "id" | "title" | "date" | "startTime" | "endTime" | "address">,
+): ActivityDraft {
+  return {
+    id: partial.id,
+    title: partial.title,
+    date: partial.date,
+    endDate: null,
+    startTime: partial.startTime,
+    endTime: partial.endTime,
+    isTimeTbc: false,
+    category: "activity",
+    locationName: null,
+    address: partial.address,
+    isLocationTbc: true,
+    transportNote: null,
+    leaveByTime: null,
+    bringNote: null,
+    description: null,
+    audienceType: "everyone",
+    audienceId: null,
+    bookingStatus: "not_booked",
+  };
+}
 
 function activitySortKey(activity: ActivityDraft): string {
   if (activity.isTimeTbc || !activity.startTime?.trim()) return "99:99";
@@ -47,10 +102,19 @@ export function DayOverviewActivities(props: {
 }) {
   const [adding, setAdding] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
+  const [addressDraft, setAddressDraft] = useState("");
   const [title, setTitle] = useState("");
   const [startTime, setStartTime] = useState("10:00");
   const [endTime, setEndTime] = useState("");
+  const [address, setAddress] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+
+  const countryNames = props.graph.basics.destinationCountries ?? [];
+  const cityHint = useMemo(() => {
+    const places = props.graph.dayPlacesByGroupId[props.groupId] ?? [];
+    return places.find((place) => place.date === props.rangeStart)?.primaryCity ?? undefined;
+  }, [props.graph.dayPlacesByGroupId, props.groupId, props.rangeStart]);
 
   const activitiesByDay = useMemo(() => {
     const end = props.rangeEnd || props.rangeStart;
@@ -97,32 +161,21 @@ export function DayOverviewActivities(props: {
     const normalizedStart = normalizeTime(startTime);
     const normalizedEnd = endTime.trim() ? normalizeTime(endTime) : null;
     const activityId = newId();
+    const trimmedAddress = address.trim() || null;
 
     const ok = await props.onDispatch([
       {
         type: "addActivity",
         groupId: props.groupId,
         linkFinanceLineId: lineId,
-        activity: {
+        activity: newActivityPayload({
           id: activityId,
           title: lineTitle.trim(),
           date: props.rangeStart,
-          endDate: null,
           startTime: normalizedStart,
           endTime: normalizedEnd,
-          isTimeTbc: false,
-          category: "activity",
-          locationName: null,
-          address: null,
-          isLocationTbc: true,
-          transportNote: null,
-          leaveByTime: null,
-          bringNote: null,
-          description: null,
-          audienceType: "everyone",
-          audienceId: null,
-          bookingStatus: "not_booked",
-        },
+          address: trimmedAddress,
+        }),
       },
     ]);
 
@@ -130,6 +183,7 @@ export function DayOverviewActivities(props: {
       setTitle("");
       setStartTime("10:00");
       setEndTime("");
+      setAddress("");
       setAdding(false);
     }
   }
@@ -147,31 +201,20 @@ export function DayOverviewActivities(props: {
     }
     const normalizedStart = normalizeTime(startTime);
     const normalizedEnd = endTime.trim() ? normalizeTime(endTime) : null;
+    const trimmedAddress = address.trim() || null;
 
     const ok = await props.onDispatch([
       {
         type: "addActivity",
         groupId: props.groupId,
-        activity: {
+        activity: newActivityPayload({
           id: newId(),
           title: trimmedTitle,
           date: props.rangeStart,
-          endDate: null,
           startTime: normalizedStart,
           endTime: normalizedEnd,
-          isTimeTbc: false,
-          category: "activity",
-          locationName: null,
-          address: null,
-          isLocationTbc: true,
-          transportNote: null,
-          leaveByTime: null,
-          bringNote: null,
-          description: null,
-          audienceType: "everyone",
-          audienceId: null,
-          bookingStatus: "not_booked",
-        },
+          address: trimmedAddress,
+        }),
       },
     ]);
 
@@ -179,8 +222,36 @@ export function DayOverviewActivities(props: {
       setTitle("");
       setStartTime("10:00");
       setEndTime("");
+      setAddress("");
       setAdding(false);
     }
+  }
+
+  function startEditingAddress(activity: ActivityDraft) {
+    setEditingAddressId(activity.id);
+    setAddressDraft(activity.address ?? "");
+  }
+
+  async function saveActivityAddress(activityId: string) {
+    const activity = props.graph.activities.find((row) => row.id === activityId);
+    if (!activity) {
+      setEditingAddressId(null);
+      return;
+    }
+    const nextAddress = addressDraft.trim() || null;
+    if ((activity.address ?? null) === nextAddress) {
+      setEditingAddressId(null);
+      return;
+    }
+    const ok = await props.onDispatch([
+      {
+        type: "updateActivity",
+        groupId: props.groupId,
+        activityId,
+        patch: { address: nextAddress },
+      },
+    ]);
+    if (ok) setEditingAddressId(null);
   }
 
   async function removeActivity(activityId: string) {
@@ -263,6 +334,14 @@ export function DayOverviewActivities(props: {
               onChange={(e) => setEndTime(e.target.value)}
               label="End time (optional)"
             />
+            <div className="sm:col-span-2">
+              <ActivityAddressField
+                value={address}
+                onChange={setAddress}
+                countryNames={countryNames}
+                cityHint={cityHint}
+              />
+            </div>
           </div>
           {formError ? <p className="mt-2 text-sm text-red-600">{formError}</p> : null}
           <div className="mt-4 flex flex-wrap gap-2">
@@ -274,6 +353,7 @@ export function DayOverviewActivities(props: {
               onClick={() => {
                 setAdding(false);
                 setFormError(null);
+                setAddress("");
               }}
               className="rounded-full px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100"
             >
@@ -294,29 +374,79 @@ export function DayOverviewActivities(props: {
               ) : null}
               <ul className="divide-y divide-zinc-100">
                 {dayActivities.map((activity) => (
-                  <li
-                    key={activity.id}
-                    className="flex items-baseline justify-between gap-3 py-1.5"
-                  >
-                    <div className="min-w-0 flex items-baseline gap-2 text-sm">
-                      <span className="w-10 shrink-0 text-[11px] tabular-nums text-zinc-400">
-                        {formatActivityTime(activity)}
-                      </span>
-                      <span className="min-w-0 truncate text-zinc-800">{activity.title}</span>
-                      {activity.locationName ? (
-                        <span className="hidden min-w-0 truncate text-xs text-zinc-400 sm:inline">
-                          · {activity.locationName}
-                        </span>
-                      ) : null}
+                  <li key={activity.id} className="py-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-baseline gap-2 text-sm">
+                          <span className="w-10 shrink-0 text-[11px] tabular-nums text-zinc-400">
+                            {formatActivityTime(activity)}
+                          </span>
+                          <span className="min-w-0 truncate text-zinc-800">{activity.title}</span>
+                          {activity.locationName ? (
+                            <span className="hidden min-w-0 truncate text-xs text-zinc-400 sm:inline">
+                              · {activity.locationName}
+                            </span>
+                          ) : null}
+                        </div>
+                        {editingAddressId === activity.id ? (
+                          <div className="ml-12 mt-2 space-y-2">
+                            <VenueNamePicker
+                              value={addressDraft}
+                              onChange={setAddressDraft}
+                              onSelectVenue={({ address: picked }) => {
+                                if (picked) setAddressDraft(picked);
+                              }}
+                              countryNames={countryNames}
+                              cityHint={cityHint}
+                              placeholder="Search or type an address…"
+                              inputClassName={tripFieldClass}
+                              onBlur={() => void saveActivityAddress(activity.id)}
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void saveActivityAddress(activity.id)}
+                                className="rounded-full bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-700"
+                              >
+                                Save address
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingAddressId(null)}
+                                className="rounded-full px-3 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : activity.address?.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() => startEditingAddress(activity)}
+                            className="ml-12 mt-0.5 block max-w-full truncate text-left text-xs text-zinc-400 hover:text-zinc-600"
+                            title={activity.address}
+                          >
+                            {activity.address}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startEditingAddress(activity)}
+                            className="ml-12 mt-0.5 text-xs font-medium text-violet-600 hover:text-violet-700"
+                          >
+                            + Add address
+                          </button>
+                        )}
+                      </div>
+                      <AsyncButton
+                        loading={removingId === activity.id}
+                        loadingLabel="…"
+                        onClick={() => void removeActivity(activity.id)}
+                        className="shrink-0 text-xs text-zinc-400 hover:text-red-600"
+                      >
+                        Remove
+                      </AsyncButton>
                     </div>
-                    <AsyncButton
-                      loading={removingId === activity.id}
-                      loadingLabel="…"
-                      onClick={() => void removeActivity(activity.id)}
-                      className="shrink-0 text-xs text-zinc-400 hover:text-red-600"
-                    >
-                      Remove
-                    </AsyncButton>
                   </li>
                 ))}
               </ul>

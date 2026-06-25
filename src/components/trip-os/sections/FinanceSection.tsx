@@ -16,7 +16,7 @@ import type { FinanceViewGroup } from "@/lib/trip-engine/cost-ledger/types";
 
 import type { CostsPatchResult } from "../useTripOsEngine";
 import { hostJson } from "@/components/host/shared/host-fetch";
-import { extraLinePayload, patchBulkParticipantAllocations, patchLinePayload, patchParticipantAllocation } from "../finance/finance-line-patch";
+import { extraLinePayload, patchBulkParticipantAllocations, patchLinePayload, patchParticipantAllocation, type FinanceLinePatch } from "../finance/finance-line-patch";
 import { patchBulkFundAllocations, patchFundParticipantAllocation } from "../finance/finance-fund-patch";
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
 
@@ -245,7 +245,7 @@ function FinanceSectionBody(props: {
     });
   }
 
-  async function patchLine(lineId: string, patch: Partial<CostLineFormValues>) {
+  async function patchLine(lineId: string, patch: FinanceLinePatch) {
     const resolvedId = props.resolveFinanceLineId?.(lineId) ?? lineId;
     const line =
       ledgerForGrid.lineItems.find((l) => l.id === lineId) ??

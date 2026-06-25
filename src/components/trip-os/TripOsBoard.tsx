@@ -187,6 +187,11 @@ export function TripOsBoard(props: { tripId: string }) {
           handleNavSelect("finance");
           return;
         }
+        if (status?.tbcCount) {
+          setFinanceFocus({ tab: section as FinanceBuiltInSection });
+          handleNavSelect("finance");
+          return;
+        }
       }
       handleNavSelect(section);
     },

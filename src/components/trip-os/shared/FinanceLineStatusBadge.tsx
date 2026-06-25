@@ -28,6 +28,43 @@ export function FinanceLineStatusBadge(props: {
     );
   }
 
+  if (props.status === "tbc") {
+    const actionLabel = props.actionLabel ?? "Finance";
+    const hoverReason =
+      props.attentionReason?.trim() || "Open in Finance — pricing still to be confirmed";
+
+    if (props.variant === "rail") {
+      return (
+        <button
+          type="button"
+          onClick={props.onNeedsAttention}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-amber-300 bg-amber-50 text-[9px] font-bold text-amber-800 hover:bg-amber-100"
+          title={hoverReason}
+          aria-label={hoverReason}
+        >
+          TBC
+        </button>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={props.onNeedsAttention}
+        className="flex shrink-0 flex-col items-center gap-0.5 rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-center hover:bg-amber-100"
+        title={hoverReason}
+        aria-label={`${actionLabel} — ${hoverReason}`}
+      >
+        <span className="flex h-5 w-5 items-center justify-center rounded bg-amber-500/15 text-[10px] font-bold leading-none text-amber-800">
+          TBC
+        </span>
+        <span className="text-[11px] font-semibold leading-tight text-amber-900">
+          {actionLabel}
+        </span>
+      </button>
+    );
+  }
+
   const actionLabel = props.actionLabel ?? "Add finances";
   const hoverReason =
     props.attentionReason?.trim() ||

@@ -20,6 +20,7 @@ type JoinRosterResponse = {
 };
 
 const POLL_MS = 4000;
+const QR_SIZE = 520;
 
 function joinUrl(inviteCode: string) {
   if (typeof window === "undefined") return studentAppPath(inviteCode);
@@ -30,6 +31,10 @@ function roleLabel(role: string) {
   if (role === "teacher") return "Teacher";
   if (role === "helper") return "Helper";
   return null;
+}
+
+function firstName(fullName: string): string {
+  return fullName.trim().split(/\s+/)[0] || fullName;
 }
 
 export function JoinBoardClient(props: { inviteCode: string; tripName: string }) {
@@ -52,9 +57,9 @@ export function JoinBoardClient(props: { inviteCode: string; tripName: string })
     const nextUrl = joinUrl(inviteCode);
     setUrl(nextUrl);
     void QRCode.toDataURL(nextUrl, {
-      width: 320,
+      width: QR_SIZE,
       margin: 2,
-      color: { dark: "#0f172a", light: "#ffffff" },
+      color: { dark: "#18181b", light: "#ffffff" },
     }).then(setQrDataUrl);
   }, [inviteCode]);
 
@@ -81,24 +86,26 @@ export function JoinBoardClient(props: { inviteCode: string; tripName: string })
   );
 
   return (
-    <div className="flex min-h-dvh flex-col bg-slate-950 text-white">
-      <header className="border-b border-white/10 px-8 py-6">
-        <p className="text-sm font-medium uppercase tracking-[0.2em] text-violet-300">
+    <div className="flex min-h-dvh flex-col bg-zinc-100 text-zinc-900">
+      <header className="border-b border-zinc-200 bg-white px-6 py-8 text-center">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-violet-700">
           Join trip
         </p>
-        <h1 className="mt-1 text-4xl font-bold tracking-tight md:text-5xl">{displayName}</h1>
+        <h1 className="mt-2 text-4xl font-bold tracking-tight text-zinc-900 md:text-5xl">
+          {displayName}
+        </h1>
         {total > 0 ? (
-          <div className="mt-5 max-w-xl">
-            <div className="flex items-baseline justify-between gap-4 text-sm text-slate-300">
+          <div className="mx-auto mt-6 max-w-md">
+            <div className="flex items-baseline justify-between gap-4 text-sm text-zinc-600">
               <span>
-                <span className="text-2xl font-semibold text-white">{joinedCount}</span> of{" "}
-                <span className="text-2xl font-semibold text-white">{total}</span> joined
+                <span className="text-2xl font-semibold text-emerald-700">{joinedCount}</span> of{" "}
+                <span className="text-2xl font-semibold text-zinc-900">{total}</span> joined
               </span>
-              <span>{progress}%</span>
+              <span className="font-medium tabular-nums">{progress}%</span>
             </div>
-            <div className="mt-2 h-3 overflow-hidden rounded-full bg-white/10">
+            <div className="mt-2 h-3 overflow-hidden rounded-full bg-zinc-200">
               <div
-                className="h-full rounded-full bg-emerald-400 transition-all duration-500"
+                className="h-full rounded-full bg-emerald-500 transition-all duration-500"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -106,10 +113,44 @@ export function JoinBoardClient(props: { inviteCode: string; tripName: string })
         ) : null}
       </header>
 
-      <div className="grid flex-1 gap-8 px-8 py-8 lg:grid-cols-[minmax(280px,360px)_1fr]">
-        <section className="flex flex-col items-center rounded-3xl border border-white/10 bg-white p-8 text-slate-900 shadow-2xl">
-          <p className="text-center text-lg font-semibold">Scan to join on your phone</p>
-          <p className="mt-1 text-center text-sm text-slate-600">
+      <div className="grid flex-1 gap-5 px-4 py-6 lg:grid-cols-[minmax(11rem,14rem)_minmax(0,1fr)_minmax(11rem,14rem)] lg:px-6 xl:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)_minmax(12rem,16rem)]">
+        <section className="flex min-h-0 flex-col rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-200/80 text-xs">
+              …
+            </span>
+            <span className="min-w-0 truncate">Still to join</span>
+            <span className="ml-auto shrink-0 text-xl font-bold tabular-nums text-amber-950">
+              {waiting.length}
+            </span>
+          </h2>
+          <ul className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
+            {waitingSorted.length === 0 ? (
+              <li className="text-xs leading-relaxed text-amber-800/80">
+                {total === 0 ? "No students on the roster yet." : "Everyone has joined!"}
+              </li>
+            ) : (
+              waitingSorted.map((person) => (
+                <li
+                  key={person.id}
+                  className="rounded-lg border border-amber-200/80 bg-white px-2.5 py-2"
+                  title={person.fullName}
+                >
+                  <p className="truncate text-sm font-medium text-zinc-900">
+                    {firstName(person.fullName)}
+                  </p>
+                  {roleLabel(person.role) ? (
+                    <p className="truncate text-[10px] text-amber-800/70">{roleLabel(person.role)}</p>
+                  ) : null}
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
+
+        <section className="flex flex-col items-center justify-center rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm lg:p-8">
+          <p className="text-center text-xl font-semibold text-zinc-900">Scan to join on your phone</p>
+          <p className="mt-1 text-center text-sm text-zinc-600">
             Tap your name, then set a password
           </p>
           {qrDataUrl ? (
@@ -117,70 +158,48 @@ export function JoinBoardClient(props: { inviteCode: string; tripName: string })
             <img
               src={qrDataUrl}
               alt={`QR code to join ${displayName}`}
-              className="mt-6 w-full max-w-[280px] rounded-xl"
+              className="mt-6 w-full max-w-[min(520px,72vw)] rounded-xl"
             />
           ) : (
-            <div className="mt-6 aspect-square w-full max-w-[280px] animate-pulse rounded-xl bg-slate-100" />
+            <div className="mt-6 aspect-square w-full max-w-[min(520px,72vw)] animate-pulse rounded-xl bg-zinc-100" />
           )}
-          <p className="mt-6 break-all text-center font-mono text-xs text-slate-500">{url}</p>
+          <p className="mt-5 max-w-lg break-all text-center font-mono text-[10px] text-zinc-400">
+            {url}
+          </p>
         </section>
 
-        <section className="grid min-h-0 gap-6 md:grid-cols-2">
-          <div className="flex min-h-0 flex-col rounded-3xl border border-emerald-500/30 bg-emerald-950/40 p-6">
-            <h2 className="flex items-center gap-2 text-xl font-semibold text-emerald-200">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-sm">
-                ✓
-              </span>
-              Joined
-              <span className="ml-auto text-3xl font-bold text-white">{joinedCount}</span>
-            </h2>
-            <ul className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-              {joinedSorted.length === 0 ? (
-                <li className="text-sm text-emerald-200/70">Nobody yet — be the first!</li>
-              ) : (
-                joinedSorted.map((person) => (
-                  <li
-                    key={person.id}
-                    className="flex items-center justify-between rounded-xl bg-emerald-500/10 px-4 py-3"
-                  >
-                    <span className="text-lg font-medium">{person.fullName}</span>
-                    {roleLabel(person.role) ? (
-                      <span className="text-xs text-emerald-200/80">{roleLabel(person.role)}</span>
-                    ) : null}
-                  </li>
-                ))
-              )}
-            </ul>
-          </div>
-
-          <div className="flex min-h-0 flex-col rounded-3xl border border-amber-500/30 bg-amber-950/30 p-6">
-            <h2 className="flex items-center gap-2 text-xl font-semibold text-amber-200">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/20 text-sm">
-                …
-              </span>
-              Still to join
-              <span className="ml-auto text-3xl font-bold text-white">{waiting.length}</span>
-            </h2>
-            <ul className="mt-4 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-              {waitingSorted.length === 0 ? (
-                <li className="text-sm text-amber-200/70">
-                  {total === 0 ? "No students on the roster yet." : "Everyone has joined!"}
+        <section className="flex min-h-0 flex-col rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-200/80 text-xs">
+              ✓
+            </span>
+            <span className="min-w-0 truncate">Joined</span>
+            <span className="ml-auto shrink-0 text-xl font-bold tabular-nums text-emerald-950">
+              {joinedCount}
+            </span>
+          </h2>
+          <ul className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
+            {joinedSorted.length === 0 ? (
+              <li className="text-xs leading-relaxed text-emerald-800/80">Nobody yet — be the first!</li>
+            ) : (
+              joinedSorted.map((person) => (
+                <li
+                  key={person.id}
+                  className="rounded-lg border border-emerald-200/80 bg-white px-2.5 py-2"
+                  title={person.fullName}
+                >
+                  <p className="truncate text-sm font-medium text-zinc-900">
+                    {firstName(person.fullName)}
+                  </p>
+                  {roleLabel(person.role) ? (
+                    <p className="truncate text-[10px] text-emerald-800/70">
+                      {roleLabel(person.role)}
+                    </p>
+                  ) : null}
                 </li>
-              ) : (
-                waitingSorted.map((person) => (
-                  <li
-                    key={person.id}
-                    className="flex items-center justify-between rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3"
-                  >
-                    <span className="text-lg font-medium">{person.fullName}</span>
-                    {roleLabel(person.role) ? (
-                      <span className="text-xs text-amber-200/80">{roleLabel(person.role)}</span>
-                    ) : null}
-                  </li>
-                ))
-              )}
-            </ul>
-          </div>
+              ))
+            )}
+          </ul>
         </section>
       </div>
     </div>

@@ -157,7 +157,7 @@ export function financeSectionForLine(
     if (settings?.financeCustomSections?.some((s) => s.id === manualSection)) {
       return manualSection;
     }
-    return manualSection;
+    return FINANCE_OTHER_SECTION;
   }
   if (
     !line.linkedStayId &&
@@ -184,7 +184,11 @@ export function groupLinesByFinanceSection(
   );
   for (const line of lines) {
     const section = financeSectionForLine(line, graph, settings);
-    if (section) grouped.get(section)!.push(line);
+    if (!section) continue;
+    if (!grouped.has(section)) {
+      grouped.set(section, []);
+    }
+    grouped.get(section)!.push(line);
   }
   for (const section of sections) {
     const bucket = grouped.get(section) ?? [];

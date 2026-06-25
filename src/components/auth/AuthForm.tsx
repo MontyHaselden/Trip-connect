@@ -176,7 +176,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
               ? "Organisation plans are coming later. Tell us about your group trips."
               : signupKind === "personal"
                 ? "For family holidays, friend trips, and small group travel."
-                : "7-day free trial · $400/year + GST after trial · founding schools $240 first year"}
+                : "7-day free trial · no card required · $400/year + GST after trial"}
         </p>
 
         {mode === "signup" ? (
@@ -245,9 +245,11 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
           {mode === "signup" && signupKind !== "organisation" ? (
             <>
               <label className="block">
-                <span className="text-sm font-medium">Home city or town</span>
+                <span className="text-sm font-medium">
+                  Home city or town{signupKind === "school" ? " (optional)" : ""}
+                </span>
                 <p className="mt-0.5 text-xs text-zinc-500">
-                  Where your group starts and ends trips — e.g. Christchurch for a Darfield school.
+                  Where your group usually starts trips — you can set this per trip later.
                 </p>
                 <PlacePicker
                   value={homeCity}
@@ -257,9 +259,11 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                 />
               </label>
               <label className="block">
-                <span className="text-sm font-medium">Default airport</span>
+                <span className="text-sm font-medium">
+                  Default airport{signupKind === "school" ? " (optional)" : ""}
+                </span>
                 <p className="mt-0.5 text-xs text-zinc-500">
-                  Usual departure airport — flights from here keep the home city for the rest of that day.
+                  Usual departure airport for flight planning.
                 </p>
                 <AirportPicker
                   value={defaultAirport}
@@ -347,8 +351,8 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
               <p className="font-medium">School plan — $400 NZD + GST / year</p>
               <p className="mt-1 text-xs text-zinc-600">
-                Includes AI builder, unlimited students on invite links, and full trip tools. No card
-                required — start your 7-day trial now.
+                Trip planning, student invite links, finance exports, and live trip operations.
+                No card required — start your 7-day free trial now.
               </p>
               <label className="mt-3 flex items-start gap-2 text-sm">
                 <input
@@ -399,7 +403,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
             disabled={
               busy ||
               (mode === "signup" &&
-                signupKind !== "organisation" &&
+                signupKind === "personal" &&
                 (!homeCity.trim() || !defaultAirport.trim()))
             }
             className="h-11 w-full rounded-full bg-violet-600 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
@@ -413,6 +417,18 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                   : "Create account"}
           </button>
         </form>
+
+        <p className="mt-4 text-center text-xs text-zinc-500">
+          By creating an account you agree to our{" "}
+          <Link href="/terms" className="underline hover:text-zinc-800">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="underline hover:text-zinc-800">
+            Privacy policy
+          </Link>
+          .
+        </p>
 
         <p className="mt-4 text-center text-sm text-zinc-600">
           {mode === "login" ? (

@@ -78,6 +78,7 @@ describe("buildFinancePortraitHtml", () => {
 
     assert.match(html, /Transport/);
     assert.match(html, /Flight AKL → CHC/);
-    assert.match(html, /Amanda S\./);
+    assert.match(html, /Section total/);
+    assert.doesNotMatch(html, /class="num">Amanda/);
   });
 });

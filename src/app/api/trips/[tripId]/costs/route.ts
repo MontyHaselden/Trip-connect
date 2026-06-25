@@ -119,6 +119,7 @@ const LineItemSchema = z.object({
       "paid",
       "cancelled",
       "no_cost",
+      "tbc",
     ])
     .optional(),
   linePaymentStatus: z
@@ -754,7 +755,9 @@ export async function PATCH(
       if (!fundId) {
         return NextResponse.json({ error: "Fund id required." }, { status: 400 });
       }
-      await db.delete(tripFunds).where(eq(tripFunds.id, fundId));
+      await db
+        .delete(tripFunds)
+        .where(and(eq(tripFunds.id, fundId), eq(tripFunds.tripId, tripId)));
       skipLedgerGraphSync = true;
     } else if (action === "deleteFunds") {
       const fundIds = json.fundIds;

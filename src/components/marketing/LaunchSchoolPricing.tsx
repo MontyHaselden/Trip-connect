@@ -69,7 +69,13 @@ export async function LaunchSchoolPricing() {
               {TRIAL_DAYS}-day free trial · GST applies if we are GST registered · invoiced annually
             </p>
             <ul className="mt-6 space-y-2 text-sm text-zinc-700">
-              {(schoolPlan?.features ?? []).slice(0, 8).map((item) => (
+              {(schoolPlan?.features ?? [
+                "Trip OS calendar — accommodation, transport, activities",
+                "Student invite links and participant preview",
+                "Finance spreadsheet and export reports",
+                "Emergency card, rooms, and groups",
+                "No per-student fees",
+              ]).slice(0, 8).map((item) => (
                 <li key={item} className="flex gap-2">
                   <span className="text-sky-600">✓</span>
                   <span>{item}</span>

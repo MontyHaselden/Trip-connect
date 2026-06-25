@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { applyOptimisticFinancePatch } from "./optimistic-finance-patch";
+import { applyOptimisticFinancePatch, resolveFundDeleteServerPayload } from "./optimistic-finance-patch";
 import type { CostLedgerProjection } from "./types";
 
 const roster = {
@@ -216,5 +216,48 @@ describe("applyOptimisticFinancePatch", () => {
     });
     assert.ok(next);
     assert.equal(next.funds.length, 0);
+  });
+});
+
+describe("resolveFundDeleteServerPayload", () => {
+  const funds = [
+    {
+      id: "fund-real-1",
+      name: "Grant",
+      amountCents: 1000,
+      currency: "NZD",
+      allocationRuleType: "equal_cost_participants" as const,
+      allocationRulePayload: { financeSection: "other" as const },
+      sortOrder: 0,
+      notes: null,
+    },
+  ];
+
+  it("still deletes real funds after optimistic UI removal", () => {
+    const result = resolveFundDeleteServerPayload(
+      { action: "deleteFund", fundId: "fund-real-1" },
+      funds,
+    );
+    assert.equal(result.skipServer, false);
+  });
+
+  it("skips optimistic-only fund deletes", () => {
+    const result = resolveFundDeleteServerPayload(
+      { action: "deleteFund", fundId: "optimistic-fund-123" },
+      funds,
+    );
+    assert.equal(result.skipServer, true);
+  });
+
+  it("filters bulk deletes to server-backed ids", () => {
+    const result = resolveFundDeleteServerPayload(
+      {
+        action: "deleteFunds",
+        fundIds: ["fund-real-1", "optimistic-fund-123"],
+      },
+      funds,
+    );
+    assert.equal(result.skipServer, false);
+    assert.deepEqual(result.payload.fundIds, ["fund-real-1"]);
   });
 });

@@ -72,7 +72,7 @@ function StudentAppLaunchContent() {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-zinc-50 px-6 py-10">
       <div className="max-w-sm text-center">
-        <h1 className="text-lg font-semibold text-zinc-900">Trip Connect</h1>
+        <h1 className="text-lg font-semibold text-zinc-900">Itinerary Live</h1>
         <p className="mt-2 text-sm text-zinc-600">
           {clearedStale
             ? "An old trip link on this device was cleared. Open the current invite link from your organiser."

@@ -163,6 +163,7 @@ export const costStatus = pgEnum("cost_status", [
   "paid",
   "cancelled",
   "no_cost",
+  "tbc",
 ]);
 
 export const linePaymentStatus = pgEnum("line_payment_status", [
@@ -1031,6 +1032,23 @@ export const tripFinanceDismissals = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.tripId, t.entityType, t.entityId] }),
     tripIdx: index("trip_finance_dismissals_trip_idx").on(t.tripId),
+  }),
+);
+
+export const tripHiddenTransportNeeds = pgTable(
+  "trip_hidden_transport_needs",
+  {
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    needKey: text("need_key").notNull(),
+    hiddenAt: timestamp("hidden_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.tripId, t.needKey] }),
+    tripIdx: index("trip_hidden_transport_needs_trip_idx").on(t.tripId),
   }),
 );
 

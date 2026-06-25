@@ -24,6 +24,7 @@ type TripRow = {
   publishedVersion: number;
   canDelete: boolean;
   deleteBlockedReason: string | null;
+  deleteWarning: string | null;
   status: TripLifecycleStatus;
   statusLabel: string;
   wizardStep: number | null;
@@ -57,8 +58,11 @@ export function TripOsClient() {
 
   async function deleteTrip(trip: TripRow) {
     if (!trip.canDelete || deletingId) return;
+    const warning = trip.deleteWarning
+      ? `${trip.deleteWarning}\n\n`
+      : "";
     const confirmed = window.confirm(
-      `Delete "${trip.name}"? This draft trip and any partial itinerary will be removed permanently.`,
+      `${warning}Delete "${trip.name}"? This cannot be undone.`,
     );
     if (!confirmed) return;
 
@@ -131,10 +135,17 @@ export function TripOsClient() {
                         type="button"
                         onClick={() => deleteTrip(t)}
                         disabled={deletingId === t.id}
-                        className="shrink-0 self-center rounded-full px-4 py-2 text-sm font-medium text-red-600 opacity-0 transition hover:bg-red-50 group-hover:opacity-100 disabled:opacity-50"
+                        className="shrink-0 self-center rounded-full border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-50"
                       >
                         {deletingId === t.id ? "Deleting…" : "Delete"}
                       </button>
+                    ) : t.deleteBlockedReason ? (
+                      <span
+                        className="shrink-0 self-center px-3 text-xs text-zinc-400"
+                        title={t.deleteBlockedReason}
+                      >
+                        Locked
+                      </span>
                     ) : null}
                   </div>
                 </li>

@@ -1,6 +1,8 @@
 const PRODUCT = "Itinerary Live";
 const OPERATOR = "PayShare Limited trading as Itinerary Live";
 
+import { appUrl } from "@/lib/app-url";
+
 export type WelcomeEmailParams = {
   fullName: string;
   trialEndsAt: string;
@@ -15,6 +17,8 @@ export function welcomeEmail(params: WelcomeEmailParams) {
     `Welcome to ${PRODUCT}. Your school account includes a 7-day free trial so you can build trips and preview the student view.`,
     "",
     `Trial ends: ${params.trialEndsAt}`,
+    "",
+    `Open your dashboard: ${appUrl("/dashboard")}`,
     "",
     `Founding schools can lock in $240 NZD + GST for the first year (normally $400 NZD + GST per year). Reply to this email or contact ${params.supportEmail} to arrange billing.`,
     "",

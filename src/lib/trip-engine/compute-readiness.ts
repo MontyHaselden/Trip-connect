@@ -138,14 +138,27 @@ export function computeReadiness(
     tripMessage?: string,
   ): { status: EngineReadinessStatus; message?: string } {
     const financeStatus = financeAllocationBySection.get(section);
-    if (!financeStatus || financeStatus.unallocatedCount === 0) {
+    if (!financeStatus) {
       return { status: tripStatus, message: tripMessage };
     }
-    const financeMessage = financeSectionAllocationMessage(financeStatus);
-    return {
-      status: worstStatus([tripStatus, "conflict"]),
-      message: tripMessage ? `${tripMessage} · ${financeMessage}` : financeMessage,
-    };
+
+    if (financeStatus.unallocatedCount > 0) {
+      const financeMessage = financeSectionAllocationMessage(financeStatus);
+      return {
+        status: worstStatus([tripStatus, "conflict"]),
+        message: tripMessage ? `${tripMessage} · ${financeMessage}` : financeMessage,
+      };
+    }
+
+    if (financeStatus.tbcCount > 0) {
+      const financeMessage = financeSectionAllocationMessage(financeStatus);
+      return {
+        status: worstStatus([tripStatus, "warning"]),
+        message: tripMessage ? `${tripMessage} · ${financeMessage}` : financeMessage,
+      };
+    }
+
+    return { status: tripStatus, message: tripMessage };
   }
 
   const accommodationReadiness = mergeFinanceAllocationStatus(

@@ -111,8 +111,24 @@ function TodayContent() {
   }
 
   if (!hasTodaySchedule(trip)) {
+    if (!trip) {
+      return (
+        <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">
+          Could not load trip preview.
+        </div>
+      );
+    }
+    if (!trip.days?.length) {
+      return (
+        <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">
+          No scheduled days yet.
+        </div>
+      );
+    }
     return (
-      <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">Loading trip…</div>
+      <div className="py-10 text-center text-sm text-[var(--student-text-muted)]">
+        Nothing scheduled for this view yet.
+      </div>
     );
   }
 

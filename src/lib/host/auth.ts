@@ -130,8 +130,22 @@ export async function createHostAccount(params: {
       });
       void sendEmail({ to: created.email, ...mail });
     }
-  } catch {
-    // Plans table may not be seeded yet in dev
+  } catch (err) {
+    if (params.accountType === "school") {
+      const message =
+        err instanceof Error ? err.message : "Could not start your trial subscription.";
+      if (/plan not found/i.test(message)) {
+        throw new Error(
+          "School signup is not ready on this server (billing plans missing). Ask support to run database setup.",
+        );
+      }
+      throw new Error(
+        message.includes("trial")
+          ? message
+          : `Could not start your 7-day trial: ${message}`,
+      );
+    }
+    // Personal accounts can proceed without a subscription row in early dev.
   }
 
   await acceptPendingInvitesForEmail(email, created.id);

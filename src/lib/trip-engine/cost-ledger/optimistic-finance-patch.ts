@@ -48,6 +48,32 @@ export function isOptimisticFinanceFundId(id: string): boolean {
   return id.startsWith("optimistic-fund-");
 }
 
+/** Whether a fund delete should hit the server, using the ledger before optimistic UI removal. */
+export function resolveFundDeleteServerPayload(
+  payload: Record<string, unknown>,
+  fundsBeforeOptimistic: TripFundDraft[],
+): { skipServer: boolean; payload: Record<string, unknown> } {
+  const action = payload.action;
+  if (action === "deleteFund" && typeof payload.fundId === "string") {
+    if (isOptimisticFinanceFundId(payload.fundId)) {
+      return { skipServer: true, payload };
+    }
+    return { skipServer: false, payload };
+  }
+  if (action === "deleteFunds" && Array.isArray(payload.fundIds)) {
+    const requested = payload.fundIds as string[];
+    const serverIds = requested.filter(
+      (id) =>
+        !isOptimisticFinanceFundId(id) &&
+        fundsBeforeOptimistic.some((fund) => fund.id === id),
+    );
+    if (!serverIds.length) return { skipServer: true, payload };
+    if (serverIds.length === requested.length) return { skipServer: false, payload };
+    return { skipServer: false, payload: { ...payload, fundIds: serverIds } };
+  }
+  return { skipServer: false, payload };
+}
+
 export function resolveOptimisticFinanceLineId(
   lineId: string,
   mapping: ReadonlyMap<string, string>,

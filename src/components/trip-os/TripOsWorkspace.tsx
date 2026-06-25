@@ -128,6 +128,7 @@ export function TripOsWorkspace(props: {
           rosterSummary={props.rosterSummary}
           costLedger={props.costLedger ?? null}
           onOpenFinanceSection={props.onOpenFinanceSection}
+          onCostsAction={props.onCostsAction}
         />
       );
     case "accommodation":
@@ -144,6 +145,7 @@ export function TripOsWorkspace(props: {
           onReload={props.onReload}
           costLedger={props.costLedger ?? null}
           onOpenFinanceSection={props.onOpenFinanceSection}
+          onCostsAction={props.onCostsAction}
         />
       );
     case "activities":

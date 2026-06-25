@@ -131,7 +131,7 @@ export function computeFinanceWarnings(
   const { settings, lineItems, supplierPayments } = ledger;
 
   for (const line of lineItems) {
-    if (line.totalAmountCents === 0 && line.costStatus !== "no_cost") {
+    if (line.totalAmountCents === 0 && line.costStatus !== "no_cost" && line.costStatus !== "tbc") {
       warnings.push({
         id: `no-cost-${line.id}`,
         severity: "info",

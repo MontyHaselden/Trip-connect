@@ -29,6 +29,7 @@ export function graphToSetupState(graph: TripEntityGraph): TripSetupState {
     bookingsSummary: _bookings,
     emergencySummary: _emergency,
     publishSummary: _publish,
+    hiddenPendingTransportNeedKeys: _hiddenPendingTransportNeedKeys,
     ...state
   } = graph;
   return state;

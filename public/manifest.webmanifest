@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Trip Connect",
-  "short_name": "Trip Connect",
-  "description": "School trip booklet — Today and My Trip offline.",
+  "name": "Itinerary Live",
+  "short_name": "Itinerary Live",
+  "description": "School trip itinerary — Today and My Trip offline.",
   "start_url": "/app/today",
   "scope": "/",
   "display": "standalone",

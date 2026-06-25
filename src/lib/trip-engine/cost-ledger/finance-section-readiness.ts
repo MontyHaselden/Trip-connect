@@ -1,4 +1,4 @@
-import { lineIsIntentionallyNoCost } from "./finance-metadata";
+import { lineIsIntentionallyNoCost, lineIsTbc } from "./finance-metadata";
 import {
   financeSectionForLine,
   groupLinesByFinanceSection,
@@ -15,6 +15,8 @@ export type FinanceSectionAllocationStatus = {
   section: FinanceBuiltInSection;
   /** Finance rows that still need cost and/or per-person allocation. */
   unallocatedCount: number;
+  /** Rows marked to be confirmed — priced later, shown as amber in nav. */
+  tbcCount: number;
   /** Manual finance-only rows with no calendar entity yet. */
   financeOnlyCount: number;
 };
@@ -61,6 +63,7 @@ export function lineFinanceAttentionReason(
 ): string | null {
   if (isPlaceholderFinanceLine(line)) return null;
   if (lineIsIntentionallyNoCost(line)) return null;
+  if (lineIsTbc(line)) return null;
 
   const allocation = allocationForLine(ledger, line.id);
   const total = effectiveLineTotalCents(line, allocation, pendingRow ?? undefined);
@@ -113,15 +116,21 @@ export function financeSectionAllocationStatuses(
   return sections.map((section) => {
     const lines = bySection.get(section) ?? [];
     let unallocatedCount = 0;
+    let tbcCount = 0;
     let financeOnlyCount = 0;
 
     for (const line of lines) {
+      if (isPlaceholderFinanceLine(line)) continue;
+      if (lineIsTbc(line)) {
+        tbcCount += 1;
+        continue;
+      }
       if (!lineNeedsFinanceAllocation(line, ledger)) continue;
       unallocatedCount += 1;
       if (isManualFinanceLine(line)) financeOnlyCount += 1;
     }
 
-    return { section, unallocatedCount, financeOnlyCount };
+    return { section, unallocatedCount, tbcCount, financeOnlyCount };
   });
 }
 
@@ -139,8 +148,8 @@ export function financeSectionAllocationStatus(
 export function financeSectionAllocationMessage(
   status: FinanceSectionAllocationStatus,
 ): string {
-  const { section, unallocatedCount, financeOnlyCount } = status;
-  if (unallocatedCount === 0) return "";
+  const { section, unallocatedCount, tbcCount, financeOnlyCount } = status;
+  if (unallocatedCount === 0 && tbcCount === 0) return "";
 
   const label =
     section === "accommodation"
@@ -151,16 +160,21 @@ export function financeSectionAllocationMessage(
 
   const plural = unallocatedCount === 1 ? label : `${label} costs`;
 
-  if (financeOnlyCount > 0 && financeOnlyCount === unallocatedCount) {
-    return `${unallocatedCount} in Finance — not on calendar yet`;
+  if (unallocatedCount > 0) {
+    if (financeOnlyCount > 0 && financeOnlyCount === unallocatedCount) {
+      return `${unallocatedCount} in Finance — not on calendar yet`;
+    }
+    if (financeOnlyCount > 0) {
+      return `${unallocatedCount} ${plural} in Finance need allocation (${financeOnlyCount} not on calendar)`;
+    }
+    return `${unallocatedCount} ${plural} in Finance need allocation`;
   }
-  if (financeOnlyCount > 0) {
-    return `${unallocatedCount} ${plural} in Finance need allocation (${financeOnlyCount} not on calendar)`;
-  }
-  return `${unallocatedCount} ${plural} in Finance need allocation`;
+
+  const tbcPlural = tbcCount === 1 ? label : `${label} costs`;
+  return `${tbcCount} ${tbcPlural} marked TBC in Finance`;
 }
 
-export type EntityFinanceDisplayStatus = "complete" | "needs_attention" | "none";
+export type EntityFinanceDisplayStatus = "complete" | "needs_attention" | "tbc" | "none";
 
 function linkedLinesForStay(
   stayId: string,
@@ -200,6 +214,9 @@ function entityFinanceDisplayStatus(
   if (lines.some((line) => lineNeedsFinanceAllocation(line, ledger))) {
     return "needs_attention";
   }
+  if (lines.some((line) => lineIsTbc(line))) {
+    return "tbc";
+  }
   return "complete";
 }
 
@@ -227,6 +244,22 @@ export function activityFinanceDisplayStatus(
   return entityFinanceDisplayStatus(linkedLinesForActivity(activityId, ledger), ledger);
 }
 
+export function stayFinanceLineId(
+  stayId: string,
+  ledger: CostLedgerProjection | null | undefined,
+): string | null {
+  if (!ledger) return null;
+  return linkedLinesForStay(stayId, ledger)[0]?.id ?? null;
+}
+
+export function transportLegFinanceLineId(
+  leg: { id: string; transportProductId?: string | null },
+  ledger: CostLedgerProjection | null | undefined,
+): string | null {
+  if (!ledger) return null;
+  return linkedLinesForTransportLeg(leg, ledger)[0]?.id ?? null;
+}
+
 export function activityFinanceLineId(
   activityId: string,
   ledger: CostLedgerProjection | null | undefined,
@@ -241,6 +274,14 @@ export function activityIsMarkedNoCost(
 ): boolean {
   if (!ledger) return false;
   return linkedLinesForActivity(activityId, ledger).some(lineIsIntentionallyNoCost);
+}
+
+export function activityIsMarkedTbc(
+  activityId: string,
+  ledger: CostLedgerProjection | null | undefined,
+): boolean {
+  if (!ledger) return false;
+  return linkedLinesForActivity(activityId, ledger).some(lineIsTbc);
 }
 
 export function activityFinanceAttentionReason(
@@ -284,9 +325,13 @@ export function lineFinanceDisplayStatus(
   ledger: CostLedgerProjection,
   pendingRow?: Record<string, number | null> | null,
 ): EntityFinanceDisplayStatus {
-  return lineFinanceAttentionReason(line, ledger, pendingRow)
-    ? "needs_attention"
-    : "complete";
+  if (lineFinanceAttentionReason(line, ledger, pendingRow)) {
+    return "needs_attention";
+  }
+  if (lineIsTbc(line)) {
+    return "tbc";
+  }
+  return "complete";
 }
 
 /** Stay id → finance line id when that row still needs host attention. */

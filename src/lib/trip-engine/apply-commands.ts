@@ -26,6 +26,7 @@ import {
 } from "./personal-location-overlay";
 import { personalGroupForGroupId } from "./person-lens";
 import { normalizeCommand, type TripCommand } from "./commands";
+import { pendingTransportNeedKey } from "./hidden-pending-transport";
 import type { CommandResult, EngineConflict, EngineWarning, TripEntityGraph } from "./types";
 import type { TripSetupState } from "@/lib/host/setup/types";
 import type { TransportProductDraft } from "@/lib/host/wizard/types";
@@ -802,6 +803,19 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         },
         warnings,
       );
+    }
+
+    case "hidePendingTransportNeed": {
+      const key = pendingTransportNeedKey(command.groupId, command.need);
+      const keys = new Set(graph.hiddenPendingTransportNeedKeys ?? []);
+      keys.add(key);
+      return ok({ ...graph, hiddenPendingTransportNeedKeys: [...keys] }, warnings);
+    }
+
+    case "unhidePendingTransportNeed": {
+      const key = pendingTransportNeedKey(command.groupId, command.need);
+      const keys = (graph.hiddenPendingTransportNeedKeys ?? []).filter((k) => k !== key);
+      return ok({ ...graph, hiddenPendingTransportNeedKeys: keys }, warnings);
     }
 
     case "addBookingDetails":

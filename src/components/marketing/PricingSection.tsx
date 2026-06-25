@@ -127,7 +127,7 @@ export async function PersonalPricingSection() {
       <div className="mx-auto max-w-6xl px-5">
         <h2 className="text-2xl font-semibold">Also useful for personal group trips</h2>
         <p className="mt-2 max-w-2xl text-zinc-600">
-          Planning a family holiday, friend trip, sports weekend, or group event? Trip Connect
+          Planning a family holiday, friend trip, sports weekend, or group event? Itinerary Live
           also has simple personal options — without school admin tools or per-student pricing.
         </p>
         <div className="mt-10 grid gap-6 lg:grid-cols-3">

@@ -16,6 +16,7 @@ export type TripDeleteInput = {
 export type TripDeleteStatus = {
   canDelete: boolean;
   reason: string | null;
+  deleteWarning: string | null;
   isCompleted: boolean;
   isFullyBuilt: boolean;
 };
@@ -54,27 +55,25 @@ export function resolveTripDeleteStatus(
     return {
       canDelete: false,
       reason: "Completed trips cannot be deleted.",
+      deleteWarning: null,
       isCompleted: true,
       isFullyBuilt: fullyBuilt,
     };
   }
 
-  if (fullyBuilt) {
-    return {
-      canDelete: false,
-      reason: trip.publishedVersion > 0
-        ? "Published trips cannot be deleted."
-        : "Fully built trips cannot be deleted.",
-      isCompleted: false,
-      isFullyBuilt: true,
-    };
-  }
+  const deleteWarning =
+    trip.publishedVersion > 0
+      ? "This trip has been published — students will lose access to the trip app."
+      : fullyBuilt
+        ? "This trip is fully built — all itinerary data will be removed."
+        : null;
 
   return {
     canDelete: true,
     reason: null,
+    deleteWarning,
     isCompleted: false,
-    isFullyBuilt: false,
+    isFullyBuilt: fullyBuilt,
   };
 }
 

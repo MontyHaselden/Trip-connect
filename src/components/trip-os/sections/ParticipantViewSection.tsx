@@ -6,6 +6,7 @@ import {
   ParticipantPreviewShell,
   type ParticipantPreviewTab,
 } from "../participant/ParticipantPreviewShell";
+import { MyTripErrorBoundary } from "@/components/debug/MyTripErrorBoundary";
 import { TripEyebrow } from "../shared/TripEyebrow";
 
 type RosterParticipant = {
@@ -134,11 +135,9 @@ export function ParticipantViewSection(props: {
   useEffect(() => {
     let cancelled = false;
 
-       
-
     async function init() {
       setError(null);
-      if (refreshKey === 0) setLoading(true);
+      setLoading(true);
 
       try {
         const res = await fetch(`/api/trips/${tripId}/participant-preview`);
@@ -167,7 +166,7 @@ export function ParticipantViewSection(props: {
           return;
         }
 
-        await loadPreview(target, { silent: refreshKey > 0 });
+        await loadPreview(target);
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load preview");
@@ -228,7 +227,8 @@ export function ParticipantViewSection(props: {
   }, [roster]);
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-8 py-8">
+      <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <TripEyebrow>Participant view</TripEyebrow>
@@ -337,18 +337,25 @@ export function ParticipantViewSection(props: {
               </div>
               <div className="relative h-[min(calc(100dvh-14rem),680px)] overflow-hidden bg-[var(--student-bg)]">
                 {participantId && preview?.payload ? (
-                  <ParticipantPreviewShell
-                    tripId={tripId}
-                    inviteCode={roster.inviteCode}
-                    participantId={participantId}
-                    version={preview.version}
-                    publishedAt={preview.publishedAt}
-                    payload={preview.payload}
-                    tab={tab}
-                    onTabChange={setTab}
-                    onRefresh={() => loadPreview(participantId, { silent: true })}
-                    refreshing={refreshing}
-                  />
+                  <MyTripErrorBoundary>
+                    <ParticipantPreviewShell
+                      tripId={tripId}
+                      inviteCode={roster.inviteCode}
+                      participantId={participantId}
+                      version={preview.version}
+                      publishedAt={preview.publishedAt}
+                      payload={preview.payload}
+                      tab={tab}
+                      onTabChange={setTab}
+                      onRefresh={() => loadPreview(participantId, { silent: true })}
+                      refreshing={refreshing}
+                    />
+                  </MyTripErrorBoundary>
+                ) : participantId && preview && !preview.payload ? (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
+                    Preview could not be built for this participant. Try Refresh, or check the
+                    trip has days and itinerary saved.
+                  </div>
                 ) : (
                   <div className="flex h-full items-center justify-center px-6 text-center text-sm text-zinc-500">
                     Select a participant to preview.
@@ -359,6 +366,7 @@ export function ParticipantViewSection(props: {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   trips,
 } from "@/lib/db/schema";
 import { loadTripSetupState } from "@/lib/host/setup/load-setup-state";
+import { loadHiddenPendingTransportNeedKeys } from "./hidden-pending-transport";
 import { setupStateToGraph } from "./adapters";
 import { loadActivitiesForTrip } from "./activities-persistence";
 import type { TripEntityGraph } from "./types";
@@ -44,9 +45,11 @@ export async function loadTripGraph(tripId: string): Promise<TripEntityGraph | n
   ]);
 
   const base = setupStateToGraph(tripId, { ...state, activities });
+  const hiddenPendingTransportNeedKeys = await loadHiddenPendingTransportNeedKeys(tripId);
 
   return {
     ...base,
+    hiddenPendingTransportNeedKeys,
     bookingsSummary: bookingRows.map((row) => ({
       id: row.id,
       entityType: row.entityType,

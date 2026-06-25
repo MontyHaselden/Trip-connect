@@ -21,8 +21,8 @@ const BodySchema = z.discriminatedUnion("accountType", [
     role: z.enum(["teacher", "helper", "host", "admin"]).default("teacher"),
     plan: z.enum(["school_starter", "school_pro", "school_pro_plus"]).optional(),
     foundingSchool: z.boolean().optional(),
-    homeCity: z.string().trim().min(2).max(200),
-    defaultAirport: z.string().trim().min(2).max(200),
+    homeCity: z.string().trim().min(2).max(200).optional(),
+    defaultAirport: z.string().trim().min(2).max(200).optional(),
   }),
   z.object({
     accountType: z.literal("personal"),

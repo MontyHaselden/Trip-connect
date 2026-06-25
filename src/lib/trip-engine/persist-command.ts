@@ -11,6 +11,10 @@ import { applyCommands } from "./apply-commands";
 import { syncActivitiesForTrip, loadActivitiesForTrip } from "./activities-persistence";
 import { mergeActivitiesById } from "./merge-graph-activities";
 import { linkCostLineToActivity } from "./cost-ledger/link-cost-line-to-entity";
+import {
+  hidePendingTransportNeed,
+  unhidePendingTransportNeed,
+} from "./hidden-pending-transport";
 import { loadTripGraph } from "./load-trip-graph";
 import { normalizeCommand, type TripCommand } from "./commands";
 import { coerceProposedCommands } from "./coerce-proposed-command";
@@ -239,7 +243,9 @@ function isMetaCommand(command: TripCommand): boolean {
     command.type === "addBookingDetails" ||
     command.type === "updateBookingDetails" ||
     command.type === "setEmergencyInfo" ||
-    command.type === "setViewerSettings"
+    command.type === "setViewerSettings" ||
+    command.type === "hidePendingTransportNeed" ||
+    command.type === "unhidePendingTransportNeed"
   );
 }
 
@@ -481,6 +487,12 @@ export async function persistCommands(
   const result = applyCommands(workingGraph, normalized);
 
   for (const command of normalized) {
+    if (command.type === "hidePendingTransportNeed") {
+      await hidePendingTransportNeed(tripId, command.groupId, command.need);
+    }
+    if (command.type === "unhidePendingTransportNeed") {
+      await unhidePendingTransportNeed(tripId, command.groupId, command.need);
+    }
     if (command.type === "resetGroupFromMain") {
       await persistResetGroupFromMain(tripId, command.groupId);
     }

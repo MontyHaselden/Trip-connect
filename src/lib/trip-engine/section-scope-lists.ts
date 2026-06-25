@@ -7,7 +7,7 @@ import type {
 
 import { matchingMainStayForFinanceLeg } from "./cost-ledger/accommodation-finance-leg";
 import { activitiesForGroup, legsForGroup, staysForGroup } from "./selectors";
-import { pendingTransportNeedsFromCalendar, type PendingTransportNeed } from "./pending-city-moves";
+import { pendingTransportNeedsFromCalendar, hiddenPendingTransportNeedsFromCalendar, type PendingTransportNeed } from "./pending-city-moves";
 import type { RosterSummary, TripEntityGraph } from "./types";
 
 export type TripScopeSection<T> = {
@@ -220,17 +220,19 @@ export type ScopedTransportLeg = TransportLegDraft | IntercityLegDraft;
 function collectPendingNeedScopeGroupIds(
   graph: TripEntityGraph,
   viewGroupId: string,
+  listNeeds: (groupId: string) => PendingTransportNeed[] = (groupId) =>
+    pendingTransportNeedsFromCalendar(graph, groupId),
 ): string[] {
   const ids = new Set<string>();
   for (const groupId of Object.keys(graph.dayPlacesByGroupId)) {
     if (groupId === graph.mainGroupId) continue;
-    if (pendingTransportNeedsFromCalendar(graph, groupId).length > 0) {
+    if (listNeeds(groupId).length > 0) {
       ids.add(groupId);
     }
   }
   for (const group of graph.groups) {
     if (group.id === graph.mainGroupId) continue;
-    if (pendingTransportNeedsFromCalendar(graph, group.id).length > 0) {
+    if (listNeeds(group.id).length > 0) {
       ids.add(group.id);
     }
   }
@@ -245,14 +247,25 @@ export function pendingTransportNeedsListedByScope(
   roster: RosterSummary,
   viewGroupId: string,
 ): TripScopedLists<PendingTransportNeed> {
-  const otherScopes = collectPendingNeedScopeGroupIds(graph, viewGroupId)
+  return buildPendingNeedScopes(graph, roster, viewGroupId, (groupId) =>
+    pendingTransportNeedsFromCalendar(graph, groupId),
+  );
+}
+
+function buildPendingNeedScopes(
+  graph: TripEntityGraph,
+  roster: RosterSummary,
+  viewGroupId: string,
+  listNeeds: (groupId: string) => PendingTransportNeed[],
+): TripScopedLists<PendingTransportNeed> {
+  const otherScopes = collectPendingNeedScopeGroupIds(graph, viewGroupId, listNeeds)
     .map((groupId) => {
       const { title, memberNames } = scopeTitleForGroup(graph, roster, groupId);
       return {
         groupId,
         title,
         memberNames,
-        items: pendingTransportNeedsFromCalendar(graph, groupId),
+        items: listNeeds(groupId),
       };
     })
     .filter((scope) => scope.items.length > 0)
@@ -262,8 +275,19 @@ export function pendingTransportNeedsListedByScope(
     graph,
     roster,
     viewGroupId,
-    pendingTransportNeedsFromCalendar(graph, graph.mainGroupId),
+    listNeeds(graph.mainGroupId),
     otherScopes,
+  );
+}
+
+/** Hidden calendar gaps grouped like visible pending transport needs. */
+export function hiddenPendingTransportNeedsListedByScope(
+  graph: TripEntityGraph,
+  roster: RosterSummary,
+  viewGroupId: string,
+): TripScopedLists<PendingTransportNeed> {
+  return buildPendingNeedScopes(graph, roster, viewGroupId, (groupId) =>
+    hiddenPendingTransportNeedsFromCalendar(graph, groupId),
   );
 }
 

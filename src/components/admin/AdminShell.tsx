@@ -34,7 +34,7 @@ export function AdminShell(props: {
     <div className="flex min-h-screen bg-zinc-50">
       <aside className="flex w-56 shrink-0 flex-col border-r border-zinc-200 bg-white">
         <div className="border-b border-zinc-200 px-4 py-4">
-          <p className="text-sm font-semibold text-zinc-900">Trip Connect</p>
+          <p className="text-sm font-semibold text-zinc-900">Itinerary Live Admin</p>
           <p className="text-xs text-zinc-500">Admin</p>
         </div>
         <nav className="flex-1 space-y-0.5 p-2">

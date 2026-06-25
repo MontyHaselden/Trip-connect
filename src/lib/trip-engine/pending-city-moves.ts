@@ -5,6 +5,10 @@ import type { DayPlaceDraft, IntercityLegDraft, TransportLegDraft } from "@/lib/
 import { newId } from "@/lib/host/wizard/types";
 
 import { dayPlacesForGroup } from "./selectors";
+import {
+  isPendingTransportNeedHidden,
+  pendingTransportNeedKey,
+} from "./hidden-pending-transport";
 import type { TripEntityGraph } from "./types";
 
 export type PendingTransportKind = "outbound_flight" | "return_flight" | "intercity";
@@ -145,6 +149,7 @@ function sortPendingNeeds(needs: PendingTransportNeed[]): PendingTransportNeed[]
 export function pendingTransportNeedsFromCalendar(
   graph: TripEntityGraph,
   groupId: string,
+  options?: { includeHidden?: boolean },
 ): PendingTransportNeed[] {
   const dayPlaces = dayPlacesForGroup(graph, groupId);
   const moves = detectCityMoves(dayPlaces);
@@ -157,13 +162,33 @@ export function pendingTransportNeedsFromCalendar(
   const legs = scopedTransportLegs(graph, groupId);
   const uncovered = moves.filter((move) => !legs.some((leg) => legCoversMove(leg, move)));
 
-  return sortPendingNeeds(
+  const needs = sortPendingNeeds(
     uncovered.map((move) => ({
       ...move,
       kind: classifyMoveKind(move, graph),
     })),
   );
+
+  if (options?.includeHidden) return needs;
+
+  const hiddenKeys = new Set(graph.hiddenPendingTransportNeedKeys ?? []);
+  return needs.filter((need) => !isPendingTransportNeedHidden(hiddenKeys, groupId, need));
 }
+
+/** Hidden calendar transport suggestions the host dismissed from the transport list. */
+export function hiddenPendingTransportNeedsFromCalendar(
+  graph: TripEntityGraph,
+  groupId: string,
+): PendingTransportNeed[] {
+  const hiddenKeys = new Set(graph.hiddenPendingTransportNeedKeys ?? []);
+  if (hiddenKeys.size === 0) return [];
+
+  return pendingTransportNeedsFromCalendar(graph, groupId, { includeHidden: true }).filter(
+    (need) => isPendingTransportNeedHidden(hiddenKeys, groupId, need),
+  );
+}
+
+export { pendingTransportNeedKey };
 
 /** @deprecated Use pendingTransportNeedsFromCalendar */
 export function pendingCityMovesFromCalendar(

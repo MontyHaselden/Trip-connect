@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import {
@@ -42,6 +42,7 @@ import {
 import type { RosterSummary } from "@/lib/trip-engine/types";
 
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
+import type { FinanceLinePatch } from "./finance-line-patch";
 import type { CostsPatchResult } from "../useTripOsEngine";
 import { FinanceDeleteModal } from "./FinanceDeleteModal";
 import { FinanceWarningsPanel } from "./FinanceWarningsPanel";
@@ -177,7 +178,7 @@ export function FinanceSpreadsheet(props: {
   showEmptyLines: boolean;
   displayCurrency: string;
   exchangeRates: Record<string, number>;
-  onPatchLine: (lineId: string, patch: Partial<CostLineFormValues>) => void;
+  onPatchLine: (lineId: string, patch: FinanceLinePatch) => void;
   onPatchParticipant: (
     lineId: string,
     participantId: string,
@@ -247,9 +248,6 @@ export function FinanceSpreadsheet(props: {
   const [byPersonId, setByPersonId] = useState<string | null>(null);
   const [byGroupId, setByGroupId] = useState<string | null>(null);
   const [pendingAllocations, setPendingAllocations] = useState<PendingAllocations>({});
-  const ensuredPaymentFundRef = useRef<Set<string>>(new Set());
-  const ensuredExpenseLineRef = useRef<Set<string>>(new Set());
-
   useEffect(() => {
     if (!props.focusSectionTab && !props.focusLineId) return;
     if (props.focusSectionTab) setActiveTab(props.focusSectionTab);
@@ -432,34 +430,6 @@ export function FinanceSpreadsheet(props: {
     () => groupLinesByFinanceSection(visibleLines, props.graph, settings),
     [visibleLines, props.graph, settings],
   );
-
-  useEffect(() => {
-    if (!isEntitySectionTab(activeTab) || !props.onAddIncomeLine || props.saving) return;
-    const sectionFunds = fundsForFinanceSection(props.costLedger.funds, activeTab, settings);
-    if (sectionFunds.length > 0) return;
-    if (ensuredPaymentFundRef.current.has(activeTab)) return;
-    ensuredPaymentFundRef.current.add(activeTab);
-    props.onAddIncomeLine(activeTab);
-  }, [activeTab, props.costLedger.funds, props.onAddIncomeLine, props.saving]);
-
-  useEffect(() => {
-    if (!isEntitySectionTab(activeTab) || !canAddManualExpenseLine || props.saving) return;
-    const allSectionLines = props.costLedger.lineItems.filter(
-      (line) => financeSectionForLine(line, props.graph, settings) === activeTab,
-    );
-    if (allSectionLines.length > 0) return;
-    if (ensuredExpenseLineRef.current.has(activeTab)) return;
-    ensuredExpenseLineRef.current.add(activeTab);
-    props.onAddExtraLine!(activeTab);
-  }, [
-    activeTab,
-    canAddManualExpenseLine,
-    props.costLedger.lineItems,
-    props.graph,
-    settings,
-    props.onAddExtraLine,
-    props.saving,
-  ]);
 
   const tabLines = useMemo(() => {
     if (!isEntitySectionTab(activeTab)) return [];
@@ -747,6 +717,12 @@ export function FinanceSpreadsheet(props: {
     );
     const isEmpty = rowTotalCents === 0;
     const hasPinnedPrices = (lineAlloc?.pinnedParticipantIds.length ?? 0) > 0;
+    const financeStatus = lineFinanceDisplayStatus(
+      line,
+      props.costLedger,
+      pendingAllocations[line.id],
+    );
+    const showTbcAction = financeStatus === "needs_attention";
     const stay = stayForLine(line, props.graph);
 
     const rowStickyBg =
@@ -846,6 +822,18 @@ export function FinanceSpreadsheet(props: {
                 className="mt-1 rounded border border-violet-300 bg-violet-50 px-1.5 py-0.5 text-[9px] font-semibold text-violet-800 hover:bg-violet-100"
               >
                 {hasPinnedPrices ? "Edit per-person prices" : "Set per-person prices"}
+              </button>
+            ) : null}
+            {showTbcAction ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.onPatchLine(line.id, { costStatus: "tbc" });
+                }}
+                className="mt-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-900 hover:bg-amber-100"
+              >
+                Mark TBC
               </button>
             ) : null}
           </div>
@@ -1261,41 +1249,37 @@ export function FinanceSpreadsheet(props: {
                 {pool.length} {pool.length === 1 ? "person" : "people"} in sheet
               </span>
             ) : null}
-            {supportsFinanceRowSelection(activeTab) ? (
-              <>
-                {hiddenInSection.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-1 text-[10px] text-zinc-600">
-                    <span>Hidden:</span>
-                    {hiddenInSection.map((participant) => (
-                      <button
-                        key={participant.id}
-                        type="button"
-                        className="rounded border border-zinc-200 bg-white px-2 py-0.5 hover:border-violet-300 hover:text-violet-800"
-                        onClick={() =>
-                          void handleSetSectionParticipant(activeTab, participant.id, false)
-                        }
-                      >
-                        {participant.fullName} · restore
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={totalSelectedCount === 0}
-                  onClick={openDeleteSelected}
-                  className="rounded border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-medium text-red-800 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400"
-                >
-                  Delete selected
-                  {totalSelectedCount > 0 ? ` (${totalSelectedCount})` : ""}
-                </button>
-              </>
+            {supportsFinanceRowSelection(activeTab) && hiddenInSection.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1 text-[10px] text-zinc-600">
+                <span>Hidden:</span>
+                {hiddenInSection.map((participant) => (
+                  <button
+                    key={participant.id}
+                    type="button"
+                    className="rounded border border-zinc-200 bg-white px-2 py-0.5 hover:border-violet-300 hover:text-violet-800"
+                    onClick={() =>
+                      void handleSetSectionParticipant(activeTab, participant.id, false)
+                    }
+                  >
+                    {participant.fullName} · restore
+                  </button>
+                ))}
+              </div>
             ) : null}
           </div>
         </div>
       </div>
 
-      <div className="relative z-20 flex shrink-0 justify-center border-b border-zinc-200 bg-white px-3 py-2">
+      <div className="relative z-20 flex shrink-0 items-center justify-center border-b border-zinc-200 bg-white px-3 py-2">
+        {supportsFinanceRowSelection(activeTab) && totalSelectedCount > 0 ? (
+          <button
+            type="button"
+            onClick={openDeleteSelected}
+            className="absolute left-3 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[10px] font-medium text-red-800 hover:bg-red-100"
+          >
+            Delete selected ({totalSelectedCount})
+          </button>
+        ) : null}
         <TripOsCurrencyCalculatorHub tripId={props.tripId} layout="spreadsheet" />
       </div>
 

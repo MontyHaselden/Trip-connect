@@ -9,6 +9,7 @@ import {
   transportLegFinanceDisplayStatus,
   transportLegFinanceAttentionById,
   transportLegFinanceAttentionReason,
+  transportLegFinanceLineId,
   type EntityFinanceDisplayStatus,
 } from "@/lib/trip-engine/cost-ledger/finance-section-readiness";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
@@ -16,6 +17,7 @@ import type { FinanceBuiltInSection } from "@/lib/trip-engine/cost-ledger/financ
 import {
   transportLegsListedByScope,
   pendingTransportNeedsListedByScope,
+  hiddenPendingTransportNeedsListedByScope,
   pendingNeedScopeLabel,
   type ScopedTransportLeg,
   type TripScopeSection,
@@ -33,9 +35,11 @@ import { findTransportProduct } from "@/lib/host/locations/transport-products";
 import type { IntercityLegDraft, TransportLegDraft, TransportProductDraft } from "@/lib/host/wizard/types";
 
 import { FinanceLineStatusBadge } from "../shared/FinanceLineStatusBadge";
+import { FinanceEntityQuickActions } from "../shared/FinanceEntityQuickActions";
 import { TripScopedSectionHeader } from "../shared/TripScopedSectionHeader";
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 import { AddTransportModal } from "../transport/AddTransportModal";
+import type { CostsPatchResult } from "../useTripOsEngine";
 import { EditTransportLegModal } from "../transport/EditTransportLegModal";
 import { TransportProductEditor } from "../transport/TransportProductEditor";
 
@@ -86,6 +90,9 @@ function LegRow(props: {
   financeAttentionReason?: string | null;
   onOpenFinance?: () => void;
   onEdit?: () => void;
+  showFinanceActions?: boolean;
+  saving?: boolean;
+  onMarkTbc?: () => void;
 }) {
   const roleBadge = props.leg.transportType === "plane" ? flightRoleBadge(props.bucket) : null;
   return (
@@ -118,6 +125,11 @@ function LegRow(props: {
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-3">
+          <FinanceEntityQuickActions
+            show={Boolean(props.showFinanceActions)}
+            saving={props.saving}
+            onTbc={props.onMarkTbc}
+          />
           <FinanceLineStatusBadge
             status={props.financeStatus}
             attentionReason={props.financeAttentionReason}
@@ -147,6 +159,7 @@ export function TransportSection(props: {
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
   costLedger?: CostLedgerProjection | null;
   onOpenFinanceSection?: (section: FinanceBuiltInSection, lineId?: string) => void;
+  onCostsAction?: (payload: Record<string, unknown>) => Promise<CostsPatchResult>;
 }) {
   const roster = props.rosterSummary ?? { participants: [], groups: [], rooms: [] };
   const products = props.graph.transportProducts ?? [];
@@ -159,9 +172,15 @@ export function TransportSection(props: {
     bucket: LegBucket;
   } | null>(null);
   const [editingProduct, setEditingProduct] = useState<TransportProductDraft | null>(null);
+  const [hiddenOpen, setHiddenOpen] = useState(false);
 
   const pendingScopes = useMemo(
     () => pendingTransportNeedsListedByScope(props.graph, roster, props.groupId),
+    [props.graph, roster, props.groupId],
+  );
+
+  const hiddenScopes = useMemo(
+    () => hiddenPendingTransportNeedsListedByScope(props.graph, roster, props.groupId),
     [props.graph, roster, props.groupId],
   );
 
@@ -171,6 +190,19 @@ export function TransportSection(props: {
         (scope) => scope.items.length > 0,
       ),
     [pendingScopes],
+  );
+
+  const hiddenScopeSections = useMemo(
+    () =>
+      [hiddenScopes.wholeGroup, ...hiddenScopes.otherScopes].filter(
+        (scope) => scope.items.length > 0,
+      ),
+    [hiddenScopes],
+  );
+
+  const hiddenCount = useMemo(
+    () => hiddenScopeSections.reduce((total, scope) => total + scope.items.length, 0),
+    [hiddenScopeSections],
   );
 
   const scopedLegs = useMemo(
@@ -190,8 +222,24 @@ export function TransportSection(props: {
 
   const hasAnyLegs = allScopes.some((scope) => scope.items.length > 0);
 
-  function openLegFinance(legId: string) {
-    props.onOpenFinanceSection?.("transport", transportFinanceAttention.get(legId));
+  function openLegFinance(leg: TransportLegDraft | IntercityLegDraft) {
+    const lineId =
+      transportFinanceAttention.get(leg.id) ??
+      transportLegFinanceLineId(leg, props.costLedger);
+    props.onOpenFinanceSection?.("transport", lineId ?? undefined);
+  }
+
+  async function markLegTbc(leg: TransportLegDraft | IntercityLegDraft) {
+    if (!props.onCostsAction) return;
+    const lineId =
+      transportFinanceAttention.get(leg.id) ??
+      transportLegFinanceLineId(leg, props.costLedger);
+    if (!lineId) return;
+    await props.onCostsAction({
+      action: "updateLine",
+      lineId,
+      line: { costStatus: "tbc" },
+    });
   }
 
   function legBucket(legId: string): LegBucket {
@@ -206,9 +254,40 @@ export function TransportSection(props: {
     setAddOpen(true);
   }
 
+  async function hideNeed(need: PendingTransportNeed, groupId: string) {
+    await props.onDispatch([
+      {
+        type: "hidePendingTransportNeed",
+        groupId,
+        need: {
+          kind: need.kind,
+          date: need.date,
+          fromCity: need.fromCity,
+          toCity: need.toCity,
+        },
+      },
+    ]);
+  }
+
+  async function unhideNeed(need: PendingTransportNeed, groupId: string) {
+    await props.onDispatch([
+      {
+        type: "unhidePendingTransportNeed",
+        groupId,
+        need: {
+          kind: need.kind,
+          date: need.date,
+          fromCity: need.fromCity,
+          toCity: need.toCity,
+        },
+      },
+    ]);
+  }
+
   function renderPendingNeed(
     need: PendingTransportNeed,
     scope: TripScopeSection<PendingTransportNeed>,
+    mode: "visible" | "hidden",
   ) {
     const scopeLabel = pendingNeedScopeLabel(props.graph, scope);
     const isActiveScope = scope.groupId === props.groupId;
@@ -216,18 +295,28 @@ export function TransportSection(props: {
     return (
       <li
         key={`${scope.groupId}:${need.kind}:${need.date}:${need.fromCity}:${need.toCity}`}
-        className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5"
+        className={[
+          "flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5",
+          mode === "hidden"
+            ? "border-zinc-200 bg-zinc-50"
+            : "border-amber-200 bg-amber-50",
+        ].join(" ")}
       >
         <div className="min-w-0 text-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+            <p
+              className={[
+                "text-[10px] font-semibold uppercase tracking-wide",
+                mode === "hidden" ? "text-zinc-500" : "text-amber-800",
+              ].join(" ")}
+            >
               {pendingNeedLabel(need)}
             </p>
             <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-900">
               {scopeLabel}
             </span>
           </div>
-          <p className="font-medium text-amber-950">
+          <p className={mode === "hidden" ? "font-medium text-zinc-700" : "font-medium text-amber-950"}>
             {transportRouteLabel({
               from: need.fromCity,
               to: need.toCity,
@@ -235,28 +324,49 @@ export function TransportSection(props: {
               graph: props.graph,
             })}
           </p>
-          <p className="text-xs text-amber-800">
+          <p className={mode === "hidden" ? "text-xs text-zinc-500" : "text-xs text-amber-800"}>
             {DateTime.fromISO(need.date).toFormat("d MMM yyyy")}
           </p>
-          {!isActiveScope ? (
+          {!isActiveScope && mode === "visible" ? (
             <p className="mt-1 text-xs text-violet-700">
               Edit on {scope.title}&apos;s calendar
             </p>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={() => openAdd(need, scope.groupId)}
-          disabled={!isActiveScope}
-          title={
-            isActiveScope
-              ? undefined
-              : `Switch to ${scope.title}'s calendar to add this transport`
-          }
-          className="shrink-0 rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-950 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Add
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {mode === "hidden" ? (
+            <button
+              type="button"
+              onClick={() => void unhideNeed(need, scope.groupId)}
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              Show
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => void hideNeed(need, scope.groupId)}
+                className="rounded-lg px-2 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-800"
+              >
+                Hide
+              </button>
+              <button
+                type="button"
+                onClick={() => openAdd(need, scope.groupId)}
+                disabled={!isActiveScope}
+                title={
+                  isActiveScope
+                    ? undefined
+                    : `Switch to ${scope.title}'s calendar to add this transport`
+                }
+                className="rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-950 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Add
+              </button>
+            </>
+          )}
+        </div>
       </li>
     );
   }
@@ -274,6 +384,15 @@ export function TransportSection(props: {
       if (!firstA || !firstB) return 0;
       return compareTransportLegsChronologically(firstA, firstB);
     });
+
+    function legFinanceActions(leg: ScopedTransportLeg) {
+      const financeStatus = transportLegFinanceDisplayStatus(leg, props.costLedger);
+      return {
+        showFinanceActions:
+          financeStatus === "needs_attention" && Boolean(props.onCostsAction),
+        onMarkTbc: () => void markLegTbc(leg),
+      };
+    }
 
     return (
       <div key={scope.groupId} className={isWholeGroup ? undefined : "mt-8"}>
@@ -315,12 +434,14 @@ export function TransportSection(props: {
                         leg,
                         props.costLedger,
                       )}
-                      onOpenFinance={() => openLegFinance(leg.id)}
+                      onOpenFinance={() => openLegFinance(leg)}
                       onEdit={
                         isActiveScope
                           ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
                           : undefined
                       }
+                      saving={props.saving}
+                      {...legFinanceActions(leg)}
                     />
                   ))}
                 </ul>
@@ -346,12 +467,14 @@ export function TransportSection(props: {
                       leg,
                       props.costLedger,
                     )}
-                    onOpenFinance={() => openLegFinance(leg.id)}
+                    onOpenFinance={() => openLegFinance(leg)}
                     onEdit={
                       isActiveScope
                         ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
                         : undefined
                     }
+                    saving={props.saving}
+                    {...legFinanceActions(leg)}
                   />
                 ))}
               </ul>
@@ -384,11 +507,43 @@ export function TransportSection(props: {
                   </p>
                 ) : null}
                 <ul className="space-y-2">
-                  {scope.items.map((need) => renderPendingNeed(need, scope))}
+                  {scope.items.map((need) => renderPendingNeed(need, scope, "visible"))}
                 </ul>
               </div>
             ))}
           </div>
+        </TripSoftPanel>
+      ) : null}
+
+      {hiddenCount > 0 ? (
+        <TripSoftPanel title={`Hidden (${hiddenCount})`} className="mb-6">
+          <button
+            type="button"
+            onClick={() => setHiddenOpen((open) => !open)}
+            className="text-sm font-medium text-zinc-600 hover:text-zinc-900"
+          >
+            {hiddenOpen ? "Collapse hidden routes" : "Show hidden calendar routes"}
+          </button>
+          {hiddenOpen ? (
+            <div className="mt-3 space-y-4">
+              <p className="text-xs text-zinc-500">
+                These moves are still on the calendar but won&apos;t appear in the main list.
+                Show one again if you want to add transport for it.
+              </p>
+              {hiddenScopeSections.map((scope) => (
+                <div key={scope.groupId}>
+                  {hiddenScopeSections.length > 1 ? (
+                    <p className="mb-2 text-xs font-semibold text-zinc-700">
+                      {pendingNeedScopeLabel(props.graph, scope)}
+                    </p>
+                  ) : null}
+                  <ul className="space-y-2">
+                    {scope.items.map((need) => renderPendingNeed(need, scope, "hidden"))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </TripSoftPanel>
       ) : null}
 

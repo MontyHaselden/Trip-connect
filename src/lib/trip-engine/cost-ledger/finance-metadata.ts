@@ -6,7 +6,8 @@ export type CostStatus =
   | "invoiced"
   | "paid"
   | "cancelled"
-  | "no_cost";
+  | "no_cost"
+  | "tbc";
 
 export type LinePaymentStatus =
   | "unpaid"
@@ -45,6 +46,7 @@ export const COST_STATUSES: CostStatus[] = [
   "paid",
   "cancelled",
   "no_cost",
+  "tbc",
 ];
 
 export const LINE_PAYMENT_STATUSES: LinePaymentStatus[] = [
@@ -97,10 +99,15 @@ export const COST_STATUS_LABELS: Record<CostStatus, string> = {
   paid: "Paid",
   cancelled: "Cancelled",
   no_cost: "No cost",
+  tbc: "TBC",
 };
 
 export function lineIsIntentionallyNoCost(line: { costStatus: CostStatus }): boolean {
   return line.costStatus === "no_cost";
+}
+
+export function lineIsTbc(line: { costStatus: CostStatus }): boolean {
+  return line.costStatus === "tbc";
 }
 
 export const LINE_PAYMENT_STATUS_LABELS: Record<LinePaymentStatus, string> = {

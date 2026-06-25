@@ -20,6 +20,7 @@ import type { TripEntityGraph, RosterSummary } from "@/lib/trip-engine/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 
 import { FinanceLineStatusBadge } from "../shared/FinanceLineStatusBadge";
+import { FinanceEntityQuickActions } from "../shared/FinanceEntityQuickActions";
 import { TripScopedSectionHeader } from "../shared/TripScopedSectionHeader";
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 import type { CostsPatchResult } from "../useTripOsEngine";
@@ -36,6 +37,7 @@ function formatActivityLine(a: ActivityDraft): string {
     parts.push(end ? `${start}–${end}` : start);
   }
   if (a.locationName?.trim()) parts.push(a.locationName.trim());
+  else if (a.address?.trim()) parts.push(a.address.trim());
   return parts.join(" · ");
 }
 
@@ -84,7 +86,10 @@ export function ActivitiesSection(props: {
   );
 
   function openActivityFinance(activityId: string) {
-    props.onOpenFinanceSection?.("activities", activityFinanceAttention.get(activityId));
+    const lineId =
+      activityFinanceAttention.get(activityId) ??
+      activityFinanceLineId(activityId, props.costLedger);
+    props.onOpenFinanceSection?.("activities", lineId ?? undefined);
   }
 
   async function markActivityNoCost(activityId: string) {
@@ -100,6 +105,21 @@ export function ActivitiesSection(props: {
         costStatus: "no_cost",
         totalAmountCents: 0,
         overrides: [],
+      },
+    });
+  }
+
+  async function markActivityTbc(activityId: string) {
+    if (!props.onCostsAction) return;
+    const lineId =
+      activityFinanceAttention.get(activityId) ??
+      activityFinanceLineId(activityId, props.costLedger);
+    if (!lineId) return;
+    await props.onCostsAction({
+      action: "updateLine",
+      lineId,
+      line: {
+        costStatus: "tbc",
       },
     });
   }
@@ -130,7 +150,7 @@ export function ActivitiesSection(props: {
                         a.id,
                         props.costLedger,
                       );
-                      const showNoCostAction =
+                      const showFinanceActions =
                         financeStatus === "needs_attention" && Boolean(props.onCostsAction);
 
                       return (
@@ -146,17 +166,12 @@ export function ActivitiesSection(props: {
                           ) : null}
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
-                          {showNoCostAction ? (
-                            <button
-                              type="button"
-                              disabled={props.saving}
-                              onClick={() => void markActivityNoCost(a.id)}
-                              className="rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-                              title="Mark as free — no participant charge"
-                            >
-                              No cost
-                            </button>
-                          ) : null}
+                          <FinanceEntityQuickActions
+                            show={showFinanceActions}
+                            saving={props.saving}
+                            onTbc={() => void markActivityTbc(a.id)}
+                            onNoCost={() => void markActivityNoCost(a.id)}
+                          />
                           <FinanceLineStatusBadge
                             status={financeStatus}
                             attentionReason={activityFinanceAttentionReason(

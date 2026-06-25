@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { emptyCostLedgerProjection } from "./empty-projection";
 import {
   activityFinanceAttentionById,
+  activityFinanceDisplayStatus,
   financeActivityLinesForDay,
   financeSectionAllocationStatuses,
   lineFinanceAttentionReason,
@@ -315,5 +316,44 @@ describe("finance section readiness", () => {
     assert.equal(lineNeedsFinanceAllocation(ledger.lineItems[0]!, ledger), false);
     assert.equal(lineFinanceAttentionReason(ledger.lineItems[0]!, ledger), null);
     assert.equal(lineFinanceDisplayStatus(ledger.lineItems[0]!, ledger), "complete");
+  });
+
+  it("treats lines marked tbc as pending confirmation without a red attention badge", () => {
+    const ledger = emptyCostLedgerProjection();
+    ledger.lineItems = [
+      line({
+        linkedActivityId: "act-museum",
+        totalAmountCents: 0,
+        costStatus: "tbc",
+        allocationRulePayload: {},
+      }),
+    ];
+    assert.equal(lineNeedsFinanceAllocation(ledger.lineItems[0]!, ledger), false);
+    assert.equal(lineFinanceAttentionReason(ledger.lineItems[0]!, ledger), null);
+    assert.equal(lineFinanceDisplayStatus(ledger.lineItems[0]!, ledger), "tbc");
+    assert.equal(activityFinanceDisplayStatus("act-museum", ledger), "tbc");
+  });
+
+  it("counts tbc rows separately from unallocated finance rows", () => {
+    const graph = minimalGraph();
+    const ledger = emptyCostLedgerProjection();
+    ledger.lineItems = [
+      line({
+        id: "tbc-transport",
+        linkedTransportLegId: "leg-1",
+        costStatus: "tbc",
+        allocationRulePayload: { financeSection: "transport" },
+      }),
+      line({
+        id: "needs-price",
+        linkedTransportLegId: "leg-2",
+        allocationRulePayload: { financeSection: "transport" },
+      }),
+    ];
+    const transport = financeSectionAllocationStatuses(ledger, graph).find(
+      (row) => row.section === "transport",
+    );
+    assert.equal(transport?.tbcCount, 1);
+    assert.equal(transport?.unallocatedCount, 1);
   });
 });

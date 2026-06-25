@@ -134,9 +134,14 @@ export function FinanceInlineMoneyCell(props: {
   }
 
   function handleCellMouseDown(e: React.MouseEvent) {
+    if (e.button !== 0) return;
     if (!focused) return;
     e.preventDefault();
     inputRef.current?.blur();
+  }
+
+  function handleInputMouseDown(e: React.MouseEvent) {
+    e.stopPropagation();
   }
 
   if (props.disabled) {
@@ -168,13 +173,14 @@ export function FinanceInlineMoneyCell(props: {
             {symbol}
           </span>
         ) : null}
+        {focused ? (
         <input
           ref={inputRef}
           type="text"
           inputMode={viewCurrency === "JPY" ? "numeric" : "decimal"}
-          readOnly={!focused}
-          value={focused ? draft : displayText}
+          value={draft}
           placeholder={viewCurrency === "JPY" ? "0" : "0.00"}
+          onMouseDown={handleInputMouseDown}
           onFocus={() => setFocused(true)}
           onChange={(e) => {
             const next = e.target.value;
@@ -209,12 +215,42 @@ export function FinanceInlineMoneyCell(props: {
           }
           style={{ width: `${inputWidthCh}ch` }}
           className={[
-            "shrink-0 border-0 bg-transparent py-0 text-right text-xs leading-normal tabular-nums outline-none whitespace-nowrap",
+            "shrink-0 select-text border-0 bg-transparent py-0 text-right text-xs leading-normal tabular-nums outline-none whitespace-nowrap",
             props.isPinned ? "font-medium text-zinc-900" : "font-normal text-zinc-700",
-            !focused && !hasValue ? "text-zinc-300 placeholder:text-zinc-300" : "",
-            !focused && hasValue ? "cursor-text" : "",
           ].join(" ")}
         />
+        ) : (
+        <span
+          role="button"
+          tabIndex={0}
+          onMouseDown={handleInputMouseDown}
+          onClick={(e) => {
+            e.stopPropagation();
+            const selected = window.getSelection()?.toString().trim();
+            if (selected) return;
+            setFocused(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setFocused(true);
+            }
+          }}
+          title={
+            hasValue
+              ? "Select to copy · click to edit"
+              : "Click to enter an amount"
+          }
+          style={{ width: `${inputWidthCh}ch` }}
+          className={[
+            "shrink-0 select-text text-right text-xs leading-normal tabular-nums whitespace-nowrap",
+            props.isPinned ? "font-medium text-zinc-900" : "font-normal text-zinc-700",
+            hasValue ? "cursor-text" : "cursor-text text-zinc-300",
+          ].join(" ")}
+        >
+          {displayText || (viewCurrency === "JPY" ? "0" : "0.00")}
+        </span>
+        )}
       </div>
     </div>
   );

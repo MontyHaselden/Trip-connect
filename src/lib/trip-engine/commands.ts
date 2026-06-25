@@ -234,6 +234,28 @@ export type SetViewerSettingsCommand = {
   viewerRoomDetailsEnabled?: boolean;
 };
 
+export type HidePendingTransportNeedCommand = {
+  type: "hidePendingTransportNeed";
+  groupId: string;
+  need: {
+    kind: "outbound_flight" | "return_flight" | "intercity";
+    date: string;
+    fromCity: string;
+    toCity: string;
+  };
+};
+
+export type UnhidePendingTransportNeedCommand = {
+  type: "unhidePendingTransportNeed";
+  groupId: string;
+  need: {
+    kind: "outbound_flight" | "return_flight" | "intercity";
+    date: string;
+    fromCity: string;
+    toCity: string;
+  };
+};
+
 /** Trim or set trip window — calendar paint is kept; everything else follows in one shot. */
 export type SetTripDateRangeCommand = {
   type: "setTripDateRange";
@@ -282,6 +304,8 @@ export type TripCommand =
   | SetBookingStatusCommand
   | SetEmergencyInfoCommand
   | SetViewerSettingsCommand
+  | HidePendingTransportNeedCommand
+  | UnhidePendingTransportNeedCommand
   | SetTripDateRangeCommand
   | ShiftTripDatesCommand;
 

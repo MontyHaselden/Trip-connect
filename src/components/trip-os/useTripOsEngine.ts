@@ -39,8 +39,8 @@ import {
 } from "@/lib/trip-engine/cost-ledger/finance-line-resolve";
 import {
   applyOptimisticFinancePatch,
-  isOptimisticFinanceFundId,
   isOptimisticFinanceLineId,
+  resolveFundDeleteServerPayload,
   resolveOptimisticFinanceLineId,
 } from "@/lib/trip-engine/cost-ledger/optimistic-finance-patch";
 import type {
@@ -790,20 +790,14 @@ export function useTripOsEngine(tripId: string) {
           }
         }
 
-        const skipServerSync =
-          (serverPayload.action === "deleteFund" &&
-            typeof serverPayload.fundId === "string" &&
-            isOptimisticFinanceFundId(serverPayload.fundId)) ||
-          (serverPayload.action === "deleteFund" &&
-            typeof serverPayload.fundId === "string" &&
-            !snapshot.costLedger.funds.some((fund) => fund.id === serverPayload.fundId)) ||
-          (serverPayload.action === "deleteFunds" &&
-            Array.isArray(serverPayload.fundIds) &&
-            (serverPayload.fundIds as string[]).every(
-              (fundId) =>
-                isOptimisticFinanceFundId(fundId) ||
-                !snapshot.costLedger.funds.some((fund) => fund.id === fundId),
-            ));
+        const fundsBeforeOptimistic =
+          ledgerBeforeOptimistic?.funds ??
+          snapBeforeQueue?.costLedger?.funds ??
+          snapshot.costLedger.funds;
+        const fundDelete = resolveFundDeleteServerPayload(serverPayload, fundsBeforeOptimistic);
+        let payloadForServer = fundDelete.payload;
+
+        const skipServerSync = fundDelete.skipServer;
 
         if (skipServerSync) {
           setError(null);
@@ -818,7 +812,6 @@ export function useTripOsEngine(tripId: string) {
           "removeLineFromTrip",
         ]);
         const ledgerForPlan = snapshot.costLedger;
-        let payloadForServer = serverPayload;
 
         if (
           serverPayload.action === "updateLine" &&

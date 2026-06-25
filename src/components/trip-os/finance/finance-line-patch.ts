@@ -1,6 +1,11 @@
 import type { CostLineFormValues } from "../costs/CostLineDrawer";
+import type { CostStatus } from "@/lib/trip-engine/cost-ledger/finance-metadata";
 import type { FinanceEntitySection } from "@/lib/trip-engine/cost-ledger/finance-sections";
 import type { CostLineItemDraft, LineAllocationResult } from "@/lib/trip-engine/cost-ledger/types";
+
+export type FinanceLinePatch = Partial<CostLineFormValues> & {
+  costStatus?: CostStatus;
+};
 
 export function lineToFormValues(
   line: CostLineItemDraft,
@@ -111,9 +116,13 @@ export function patchParticipantAllocation(
 /** Send only the fields being edited — never blank out financeSection with an empty payload. */
 export function patchLinePayload(
   line: CostLineItemDraft,
-  patch: Partial<CostLineFormValues>,
+  patch: FinanceLinePatch,
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {};
+
+  if (patch.costStatus !== undefined) {
+    payload.costStatus = patch.costStatus;
+  }
 
   if (patch.description !== undefined) {
     const trimmed = patch.description.trim();

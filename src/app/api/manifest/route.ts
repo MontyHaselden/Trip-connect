@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const name = url.searchParams.get("name")?.trim() || "Trip Connect";
+  const name = url.searchParams.get("name")?.trim() || "Itinerary Live";
   const shortName =
     url.searchParams.get("shortName")?.trim() ||
     (name.length > 12 ? `${name.slice(0, 12)}…` : name);
