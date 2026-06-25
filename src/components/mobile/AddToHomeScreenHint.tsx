@@ -70,7 +70,7 @@ export function AddToHomeScreenHint(props: {
           Continue in browser
         </button>
         <p className="mt-3 text-center text-xs text-zinc-500">
-          Delete any old Trip Connect icon first, then add again from this page.
+          Delete any old Itinerary Live icon first, then add again from this page.
         </p>
       </div>
     </div>

@@ -22,7 +22,7 @@ export default function PricingPage() {
           href="/signup?type=school"
           className="inline-flex h-11 items-center justify-center rounded-xl bg-zinc-900 px-6 text-sm font-medium text-white"
         >
-          Start your 7-day free trial
+          Start 7-day free trial
         </Link>
         <p className="mt-3 text-sm text-zinc-500">
           Questions? <Link href="/contact" className="text-violet-700 hover:underline">Contact us</Link>{" "}

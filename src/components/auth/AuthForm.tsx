@@ -8,6 +8,7 @@ import { AirportPicker } from "@/components/geo/AirportPicker";
 import { PlacePicker } from "@/components/geo/PlacePicker";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 import { tripFieldClass } from "@/components/trip-os/shared/TripInput";
+import { DEFAULT_SUPPORT_EMAIL } from "@/lib/brand";
 import {
   PERSONAL_PLANS,
   SCHOOL_PLANS,
@@ -162,7 +163,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
       <div className="mx-auto flex max-w-lg flex-col px-5 py-16">
         <h1 className="text-2xl font-semibold">
           {mode === "login"
-            ? "Log in"
+            ? "Log in to Itinerary Live"
             : signupKind === "organisation"
               ? "Register organisation interest"
               : signupKind === "personal"
@@ -171,12 +172,12 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
         </h1>
         <p className="mt-2 text-sm text-zinc-600">
           {mode === "login"
-            ? "Access your trip dashboard."
+            ? "Access your school trip dashboard."
             : signupKind === "organisation"
               ? "Organisation plans are coming later. Tell us about your group trips."
               : signupKind === "personal"
                 ? "For family holidays, friend trips, and small group travel."
-                : "7-day free trial · no card required · $400/year + GST after trial"}
+                : "7-day free trial · no payment required today · build your first trip before paying"}
         </p>
 
         {mode === "signup" ? (
@@ -414,7 +415,7 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
                 ? "Log in"
                 : signupKind === "organisation"
                   ? "Register interest"
-                  : "Create account"}
+                  : "Create school account"}
           </button>
         </form>
 
@@ -433,9 +434,9 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
         <p className="mt-4 text-center text-sm text-zinc-600">
           {mode === "login" ? (
             <>
-              No account?{" "}
+              Need an account?{" "}
               <Link href="/signup?type=school" className="font-medium text-zinc-900">
-                Sign up
+                Create school account
               </Link>
             </>
           ) : (
@@ -447,6 +448,15 @@ export function AuthForm(props: { mode: "login" | "signup" }) {
             </>
           )}
         </p>
+
+        {mode === "login" ? (
+          <p className="mt-3 text-center text-sm text-zinc-500">
+            Questions?{" "}
+            <a href={`mailto:${DEFAULT_SUPPORT_EMAIL}`} className="font-medium text-zinc-700 hover:underline">
+              {DEFAULT_SUPPORT_EMAIL}
+            </a>
+          </p>
+        ) : null}
       </div>
     </MarketingShell>
   );

@@ -1,252 +1,132 @@
 export const HERO = {
-  eyebrow: "School trip itineraries, rebuilt for phones.",
-  headline: "School trip itineraries, rebuilt for phones.",
-  altHeadline: "The live school trip booklet students can actually use.",
+  eyebrow: "Live trip operations for schools",
+  headline: "One school trip itinerary. Always up to date.",
   subheadline:
-    "Itinerary Live gives teachers, students, helpers, parents, and school staff one clear place for the itinerary, emergency info, rooms, groups, weather, trip photos, and updates — even when students have no mobile data.",
-  positioning:
-    "Itinerary Live is a school trip management platform that replaces paper booklets, messy email threads, scattered WhatsApp updates, and outdated itineraries with one simple live/offline trip hub.",
+    "Itinerary Live helps schools build live trip itineraries for students, staff, and parents — with accommodation, transport, activities, groups, emergency info, and finance exports in one organised dashboard.",
+  trialLine: "Start with a 7-day free trial. No payment required.",
+  noGpsLine:
+    "No live GPS tracking. Just clear trip information, shared with the right people.",
 } as const;
 
 export const PROBLEMS = [
-  "Printed itineraries becoming outdated",
-  "Students losing paper booklets",
-  "Parents asking where the group is up to",
-  "Rooming and group lists changing",
-  "Students having no mobile data overseas",
-  "Emergency info being buried in emails",
-  "Trip photos scattered across everyone's phones",
-  "Teachers needing to update everyone quickly",
+  "Printed PDFs and booklets go out of date as soon as plans change",
+  "Parents and students ask the same schedule questions by email and group chat",
+  "Rooming lists and activity group splits are hard to keep aligned",
+  "Transport and accommodation changes are messy to communicate",
+  "Finance is tracked separately from the itinerary",
 ] as const;
 
-export const SOLUTIONS = [
-  "Live itinerary",
-  "Offline student access",
-  "Smart trip setup wizard",
-  "Optional AI itinerary builder",
-  "Pre-trip meeting dates",
-  "Countdown to departure",
-  "Daily weather",
-  "Rooms and groups",
-  "Emergency card and phrases",
-  "Parent/principal viewer access",
-  "Daily photo galleries",
-  "Teacher-controlled publishing",
-  "Trip history archive",
+export const PRODUCT_CAPABILITIES = [
+  "Build the trip itinerary day by day",
+  "Add accommodation, transport, and activities",
+  "Create groups and subgroups",
+  "Invite students, staff, and helpers",
+  "Publish live updates to everyone on the trip",
+  "Track costs and export finance summaries",
+] as const;
+
+export const STUDENT_VIEW_POINTS = [
+  "Students get a simple mobile view — no app store download required",
+  "Parents and helpers can view relevant trip information when enabled",
+  "No live GPS tracking — just the latest schedule and emergency details",
+  "The itinerary stays available offline once saved to the phone",
+] as const;
+
+export const STAFF_OPS_POINTS = [
+  "One dashboard for trip setup, participants, and publishing",
+  "Manage groups, rooming, and split itineraries",
+  "Map and location context for each day",
+  "Finance tracking tied to itinerary items",
+  "Export-ready summaries for school admin and accounts",
+] as const;
+
+export const FINANCE_POINTS = [
+  "Costs are generated from the itinerary, then organised into funding, payments, balances, and export-ready summaries",
+  "Per-person cost allocation from accommodation, transport, and activities",
+  "CSV and printable exports for school finance teams",
+  "Xero-ready export files — no automatic accounting sync yet",
 ] as const;
 
 export const BUILT_FOR_SCHOOLS = [
-  "No live GPS tracking",
-  "Finance exports for school trip costs (no per-student fees)",
-  "Role-based access",
-  "Students only see what they need",
-  "Parents/viewers have read-only access",
-  "Staff accounts are limited by plan",
-  "Students and parents do not count as staff accounts",
-  "Completed trips move to history",
-  "Active trip limits stop unused test trips creating unnecessary costs",
-  "Ideal for overseas trips, exchanges, camps, sports tours, outdoor education, music trips, and field trips",
+  "Built for school trips, overseas tours, exchanges, camps, and group travel",
+  "Role-based access — students only see what they need",
+  "No per-student subscription fees",
+  "Teacher-controlled publishing",
+  "Completed trips archive to trip history",
 ] as const;
 
 export const FEATURES = [
   {
-    title: "Offline-ready student itinerary",
+    title: "Live trip itinerary",
     description:
-      "Students open the invite link once, save the trip to their phone, and can still view the itinerary, emergency card, phrases, rooms, groups, and key contacts without WiFi or mobile data.",
+      "Build days with accommodation, transport, activities, and notes. Publish updates so staff, students, and parents work from the same schedule.",
+  },
+  {
+    title: "Groups and rooming",
+    description:
+      "Assign students to rooms, buses, activity groups, or temporary split plans. Participants only see the parts relevant to them.",
+  },
+  {
+    title: "Student mobile view",
+    description:
+      "Students open an invite link and save the trip to their phone. A compact daily run sheet — clear times, locations, and what to bring.",
+  },
+  {
+    title: "Emergency card and phrases",
+    description:
+      "Emergency contacts, hotel details, and useful local phrases — accessible offline once the trip is saved.",
+  },
+  {
+    title: "Parent and viewer access",
+    description:
+      "Read-only access for parents, principals, or staff back home — without exposing private student contact details.",
+  },
+  {
+    title: "Trip finance and exports",
+    description:
+      "Spreadsheet-style cost splits by accommodation, transport, and activities — plus CSV exports for school finance teams.",
   },
   {
     title: "Smart setup wizard",
     description:
-      "Build the trip step by step without needing AI. Add trip dates, transport, accommodation, cities, pre-trip meetings, rooms, groups, and activities through a guided school-trip setup flow.",
+      "Add trip dates, transport, accommodation, cities, and structure through a guided school-trip setup flow — no AI required.",
   },
   {
-    title: "AI itinerary builder (beta)",
+    title: "Offline-ready access",
     description:
-      "Paste messy trip notes or documents and let AI help structure days, detect clashes, and draft emergency phrases. Available on the school plan — best for a first draft, then review in Trip OS.",
-  },
-  {
-    title: "Compact daily schedule",
-    description:
-      "Each day appears as a simple run sheet, not a pile of boxes. Students can quickly see what is happening, when to leave, and what to bring.",
-  },
-  {
-    title: "Rooms, groups, and split plans",
-    description:
-      "Assign students to rooms, buses, homestays, activity groups, or temporary split itineraries. Students only see the parts relevant to them.",
-  },
-  {
-    title: "Parent and school viewer access",
-    description:
-      "Parents, principals, and school staff back home can view the itinerary and approved trip photos without accessing private student phone numbers.",
-  },
-  {
-    title: "Daily photo gallery",
-    description:
-      "At the end of each day, students can upload photos from the trip. Hosts and approved helpers can remove photos before or after they appear.",
-  },
-  {
-    title: "Emergency card and local phrases",
-    description:
-      "Students can access an offline emergency card with teacher contacts, hotel address, school details, and useful local-language phrases.",
-  },
-  {
-    title: "Trip finance & exports",
-    description:
-      "Spreadsheet-style cost splits by accommodation, transport, and activities — plus printable reports and CSV exports for school finance teams. Xero-ready export files; no automatic accounting sync yet.",
+      "Once students open and save the trip, key information remains available without WiFi or mobile data overseas.",
   },
   {
     title: "Pre-trip meetings",
     description:
-      "Add preparation meetings before the trip begins, so students and parents can see meeting dates, locations, notes, and the countdown to departure.",
+      "Add preparation meetings before departure so students and parents see dates, locations, and countdown to the trip.",
+  },
+  {
+    title: "Daily weather",
+    description:
+      "Weather context for each day helps staff and students plan clothing and outdoor activities.",
   },
 ] as const;
 
 export const HOW_IT_WORKS = [
-  "Create a school account.",
-  "Create a trip and enter the dates, destination, and school details.",
-  "Use the smart setup wizard to add transport, accommodation, locations, and key trip structure.",
-  "Add activities, pre-trip meetings, rooms, groups, and emergency info.",
-  "Publish the trip.",
-  "Students join by invite link and save it to their phone.",
-  "Parents/viewers get read-only access if enabled.",
-  "Completed trips move to history and free up an active trip slot.",
+  "Create a school account — 7-day free trial, no card required.",
+  "Create your trip and enter dates, destination, and school details.",
+  "Add transport, accommodation, activities, groups, and emergency info.",
+  "Invite students and staff with secure links.",
+  "Publish updates as plans change — everyone sees the latest version.",
 ] as const;
 
-export const SCHOOL_PRICING = [
-  {
-    id: "school_starter" as const,
-    name: "School Starter",
-    price: "$150",
-    period: "/year",
-    bestFor: "Small schools, one department, or a few trips per year",
-    badge: null,
-    includes: [
-      "3 staff accounts",
-      "Up to 4 active trips",
-      "Smart setup wizard",
-      "Offline student itinerary",
-      "Student invite links",
-      "Parent/viewer links",
-      "Rooms and groups",
-      "Emergency card and phrases",
-      "Pre-trip meetings",
-      "Daily weather",
-      "Basic photo gallery",
-      "Trip history",
-      "No full AI builder",
-    ],
-    cta: "Start School Starter",
-  },
-  {
-    id: "school_pro" as const,
-    name: "School Pro",
-    price: "$250",
-    period: "/year",
-    bestFor: "Most schools and international departments",
-    badge: "Most popular",
-    includes: [
-      "6 staff accounts",
-      "Up to 8 active trips",
-      "Everything in School Starter",
-      "AI itinerary builder",
-      "AI phrase generator",
-      "AI conflict checks",
-      "Larger photo galleries",
-      "Helper permissions",
-      "Parent/principal viewer access",
-      "Export/print backup",
-      "Priority early support",
-    ],
-    cta: "Start School Pro",
-  },
-  {
-    id: "school_pro_plus" as const,
-    name: "School Pro+",
-    price: "$400",
-    period: "/year",
-    bestFor: "Larger schools, multiple departments, and frequent trips",
-    badge: null,
-    includes: [
-      "12 staff accounts",
-      "Up to 20 active trips",
-      "Everything in School Pro",
-      "Higher AI usage allowance",
-      "Larger photo storage allowance",
-      "Custom school branding",
-      "Multiple department support",
-      "Priority support",
-      "Extended trip history",
-    ],
-    cta: "Start School Pro+",
-  },
-] as const;
+/** @deprecated Public pricing uses LaunchSchoolPricing — kept for legacy references */
+export const SCHOOL_PRICING = [] as const;
 
-export const PERSONAL_PRICING = [
-  {
-    id: "personal_one_time" as const,
-    name: "Personal One-Time Trip",
-    price: "$18",
-    period: " once",
-    badge: "Pay with PayShare",
-    validity: "Valid for 6 months",
-    includes: [
-      "One trip",
-      "Valid for 6 months",
-      "Up to 6 people",
-      "Itinerary builder",
-      "Weather",
-      "Emergency phrases",
-      "Basic photo gallery",
-      "Viewer link",
-      "No school tools",
-      "No student accounts",
-      "No AI builder",
-    ],
-    cta: "Create one-time trip",
-  },
-  {
-    id: "personal" as const,
-    name: "Personal",
-    price: "$40",
-    period: "/year",
-    badge: null,
-    validity: null,
-    includes: [
-      "1 account",
-      "Up to 2 active trips",
-      "Groups up to 6 people",
-      "Standard itinerary tools",
-      "Weather",
-      "Emergency phrases",
-      "Basic photo gallery",
-      "No AI builder",
-      "No school-specific tools",
-    ],
-    cta: "Start Personal",
-  },
-  {
-    id: "personal_pro" as const,
-    name: "Personal Pro",
-    price: "$80",
-    period: "/year",
-    badge: null,
-    validity: null,
-    includes: [
-      "1 account",
-      "Up to 5 active trips",
-      "Groups up to 15 people",
-      "AI builder",
-      "Photo gallery",
-      "Viewer link",
-      "Rooms/groups",
-      "Export/print backup",
-      "No school-specific tools",
-    ],
-    cta: "Start Personal Pro",
-  },
-] as const;
+/** @deprecated Personal plans hidden from school launch */
+export const PERSONAL_PRICING = [] as const;
 
 export const FAQS = [
+  {
+    q: "How does the free trial work?",
+    a: "Create a school account and you get 7 days to build a trip, invite test participants, and preview the student view. No card is required. After the trial, we invoice manually — payment is not taken automatically.",
+  },
   {
     q: "Do students need to download an app?",
     a: "No. Students join with a link and can save Itinerary Live to their phone like an app.",
@@ -261,35 +141,28 @@ export const FAQS = [
   },
   {
     q: "Do students and parents count as paid accounts?",
-    a: "No. Staff account limits apply to school staff/admin users who manage trips. Students, parents, and viewers do not count as paid staff accounts.",
+    a: "No. Staff account limits apply to school staff who manage trips. Students, parents, and viewers do not count as paid staff accounts.",
   },
   {
-    q: "What is an active trip?",
-    a: "A trip is active while it is being planned, live, or open for updates/photo uploads. Completed trips move to Trip History and free up an active trip slot.",
+    q: "What happens after the trial?",
+    a: "We contact you to confirm your school plan ($400 NZD + GST per year, or founding school pricing if approved). Invoicing is manual for now — there is no automatic card charge.",
   },
   {
     q: "Can parents see the itinerary?",
     a: "Yes. Schools can enable read-only viewer access for parents, principals, or staff back home.",
   },
   {
-    q: "Can schools control photos?",
-    a: "Yes. Hosts and approved helpers can hide or delete photos from the gallery.",
-  },
-  {
     q: "Can we use Itinerary Live without AI?",
-    a: "Yes. The setup wizard works without AI. AI tools are available on higher plans to speed up itinerary creation and editing.",
-  },
-  {
-    q: "Is there a personal version?",
-    a: "Yes. Personal plans are available for family and group travel, including a one-time trip option.",
-  },
-  {
-    q: "Can a personal trip be paid with PayShare?",
-    a: "Yes. The one-time personal trip package can support PayShare so the group can split the cost.",
+    a: "Yes. The setup wizard works without AI. AI tools are optional helpers for drafting itineraries.",
   },
 ] as const;
 
 export const PRICING_NOTES = [
-  "An active trip is a trip currently being planned, live, or open for updates/photo uploads. Once a trip is completed, it moves to Trip History and no longer counts toward your active trip limit.",
   "School plan is $400 NZD + GST per year. Founding schools (limited places) pay $240 NZD + GST for year one.",
+  "No card required to start. Build your first trip during the 7-day trial before any invoice.",
 ] as const;
+
+/** @deprecated Use PROBLEMS */
+export const PROBLEMS_LEGACY = PROBLEMS;
+/** @deprecated Use PRODUCT_CAPABILITIES */
+export const SOLUTIONS = PRODUCT_CAPABILITIES;

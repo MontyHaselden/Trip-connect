@@ -12,7 +12,7 @@ export async function generateMetadata(props: {
 }): Promise<Metadata> {
   const { inviteCode } = await props.params;
   const trip = await loadTripByAnyInviteCode(inviteCode);
-  const tripName = trip?.name ?? "Trip Connect";
+  const tripName = trip?.name ?? "Itinerary Live";
   const appPath = studentAppPath(trip?.tripInviteCode ?? inviteCode);
   const manifest = buildTripManifestHref(tripName, appPath, appPath);
 

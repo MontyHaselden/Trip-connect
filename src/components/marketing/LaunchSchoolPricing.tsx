@@ -84,17 +84,38 @@ export async function LaunchSchoolPricing() {
             </ul>
             <Link
               href="/signup?type=school"
-              className="mt-8 inline-flex h-11 w-full items-center justify-center rounded-xl bg-zinc-900 text-sm font-medium text-white"
+              className="mt-8 inline-flex h-11 w-full items-center justify-center rounded-xl bg-zinc-900 text-sm font-medium text-white hover:bg-zinc-800"
             >
-              Start free trial
+              Create school account
             </Link>
           </div>
         </div>
 
-        <p className="mx-auto mt-8 max-w-xl text-center text-sm text-zinc-600">
-          Optional guided setup call (from $50 NZD) can be arranged after signup — we&apos;ll invoice
-          manually. No card required to start your trial.
-        </p>
+        <div className="mx-auto mt-10 max-w-xl space-y-4 text-sm text-zinc-600">
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-5 py-4">
+            <p className="font-semibold text-zinc-900">How the trial works</p>
+            <ul className="mt-2 list-inside list-disc space-y-1">
+              <li>{TRIAL_DAYS}-day free trial when you create a school account</li>
+              <li>No card required — build a trip and preview the student view first</li>
+              <li>We contact you before the trial ends to confirm your plan</li>
+            </ul>
+          </div>
+          <div className="rounded-xl border border-zinc-200 bg-white px-5 py-4">
+            <p className="font-semibold text-zinc-900">After the trial</p>
+            <p className="mt-2 leading-relaxed">
+              Invoicing is manual for now — there is no automatic card charge. We send an annual
+              invoice for the school plan ({normal.display}). Founding schools approved at signup pay{" "}
+              {founding.display} for year one.
+            </p>
+          </div>
+          <p className="text-center">
+            Optional guided setup call (from $50 NZD) can be arranged after signup — email{" "}
+            <Link href="/contact" className="font-medium text-sky-700 hover:underline">
+              contact us
+            </Link>
+            .
+          </p>
+        </div>
       </div>
     </section>
   );

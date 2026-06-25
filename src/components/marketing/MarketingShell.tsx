@@ -21,30 +21,30 @@ export function MarketingShell(props: {
   );
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-sky-50/80 via-zinc-50 to-zinc-50 text-zinc-900">
-      <header className="sticky top-0 z-30 border-b border-zinc-200/60 bg-white/80 backdrop-blur-md">
+    <div className="min-h-dvh bg-gradient-to-b from-sky-50/60 via-white to-zinc-50 text-zinc-900">
+      <header className="sticky top-0 z-30 border-b border-zinc-200/60 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4">
-          <Link href="/" className="text-lg font-semibold tracking-tight">
+          <Link href="/" className="text-lg font-semibold tracking-tight text-zinc-900">
             {PRODUCT_NAME}
           </Link>
           <nav className="hidden items-center gap-6 sm:flex">
             {navLink("/features", "features", "Features")}
             {navLink("/pricing", "pricing", "Pricing")}
+            {navLink("/demo", "demo", "Example trip")}
             {navLink("/contact", "contact", "Contact")}
-            {navLink("/demo", "demo", "Demo")}
           </nav>
           <div className="flex items-center gap-2">
             <Link
               href="/login"
-              className="hidden rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 sm:inline-flex"
+              className="hidden rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 hover:text-zinc-900 sm:inline-flex"
             >
               Log in
             </Link>
             <Link
               href="/signup?type=school"
-              className="inline-flex h-9 items-center justify-center rounded-full bg-violet-600 px-4 text-sm font-medium text-white hover:bg-violet-700"
+              className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800"
             >
-              Start free trial
+              Create school account
             </Link>
           </div>
         </div>
@@ -55,8 +55,9 @@ export function MarketingShell(props: {
           <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="font-semibold">{PRODUCT_NAME}</p>
-              <p className="mt-1 text-sm text-zinc-600">
-                School trip itineraries, rebuilt for phones. No GPS tracking. No per-student fees.
+              <p className="mt-1 max-w-sm text-sm text-zinc-600">
+                Live trip operations for schools. One itinerary — staff, students, and parents always
+                on the latest version.
               </p>
               <p className="mt-2 text-xs text-zinc-500">{LEGAL_OPERATOR}</p>
               <p className="mt-1 text-xs text-zinc-500">
@@ -72,6 +73,9 @@ export function MarketingShell(props: {
               <Link href="/pricing" className="hover:text-zinc-900">
                 Pricing
               </Link>
+              <Link href="/demo" className="hover:text-zinc-900">
+                Example trip
+              </Link>
               <Link href="/contact" className="hover:text-zinc-900">
                 Contact
               </Link>
@@ -83,6 +87,9 @@ export function MarketingShell(props: {
               </Link>
               <Link href="/login" className="hover:text-zinc-900">
                 Log in
+              </Link>
+              <Link href="/signup?type=school" className="font-medium hover:text-zinc-900">
+                Create school account
               </Link>
             </div>
           </div>

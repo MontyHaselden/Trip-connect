@@ -63,7 +63,7 @@ export function MobileTokenEntry(props: {
       .catch(() => null);
   }, [token]);
 
-  const tripName = tripMeta?.tripName ?? "Trip Connect";
+  const tripName = tripMeta?.tripName ?? "Itinerary Live";
   const manifestHref = `/api/manifest?name=${encodeURIComponent(tripName)}&startUrl=${encodeURIComponent(startUrl)}`;
 
   return (

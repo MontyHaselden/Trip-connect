@@ -187,14 +187,14 @@ export function TripAppShell({
     >
       {pwaStartUrl ? (
         <TripPwaHead
-          tripName={trip?.trip.name ?? "Trip Connect"}
+          tripName={trip?.trip.name ?? "Itinerary Live"}
           startUrl={pwaStartUrl}
           manifestId={pwaStartUrl}
         />
       ) : null}
       {showInstallHint ? (
         <AddToHomeScreenHint
-          tripName={trip?.trip.name ?? "Trip Connect"}
+          tripName={trip?.trip.name ?? "Itinerary Live"}
           onDismiss={() => setShowInstallHint(false)}
         />
       ) : null}
