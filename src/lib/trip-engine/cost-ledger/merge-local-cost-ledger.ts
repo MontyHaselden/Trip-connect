@@ -40,6 +40,76 @@ function hasOptimisticFinanceSections(settings: CostLedgerProjection["settings"]
   );
 }
 
+/** Local session cache ballooned with duplicate optimistic transport seeds. */
+export function localCostLedgerIsRunawayDuplicate(
+  local: CostLedgerProjection,
+  server: CostLedgerProjection | null | undefined,
+): boolean {
+  if (!server) return false;
+  const localTransport = local.lineItems.filter((line) => line.category === "transport").length;
+  const serverTransport = server.lineItems.filter((line) => line.category === "transport").length;
+  if (localTransport <= serverTransport + 2) return false;
+  const optimisticTransport = local.lineItems.filter(
+    (line) => line.category === "transport" && isOptimisticFinanceLineId(line.id),
+  ).length;
+  return optimisticTransport > serverTransport || localTransport > serverTransport * 2;
+}
+
+/** Drop duplicate optimistic finance rows cached in sessionStorage. */
+export function pruneRunawayLocalFinanceLines(
+  local: CostLedgerProjection,
+  graph: TripEntityGraph,
+): CostLedgerProjection {
+  const productIds = new Set((graph.transportProducts ?? []).map((product) => product.id));
+  const legIds = new Set(
+    [...graph.outboundLegs, ...graph.returnLegs, ...graph.intercityLegs].map((leg) => leg.id),
+  );
+
+  const seenProduct = new Set<string>();
+  const seenLeg = new Set<string>();
+  const orphanDescCount = new Map<string, number>();
+  const orphanAllowance = Math.max(productIds.size, 1);
+
+  const kept: CostLineItemDraft[] = [];
+  for (const line of local.lineItems) {
+    if (line.linkedTransportProductId) {
+      if (!productIds.has(line.linkedTransportProductId)) continue;
+      if (seenProduct.has(line.linkedTransportProductId)) continue;
+      seenProduct.add(line.linkedTransportProductId);
+      kept.push(line);
+      continue;
+    }
+    if (line.linkedTransportLegId) {
+      if (!legIds.has(line.linkedTransportLegId)) continue;
+      if (seenLeg.has(line.linkedTransportLegId)) continue;
+      seenLeg.add(line.linkedTransportLegId);
+      kept.push(line);
+      continue;
+    }
+    if (
+      line.category === "transport" &&
+      !line.linkedStayId &&
+      !line.linkedActivityId
+    ) {
+      const desc = line.description.trim();
+      const count = orphanDescCount.get(desc) ?? 0;
+      if (count >= orphanAllowance) continue;
+      orphanDescCount.set(desc, count + 1);
+      kept.push(line);
+      continue;
+    }
+    kept.push(line);
+  }
+
+  if (kept.length === local.lineItems.length) return local;
+  const keepIds = new Set(kept.map((line) => line.id));
+  return {
+    ...local,
+    lineItems: kept,
+    lineAllocations: local.lineAllocations.filter((row) => keepIds.has(row.lineItemId)),
+  };
+}
+
 /** True when local draft has finance rows or settings the server snapshot does not yet include. */
 export function localCostLedgerIsAhead(
   local: CostLedgerProjection | null | undefined,
@@ -47,6 +117,7 @@ export function localCostLedgerIsAhead(
   graph?: TripEntityGraph | null,
 ): boolean {
   if (!local) return false;
+  if (server && localCostLedgerIsRunawayDuplicate(local, server)) return false;
   if (hasOptimisticFinanceSections(local.settings)) return true;
   if (!local.lineItems.length) return false;
   if (!server) {
@@ -81,12 +152,15 @@ export function mergePreferLocalCostLedger(
   if (options?.forceKeepLocal) return local;
 
   const graph = options?.graph ?? null;
-  const ahead = localCostLedgerIsAhead(local, server, graph);
+  const prunedLocal = graph ? pruneRunawayLocalFinanceLines(local, graph) : local;
+  if (localCostLedgerIsRunawayDuplicate(prunedLocal, server)) return server;
+
+  const ahead = localCostLedgerIsAhead(prunedLocal, server, graph);
   if (!ahead) return server;
 
   const serverIds = new Set(server.lineItems.map((line) => line.id));
   const linkedOnServer = serverLinkKeys(server);
-  const localOnlyLines = local.lineItems.filter((line) => {
+  const localOnlyLines = prunedLocal.lineItems.filter((line) => {
     if (serverIds.has(line.id)) return false;
     if (graph && !linkedEntityExistsInGraph(line, graph)) return false;
     const linkKey = primaryLinkKey(line);
@@ -98,7 +172,7 @@ export function mergePreferLocalCostLedger(
   }
 
   const localOnlyIds = new Set(localOnlyLines.map((line) => line.id));
-  const localById = new Map(local.lineItems.map((line) => [line.id, line]));
+  const localById = new Map(prunedLocal.lineItems.map((line) => [line.id, line]));
 
   const mergedLineItems = [
     ...server.lineItems.map((line) => localById.get(line.id) ?? line),
@@ -107,13 +181,13 @@ export function mergePreferLocalCostLedger(
 
   const mergedAllocations = [
     ...server.lineAllocations.filter((row) => !localOnlyIds.has(row.lineItemId)),
-    ...local.lineAllocations.filter((row) => localOnlyIds.has(row.lineItemId)),
+    ...prunedLocal.lineAllocations.filter((row) => localOnlyIds.has(row.lineItemId)),
   ];
 
   const serverSectionIds = new Set(
     server.settings.financeCustomSections.map((section) => section.id),
   );
-  const extraSections = local.settings.financeCustomSections.filter(
+  const extraSections = prunedLocal.settings.financeCustomSections.filter(
     (section) => !serverSectionIds.has(section.id),
   );
 

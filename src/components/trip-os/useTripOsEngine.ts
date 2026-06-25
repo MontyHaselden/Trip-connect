@@ -22,6 +22,7 @@ import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import {
   localCostLedgerIsAhead,
   mergePreferLocalCostLedger,
+  pruneRunawayLocalFinanceLines,
 } from "@/lib/trip-engine/cost-ledger/merge-local-cost-ledger";
 import { mergeFinancePatchResult } from "@/lib/trip-engine/cost-ledger/merge-finance-patch-result";
 import { mergeActivitiesById } from "@/lib/trip-engine/merge-graph-activities";
@@ -189,17 +190,23 @@ export function useTripOsEngine(tripId: string) {
   const applyDraft = useCallback(
     (draft: TripLocalDraft, viewGroupId?: string) => {
       const gid = viewGroupId ?? draft.activeGroupId ?? draft.graph.mainGroupId;
+      const costLedger = draft.costLedger
+        ? pruneRunawayLocalFinanceLines(draft.costLedger, draft.graph)
+        : null;
       setActiveGroupId(gid);
       setData(
         buildStateFromGraph(draft.graph, {
           viewGroupId: gid,
           inviteCode: draft.inviteCode,
           rosterSummary: draft.rosterSummary ?? EMPTY_ROSTER,
-          costLedger: draft.costLedger,
+          costLedger,
         }),
       );
+      if (costLedger !== draft.costLedger) {
+        persistLocalSnapshot(draft.graph, { costLedger });
+      }
     },
-    [buildStateFromGraph],
+    [buildStateFromGraph, persistLocalSnapshot],
   );
 
   const applyResponse = useCallback(
