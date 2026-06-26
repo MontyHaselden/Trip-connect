@@ -93,12 +93,10 @@ export function participantHasCustomOverrides(
 
   const groupId = personal.id;
   const dayPlaces = graph.dayPlacesByGroupId[groupId] ?? [];
-  const hasDayPaint = dayPlaces.some(
-    (day) => day.primaryCity.trim() || day.secondaryCity?.trim(),
-  );
+  const hasLocationOverlay = dayPlaces.length > 0;
 
   return (
-    hasDayPaint ||
+    hasLocationOverlay ||
     graph.accommodationStays.some((s) => s.originGroupId === groupId) ||
     graph.intercityLegs.some((l) => l.originGroupId === groupId) ||
     graph.activities.some((a) => a.originGroupId === groupId) ||
@@ -122,10 +120,7 @@ export function participantHasLocationOnlyOverrides(
 
   const groupId = personal.id;
   const dayPlaces = graph.dayPlacesByGroupId[groupId] ?? [];
-  const hasDayPaint = dayPlaces.some(
-    (day) => day.primaryCity.trim() || day.secondaryCity?.trim(),
-  );
-  if (!hasDayPaint) return false;
+  if (!dayPlaces.length) return false;
 
   return !(
     graph.accommodationStays.some((s) => s.originGroupId === groupId) ||

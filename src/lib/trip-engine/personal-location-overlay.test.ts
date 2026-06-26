@@ -264,6 +264,44 @@ describe("personal location overlay", () => {
     assert.equal(delta[0]?.date, "2026-12-12");
   });
 
+  it("clearDayRange on personal overlay removes Tottori without revealing main Kagoshima", () => {
+    const graph = setupStateToGraph("trip-1", japanAmandaFixture());
+    const withTottori = applyCommands(graph, [
+      {
+        type: "paintDayRange",
+        groupId: "g-amanda",
+        rangeStart: "2026-12-06",
+        rangeEnd: "2026-12-12",
+        location: "Tottori",
+      },
+    ]).graph;
+
+    const cleared = applyCommands(withTottori, [
+      {
+        type: "clearDayRange",
+        groupId: "g-amanda",
+        rangeStart: "2026-12-06",
+        rangeEnd: "2026-12-12",
+        startHalf: "full",
+        endHalf: "full",
+      },
+    ]).graph;
+
+    const personal = projectCalendar(cleared, { groupId: "g-amanda" });
+    for (const date of [
+      "2026-12-06",
+      "2026-12-07",
+      "2026-12-08",
+      "2026-12-09",
+      "2026-12-10",
+      "2026-12-11",
+      "2026-12-12",
+    ]) {
+      const day = personal.days.find((d) => d.date === date);
+      assert.equal(day?.primaryCity, "", date);
+    }
+  });
+
   it("clearDayRange on personal overlay clears inherited main paint on one half", () => {
     const state: TripSetupState = {
       ...japanAmandaFixture(),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
 /** Scroll `target` to the top of `scroller` with optional padding. */
 export function scrollElementToTop(
@@ -23,24 +23,41 @@ export function scrollElementToTop(
 export function useCalendarScroll() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const savedScrollTop = useRef(0);
-  const restorePending = useRef(false);
+  const userHasScrolled = useRef(false);
 
   const saveScrollPosition = useCallback(() => {
     if (scrollRef.current) {
       savedScrollTop.current = scrollRef.current.scrollTop;
-      restorePending.current = true;
+      userHasScrolled.current = true;
     }
   }, []);
 
-  useLayoutEffect(() => {
-    if (!restorePending.current) return;
+  useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = savedScrollTop.current;
-    restorePending.current = false;
+    const onScroll = () => {
+      savedScrollTop.current = el.scrollTop;
+      userHasScrolled.current = true;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!userHasScrolled.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    if (Math.abs(el.scrollTop - savedScrollTop.current) > 1) {
+      el.scrollTop = savedScrollTop.current;
+    }
   });
 
-  return { scrollRef, saveScrollPosition };
+  const rememberScrollPosition = useCallback((scrollTop: number) => {
+    savedScrollTop.current = scrollTop;
+    userHasScrolled.current = true;
+  }, []);
+
+  return { scrollRef, saveScrollPosition, rememberScrollPosition };
 }
 
 export function useCalendarInitialScroll(params: {
@@ -48,6 +65,7 @@ export function useCalendarInitialScroll(params: {
   anchorDate: string;
   scrollKey: string;
   contentReady: boolean;
+  onInitialScroll?: (scrollTop: number) => void;
 }) {
   const hasAutoScrolled = useRef(false);
   const lastScrollKey = useRef("");
@@ -74,6 +92,7 @@ export function useCalendarInitialScroll(params: {
       if (!anchor) return false;
       scrollElementToTop(scroller!, anchor);
       hasAutoScrolled.current = true;
+      params.onInitialScroll?.(scroller!.scrollTop);
       return true;
     }
 
@@ -91,5 +110,5 @@ export function useCalendarInitialScroll(params: {
     return () => {
       cancelled = true;
     };
-  }, [params.scrollKey, params.anchorDate, params.contentReady, params.scrollRef]);
+  }, [params.scrollKey, params.anchorDate, params.contentReady, params.scrollRef, params.onInitialScroll]);
 }

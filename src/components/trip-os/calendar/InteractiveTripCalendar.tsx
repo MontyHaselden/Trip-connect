@@ -33,6 +33,7 @@ export function InteractiveTripCalendar(props: {
   onDayClick: (iso: string, half?: HalfSide) => boolean;
   pendingFillHalf: (iso: string) => HalfSide | "full" | null;
   scrollRef: React.RefObject<HTMLDivElement | null>;
+  onInitialScroll?: (scrollTop: number) => void;
   headerAside?: ReactNode;
   statusLine?: string;
   onClearSelection?: () => void;
@@ -65,6 +66,7 @@ export function InteractiveTripCalendar(props: {
     anchorDate: model.scrollAnchorDate,
     scrollKey: `${props.tripId}:${model.groupId}:${model.scrollAnchorDate}`,
     contentReady: weekSections.length > 0,
+    onInitialScroll: props.onInitialScroll,
   });
 
   const namedStays = model.accommodationStays.filter((s) => s.name?.trim());

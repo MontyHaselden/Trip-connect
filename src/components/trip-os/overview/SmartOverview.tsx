@@ -25,6 +25,7 @@ import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 
 import type { TripOsSection } from "../TripOsWorkspace";
 import { EditableTripName } from "../shared/EditableTripName";
+import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 import { OverviewFinancePanel } from "../finance/OverviewFinancePanel";
 import { TripOverviewSections } from "./TripOverviewSections";
 import { WelcomeOverview } from "./WelcomeOverview";
@@ -109,22 +110,23 @@ export function SmartOverview(props: {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-10 py-2">
-      <div>
-        <p className="text-sm font-medium text-violet-600">Overview</p>
-        <EditableTripName
-          name={props.graph.basics.name}
-          onSave={props.onUpdateName}
-          variant="ghost"
-          className="mt-2"
-        />
-        <p className="mt-2 text-sm text-zinc-500">{metaLine}</p>
-        {participantLensSummary ? (
-          <p className="mt-2 text-sm text-violet-700">
+    <TripSectionShell
+      eyebrow="Overview"
+      description={metaLine}
+      className="mx-auto max-w-2xl"
+    >
+      <EditableTripName
+        name={props.graph.basics.name}
+        onSave={props.onUpdateName}
+        variant="ghost"
+      />
+      {participantLensSummary ? (
+        <TripSoftPanel>
+          <p className="text-sm text-violet-950">
             Viewing {participantLensSummary.name}: {participantLensSummary.cities}
           </p>
-        ) : null}
-      </div>
+        </TripSoftPanel>
+      ) : null}
 
       <TripOverviewSections snapshot={tripSnapshot} />
 
@@ -136,10 +138,7 @@ export function SmartOverview(props: {
       />
 
       {suggestions.length ? (
-        <section>
-          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
-            Suggested next
-          </h3>
+        <TripSoftPanel title="Suggested next">
           <ul className="space-y-1">
             {suggestions.map((step) => (
               <li key={step.id}>
@@ -168,17 +167,14 @@ export function SmartOverview(props: {
               </li>
             ))}
           </ul>
-        </section>
+        </TripSoftPanel>
       ) : (
         <p className="text-sm text-emerald-700">
           Core setup looks good — use the calendar to refine daily plans.
         </p>
       )}
 
-      <section>
-        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
-          Sections
-        </h3>
+      <TripSoftPanel title="Sections">
         <div className="flex flex-wrap gap-2">
           {props.readiness
             .filter((r) => r.id !== "overview")
@@ -194,7 +190,7 @@ export function SmartOverview(props: {
               </button>
             ))}
         </div>
-      </section>
+      </TripSoftPanel>
 
       {logisticsPrompts.length ? (
         <section className="rounded-2xl bg-sky-50/80 px-5 py-4">
@@ -250,6 +246,6 @@ export function SmartOverview(props: {
           Not shared with participants yet — use Update participants in the sidebar.
         </p>
       )}
-    </div>
+    </TripSectionShell>
   );
 }

@@ -139,12 +139,22 @@ export function mergeParticipantLocationOverlay(
   overlayDays: DayPlaceDraft[],
 ): ProjectedDay[] {
   const paintedOverlay = overlayDays.filter(dayHasPaint);
-  const overlayByDate = new Map(paintedOverlay.map((d) => [d.date, d]));
+  const overlayByDate = new Map(overlayDays.map((d) => [d.date, d]));
   const replacements = buildParticipantCityReplacements(mainDays, paintedOverlay);
 
   return mainDays.map((mainDay) => {
     const overlay = overlayByDate.get(mainDay.date);
     if (overlay) {
+      if (!dayHasPaint(overlay)) {
+        return {
+          ...mainDay,
+          primaryCity: "",
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: "trip",
+          overlayMeta: "override",
+        };
+      }
       return repairOverlayTravelDay(mainDay, overlay, replacements);
     }
 

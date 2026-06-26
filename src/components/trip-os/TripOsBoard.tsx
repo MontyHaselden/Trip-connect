@@ -67,15 +67,18 @@ export function TripOsBoard(props: { tripId: string }) {
     void engine.load(undefined, { silent: true });
   }, [engine.load, scheduleParticipantPreviewRefresh]);
 
+  const { scrollRef, saveScrollPosition, rememberScrollPosition } = useCalendarScroll();
+
   const dispatchWithPreviewRefresh = useCallback(
     async (commands: TripCommand[]) => {
+      saveScrollPosition();
       const ok = await engine.dispatch(commands);
       if (ok) {
         scheduleParticipantPreviewRefresh();
       }
       return ok;
     },
-    [engine.dispatch, scheduleParticipantPreviewRefresh],
+    [engine.dispatch, scheduleParticipantPreviewRefresh, saveScrollPosition],
   );
 
   const saveStatusLine =
@@ -123,8 +126,6 @@ export function TripOsBoard(props: { tripId: string }) {
   }, [calendarLens, editGroupId, graph, props.tripId]);
 
   const renderModel = engine.data?.calendarRenderModel ?? null;
-
-  const { scrollRef, saveScrollPosition } = useCalendarScroll();
 
   const calendar = useCalendarSelection({
     graph: engine.data?.graph ?? null,
@@ -359,6 +360,7 @@ export function TripOsBoard(props: { tripId: string }) {
             onDayClick={calendar.onDayClick}
             pendingFillHalf={calendar.pendingFillHalf}
             scrollRef={scrollRef}
+            onInitialScroll={rememberScrollPosition}
             onClearSelection={calendar.clearSelection}
             headerAside={groupSelector}
             statusLine={

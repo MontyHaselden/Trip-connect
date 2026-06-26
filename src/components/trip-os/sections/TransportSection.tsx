@@ -701,11 +701,7 @@ export function TransportSection(props: {
                           ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
                           : undefined
                       }
-                      onDelete={
-                        isActiveScope
-                          ? () => void deleteLeg(leg, legBucket(leg.id), scope.groupId)
-                          : undefined
-                      }
+                      onDelete={() => void deleteLeg(leg, legBucket(leg.id), scope.groupId)}
                       saving={props.saving}
                       {...legFinanceActions(leg)}
                     />
@@ -739,11 +735,7 @@ export function TransportSection(props: {
                         ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
                         : undefined
                     }
-                    onDelete={
-                      isActiveScope
-                        ? () => void deleteLeg(leg, legBucket(leg.id), scope.groupId)
-                        : undefined
-                    }
+                    onDelete={() => void deleteLeg(leg, legBucket(leg.id), scope.groupId)}
                     saving={props.saving}
                     {...legFinanceActions(leg)}
                   />

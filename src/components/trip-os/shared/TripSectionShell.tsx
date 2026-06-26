@@ -2,7 +2,7 @@ import { TripEyebrow } from "./TripEyebrow";
 
 export function TripSectionShell(props: {
   eyebrow?: string;
-  title: string;
+  title?: string;
   description?: string;
   className?: string;
   fill?: boolean;
@@ -17,7 +17,9 @@ export function TripSectionShell(props: {
     >
       <div className={props.fill ? "shrink-0" : undefined}>
         {props.eyebrow ? <TripEyebrow>{props.eyebrow}</TripEyebrow> : null}
-        <h2 className="mt-1 text-xl font-semibold tracking-tight text-zinc-900">{props.title}</h2>
+        {props.title ? (
+          <h2 className="mt-1 text-xl font-semibold tracking-tight text-zinc-900">{props.title}</h2>
+        ) : null}
         {props.description ? (
           <p className="mt-1.5 text-sm text-zinc-500">{props.description}</p>
         ) : null}

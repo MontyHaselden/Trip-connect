@@ -374,7 +374,9 @@ export function removeAccommodationAndCitiesFromRange(
     accommodationStays: mergeAccommodationStays(state, groupId, remainingStays),
     dayPlacesByGroupId: {
       ...state.dayPlacesByGroupId,
-      [groupId]: stripped.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim()),
+      [groupId]: isPersonalOverlayGroup(state, groupId)
+        ? stripped
+        : stripped.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim()),
     },
   };
 

@@ -85,6 +85,7 @@ import { MainGroupPropagationDialog } from "./MainGroupPropagationDialog";
 import { DayOverviewActivities } from "./DayOverviewActivities";
 import { AddHomestaysModal } from "../homestay/AddHomestaysModal";
 import { TripConfirmModal } from "../shared/TripConfirmModal";
+import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 import { tripFieldClass, TripInput } from "../shared/TripInput";
 import { TripDateInput } from "../shared/TripDateInput";
 import { tripDatePickerContext } from "../shared/trip-date-picker";
@@ -629,9 +630,12 @@ export function DayContextPanel(props: {
 
   if (!rangeStart) {
     return (
-      <div className="rounded-xl border border-dashed border-zinc-300 p-6 text-sm text-zinc-600">
-        Select days on the calendar to view and edit locations and stays.
-      </div>
+      <TripSoftPanel className="mx-auto max-w-2xl">
+        <p className="text-sm text-zinc-600">
+          Select days on the calendar to view and edit locations, stays, and activities for that
+          range.
+        </p>
+      </TripSoftPanel>
     );
   }
 
@@ -1107,17 +1111,17 @@ export function DayContextPanel(props: {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 py-2">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-violet-600">Day overview</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-900">{dayTitle}</h2>
-          {daySubtitle ? <p className="mt-2 text-sm text-zinc-500">{daySubtitle}</p> : null}
-        </div>
+    <TripSectionShell
+      eyebrow="Day overview"
+      title={dayTitle}
+      description={daySubtitle ?? undefined}
+      className="mx-auto max-w-2xl"
+    >
+      <div className="flex justify-end">
         <button
           type="button"
           onClick={props.onClearSelection}
-          className="shrink-0 text-sm font-medium text-zinc-500 hover:text-zinc-800"
+          className="text-sm font-medium text-zinc-500 hover:text-zinc-800"
         >
           Dismiss
         </button>
@@ -1130,25 +1134,26 @@ export function DayContextPanel(props: {
       ) : null}
 
       {groupId !== graph.mainGroupId ? (
-        <p className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm leading-relaxed text-violet-950">
-          You&apos;re editing a participant plan — location changes apply only to them. Stays and
-          activities follow the main group until you save a personal stay override here.
-        </p>
+        <TripSoftPanel>
+          <p className="text-sm leading-relaxed text-violet-950">
+            You&apos;re editing a participant plan — location changes apply only to them. Stays and
+            activities follow the main group until you save a personal stay override here.
+          </p>
+        </TripSoftPanel>
       ) : null}
 
       {rangeConflicts.length ? (
-        <ul className="space-y-1 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-          {rangeConflicts.map((c) => (
-            <li key={c.id}>{c.message}</li>
-          ))}
-        </ul>
+        <TripSoftPanel className="border border-amber-200 bg-amber-50/80">
+          <ul className="space-y-1 text-sm text-amber-950">
+            {rangeConflicts.map((c) => (
+              <li key={c.id}>{c.message}</li>
+            ))}
+          </ul>
+        </TripSoftPanel>
       ) : null}
 
-      <section>
-        <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
-          On this day
-        </h3>
-        <ul className="space-y-3">
+      <TripSoftPanel title="On this day">
+        <ul className="space-y-2">
           <OverviewLine
             label="Location"
             value={locationSummary}
@@ -1164,20 +1169,12 @@ export function DayContextPanel(props: {
             onAction={() => setEditingField("accommodation")}
           />
         </ul>
-      </section>
+      </TripSoftPanel>
 
       {homestayPeriodInRange ? (
-        <section className="rounded-2xl border border-zinc-200/80 bg-gradient-to-b from-violet-50/40 to-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-600">
-                Host families
-              </h3>
-              <p className="mt-1 text-sm text-zinc-600">
-                {homestayPeriodInRange.name || "Homestays"} ·{" "}
-                {homestayPeriodInRange.checkInDate} → {homestayPeriodInRange.checkOutDate}
-              </p>
-            </div>
+        <TripSoftPanel
+          title="Host families"
+          headerAction={
             <button
               type="button"
               onClick={openHomestaysModal}
@@ -1185,13 +1182,18 @@ export function DayContextPanel(props: {
             >
               Add homestays
             </button>
-          </div>
+          }
+        >
+          <p className="text-sm text-zinc-600">
+            {homestayPeriodInRange.name || "Homestays"} · {homestayPeriodInRange.checkInDate} →{" "}
+            {homestayPeriodInRange.checkOutDate}
+          </p>
           {homestayFamiliesInRange.length ? (
             <ul className="mt-4 space-y-2">
               {homestayFamiliesInRange.map((family) => (
                 <li
                   key={family.id}
-                  className="rounded-xl border border-zinc-200/80 bg-white px-4 py-3 text-sm"
+                  className="rounded-xl bg-white px-4 py-3 text-sm shadow-sm"
                 >
                   <p className="font-medium text-zinc-900">{family.name}</p>
                   {family.address ? (
@@ -1205,7 +1207,7 @@ export function DayContextPanel(props: {
               No host families yet — add them to assign students.
             </p>
           )}
-        </section>
+        </TripSoftPanel>
       ) : null}
 
       {editingField === "location" ? (
@@ -1577,7 +1579,7 @@ export function DayContextPanel(props: {
         <button
           type="button"
           onClick={() => setPendingConfirm("clearRange")}
-          className="text-sm font-medium text-red-700 hover:underline"
+          className="rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800 hover:bg-red-100"
         >
           Clear selected range
         </button>
@@ -1665,7 +1667,7 @@ export function DayContextPanel(props: {
         onDispatch={props.onDispatch}
         onSaved={() => props.onReload?.()}
       />
-    </div>
+    </TripSectionShell>
   );
 }
 
@@ -1681,21 +1683,22 @@ function OverviewLine(props: {
       <button
         type="button"
         onClick={props.onAction}
-        className="group flex w-full gap-4 text-left text-sm"
+        className="flex w-full items-start justify-between gap-3 rounded-xl bg-white px-4 py-3 text-left shadow-sm transition hover:bg-zinc-50"
       >
-        <span className="w-24 shrink-0 font-medium text-zinc-400">{props.label}</span>
-        <span
-          className={[
-            "min-w-0 flex-1",
-            props.highlight ? "font-medium text-amber-900" : "text-zinc-800",
-          ].join(" ")}
-        >
-          {props.value}
-        </span>
-        <span className="shrink-0 font-medium text-violet-600 transition group-hover:text-violet-700">
-          {props.action}
-          <span className="ml-1 text-zinc-300 transition group-hover:text-violet-400">→</span>
-        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+            {props.label}
+          </p>
+          <p
+            className={[
+              "mt-1 text-sm",
+              props.highlight ? "font-medium text-amber-900" : "font-medium text-zinc-900",
+            ].join(" ")}
+          >
+            {props.value}
+          </p>
+        </div>
+        <span className="shrink-0 text-sm font-medium text-violet-700">{props.action}</span>
       </button>
     </li>
   );

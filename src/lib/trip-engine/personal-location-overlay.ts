@@ -1,4 +1,5 @@
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
+import { enumerateDates } from "@/lib/host/wizard/location-stays";
 
 import type { NightPairSelection } from "@/lib/host/setup/night-pair-selection";
 import type { TripSetupState } from "@/lib/host/setup/types";
@@ -44,8 +45,14 @@ function mergeMainWithPersonalOverlayDays(
   const mainDays = dayPlacesByGroupId[mainGroupId] ?? [];
   const overlayDays = dayPlacesByGroupId[groupId] ?? [];
   const byDate = new Map(mainDays.map((day) => [day.date, day]));
-  for (const day of overlayDays) {
-    if (dayHasPaint(day)) byDate.set(day.date, day);
+  const overlayByDate = new Map(overlayDays.map((day) => [day.date, day]));
+  for (const [date, overlayDay] of overlayByDate) {
+    if (dayHasPaint(overlayDay)) {
+      byDate.set(date, overlayDay);
+      continue;
+    }
+    // Blank overlay entry masks inherited main paint for this date.
+    byDate.set(date, { ...overlayDay, primaryCity: "", secondaryCity: null, primaryShare: 1 });
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
@@ -53,6 +60,17 @@ function mergeMainWithPersonalOverlayDays(
 export function isPersonalOverlayGroup(state: TripSetupState, groupId: string): boolean {
   const group = state.groups?.find((g) => g.id === groupId);
   return Boolean(group?.personalForParticipantId && group.inheritMode === "overlay");
+}
+
+function emptyOverlayDay(date: string): DayPlaceDraft {
+  return {
+    date,
+    primaryCity: "",
+    secondaryCity: null,
+    primaryShare: 1,
+    dayType: "trip",
+    includeBuffer: false,
+  };
 }
 
 /** Clear inherited main paint for a personal overlay group and return the stored delta. */
@@ -70,13 +88,28 @@ export function clearPersonalOverlayLocationInSpan(
   );
   const clearedMerged = clearAllLocationInSpan(merged, selection);
   const end = selection.rangeEnd || selection.rangeStart;
-  return extractPersonalLocationOverlayDelta(
+  const delta = extractPersonalLocationOverlayDelta(
     mainDays,
     clearedMerged,
     existingOverlay,
     selection.rangeStart,
     end,
   );
+
+  const mainByDate = new Map(mainDays.map((day) => [day.date, day]));
+  const isFullRangeClear =
+    (selection.startHalf ?? "full") === "full" && (selection.endHalf ?? "full") === "full";
+
+  const deltaByDate = new Map(delta.map((day) => [day.date, day]));
+  if (isFullRangeClear) {
+    for (const date of enumerateDates(selection.rangeStart, end)) {
+      const mainDay = mainByDate.get(date);
+      if (!mainDay || !dayHasPaint(mainDay)) continue;
+      deltaByDate.set(date, emptyOverlayDay(date));
+    }
+  }
+
+  return dedupeDaysByDate([...deltaByDate.values()]);
 }
 
 function repairOverlayTravelDay(
