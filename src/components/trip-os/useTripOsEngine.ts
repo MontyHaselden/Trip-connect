@@ -6,6 +6,7 @@ import type { SetupSectionId } from "@/lib/host/setup/types";
 import {
   mergeTripLocalDraft,
   readTripLocalDraft,
+  clearTripLocalDraft,
   type TripLocalDraft,
 } from "@/lib/trip-os/local-draft";
 import {
@@ -13,7 +14,7 @@ import {
   tripPersistInFlight,
   waitForTripPersist,
 } from "@/lib/trip-os/persist-queue";
-import { deriveEngineViewFromGraph } from "@/lib/trip-engine/build-setup-response";
+import { deriveEngineViewFromGraph, hydrateSetupEngineResponse } from "@/lib/trip-engine/build-setup-response";
 import { applyCommandBatch } from "@/lib/trip-engine/apply-command-batch";
 import { computeReadiness } from "@/lib/trip-engine/compute-readiness";
 import type { TripCommand } from "@/lib/trip-engine/commands";
@@ -218,27 +219,51 @@ export function useTripOsEngine(tripId: string) {
   const applyResponse = useCallback(
     (
       body: SetupEngineResponse & { inviteCode?: string },
-      context?: { viewGroupId?: string },
+      context?: { viewGroupId?: string; rebuildView?: boolean },
     ) => {
+      const hydrated = hydrateSetupEngineResponse(body);
       const viewGroupId =
-        context?.viewGroupId ?? activeGroupIdRef.current ?? body.graph.mainGroupId;
-      const graph = withRepairedTransportGraph(body.graph);
+        context?.viewGroupId ?? activeGroupIdRef.current ?? hydrated.graph.mainGroupId;
+      const graph = withRepairedTransportGraph(hydrated.graph);
       const mergedCostLedger = mergeCostLedgerForGraph(
         dataRef.current?.costLedger,
-        body.costLedger,
+        hydrated.costLedger,
         graph,
         {
           forceKeepLocal: financePatchInFlightRef.current > 0,
         },
       );
-      const next = buildStateFromGraph(graph, {
-        viewGroupId,
-        warnings: body.warnings,
-        inviteCode: body.inviteCode,
-        rosterSummary: body.rosterSummary,
-        costLedger: mergedCostLedger,
-        prev: dataRef.current,
-      });
+      const view =
+        context?.rebuildView
+          ? deriveEngineViewFromGraph(graph, {
+              groupId: viewGroupId,
+              costLedger: mergedCostLedger,
+            })
+          : {
+              graph,
+              calendarProjection: hydrated.calendarProjection,
+              calendarRenderModel: hydrated.calendarRenderModel,
+              readiness: computeReadiness(
+                graph,
+                hydrated.calendarProjection,
+                mergedCostLedger,
+              ),
+              conflicts: hydrated.conflicts,
+            };
+      const next: EngineState = {
+        graph: view.graph,
+        calendarProjection: view.calendarProjection,
+        calendarRenderModel: view.calendarRenderModel,
+        readiness: view.readiness,
+        warnings: hydrated.warnings ?? dataRef.current?.warnings ?? [],
+        conflicts: view.conflicts,
+        inviteCode: hydrated.inviteCode ?? dataRef.current?.inviteCode ?? "",
+        rosterSummary: hydrated.rosterSummary ?? dataRef.current?.rosterSummary ?? EMPTY_ROSTER,
+        costLedger:
+          mergedCostLedger !== undefined
+            ? mergedCostLedger
+            : (dataRef.current?.costLedger ?? null),
+      };
       setActiveGroupId(viewGroupId);
       setData(next);
       persistLocalSnapshot(graph, {
@@ -250,7 +275,7 @@ export function useTripOsEngine(tripId: string) {
         costLedger: next.costLedger,
       });
     },
-    [buildStateFromGraph, persistLocalSnapshot],
+    [persistLocalSnapshot],
   );
 
   const fetchServerMetadata = useCallback(
@@ -344,17 +369,21 @@ export function useTripOsEngine(tripId: string) {
         if (draft?.graph) {
           pendingCommandsRef.current = [...draft.pendingCommands];
           pendingGroupIdRef.current = draft.pendingGroupId;
-          applyDraft(draft, groupId);
-          setError(null);
-          setLoading(false);
-          setRefreshing(false);
-          if (draft.pendingCommands.length) scheduleFlushRef.current();
-          void fetchServerMetadata(generation, groupId, {
-            keepLocalGraph:
-              draft.pendingCommands.length > 0 ||
-              localCostLedgerIsAhead(draft.costLedger, undefined, draft.graph),
-          });
-          return;
+          try {
+            applyDraft(draft, groupId);
+            setError(null);
+            setLoading(false);
+            setRefreshing(false);
+            if (draft.pendingCommands.length) scheduleFlushRef.current();
+            void fetchServerMetadata(generation, groupId, {
+              keepLocalGraph:
+                draft.pendingCommands.length > 0 ||
+                localCostLedgerIsAhead(draft.costLedger, undefined, draft.graph),
+            });
+            return;
+          } catch {
+            clearTripLocalDraft(tripId);
+          }
         }
       }
 
@@ -490,6 +519,7 @@ export function useTripOsEngine(tripId: string) {
           } else if (body.graph) {
             applyResponse(body as SetupEngineResponse, {
               viewGroupId: activeGroupIdRef.current || persistGroupId,
+              rebuildView: false,
             });
           } else {
             await fetchServerMetadata(loadGenerationRef.current, activeGroupIdRef.current, {

@@ -175,9 +175,11 @@ export function projectCalendar(
     }
   }
 
+  const dayIndex = new Set(days.map((d) => d.date));
   for (const date of enumerateDates(gridStart, gridEnd)) {
-    if (!days.some((d) => d.date === date)) {
+    if (!dayIndex.has(date)) {
       days.push(emptyDay(date, groupId));
+      dayIndex.add(date);
     }
   }
   days.sort((a, b) => a.date.localeCompare(b.date));

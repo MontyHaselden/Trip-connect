@@ -1,5 +1,4 @@
 import { calendarGridFromToday } from "@/lib/host/setup/calendar-bounds";
-import { deriveCalendarState } from "@/lib/host/setup/derive-calendar";
 import { effectiveTripBoundsFromState } from "@/lib/host/setup/sync-trip-bounds";
 import { tripDatesAreUnset } from "@/lib/host/trip-date-display";
 import { enumerateDates, normalizeDayShare } from "@/lib/host/wizard/location-stays";
@@ -12,7 +11,6 @@ import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import { projectCalendar, type ProjectCalendarOptions } from "./project-calendar";
 import { participantInheritsMainCalendar, participantUsesLocationOverlayProjection, activitiesForCalendarView } from "./person-lens";
 import { dayPlacesForGroup, namedStays, calendarContentScopeForGroup } from "./selectors";
-import { resolveDisplayDayPlaces } from "./resolve-display-day-places";
 import type {
   ActivityMarker,
   CalendarRenderModel,
@@ -89,29 +87,6 @@ export function buildCalendarRenderModel(
   const gridStart = options?.gridStart ?? gridMeta.gridStart;
   const gridEnd = options?.gridEnd ?? gridMeta.gridEnd;
 
-  const derived = deriveCalendarState({
-    stays: scope.stays,
-    intercityLegs: scope.intercityLegs,
-    trip: {
-      departureCity: graph.basics.departureCity,
-      returnCity: graph.basics.returnCity,
-      startDate: bounds.startDate,
-      endDate: bounds.endDate,
-    },
-    transportDraft: {
-      outboundLegs: scope.outboundLegs,
-      returnLegs: scope.returnLegs,
-      intercityLegs: scope.intercityLegs,
-      dayPlaces: storedDays,
-    },
-    gridStart,
-    gridEnd,
-    overlayStoredLocationGaps: false,
-    inferLocationsFromTransport: false,
-  });
-
-  resolveDisplayDayPlaces(storedDays, derived.dayPlaces, gridStart, gridEnd);
-
   const projection = projectCalendar(graph, { groupId, gridStart, gridEnd, ...options });
   const allDates = enumerateDates(gridStart, gridEnd);
   const days = projection.days.map(projectedToDayPlace);
@@ -140,11 +115,11 @@ export function buildCalendarRenderModel(
     datesUnset,
     days,
     overlayMetaByDate,
-    accommodationByDate: derived.accommodationByDate,
+    accommodationByDate: projection.accommodationByDate,
     accommodationStays: usesMainGroupCalendarContent(graph, groupId)
       ? namedStays(graph, graph.mainGroupId)
       : namedStays(graph, groupId),
-    boundaries: derived.boundaries,
+    boundaries: projection.boundaries,
     activitiesByDate: buildActivitiesByDate(graph, allDates, groupId),
     projectedDays: projection.days,
     locationColorByKey,

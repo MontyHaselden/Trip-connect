@@ -27,7 +27,7 @@ export type { TripMapProjection, TripMapMarker, TripMapRouteLine, NeedsCoordinat
 export { computeReadiness } from "./compute-readiness";
 export { detectGraphConflicts } from "./conflicts";
 export * as selectors from "./selectors";
-export { buildSetupEngineResponse, deriveEngineViewFromGraph, serializeSetupResponse } from "./build-setup-response";
+export { buildSetupEngineResponse, deriveEngineViewFromGraph, serializeSetupResponse, hydrateSetupEngineResponse } from "./build-setup-response";
 export { publishFromGraph } from "./snapshot-adapter";
 export { loadActivitiesForTrip, syncActivitiesForTrip } from "./activities-persistence";
 export { LEGACY_SHADOW_ITEMS_ENABLED } from "./legacy-publish-adapter";

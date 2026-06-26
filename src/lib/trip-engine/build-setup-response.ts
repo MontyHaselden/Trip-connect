@@ -2,10 +2,14 @@ import { graphToSetupState, setupStateToGraph } from "./adapters";
 import { buildCalendarRenderModel } from "./calendar-render-model";
 import { detectGraphConflicts } from "./conflicts";
 import { computeReadiness } from "./compute-readiness";
-import { projectCalendar } from "./project-calendar";
-import type { CalendarRenderModel, SetupEngineResponse, TripEntityGraph } from "./types";
 import type { CostLedgerProjection } from "./cost-ledger/types";
-import type { RosterSummary } from "./types";
+import type {
+  CalendarProjection,
+  CalendarRenderModel,
+  RosterSummary,
+  SetupEngineResponse,
+  TripEntityGraph,
+} from "./types";
 
 function serializeRenderModel(model: CalendarRenderModel) {
   return {
@@ -26,8 +30,15 @@ export function deriveEngineViewFromGraph(
   },
 ) {
   const groupId = options?.groupId ?? graph.mainGroupId;
-  const calendarProjection = projectCalendar(graph, { groupId });
   const calendarRenderModel = buildCalendarRenderModel(graph, { groupId });
+  const calendarProjection: CalendarProjection = {
+    groupId,
+    gridStart: calendarRenderModel.gridStart,
+    gridEnd: calendarRenderModel.gridEnd,
+    days: calendarRenderModel.projectedDays,
+    accommodationByDate: calendarRenderModel.accommodationByDate,
+    boundaries: calendarRenderModel.boundaries,
+  };
   const readiness = computeReadiness(graph, calendarProjection, options?.costLedger);
   const conflicts = detectGraphConflicts(graph, calendarProjection, groupId);
 
@@ -91,5 +102,25 @@ export function deserializeRenderModel(raw: CalendarRenderModel): CalendarRender
     accommodationByDate: toMap(raw.accommodationByDate),
     activitiesByDate: toMap(raw.activitiesByDate),
     locationColorByKey: toMap(raw.locationColorByKey),
+  };
+}
+
+export function deserializeCalendarProjection(
+  raw: CalendarProjection,
+): CalendarProjection {
+  return {
+    ...raw,
+    accommodationByDate: toMap(raw.accommodationByDate),
+  };
+}
+
+/** Restore Maps on engine payloads returned from the setup API. */
+export function hydrateSetupEngineResponse(
+  body: SetupEngineResponse,
+): SetupEngineResponse {
+  return {
+    ...body,
+    calendarProjection: deserializeCalendarProjection(body.calendarProjection),
+    calendarRenderModel: deserializeRenderModel(body.calendarRenderModel),
   };
 }
