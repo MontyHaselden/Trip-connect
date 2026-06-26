@@ -4,11 +4,13 @@ import { addDays, locationsMatch } from "@/lib/host/wizard/location-stays";
 import type { DayPlaceDraft, IntercityLegDraft, TransportLegDraft } from "@/lib/host/wizard/types";
 import { newId } from "@/lib/host/wizard/types";
 
-import { dayPlacesForGroup } from "./selectors";
 import {
   isPendingTransportNeedHidden,
   pendingTransportNeedKey,
 } from "./hidden-pending-transport";
+import { personalGroupForGroupId } from "./person-lens";
+import { projectCalendar } from "./project-calendar";
+import { dayPlacesForGroup } from "./selectors";
 import type { TripEntityGraph } from "./types";
 
 export type PendingTransportKind = "outbound_flight" | "return_flight" | "intercity";
@@ -51,10 +53,61 @@ function routeMatchesMove(
   );
 }
 
+function isFlightLeg(leg: TransportLegDraft | IntercityLegDraft): boolean {
+  return leg.transportType === "plane";
+}
+
+/** Flights may depart the day before the calendar arrival split. */
+function legDatesAlignWithMove(leg: TransportLegDraft | IntercityLegDraft, move: CityMove): boolean {
+  if (leg.travelDate === move.date) return true;
+  if (!isFlightLeg(leg)) return false;
+  const arrival = leg.arrivalDate?.trim();
+  if (arrival && arrival === move.date) return true;
+  if (addDays(leg.travelDate, 1) === move.date) return true;
+  if (addDays(move.date, 1) === leg.travelDate) return true;
+  return false;
+}
+
 function legCoversMove(leg: TransportLegDraft | IntercityLegDraft, move: CityMove): boolean {
   const { from, to } = legEndpoints(leg);
   if (!from || !to) return false;
-  return leg.travelDate === move.date && routeMatchesMove(from, to, move);
+  return legDatesAlignWithMove(leg, move) && routeMatchesMove(from, to, move);
+}
+
+function isMainOwnedLeg(
+  leg: { originGroupId?: string | null },
+  mainGroupId: string,
+): boolean {
+  return !leg.originGroupId || leg.originGroupId === mainGroupId;
+}
+
+function projectedDayToDraft(day: {
+  date: string;
+  primaryCity: string;
+  secondaryCity: string | null;
+  primaryShare: number;
+  dayType: DayPlaceDraft["dayType"];
+}): DayPlaceDraft {
+  return {
+    date: day.date,
+    primaryCity: day.primaryCity,
+    secondaryCity: day.secondaryCity,
+    primaryShare: day.primaryShare,
+    dayType: day.dayType,
+    includeBuffer: false,
+  };
+}
+
+/** Same calendar the host sees when checking gaps for a group. */
+function dayPlacesForPendingTransport(graph: TripEntityGraph, groupId: string): DayPlaceDraft[] {
+  if (groupId === graph.mainGroupId) {
+    return dayPlacesForGroup(graph, groupId);
+  }
+  const personal = personalGroupForGroupId(graph, groupId);
+  if (personal?.inheritMode === "overlay") {
+    return projectCalendar(graph, { groupId }).days.map(projectedDayToDraft);
+  }
+  return dayPlacesForGroup(graph, groupId);
 }
 
 function isHomeCity(city: string, basics: TripEntityGraph["basics"]): boolean {
@@ -120,16 +173,31 @@ export function detectMissingOutboundFlight(
 }
 
 function scopedTransportLegs(graph: TripEntityGraph, groupId: string) {
-  const inScope = (leg: { originGroupId?: string | null }) =>
-    groupId === graph.mainGroupId
-      ? !leg.originGroupId || leg.originGroupId === graph.mainGroupId
-      : leg.originGroupId === groupId;
+  const personal = personalGroupForGroupId(graph, groupId);
+  const inheritsMainTransport = personal?.inheritMode === "overlay";
+  const legs: Array<TransportLegDraft | IntercityLegDraft> = [];
 
-  return [
-    ...graph.outboundLegs.filter(inScope),
-    ...graph.returnLegs.filter(inScope),
-    ...graph.intercityLegs.filter(inScope),
-  ];
+  if (groupId === graph.mainGroupId || inheritsMainTransport) {
+    legs.push(
+      ...graph.outboundLegs.filter((leg) => isMainOwnedLeg(leg, graph.mainGroupId)),
+      ...graph.returnLegs.filter((leg) => isMainOwnedLeg(leg, graph.mainGroupId)),
+    );
+  }
+
+  if (groupId === graph.mainGroupId) {
+    legs.push(
+      ...graph.intercityLegs.filter((leg) => isMainOwnedLeg(leg, graph.mainGroupId)),
+    );
+  } else {
+    legs.push(...graph.intercityLegs.filter((leg) => leg.originGroupId === groupId));
+    if (inheritsMainTransport) {
+      legs.push(
+        ...graph.intercityLegs.filter((leg) => isMainOwnedLeg(leg, graph.mainGroupId)),
+      );
+    }
+  }
+
+  return legs;
 }
 
 function sortPendingNeeds(needs: PendingTransportNeed[]): PendingTransportNeed[] {
@@ -151,7 +219,7 @@ export function pendingTransportNeedsFromCalendar(
   groupId: string,
   options?: { includeHidden?: boolean },
 ): PendingTransportNeed[] {
-  const dayPlaces = dayPlacesForGroup(graph, groupId);
+  const dayPlaces = dayPlacesForPendingTransport(graph, groupId);
   const moves = detectCityMoves(dayPlaces);
 
   const outbound = detectMissingOutboundFlight(dayPlaces, graph.basics);

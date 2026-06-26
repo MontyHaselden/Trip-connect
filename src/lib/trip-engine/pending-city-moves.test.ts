@@ -216,4 +216,162 @@ describe("pendingTransportNeedsFromCalendar", () => {
     const pending = pendingTransportNeedsFromCalendar(graph, "main");
     assert.ok(!pending.some((need) => need.kind === "outbound_flight"));
   });
+
+  it("clears outbound flight when leg departs the day before the calendar arrival", () => {
+    const state = japanOutboundState();
+    state.dayPlacesByGroupId.main = [
+      {
+        date: "2026-12-05",
+        primaryCity: "Christchurch",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip",
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-06",
+        primaryCity: "Christchurch",
+        secondaryCity: "Tokyo, Japan",
+        primaryShare: 0.5,
+        dayType: "travel",
+        includeBuffer: false,
+      },
+      ...(state.dayPlacesByGroupId.main ?? []).filter((day) => day.date > "2026-12-06"),
+    ];
+    state.outboundLegs = [
+      {
+        id: "out-1",
+        transportType: "plane",
+        bookingStatus: "not_booked",
+        travelDate: "2026-12-05",
+        arrivalDate: "2026-12-06",
+        departureTime: null,
+        arrivalTime: null,
+        fromCity: "Christchurch",
+        toCity: "Tokyo",
+        fromStation: "CHC",
+        toStation: "NRT",
+        operator: null,
+        referenceNumber: null,
+        flightNumber: "NZ99",
+        notes: null,
+      },
+    ];
+    const graph = setupStateToGraph("trip-1", state);
+    const pending = pendingTransportNeedsFromCalendar(graph, "main");
+    assert.ok(!pending.some((need) => need.kind === "outbound_flight"));
+  });
+
+  it("clears overlay participant outbound when whole-group flight already exists", () => {
+    const state: TripSetupState = {
+      basics: {
+        name: "Japan 2026",
+        schoolName: "",
+        startDate: "2026-12-05",
+        endDate: "2026-12-21",
+        timezone: "Asia/Tokyo",
+        departureCity: "Christchurch",
+        returnCity: "Christchurch",
+        defaultDepartureAirport: "",
+        destinationCountries: ["Japan"],
+      },
+      mainGroupId: "g-main",
+      groups: [
+        {
+          id: "g-main",
+          name: "Main",
+          type: "main",
+          description: null,
+          sortOrder: 0,
+          isMain: true,
+          inheritMode: null,
+          personalForParticipantId: null,
+        },
+        {
+          id: "g-amanda",
+          name: "Amanda",
+          type: "split_travel",
+          description: null,
+          sortOrder: 1,
+          isMain: false,
+          inheritMode: "overlay",
+          personalForParticipantId: "p-amanda",
+        },
+      ],
+      dayPlacesByGroupId: {
+        "g-main": [
+          {
+            date: "2026-12-06",
+            primaryCity: "Tokyo, Japan",
+            secondaryCity: "Kagoshima",
+            primaryShare: 0.5,
+            dayType: "travel",
+            includeBuffer: false,
+          },
+          {
+            date: "2026-12-07",
+            primaryCity: "Kagoshima",
+            secondaryCity: null,
+            primaryShare: 1,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+        ],
+        "g-amanda": [
+          {
+            date: "2026-12-05",
+            primaryCity: "Christchurch",
+            secondaryCity: null,
+            primaryShare: 1,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+          {
+            date: "2026-12-06",
+            primaryCity: "Christchurch",
+            secondaryCity: "Tokyo, Japan",
+            primaryShare: 0.5,
+            dayType: "travel",
+            includeBuffer: false,
+          },
+          {
+            date: "2026-12-07",
+            primaryCity: "Kagoshima",
+            secondaryCity: null,
+            primaryShare: 1,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+        ],
+      },
+      outboundLegs: [
+        {
+          id: "out-1",
+          transportType: "plane",
+          bookingStatus: "not_booked",
+          travelDate: "2026-12-05",
+          arrivalDate: "2026-12-05",
+          departureTime: null,
+          arrivalTime: null,
+          fromCity: "Christchurch",
+          toCity: "Tokyo",
+          fromStation: "CHC",
+          toStation: "NRT",
+          operator: null,
+          referenceNumber: null,
+          flightNumber: "NZ99",
+          notes: null,
+        },
+      ],
+      returnLegs: [],
+      intercityLegs: [],
+      accommodationStays: [],
+      activities: [],
+      overlayOps: [],
+    };
+
+    const graph = setupStateToGraph("trip-1", state);
+    const pending = pendingTransportNeedsFromCalendar(graph, "g-amanda");
+    assert.ok(!pending.some((need) => need.kind === "outbound_flight"));
+  });
 });
