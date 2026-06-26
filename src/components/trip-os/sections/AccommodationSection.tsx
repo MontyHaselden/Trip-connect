@@ -53,6 +53,8 @@ function StayListItem(props: {
   financeAttentionReason?: string | null;
   onOpenFinance?: () => void;
   showFinanceActions?: boolean;
+  showRoomsButton?: boolean;
+  onAddRooms?: () => void;
   saving?: boolean;
   onMarkTbc?: () => void;
 }) {
@@ -72,6 +74,15 @@ function StayListItem(props: {
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-2">
+        {props.showRoomsButton ? (
+          <button
+            type="button"
+            onClick={props.onAddRooms}
+            className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
+          >
+            Rooms
+          </button>
+        ) : null}
         <FinanceEntityQuickActions
           show={Boolean(props.showFinanceActions)}
           saving={props.saving}
@@ -135,6 +146,7 @@ export function AccommodationSection(props: {
   onCostsAction?: (payload: Record<string, unknown>) => Promise<CostsPatchResult>;
 }) {
   const [roomsModalOpen, setRoomsModalOpen] = useState(false);
+  const [roomsModalStayId, setRoomsModalStayId] = useState<string | null>(null);
   const [homestaysModalOpen, setHomestaysModalOpen] = useState(false);
   const [actionScopeId, setActionScopeId] = useState<string | null>(null);
 
@@ -192,6 +204,12 @@ export function AccommodationSection(props: {
     });
   }
 
+  function openRoomsForStay(scopeGroupId: string, stayId: string) {
+    setActionScopeId(scopeGroupId);
+    setRoomsModalStayId(stayId);
+    setRoomsModalOpen(true);
+  }
+
   function scopeHeaderAction(scope: TripScopeSection<AccommodationStayDraft>) {
     const isActiveScope = scope.groupId === props.groupId;
     if (!isActiveScope) return undefined;
@@ -199,20 +217,7 @@ export function AccommodationSection(props: {
     const hasHomestayPeriods = homestayPeriodStays(scope.items).length > 0;
     const hasHotels = nonHomestayStays(scope.items).some((s) => s.name?.trim());
 
-    if (scope.groupId === props.graph.mainGroupId || hasHotels) {
-      return (
-        <PanelActionButton
-          onClick={() => {
-            setActionScopeId(scope.groupId);
-            setRoomsModalOpen(true);
-          }}
-        >
-          Add rooms
-        </PanelActionButton>
-      );
-    }
-
-    if (hasHomestayPeriods) {
+    if (hasHomestayPeriods && !hasHotels) {
       return (
         <PanelActionButton
           onClick={() => {
@@ -236,6 +241,8 @@ export function AccommodationSection(props: {
     const isWholeGroup = scope.groupId === props.graph.mainGroupId;
     const scopeHint = scopeEditHint(props.graph, props.groupId, scope);
 
+    const isActiveScope = scope.groupId === props.groupId;
+
     return (
       <div key={scope.groupId} className={isWholeGroup ? undefined : "mt-8"}>
         <TripScopedSectionHeader
@@ -250,6 +257,12 @@ export function AccommodationSection(props: {
               key={s.id}
               stay={s}
               scopeHint={scopeHint}
+              showRoomsButton={
+                isActiveScope &&
+                s.stayType !== "homestay" &&
+                Boolean(s.name?.trim())
+              }
+              onAddRooms={() => openRoomsForStay(scope.groupId, s.id)}
               financeStatus={stayFinanceDisplayStatus(s.id, props.costLedger)}
               financeAttentionReason={stayFinanceAttentionReason(s.id, props.costLedger)}
               onOpenFinance={() => openStayFinance(s.id)}
@@ -296,11 +309,15 @@ export function AccommodationSection(props: {
 
       <AddRoomsModal
         open={roomsModalOpen}
-        onClose={() => setRoomsModalOpen(false)}
+        onClose={() => {
+          setRoomsModalOpen(false);
+          setRoomsModalStayId(null);
+        }}
         tripId={props.tripId}
         inviteCode={props.inviteCode}
         hotelStays={hotelStaysForRooms}
         roster={roster}
+        initialStayId={roomsModalStayId}
         onSaved={() => props.onReload?.()}
       />
 

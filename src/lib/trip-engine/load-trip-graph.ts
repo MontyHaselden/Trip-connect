@@ -10,6 +10,7 @@ import {
 import { loadTripSetupState } from "@/lib/host/setup/load-setup-state";
 import { loadHiddenPendingTransportNeedKeys } from "./hidden-pending-transport";
 import { setupStateToGraph } from "./adapters";
+import { repairTransportGraphSync } from "./repair-transport-graph";
 import { loadActivitiesForTrip } from "./activities-persistence";
 import type { TripEntityGraph } from "./types";
 
@@ -44,7 +45,7 @@ export async function loadTripGraph(tripId: string): Promise<TripEntityGraph | n
       .then((rows) => rows.length),
   ]);
 
-  const base = setupStateToGraph(tripId, { ...state, activities });
+  const base = repairTransportGraphSync(setupStateToGraph(tripId, { ...state, activities }));
   const hiddenPendingTransportNeedKeys = await loadHiddenPendingTransportNeedKeys(tripId);
 
   return {

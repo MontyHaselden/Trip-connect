@@ -26,7 +26,7 @@ import {
   mergeMainWithPersonalOverlay,
 } from "./personal-location-overlay";
 import { personalGroupForGroupId } from "./person-lens";
-import { normalizeCommand, type TripCommand } from "./commands";
+import { repairTransportGraphSync } from "./repair-transport-graph";
 import { pendingTransportNeedKey } from "./hidden-pending-transport";
 import type { CommandResult, EngineConflict, EngineWarning, TripEntityGraph } from "./types";
 import type { TripSetupState } from "@/lib/host/setup/types";
@@ -861,7 +861,7 @@ export function applyCommands(graph: TripEntityGraph, commands: TripCommand[]): 
     allConflicts.push(...result.conflicts);
   }
 
-  return { graph: current, warnings: allWarnings, conflicts: allConflicts };
+  return { graph: repairTransportGraphSync(current), warnings: allWarnings, conflicts: allConflicts };
 }
 
 /** Remove accommodation + cities for a date range without clearing transport/activities. */

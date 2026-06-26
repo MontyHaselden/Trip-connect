@@ -87,7 +87,10 @@ function groupTransportLegs(
 function orphanTransportProducts(
   products: TransportProductDraft[],
   scopedLegs: ScopedTransportLeg[],
+  scopeGroupId: string,
+  mainGroupId: string,
 ): TransportProductDraft[] {
+  if (scopeGroupId !== mainGroupId) return [];
   const linked = new Set(
     scopedLegs.map((leg) => leg.transportProductId).filter((id): id is string => Boolean(id)),
   );
@@ -611,7 +614,12 @@ export function TransportSection(props: {
     const isActiveScope = scope.groupId === props.groupId;
     const scopeHint = scopeEditHint(props.graph, props.groupId, scope);
     const grouped = groupTransportLegs(scope.items, products);
-    const orphanProducts = orphanTransportProducts(products, scope.items);
+    const orphanProducts = orphanTransportProducts(
+      products,
+      scope.items,
+      scope.groupId,
+      props.graph.mainGroupId,
+    );
     const productSections = [...grouped.byProduct.entries()].sort(([, legsA], [, legsB]) => {
       const firstA = legsA[0];
       const firstB = legsB[0];
