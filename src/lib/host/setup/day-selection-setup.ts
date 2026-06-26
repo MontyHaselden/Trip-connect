@@ -429,6 +429,36 @@ export function accommodationCityForSelection(
   return best;
 }
 
+/**
+ * Location editor prefill — only when every selected calendar slice shows the same city.
+ * Avoids assuming the next stay is in the previous city when only checkout spillover is painted.
+ */
+export function uniformLocationCityForSelection(
+  selection: NightPairSelection,
+  days: DayPlaceDraft[],
+): string {
+  const end = selection.rangeEnd || selection.rangeStart;
+  let candidate = "";
+
+  for (const iso of enumerateDates(selection.rangeStart, end)) {
+    const day = days.find((d) => d.date === iso) ?? emptyDayPlace(iso);
+    const half = halfForDateInSelection(selection, iso);
+    const raw = locationLabelForSelectedHalf(day, half).trim();
+    if (!raw || raw.includes("·")) return "";
+
+    const city = normalizeCityToken(raw);
+    if (!city) return "";
+
+    if (!candidate) {
+      candidate = city;
+      continue;
+    }
+    if (!locationsMatch(candidate, city)) return "";
+  }
+
+  return candidate;
+}
+
 export function accommodationLocationConflictMessage(
   accommodationCity: string,
   conflicts: AccommodationLocationConflict[],

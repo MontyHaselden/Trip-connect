@@ -23,7 +23,6 @@ import {
 } from "@/lib/host/accommodation/homestay-helpers";
 import { stayCityLabel } from "@/lib/host/setup/accommodation-calendar";
 import {
-  accommodationCityForSelection,
   detectAccommodationLocationConflicts,
   halfForDateInSelection,
   locationLabelForSelectedHalf,
@@ -31,6 +30,7 @@ import {
   stayDatesForRangeApply,
   stayForHalfSelection,
   stayLinkedToHalfAwareSelection,
+  uniformLocationCityForSelection,
   type AccommodationLocationConflict,
 } from "@/lib/host/setup/day-selection-setup";
 import { shortCityName } from "@/lib/host/setup/location-range-display";
@@ -579,21 +579,16 @@ export function DayContextPanel(props: {
         setArrivalDraft(day.secondaryCity?.trim() ?? "");
         setLocationDraft("");
       } else {
-        const painted = projectedInRange
-          .map((d) => d.primaryCity.trim())
-          .filter(Boolean);
-        const unique = [...new Set(painted)];
-        setLocationDraft(unique.length === 1 ? unique[0]! : "");
+        setLocationDraft(
+          uniformLocationCityForSelection(selection, daysForConflictCheck),
+        );
         setDepartureDraft("");
         setArrivalDraft("");
       }
     }
 
     if (editingField === "accommodation") {
-      const city =
-        linkedStay && !linkedStayIsInherited
-          ? stayCityLabel(linkedStay)
-          : accommodationCityForSelection(selection, daysForConflictCheck);
+      const city = linkedStay ? stayCityLabel(linkedStay) : "";
       const dates = isMultiDayRange
         ? stayDatesForRangeApply(selection)
         : linkedStay
@@ -1097,7 +1092,7 @@ export function DayContextPanel(props: {
     const cityLabel =
       (homestayPeriodInRange ? stayCityLabel(homestayPeriodInRange) : "") ||
       (stayDraft ? stayDraftCityLabel(stayDraft) : "") ||
-      accommodationCityForSelection(selection, daysForConflictCheck);
+      uniformLocationCityForSelection(selection, daysForConflictCheck);
     const checkIn =
       homestayPeriodInRange?.checkInDate ||
       stayDraft?.checkIn ||

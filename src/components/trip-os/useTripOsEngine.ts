@@ -181,6 +181,7 @@ export function useTripOsEngine(tripId: string) {
   const activeGroupIdRef = useRef(activeGroupId);
   activeGroupIdRef.current = activeGroupId;
   const loadGenerationRef = useRef(0);
+  const switchGroupGenerationRef = useRef(0);
   const pendingCommandsRef = useRef<TripCommand[]>([]);
   const pendingGroupIdRef = useRef<string>("");
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -854,11 +855,12 @@ export function useTripOsEngine(tripId: string) {
 
   const switchGroup = useCallback(
     async (groupId: string) => {
+      const generation = ++switchGroupGenerationRef.current;
       setActiveGroupId(groupId);
-      const prev = dataRef.current;
-      if (!prev) return;
+      const started = dataRef.current;
+      if (!started) return;
 
-      let graph = prev.graph;
+      let graph = started.graph;
       const needsDayPlaces =
         groupId !== graph.mainGroupId &&
         !(graph.dayPlacesByGroupId[groupId]?.length ?? 0);
@@ -870,6 +872,7 @@ export function useTripOsEngine(tripId: string) {
           const payload = (await res.json().catch(() => ({}))) as {
             dayPlaces?: TripEntityGraph["dayPlacesByGroupId"][string];
           };
+          if (generation !== switchGroupGenerationRef.current) return;
           if (res.ok && payload.dayPlaces) {
             graph = {
               ...graph,
@@ -884,11 +887,17 @@ export function useTripOsEngine(tripId: string) {
         }
       }
 
+      if (generation !== switchGroupGenerationRef.current) return;
+
+      const latest = dataRef.current;
+      if (!latest) return;
+
       if (
-        prev.calendarRenderModel.groupId === groupId &&
-        prev.calendarProjection.groupId === groupId &&
-        prev.calendarRenderModel.days.length > 0 &&
-        graph === prev.graph
+        latest.calendarRenderModel.groupId === groupId &&
+        latest.calendarProjection.groupId === groupId &&
+        latest.calendarRenderModel.days.length > 0 &&
+        graph === latest.graph &&
+        activeGroupIdRef.current === groupId
       ) {
         persistLocalSnapshot(graph, { activeGroupId: groupId });
         return;
@@ -896,8 +905,9 @@ export function useTripOsEngine(tripId: string) {
 
       const next = buildStateFromGraph(graph, {
         viewGroupId: groupId,
-        prev: { ...prev, graph },
+        prev: { ...latest, graph },
       });
+      if (generation !== switchGroupGenerationRef.current) return;
       setData(next);
       persistLocalSnapshot(graph, { activeGroupId: groupId });
     },

@@ -16,6 +16,7 @@ import {
   stayOverlapsSelection,
   stayRelevantToSelection,
   staySelectionSpan,
+  uniformLocationCityForSelection,
 } from "./day-selection-setup";
 import type { AccommodationStayDraft, DayPlaceDraft } from "@/lib/host/wizard/types";
 
@@ -477,5 +478,43 @@ describe("accommodationCityForSelection", () => {
       ],
     );
     assert.equal(city, "Kyoto");
+  });
+});
+
+describe("uniformLocationCityForSelection", () => {
+  it("returns empty when only the first day has spillover city from a prior stay", () => {
+    const city = uniformLocationCityForSelection(
+      {
+        rangeStart: "2026-12-18",
+        rangeEnd: "2026-12-21",
+        startHalf: "full",
+        endHalf: "full",
+      },
+      [
+        day("2026-12-18", { primaryCity: "Kyoto, Japan", primaryShare: 0.5 }),
+        day("2026-12-19"),
+        day("2026-12-20"),
+        day("2026-12-21"),
+      ],
+    );
+    assert.equal(city, "");
+  });
+
+  it("returns the shared city when every selected slice matches", () => {
+    const city = uniformLocationCityForSelection(
+      {
+        rangeStart: "2026-12-18",
+        rangeEnd: "2026-12-21",
+        startHalf: "full",
+        endHalf: "full",
+      },
+      [
+        day("2026-12-18", { primaryCity: "Osaka" }),
+        day("2026-12-19", { primaryCity: "Osaka" }),
+        day("2026-12-20", { primaryCity: "Osaka" }),
+        day("2026-12-21", { primaryCity: "Osaka" }),
+      ],
+    );
+    assert.equal(city, "Osaka");
   });
 });

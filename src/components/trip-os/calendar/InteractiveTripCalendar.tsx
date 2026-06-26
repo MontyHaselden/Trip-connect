@@ -102,7 +102,7 @@ export function InteractiveTripCalendar(props: {
 
     return (
       <TripOsDayCell
-        key={cell.iso}
+        key={`${cell.iso}:${primaryCity}:${secondaryCity}:${day.primaryShare ?? 1}`}
         iso={cell.iso}
         dayNum={cell.day}
         day={day}

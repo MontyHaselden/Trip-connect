@@ -68,7 +68,6 @@ export function CalendarPersonLens(props: {
   saving?: boolean;
   onLensChange: (lens: CalendarLens) => void;
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
-  onSwitchGroup: (groupId: string) => void;
   onSwitchToPerson: (participantId: string) => void;
 }) {
   const [pendingPersonId, setPendingPersonId] = useState<string | null>(null);
@@ -120,7 +119,6 @@ export function CalendarPersonLens(props: {
 
     const lens: CalendarLens = { kind: "person", participantId };
     props.onLensChange(lens);
-    props.onSwitchGroup(editGroupIdForLens(props.graph, lens, props.roster));
   }
 
   async function confirmPlanMode(mode: PlanModeChoice) {
@@ -213,7 +211,6 @@ export function CalendarPersonLens(props: {
             const id = e.target.value;
             if (!id) {
               props.onLensChange({ kind: "whole_group" });
-              props.onSwitchGroup(props.graph.mainGroupId);
               return;
             }
             void selectPerson(id);

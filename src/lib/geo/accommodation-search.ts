@@ -206,12 +206,94 @@ export function accommodationSearchMode(stayType?: StayType): {
       return {
         lodgingOnly: true,
         fieldLabel: "Hotel or property",
-        placeholder: "Search hotels…",
+        placeholder: "Search hotel name (e.g. Hotel New Hankyu Kyoto)",
       };
   }
 }
 
 const LODGING_STOP_WORDS = /^(hotel|hotels|inn|hostel|resort|the|a|an)$/i;
+
+/** Country tokens that must not be treated as trailing city hints in hotel names. */
+export const LODGING_COUNTRY_TOKENS = new Set([
+  "japan",
+  "thailand",
+  "australia",
+  "new zealand",
+  "united states",
+  "united kingdom",
+  "singapore",
+  "indonesia",
+  "vietnam",
+  "cambodia",
+  "malaysia",
+  "france",
+  "italy",
+  "spain",
+  "germany",
+  "china",
+  "south korea",
+  "korea",
+  "taiwan",
+  "philippines",
+]);
+
+function stripTrailingPunctuation(token: string): string {
+  return token.replace(/[,;.:]+$/g, "").trim();
+}
+
+/** Formatted street address — not a "Hotel Name City" pattern. */
+export function isAddressLikeLodgingQuery(query: string): boolean {
+  const trimmed = query.trim();
+  if (!trimmed) return false;
+  const commaParts = trimmed.split(",").map((p) => p.trim()).filter(Boolean);
+  if (commaParts.length >= 3) return true;
+  if (/\b\d{3}-\d{4}\b/.test(trimmed)) return true;
+  if (
+    /\b\d{1,5}\b/.test(trimmed) &&
+    /(ward|district|prefecture|chome|chōme|shiokoji|street|st\.|road|ave)/i.test(trimmed)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Leading "Hotel Foo, 123 Street…" — search the name first. */
+export function hotelNameFromCompoundQuery(query: string): string | null {
+  if (!isAddressLikeLodgingQuery(query)) return null;
+  const first = query.split(",")[0]?.trim() ?? "";
+  if (!first || /^\d/.test(first)) return null;
+  const lower = first.toLowerCase();
+  if (LODGING_COUNTRY_TOKENS.has(lower)) return null;
+  if (
+    /(hotel|inn|hostel|resort|ryokan|hankyu|hankyū|apa|dormy|miyako|sotetsu|mitsui)/i.test(first) ||
+    first.split(/\s+/).length >= 3
+  ) {
+    return first;
+  }
+  return null;
+}
+
+/** Best city token embedded in a comma-separated address for search bias. */
+export function primaryCityFromAddressLikeQuery(query: string): string | undefined {
+  const parts = query.split(",").map((p) => p.trim()).filter(Boolean);
+  const skipFirst = hotelNameFromCompoundQuery(query) !== null;
+  const seen = new Set<string>();
+
+  for (let i = 0; i < parts.length; i++) {
+    if (skipFirst && i === 0) continue;
+    const part = parts[i]!;
+    const token = stripTrailingPunctuation(part.replace(/\s+\d{3}-\d{4}.*$/i, "").trim());
+    if (!token || /^\d/.test(token)) continue;
+    const lower = token.toLowerCase();
+    if (LODGING_COUNTRY_TOKENS.has(lower)) continue;
+    if (/^(ward|district|prefecture|city|county)$/i.test(token)) continue;
+    if (/ward$/i.test(token)) continue;
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    if (token.length >= 3) return token;
+  }
+  return undefined;
+}
 
 /** Split trailing city tokens out of hotel names like "The Knot Hiroshima". */
 export function resolveLodgingSearchQuery(
@@ -220,15 +302,29 @@ export function resolveLodgingSearchQuery(
 ): { query: string; cityHint?: string } {
   const trimmed = query.trim();
   const sanitizedHint = sanitizeCityHint(cityHint);
+
+  if (isAddressLikeLodgingQuery(trimmed)) {
+    const fromAddress = primaryCityFromAddressLikeQuery(trimmed);
+    const compoundName = hotelNameFromCompoundQuery(trimmed);
+    return {
+      query: compoundName ?? trimmed,
+      cityHint: fromAddress ?? sanitizedHint,
+    };
+  }
+
   const tokens = trimmed.split(/\s+/).filter(Boolean);
 
   if (tokens.length < 2) {
     return { query: trimmed, cityHint: sanitizedHint };
   }
 
-  const last = tokens[tokens.length - 1]!;
+  const last = stripTrailingPunctuation(tokens[tokens.length - 1]!);
   const lastLower = last.toLowerCase();
   const hintCity = sanitizedHint?.split(",")[0]?.trim().toLowerCase();
+
+  if (LODGING_COUNTRY_TOKENS.has(lastLower)) {
+    return { query: trimmed, cityHint: sanitizedHint };
+  }
 
   if (
     last.length >= 3 &&
@@ -243,7 +339,6 @@ export function resolveLodgingSearchQuery(
           hintCity.includes(lastLower) ||
           lastLower.includes(hintCity));
 
-      // Search the property name in the trailing city — even when it matches the hint.
       return {
         query: namePart,
         cityHint: sameAsHint ? sanitizedHint : last,

@@ -72,7 +72,16 @@ export function fillIncompleteSplitDays(days: DayPlaceDraft[]): DayPlaceDraft[] 
     if (primary && !secondary) {
       for (let j = i + 1; j < sorted.length; j++) {
         const nextDay = byDate.get(sorted[j]!.date)!;
-        if (isSolidStayDay(nextDay, primary)) break;
+        if (isSolidStayDay(nextDay, primary)) {
+          byDate.set(date, {
+            ...day,
+            primaryCity: primary,
+            secondaryCity: null,
+            primaryShare: 1,
+            dayType: day.dayType === "buffer" ? "buffer" : "trip",
+          });
+          break;
+        }
         const nextCity = arrivalCity(nextDay);
         if (!nextCity || locationsMatch(nextCity, primary)) continue;
         byDate.set(date, {
@@ -125,13 +134,22 @@ export function resolveDisplayDayPlaces(
     const derived = derivedByDate.get(date);
 
     if (preferStored && stored && dayHasPaint(stored)) {
-      if (
-        isIncompleteSplit(stored) &&
-        derived &&
-        dayHasPaint(derived) &&
-        isCompleteSplit(derived)
-      ) {
-        return derived;
+      if (isIncompleteSplit(stored) && derived && dayHasPaint(derived)) {
+        if (isCompleteSplit(derived)) return derived;
+        const storedPrimary = stored.primaryCity.trim();
+        const derivedPrimary = derived.primaryCity.trim();
+        const derivedSecondary = derived.secondaryCity?.trim() ?? "";
+        const derivedShare = derived.primaryShare ?? 1;
+        if (
+          storedPrimary &&
+          !stored.secondaryCity?.trim() &&
+          derivedShare >= 0.99 &&
+          derivedPrimary &&
+          locationsMatch(derivedPrimary, storedPrimary) &&
+          !derivedSecondary
+        ) {
+          return derived;
+        }
       }
       return stored;
     }

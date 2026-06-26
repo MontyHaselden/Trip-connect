@@ -1,5 +1,6 @@
 import type { AddressSuggestion } from "@/lib/geo/google-places";
 import { searchGoogleAddresses, searchGoogleTextPlaces } from "@/lib/geo/google-places";
+import { isAddressLikeLodgingQuery } from "@/lib/geo/accommodation-search";
 
 type NominatimRow = {
   place_id: number;
@@ -124,11 +125,16 @@ export async function runLodgingProviderSearch(params: {
   lodgingOnly?: boolean;
   locationBias?: { lat: number; lng: number; radiusMeters: number };
 }): Promise<AddressSuggestion[]> {
+  const addressLike = isAddressLikeLodgingQuery(params.query);
   const cityPart = params.cityHint?.split(",")[0]?.trim() ?? params.cityHint?.trim();
-  const textQuery = cityPart ? `${params.query.trim()} ${cityPart}` : params.query.trim();
+  const textQuery =
+    cityPart && !addressLike ? `${params.query.trim()} ${cityPart}` : params.query.trim();
 
   const [autocomplete, textSearch, nominatim] = await Promise.all([
-    searchGoogleAddresses(params),
+    searchGoogleAddresses({
+      ...params,
+      cityHint: addressLike ? params.cityHint : params.cityHint,
+    }),
     searchGoogleTextPlaces({
       query: textQuery,
       countryCodes: params.countryCodes,
@@ -139,5 +145,18 @@ export async function runLodgingProviderSearch(params: {
     searchNominatimAddresses(params),
   ]);
 
-  return mergeAddressSuggestions([...autocomplete, ...textSearch, ...nominatim], params.limit);
+  const batches = [...autocomplete, ...textSearch, ...nominatim];
+
+  if (addressLike && params.lodgingOnly) {
+    const addressText = await searchGoogleTextPlaces({
+      query: params.query.trim(),
+      countryCodes: params.countryCodes,
+      lodgingOnly: false,
+      locationBias: params.locationBias,
+      limit: params.limit,
+    });
+    batches.push(...addressText);
+  }
+
+  return mergeAddressSuggestions(batches, params.limit);
 }

@@ -136,6 +136,7 @@ describe("resolveDisplayDayPlaces", () => {
     const display = resolveDisplayDayPlaces(stored, derived, "2026-12-06", "2026-12-13");
     const dec7 = display.find((d) => d.date === "2026-12-07");
     assert.equal(dec7?.primaryCity, "Kagoshima");
+    assert.equal(dec7?.primaryShare, 1);
     assert.ok(!dec7?.secondaryCity?.toLowerCase().includes("hiroshima"));
   });
 

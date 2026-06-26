@@ -20,6 +20,7 @@ export type LodgingSearchMeta = {
   stayCity: string;
   hints?: string[];
   searchingIn?: string;
+  googleConfigured?: boolean;
 };
 
 export type LodgingSearchResponse = {

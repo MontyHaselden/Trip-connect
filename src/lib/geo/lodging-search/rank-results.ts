@@ -1,4 +1,8 @@
-import { inferCityLabelFromAddress } from "@/lib/geo/accommodation-search";
+import {
+  inferCityLabelFromAddress,
+  isAddressLikeLodgingQuery,
+  primaryCityFromAddressLikeQuery,
+} from "@/lib/geo/accommodation-search";
 import { placesShareMetro } from "@/lib/geo/airport-codes";
 import type { AddressSuggestion } from "@/lib/geo/google-places";
 import { metroDisplayLabel } from "@/lib/host/setup/metro-display";
@@ -147,22 +151,50 @@ function brandMatchBonus(query: string, label: string): number {
   return 0;
 }
 
+function lodgingSearchCities(query: string, stayCity: string): string[] {
+  const cities: string[] = [];
+  const stay = stayCity.trim();
+  if (stay) cities.push(stay);
+
+  const fromAddress = isAddressLikeLodgingQuery(query)
+    ? primaryCityFromAddressLikeQuery(query)
+    : undefined;
+  if (fromAddress && !locationsMatch(fromAddress, stay)) cities.push(fromAddress);
+
+  return [...new Set(cities.filter(Boolean))];
+}
+
+function bestTierForCandidate(
+  candidate: AddressSuggestion,
+  searchCities: string[],
+): LodgingMatchTier | null {
+  for (const city of searchCities) {
+    const tier = candidateMatchesStayCity(candidate, city);
+    if (tier) return tier;
+  }
+  return null;
+}
+
 function scoreCandidate(
   candidate: AddressSuggestion,
   query: string,
-  stayCity: string,
+  searchCities: string[],
 ): number {
   const nameScore = nameSimilarity(query, candidate.label) * 100;
   const brandScore = brandMatchBonus(query, candidate.label);
-  const tier = candidateMatchesStayCity(candidate, stayCity);
+  const tier = bestTierForCandidate(candidate, searchCities);
   const cityScore = tier === "exact" ? 80 : tier === "metro" ? 60 : 0;
+  const primaryCity = searchCities[0] ?? "";
   const addressCity = candidate.address
     ? inferCityLabelFromAddress(candidate.address)?.split(",")[0]?.trim() ?? ""
     : "";
   const addressScore =
-    addressCity && locationsMatch(addressCity, stayCity) ? 20 : 0;
+    addressCity && primaryCity && locationsMatch(addressCity, primaryCity) ? 20 : 0;
+  const streetNumber = query.match(/\b(\d{1,5})\b/)?.[1];
+  const addressMatchBonus =
+    streetNumber && candidate.address?.includes(streetNumber) ? 35 : 0;
   const placeIdBonus = candidate.placeId ? 5 : candidate.source === "google" ? 2 : 0;
-  return nameScore + brandScore + cityScore + addressScore + placeIdBonus;
+  return nameScore + brandScore + cityScore + addressScore + addressMatchBonus + placeIdBonus;
 }
 
 /** Prefer trip calendar vocabulary when Maps resolves to the same metro. */
@@ -181,12 +213,12 @@ export function rankAndFilterLodgingResults(
   stayCity: string,
   limit = 10,
 ): { results: LodgingSearchResult[]; widened: boolean } {
-  const stay = stayCity.trim();
+  const searchCities = lodgingSearchCities(query, stayCity.trim());
   const scored = candidates
     .map((candidate) => ({
       candidate,
-      score: scoreCandidate(candidate, query, stay),
-      tier: candidateMatchesStayCity(candidate, stay),
+      score: scoreCandidate(candidate, query, searchCities),
+      tier: bestTierForCandidate(candidate, searchCities),
     }))
     .sort((a, b) => b.score - a.score);
 

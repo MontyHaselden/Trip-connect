@@ -1,4 +1,9 @@
-import { sanitizeCityHint } from "@/lib/geo/accommodation-search";
+import {
+  isAddressLikeLodgingQuery,
+  primaryCityFromAddressLikeQuery,
+  sanitizeCityHint,
+} from "@/lib/geo/accommodation-search";
+import { googlePlacesConfigured } from "@/lib/geo/google-places";
 
 import { geocodeStayCity } from "./city-geocode";
 import { planLodgingQueryAttempts, plannerHints } from "./query-planner";
@@ -34,15 +39,20 @@ export async function searchLodging(ctx: LodgingSearchContext): Promise<LodgingS
   const query = ctx.query.trim();
   const stayCity = sanitizeCityHint(ctx.stayCity) ?? ctx.stayCity.trim();
   const limit = ctx.limit ?? 10;
+  const googleConfigured = googlePlacesConfigured();
 
   if (query.length < 2) {
     return {
       suggestions: [],
-      meta: { widened: false, stayCity, hints: [] },
+      meta: { widened: false, stayCity, hints: [], googleConfigured },
     };
   }
 
-  const geocoded = stayCity ? await geocodeStayCity(stayCity, ctx.countryCodes) : null;
+  const queryCity = isAddressLikeLodgingQuery(query)
+    ? primaryCityFromAddressLikeQuery(query)
+    : undefined;
+  const biasCity = queryCity ?? stayCity;
+  const geocoded = biasCity ? await geocodeStayCity(biasCity, ctx.countryCodes) : null;
   const locationBias = geocoded
     ? { lat: geocoded.lat, lng: geocoded.lng, radiusMeters: DEFAULT_BIAS_RADIUS_METERS }
     : undefined;
@@ -76,9 +86,17 @@ export async function searchLodging(ctx: LodgingSearchContext): Promise<LodgingS
     limit,
   );
 
-  const searchingIn = geocoded?.name.split(",")[0]?.trim() ?? stayCity;
+  const searchingIn =
+    geocoded?.name.split(",")[0]?.trim() ?? biasCity ?? stayCity;
   const hints =
-    results.length === 0 ? plannerHints(query, stayCity, searchingIn) : undefined;
+    results.length === 0
+      ? [
+          ...plannerHints(query, stayCity, searchingIn),
+          ...(!googleConfigured
+            ? ["Google Maps search is not configured — hotel lookup may not work"]
+            : []),
+        ]
+      : undefined;
 
   return {
     suggestions: results,
@@ -87,6 +105,7 @@ export async function searchLodging(ctx: LodgingSearchContext): Promise<LodgingS
       stayCity,
       searchingIn,
       hints,
+      googleConfigured,
     },
   };
 }

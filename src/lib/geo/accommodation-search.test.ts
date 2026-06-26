@@ -135,4 +135,21 @@ describe("resolveLodgingSearchQuery", () => {
       cityHint: "Hiroshima",
     });
   });
+
+  it("does not treat Japan as a trailing city on street addresses", () => {
+    const address =
+      "Kyoto, 579 Higashishiokojicho, Shimogyo Ward, Kyoto, 600-8216, Japan";
+    assert.deepEqual(resolveLodgingSearchQuery(address, "Kyoto"), {
+      query: address,
+      cityHint: "Kyoto",
+    });
+  });
+
+  it("extracts hotel name from name-plus-address queries", () => {
+    const q = "Hotel New Hankyu Kyoto, 579 Higashishiokojicho, Shimogyo Ward, Kyoto";
+    assert.deepEqual(resolveLodgingSearchQuery(q, "Kyoto"), {
+      query: "Hotel New Hankyu Kyoto",
+      cityHint: "Kyoto",
+    });
+  });
 });
