@@ -17,5 +17,9 @@ export default async function TripDashboardLayout({
   const trip = await getTripByIdForHost(session.hostId, tripId);
   if (!trip) redirect("/dashboard");
 
-  return <div className="h-dvh min-h-0 overflow-hidden bg-white">{children}</div>;
+  return (
+    <div className="h-dvh min-h-0 overflow-hidden bg-white text-zinc-900 [color-scheme:light]">
+      {children}
+    </div>
+  );
 }

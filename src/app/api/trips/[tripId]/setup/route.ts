@@ -32,6 +32,7 @@ export async function GET(
     const groupId = url.searchParams.get("groupId") ?? graph.mainGroupId;
 
     if (engine) {
+      const t0 = Date.now();
       const rosterSummary = await loadRosterSummary(tripId);
       const rawStats = graphPayloadStats(graph);
       const slimGraph = minimalEngineGraphPayload(graph);
@@ -47,6 +48,7 @@ export async function GET(
           ...slimStats,
           rawDayPlaceRows: rawStats.dayPlaceRows,
           dayPlacesDropped: rawStats.dayPlaceRows - slimStats.dayPlaceRows,
+          serverMs: Date.now() - t0,
         },
       });
     }

@@ -29,6 +29,7 @@ import { financeSectionAllocationStatus } from "@/lib/trip-engine/cost-ledger/fi
 import type { FinanceBuiltInSection } from "@/lib/trip-engine/cost-ledger/finance-sections";
 import type { EngineSectionReadiness } from "@/lib/trip-engine/types";
 
+import { TripLoadDebugStrip } from "./TripLoadDebugStrip";
 import { TripOsNav } from "./TripOsNav";
 import { TripOsWorkspace, type TripOsSection } from "./TripOsWorkspace";
 import { useTripOsEngine } from "./useTripOsEngine";
@@ -209,6 +210,14 @@ export function TripOsBoard(props: { tripId: string }) {
   if (!engine.data) {
     return (
       <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
+        <TripLoadDebugStrip
+          debug={engine.loadDebug}
+          onRetry={() => void engine.load(undefined, { forceServer: true, skipLocalDraft: true })}
+          onClearCache={() => {
+            clearTripLocalDraft(props.tripId);
+            void engine.load(undefined, { forceServer: true, skipLocalDraft: true });
+          }}
+        />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <TripOsNav
             activeSection={activeSection}
@@ -293,6 +302,7 @@ export function TripOsBoard(props: { tripId: string }) {
 
   return (
     <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
+      <TripLoadDebugStrip debug={engine.loadDebug} />
       {calendarBootstrapping ? (
         <div className="shrink-0 border-b border-zinc-100 bg-violet-50/60 px-4 py-2 text-center text-xs text-violet-800">
           Building calendar…

@@ -20,6 +20,11 @@ export type GraphPayloadStats = {
 };
 
 export function graphPayloadStats(graph: TripEntityGraph): GraphPayloadStats {
+  return cheapGraphStats(graph);
+}
+
+/** Fast counts only — never JSON.stringify the full graph on hot paths. */
+export function cheapGraphStats(graph: TripEntityGraph): GraphPayloadStats {
   let dayPlaceRows = 0;
   let maxDayPlacesPerGroup = 0;
   for (const days of Object.values(graph.dayPlacesByGroupId)) {
@@ -36,8 +41,13 @@ export function graphPayloadStats(graph: TripEntityGraph): GraphPayloadStats {
     intercityLegs: graph.intercityLegs.length,
     accommodationStays: graph.accommodationStays.length,
     transportProducts: (graph.transportProducts ?? []).length,
-    estimatedJsonBytes: new TextEncoder().encode(JSON.stringify(graph)).length,
+    estimatedJsonBytes: 0,
   };
+}
+
+/** Optional — only for offline diagnostics scripts. */
+export function graphPayloadJsonBytes(graph: TripEntityGraph): number {
+  return new TextEncoder().encode(JSON.stringify(graph)).length;
 }
 
 /** Drop off-grid / duplicate day-place rows so client payloads stay bounded. */

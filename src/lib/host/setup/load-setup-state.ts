@@ -182,20 +182,28 @@ export async function loadTripSetupState(
     state.accommodationStays,
   );
 
-  const repairedState = graphToSetupState(
-    repairTransportGraphSync(
-      setupStateToGraph(
-        tripId,
-        syncTripBoundsFromContent({
-          ...state,
-          dayPlacesByGroupId: {
-            ...state.dayPlacesByGroupId,
-            [state.mainGroupId]: repairedMainDays,
-          },
-        }),
-      ),
-    ),
-  );
+  const repairedState = options?.skipFlightLookup
+    ? {
+        ...state,
+        dayPlacesByGroupId: {
+          ...state.dayPlacesByGroupId,
+          [state.mainGroupId]: repairedMainDays,
+        },
+      }
+    : graphToSetupState(
+        repairTransportGraphSync(
+          setupStateToGraph(
+            tripId,
+            syncTripBoundsFromContent({
+              ...state,
+              dayPlacesByGroupId: {
+                ...state.dayPlacesByGroupId,
+                [state.mainGroupId]: repairedMainDays,
+              },
+            }),
+          ),
+        ),
+      );
 
   return repairedState;
 }

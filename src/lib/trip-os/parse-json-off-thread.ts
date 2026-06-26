@@ -5,9 +5,21 @@ export function parseJsonOffThread<T>(raw: string | ArrayBuffer): Promise<T> {
   const useWorker = typeof Worker !== "undefined";
   const byteLength =
     typeof raw === "string" ? raw.length : raw.byteLength;
-  if (!useWorker || byteLength < 200_000) {
+  // Always parse off-thread when large enough to risk tab freeze (includes postMessage clone).
+  if (!useWorker || byteLength < 64_000) {
     const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw);
-    return Promise.resolve(JSON.parse(text) as T);
+    if (byteLength < 64_000) {
+      return Promise.resolve(JSON.parse(text) as T);
+    }
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        try {
+          resolve(JSON.parse(text) as T);
+        } catch (error) {
+          reject(error);
+        }
+      }, 0);
+    });
   }
 
   return new Promise((resolve, reject) => {

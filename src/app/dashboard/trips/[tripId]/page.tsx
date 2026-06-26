@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { TripOsBoard } from "@/components/trip-os/TripOsBoard";
+import { TripOsBoardEntry } from "@/components/trip-os/TripOsBoardEntry";
 import { getHostSession } from "@/lib/auth/host-session";
 import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 
@@ -12,5 +12,5 @@ export default async function DashboardTripPage(props: { params: Promise<{ tripI
   const trip = await getTripByIdForHost(session.hostId, tripId);
   if (!trip) redirect("/dashboard");
 
-  return <TripOsBoard tripId={tripId} />;
+  return <TripOsBoardEntry tripId={tripId} />;
 }
