@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, and, eq, gte, lte } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import {
@@ -13,6 +13,7 @@ import { repairTransportLegsFromLookup } from "@/lib/host/setup/repair-transport
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import { repairTransportGraphSync } from "@/lib/trip-engine/repair-transport-graph";
 import { repairMisplacedSecondaryHalfDays } from "@/lib/trip-engine/sanitize-day-place";
+import { gridBoundsForTripLoad } from "@/lib/trip-engine/grid-bounds-for-load";
 import { graphToSetupState, setupStateToGraph } from "@/lib/trip-engine/adapters";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
@@ -75,10 +76,22 @@ export async function loadTripSetupState(tripId: string): Promise<TripSetupState
     .where(eq(groups.tripId, tripId))
     .orderBy(asc(groups.sortOrder));
 
+  const { gridStart, gridEnd } = gridBoundsForTripLoad({
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+    timezone: trip.timezone,
+  });
+
   const placeRows = await db
     .select()
     .from(groupDayPlaces)
-    .where(eq(groupDayPlaces.tripId, tripId))
+    .where(
+      and(
+        eq(groupDayPlaces.tripId, tripId),
+        gte(groupDayPlaces.date, gridStart),
+        lte(groupDayPlaces.date, gridEnd),
+      ),
+    )
     .orderBy(asc(groupDayPlaces.date));
 
   const opRows = await db

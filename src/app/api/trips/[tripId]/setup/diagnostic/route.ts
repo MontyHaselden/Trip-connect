@@ -8,6 +8,7 @@ import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import { loadTripGraph } from "@/lib/trip-engine";
 import {
   graphPayloadStats,
+  minimalEngineGraphPayload,
   slimGraphPayloadForEngine,
 } from "@/lib/trip-engine/slim-graph-payload";
 import { enumerateDates, MAX_DATE_ENUMERATION_DAYS } from "@/lib/host/wizard/location-stays";
@@ -28,7 +29,7 @@ export async function GET(
     if (!graph) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
     const rawStats = graphPayloadStats(graph);
-    const slimmed = slimGraphPayloadForEngine(graph);
+    const slimmed = minimalEngineGraphPayload(graph);
     const slimStats = graphPayloadStats(slimmed);
     const bounds = effectiveTripBoundsFromState(graph);
     const grid = calendarGridFromToday({

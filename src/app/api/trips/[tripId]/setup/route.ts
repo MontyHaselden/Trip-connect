@@ -10,7 +10,7 @@ import { loadTripGraph } from "@/lib/trip-engine";
 import { loadRosterSummary } from "@/lib/trip-engine/roster-summary";
 import {
   graphPayloadStats,
-  slimGraphPayloadForEngine,
+  minimalEngineGraphPayload,
 } from "@/lib/trip-engine/slim-graph-payload";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
@@ -34,7 +34,7 @@ export async function GET(
     if (engine) {
       const rosterSummary = await loadRosterSummary(tripId);
       const rawStats = graphPayloadStats(graph);
-      const slimGraph = slimGraphPayloadForEngine(graph);
+      const slimGraph = minimalEngineGraphPayload(graph);
       const slimStats = graphPayloadStats(slimGraph);
       return NextResponse.json({
         graph: slimGraph,

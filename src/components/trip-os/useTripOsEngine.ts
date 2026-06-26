@@ -14,6 +14,7 @@ import {
   tripPersistInFlight,
   waitForTripPersist,
 } from "@/lib/trip-os/persist-queue";
+import { parseJsonOffThread } from "@/lib/trip-os/parse-json-off-thread";
 import {
   deriveEngineViewFromGraph,
   hydrateSetupEngineResponse,
@@ -539,14 +540,17 @@ export function useTripOsEngine(tripId: string) {
           setLoadStatus({
             phase: "parsing",
             progress: 54,
-            message: "Parsing trip data…",
+            message:
+              text.length > 1_000_000
+                ? "Parsing large trip file — please wait…"
+                : "Parsing trip data…",
           });
         }
         await yieldToMain();
 
         let body: { error?: string } & SetupEngineResponse;
         try {
-          body = JSON.parse(text) as { error?: string } & SetupEngineResponse;
+          body = await parseJsonOffThread<{ error?: string } & SetupEngineResponse>(text);
         } catch {
           throw new Error("Could not read trip data from the server.");
         }
@@ -902,27 +906,55 @@ export function useTripOsEngine(tripId: string) {
   );
 
   const switchGroup = useCallback(
-    (groupId: string) => {
+    async (groupId: string) => {
       setActiveGroupId(groupId);
-      setData((prev) => {
-        if (!prev) return prev;
-        if (
-          prev.calendarRenderModel.groupId === groupId &&
-          prev.calendarProjection.groupId === groupId &&
-          prev.calendarRenderModel.days.length > 0
-        ) {
-          persistLocalSnapshot(prev.graph, { activeGroupId: groupId });
-          return prev;
+      const prev = dataRef.current;
+      if (!prev) return;
+
+      let graph = prev.graph;
+      const needsDayPlaces =
+        groupId !== graph.mainGroupId &&
+        !(graph.dayPlacesByGroupId[groupId]?.length ?? 0);
+      if (needsDayPlaces) {
+        try {
+          const res = await fetch(
+            `/api/trips/${tripId}/groups/${groupId}/day-places`,
+          );
+          const payload = (await res.json().catch(() => ({}))) as {
+            dayPlaces?: TripEntityGraph["dayPlacesByGroupId"][string];
+          };
+          if (res.ok && payload.dayPlaces) {
+            graph = {
+              ...graph,
+              dayPlacesByGroupId: {
+                ...graph.dayPlacesByGroupId,
+                [groupId]: payload.dayPlaces,
+              },
+            };
+          }
+        } catch {
+          // Fall back to inherit-mode calendar without stored overlay rows.
         }
-        const next = buildStateFromGraph(prev.graph, {
-          viewGroupId: groupId,
-          prev,
-        });
-        persistLocalSnapshot(prev.graph, { activeGroupId: groupId });
-        return next;
+      }
+
+      if (
+        prev.calendarRenderModel.groupId === groupId &&
+        prev.calendarProjection.groupId === groupId &&
+        prev.calendarRenderModel.days.length > 0 &&
+        graph === prev.graph
+      ) {
+        persistLocalSnapshot(graph, { activeGroupId: groupId });
+        return;
+      }
+
+      const next = buildStateFromGraph(graph, {
+        viewGroupId: groupId,
+        prev: { ...prev, graph },
       });
+      setData(next);
+      persistLocalSnapshot(graph, { activeGroupId: groupId });
     },
-    [buildStateFromGraph, persistLocalSnapshot],
+    [tripId, buildStateFromGraph, persistLocalSnapshot],
   );
 
   const patchChainRef = useRef(Promise.resolve<CostsPatchResult>({ ok: true }));

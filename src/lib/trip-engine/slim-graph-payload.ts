@@ -70,6 +70,38 @@ export function slimGraphPayloadForEngine(graph: TripEntityGraph): TripEntityGra
   return { ...graph, dayPlacesByGroupId };
 }
 
+/** Initial engine load — main-group day paint only; personal overlays load on demand. */
+export function minimalEngineGraphPayload(graph: TripEntityGraph): TripEntityGraph {
+  const slim = slimGraphPayloadForEngine(graph);
+  const mainDays = slim.dayPlacesByGroupId[slim.mainGroupId] ?? [];
+  const inGridActivities = filterActivitiesToGrid(slim);
+  const dayPlacesByGroupId: Record<string, DayPlaceDraft[]> = {};
+  for (const group of slim.groups) {
+    dayPlacesByGroupId[group.id] =
+      group.id === slim.mainGroupId ? mainDays : [];
+  }
+  return {
+    ...slim,
+    dayPlacesByGroupId,
+    activities: inGridActivities,
+  };
+}
+
+function filterActivitiesToGrid(graph: TripEntityGraph) {
+  const bounds = boundsForSlimPayload(graph);
+  const { gridStart, gridEnd } = calendarGridFromToday({
+    startDate: bounds.startDate,
+    endDate: bounds.endDate,
+    timezone: graph.basics.timezone,
+    dayPlaces: graph.dayPlacesByGroupId[graph.mainGroupId],
+    accommodationStays: graph.accommodationStays,
+    ...calendarContentDates(graph),
+  });
+  return graph.activities.filter(
+    (a) => a.date >= gridStart && a.date <= gridEnd,
+  );
+}
+
 function boundsForSlimPayload(graph: TripEntityGraph): {
   startDate: string;
   endDate: string;
