@@ -8,6 +8,8 @@ import {
   type CalendarLens,
 } from "@/lib/trip-engine/person-lens";
 import {
+  clearOversizedTripLocalDraft,
+  clearTripLocalDraft,
   mergeTripLocalDraft,
   readTripLocalDraft,
 } from "@/lib/trip-os/local-draft";
@@ -28,7 +30,6 @@ import type { FinanceBuiltInSection } from "@/lib/trip-engine/cost-ledger/financ
 import type { EngineSectionReadiness } from "@/lib/trip-engine/types";
 
 import { TripOsNav } from "./TripOsNav";
-import { TripOsLoadScreen } from "./TripOsLoadScreen";
 import { TripOsWorkspace, type TripOsSection } from "./TripOsWorkspace";
 import { useTripOsEngine } from "./useTripOsEngine";
 
@@ -88,22 +89,26 @@ export function TripOsBoard(props: { tripId: string }) {
       : null;
 
   useEffect(() => {
-    void engine.load(undefined, { skipLocalDraft: true });
+    clearOversizedTripLocalDraft(props.tripId);
+    const timer = window.setTimeout(() => {
+      void engine.load(undefined, { skipLocalDraft: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [props.tripId]); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only initial load
+
+  useEffect(() => {
+    if (engine.refreshing && !engine.data) return;
+    const draft = readTripLocalDraft(props.tripId);
+    if (draft?.calendarLens) {
+      setCalendarLens(draft.calendarLens);
+    }
+  }, [props.tripId, engine.refreshing, engine.data]);
 
   useEffect(() => {
     if (!TRIP_OS_AI_IMPORT_ENABLED && activeSection === "ingest") {
       setActiveSection("overview");
     }
   }, [activeSection]);
-
-  useEffect(() => {
-    if (engine.loading) return;
-    const draft = readTripLocalDraft(props.tripId);
-    if (draft?.calendarLens) {
-      setCalendarLens(draft.calendarLens);
-    }
-  }, [props.tripId, engine.loading]);
 
   const graph = engine.data?.graph;
   const rosterSummary = engine.data?.rosterSummary;
@@ -201,7 +206,7 @@ export function TripOsBoard(props: { tripId: string }) {
     [engine.data, handleNavSelect],
   );
 
-  if (!engine.data || engine.loading) {
+  if (!engine.data) {
     return (
       <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -212,32 +217,36 @@ export function TripOsBoard(props: { tripId: string }) {
             saving={engine.refreshing}
             tripId={props.tripId}
           />
-          <TripOsLoadScreen
-            tripId={props.tripId}
-            status={engine.loadStatus}
-            onRetry={() => void engine.load(undefined, { forceServer: true })}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (!engine.data) {
-    return (
-      <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <TripOsNav
-            activeSection={activeSection}
-            onSelect={handleNavSelect}
-            onBackHome={() => router.push(tripOsHomePath())}
-            tripId={props.tripId}
-          />
-          <TripOsLoadScreen
-            tripId={props.tripId}
-            status={engine.loadStatus}
-            error={engine.error}
-            onRetry={() => void engine.load(undefined, { forceServer: true })}
-          />
+          <main className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 bg-white px-6">
+            {engine.error ? (
+              <>
+                <p className="max-w-md text-center text-sm text-red-600">{engine.error}</p>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void engine.load(undefined, { forceServer: true, skipLocalDraft: true })}
+                    className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
+                  >
+                    Retry
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearTripLocalDraft(props.tripId);
+                      void engine.load(undefined, { forceServer: true, skipLocalDraft: true });
+                    }}
+                    className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-600 hover:bg-zinc-50"
+                  >
+                    Clear cache & retry
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500">
+                {engine.refreshing ? "Loading trip…" : "Starting…"}
+              </p>
+            )}
+          </main>
         </div>
       </div>
     );
@@ -248,7 +257,7 @@ export function TripOsBoard(props: { tripId: string }) {
     engine.data.calendarProjection.days.length === 0;
 
   const { graph: tripGraph, calendarProjection, calendarRenderModel, readiness, warnings, conflicts, rosterSummary: roster, costLedger } =
-    engine.data;
+    engine.data!;
   const activeGroupId = editGroupId;
   const calmNav = isTripWelcomeState(graphToSetupState(tripGraph));
 
@@ -284,20 +293,9 @@ export function TripOsBoard(props: { tripId: string }) {
 
   return (
     <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
-      {calendarBootstrapping && engine.loadStatus.phase === "building-calendar" ? (
-        <div className="shrink-0 border-b border-zinc-100 bg-violet-50/60 px-4 py-2">
-          <div className="mx-auto flex max-w-lg items-center gap-3">
-            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-violet-100">
-              <div
-                className="h-full rounded-full bg-violet-500 transition-[width] duration-300"
-                style={{ width: `${engine.loadStatus.progress}%` }}
-              />
-            </div>
-            <span className="shrink-0 text-xs text-violet-800">
-              {engine.loadStatus.message || "Building calendar…"}{" "}
-              <span className="tabular-nums">{Math.round(engine.loadStatus.progress)}%</span>
-            </span>
-          </div>
+      {calendarBootstrapping ? (
+        <div className="shrink-0 border-b border-zinc-100 bg-violet-50/60 px-4 py-2 text-center text-xs text-violet-800">
+          Building calendar…
         </div>
       ) : null}
       {engine.error ? (

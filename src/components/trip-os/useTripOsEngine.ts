@@ -154,12 +154,8 @@ function mergeCostLedgerForGraph(
 
 export function useTripOsEngine(tripId: string) {
   const [data, setData] = useState<EngineState | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadStatus, setLoadStatus] = useState<TripLoadStatus>({
-    phase: "connecting",
-    progress: 0,
-    message: "Connecting to server…",
-  });
+  const [loading, setLoading] = useState(false);
+  const [loadStatus, setLoadStatus] = useState<TripLoadStatus>(READY_LOAD_STATUS);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<TripSaveStatus>("idle");
@@ -180,32 +176,9 @@ export function useTripOsEngine(tripId: string) {
   >(async () => true);
   const financePatchInFlightRef = useRef(0);
   const optimisticLineMapRef = useRef(new Map<string, string>());
-  const progressTickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const refreshCostLedgerRef = useRef<
     () => Promise<CostLedgerProjection | null>
   >(async () => null);
-
-  const stopProgressTicker = useCallback(() => {
-    if (progressTickerRef.current) {
-      clearInterval(progressTickerRef.current);
-      progressTickerRef.current = null;
-    }
-  }, []);
-
-  const startProgressTicker = useCallback(
-    (from: number, to: number) => {
-      stopProgressTicker();
-      let progress = from;
-      progressTickerRef.current = setInterval(() => {
-        progress = Math.min(to, progress + 1.2);
-        setLoadStatus((prev) => ({ ...prev, progress }));
-        if (progress >= to) stopProgressTicker();
-      }, 180);
-    },
-    [stopProgressTicker],
-  );
-
-  useEffect(() => () => stopProgressTicker(), [stopProgressTicker]);
 
   const buildStateFromGraph = useCallback(
     (
@@ -492,21 +465,10 @@ export function useTripOsEngine(tripId: string) {
       options?: { silent?: boolean; forceServer?: boolean; skipLocalDraft?: boolean },
     ) => {
       const generation = ++loadGenerationRef.current;
-      const silent = options?.silent ?? false;
       const forceServer = options?.forceServer ?? false;
       const skipLocalDraft = options?.skipLocalDraft ?? forceServer;
 
-      if (silent) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-        setLoadStatus({
-          phase: "connecting",
-          progress: 5,
-          message: "Connecting to server…",
-        });
-        startProgressTicker(5, 42);
-      }
+      setRefreshing(true);
       setError(null);
       await yieldToMain();
       try {
@@ -525,32 +487,14 @@ export function useTripOsEngine(tripId: string) {
           signal: controller.signal,
         });
         clearTimeout(timeout);
-        stopProgressTicker();
-        if (!silent) {
-          setLoadStatus({
-            phase: "downloading",
-            progress: 48,
-            message: "Download complete, reading trip data…",
-          });
-        }
         if (generation !== loadGenerationRef.current) return;
 
-        const text = await res.text();
-        if (!silent) {
-          setLoadStatus({
-            phase: "parsing",
-            progress: 54,
-            message:
-              text.length > 1_000_000
-                ? "Parsing large trip file — please wait…"
-                : "Parsing trip data…",
-          });
-        }
+        const buffer = await res.arrayBuffer();
         await yieldToMain();
 
         let body: { error?: string } & SetupEngineResponse;
         try {
-          body = await parseJsonOffThread<{ error?: string } & SetupEngineResponse>(text);
+          body = await parseJsonOffThread<{ error?: string } & SetupEngineResponse>(buffer);
         } catch {
           throw new Error("Could not read trip data from the server.");
         }
@@ -563,13 +507,6 @@ export function useTripOsEngine(tripId: string) {
           draft = readTripLocalDraft(tripId);
         }
 
-        if (!silent) {
-          setLoadStatus({
-            phase: "preparing",
-            progress: 64,
-            message: "Preparing workspace…",
-          });
-        }
         await yieldToMain();
 
         const viewGroupId = gid ?? draft?.activeGroupId ?? body.graph.mainGroupId;
@@ -578,38 +515,19 @@ export function useTripOsEngine(tripId: string) {
           pendingGroupIdRef.current = draft.pendingGroupId;
         }
 
-        if (!silent) {
-          setLoadStatus({
-            phase: "preparing",
-            progress: 68,
-            message: "Rendering trip shell…",
-          });
-        }
         await yieldToMain();
 
         paintSetupShell(body, viewGroupId, { skipTransportRepair: true });
         setSaveStatus("idle");
-        if (!silent) {
-          setLoadStatus({
-            phase: "preparing",
-            progress: 72,
-            message: "Workspace ready",
-          });
-          setLoading(false);
-        }
-        if (silent) setRefreshing(false);
 
         scheduleIdleWork(() => {
           void (async () => {
             if (generation !== loadGenerationRef.current) return;
-            if (!silent) {
-              setLoadStatus({
-                phase: "building-calendar",
-                progress: 80,
-                message: "Building calendar…",
-              });
-              startProgressTicker(80, 95);
-            }
+            setLoadStatus({
+              phase: "building-calendar",
+              progress: 85,
+              message: "Building calendar…",
+            });
             await yieldToMain();
             if (generation !== loadGenerationRef.current) return;
             try {
@@ -618,38 +536,29 @@ export function useTripOsEngine(tripId: string) {
               setError(
                 calendarErr instanceof Error
                   ? `Calendar build failed: ${calendarErr.message}`
-                  : "Calendar build failed — try clearing saved browser data.",
+                  : "Calendar build failed.",
               );
             }
-            stopProgressTicker();
-            if (!silent) {
-              setLoadStatus(READY_LOAD_STATUS);
-            }
+            setLoadStatus(READY_LOAD_STATUS);
             void refreshCostLedgerRef.current();
             if (pendingCommandsRef.current.length) scheduleFlushRef.current();
           })();
         });
       } catch (e) {
-        stopProgressTicker();
         if (generation !== loadGenerationRef.current) return;
         const fallbackDraft = readTripLocalDraft(tripId);
         if (fallbackDraft?.graph) {
           try {
             applyDraft(fallbackDraft, groupId);
             setSaveStatus(fallbackDraft.pendingCommands.length ? "sync_error" : "idle");
-            if (!silent) setLoadStatus(READY_LOAD_STATUS);
           } catch {
             clearTripLocalDraft(tripId);
-            setError(
-              e instanceof Error
-                ? e.message
-                : "Load failed — try clearing saved browser data below.",
-            );
+            setError(e instanceof Error ? e.message : "Load failed");
           }
         } else {
           const message =
             e instanceof Error && e.name === "AbortError"
-              ? "Server took too long to respond (30s). The trip may be very large — try again or clear saved browser data."
+              ? "Server took too long (30s). Try again."
               : e instanceof Error
                 ? e.message
                 : "Load failed";
@@ -657,15 +566,11 @@ export function useTripOsEngine(tripId: string) {
         }
       } finally {
         if (generation !== loadGenerationRef.current) return;
-        stopProgressTicker();
-        if (silent) {
-          setRefreshing(false);
-        } else {
-          setLoading(false);
-        }
+        setRefreshing(false);
+        setLoading(false);
       }
     },
-    [tripId, applyDraft, applyResponse, paintSetupShell, startProgressTicker, stopProgressTicker],
+    [tripId, applyDraft, applyResponse, paintSetupShell],
   );
 
   const scheduleRetry = useCallback(() => {

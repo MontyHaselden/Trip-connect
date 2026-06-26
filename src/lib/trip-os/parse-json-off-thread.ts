@@ -1,16 +1,25 @@
 /**
  * Parse large JSON off the main thread so the tab stays responsive.
  */
-export function parseJsonOffThread<T>(raw: string): Promise<T> {
-  if (typeof Worker === "undefined" || raw.length < 400_000) {
-    return Promise.resolve(JSON.parse(raw) as T);
+export function parseJsonOffThread<T>(raw: string | ArrayBuffer): Promise<T> {
+  const useWorker = typeof Worker !== "undefined";
+  const byteLength =
+    typeof raw === "string" ? raw.length : raw.byteLength;
+  if (!useWorker || byteLength < 200_000) {
+    const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw);
+    return Promise.resolve(JSON.parse(text) as T);
   }
 
   return new Promise((resolve, reject) => {
     const source = `
       self.onmessage = (event) => {
         try {
-          self.postMessage({ ok: true, value: JSON.parse(event.data) });
+          const input = event.data;
+          const text =
+            typeof input === "string"
+              ? input
+              : new TextDecoder().decode(input);
+          self.postMessage({ ok: true, value: JSON.parse(text) });
         } catch (error) {
           self.postMessage({ ok: false, error: String(error) });
         }
@@ -31,6 +40,10 @@ export function parseJsonOffThread<T>(raw: string): Promise<T> {
       URL.revokeObjectURL(url);
       reject(new Error("JSON worker failed"));
     };
-    worker.postMessage(raw);
+    if (raw instanceof ArrayBuffer) {
+      worker.postMessage(raw, [raw]);
+    } else {
+      worker.postMessage(raw);
+    }
   });
 }
