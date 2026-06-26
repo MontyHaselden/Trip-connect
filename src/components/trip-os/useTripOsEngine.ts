@@ -270,8 +270,11 @@ export function useTripOsEngine(tripId: string) {
     (
       body: SetupEngineResponse & { inviteCode?: string },
       viewGroupId: string,
+      options?: { skipTransportRepair?: boolean },
     ) => {
-      const graph = withRepairedTransportGraph(body.graph);
+      const graph = options?.skipTransportRepair
+        ? body.graph
+        : withRepairedTransportGraph(body.graph);
       const mergedCostLedger = mergeCostLedgerForGraph(
         dataRef.current?.costLedger,
         body.costLedger,
@@ -293,13 +296,15 @@ export function useTripOsEngine(tripId: string) {
         rosterSummary: body.rosterSummary ?? EMPTY_ROSTER,
         costLedger: mergedCostLedger ?? null,
       });
-      persistLocalSnapshot(graph, {
-        pendingCommands: pendingCommandsRef.current,
-        pendingGroupId: pendingGroupIdRef.current,
-        activeGroupId: viewGroupId,
-        inviteCode: body.inviteCode,
-        rosterSummary: body.rosterSummary ?? EMPTY_ROSTER,
-        costLedger: mergedCostLedger ?? null,
+      scheduleIdleWork(() => {
+        persistLocalSnapshot(graph, {
+          pendingCommands: pendingCommandsRef.current,
+          pendingGroupId: pendingGroupIdRef.current,
+          activeGroupId: viewGroupId,
+          inviteCode: body.inviteCode,
+          rosterSummary: body.rosterSummary ?? EMPTY_ROSTER,
+          costLedger: mergedCostLedger ?? null,
+        });
       });
     },
     [persistLocalSnapshot],
@@ -562,7 +567,16 @@ export function useTripOsEngine(tripId: string) {
           pendingGroupIdRef.current = draft.pendingGroupId;
         }
 
-        paintSetupShell(body, viewGroupId);
+        if (!silent) {
+          setLoadStatus({
+            phase: "preparing",
+            progress: 68,
+            message: "Rendering trip shell…",
+          });
+        }
+        await yieldToMain();
+
+        paintSetupShell(body, viewGroupId, { skipTransportRepair: true });
         setSaveStatus("idle");
         if (!silent) {
           setLoadStatus({

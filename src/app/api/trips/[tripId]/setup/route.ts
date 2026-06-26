@@ -8,6 +8,10 @@ import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import { syncActivitiesForTrip } from "@/lib/trip-engine/activities-persistence";
 import { loadTripGraph } from "@/lib/trip-engine";
 import { loadRosterSummary } from "@/lib/trip-engine/roster-summary";
+import {
+  graphPayloadStats,
+  slimGraphPayloadForEngine,
+} from "@/lib/trip-engine/slim-graph-payload";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
 export async function GET(
@@ -29,13 +33,21 @@ export async function GET(
 
     if (engine) {
       const rosterSummary = await loadRosterSummary(tripId);
+      const rawStats = graphPayloadStats(graph);
+      const slimGraph = slimGraphPayloadForEngine(graph);
+      const slimStats = graphPayloadStats(slimGraph);
       return NextResponse.json({
-        graph,
+        graph: slimGraph,
         inviteCode: trip.inviteCode,
         rosterSummary,
         warnings: [],
         conflicts: [],
         readiness: [],
+        meta: {
+          ...slimStats,
+          rawDayPlaceRows: rawStats.dayPlaceRows,
+          dayPlacesDropped: rawStats.dayPlaceRows - slimStats.dayPlaceRows,
+        },
       });
     }
 

@@ -200,7 +200,7 @@ export function TripOsBoard(props: { tripId: string }) {
     [engine.data, handleNavSelect],
   );
 
-  if (!engine.data && engine.loading) {
+  if (!engine.data || engine.loading) {
     return (
       <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
         <div className="flex min-h-0 flex-1 overflow-hidden">

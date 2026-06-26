@@ -28,7 +28,7 @@ export function TripOsLoadScreen(props: {
   }
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 px-6">
+    <main className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-5 bg-white px-6">
       <div className="w-full max-w-sm">
         <div className="mb-2 flex items-center justify-between text-xs text-zinc-500">
           <span>{status.message}</span>
@@ -45,9 +45,13 @@ export function TripOsLoadScreen(props: {
       <p className="max-w-md text-center text-sm text-zinc-600">
         {error
           ? error
-          : progress < 70
+          : status.phase === "connecting" || status.phase === "downloading"
             ? "Fetching your trip from the server. This step should move within a few seconds."
-            : "Almost there — building the calendar in the background."}
+            : status.phase === "parsing"
+              ? "Reading trip data — large trips can pause here for 10–20 seconds."
+              : status.phase === "preparing"
+                ? "Almost ready — setting up the workspace shell."
+                : "Building the calendar in the background."}
       </p>
 
       <div className="flex flex-col items-center gap-2">

@@ -88,9 +88,12 @@ export async function loadTripSetupState(tripId: string): Promise<TripSetupState
 
   const dayPlacesByGroupId: Record<string, DayPlaceDraft[]> = {};
   for (const g of groupRows) {
-    dayPlacesByGroupId[g.id] = placeRows
-      .filter((p) => p.groupId === g.id)
-      .map(rowToDayPlace);
+    dayPlacesByGroupId[g.id] = [];
+  }
+  for (const row of placeRows) {
+    const bucket = dayPlacesByGroupId[row.groupId];
+    if (!bucket) continue;
+    bucket.push(rowToDayPlace(row));
   }
 
   const setupGroups: SetupGroup[] = groupRows.map((g) => ({
