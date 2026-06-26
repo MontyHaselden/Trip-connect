@@ -6,11 +6,7 @@ import { getTripByIdForHost } from "@/lib/host/get-trip-by-id";
 import { applyTripSetupState } from "@/lib/host/setup/apply-setup-state";
 import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import { syncActivitiesForTrip } from "@/lib/trip-engine/activities-persistence";
-import {
-  buildSetupEngineResponse,
-  loadTripGraph,
-  serializeSetupResponse,
-} from "@/lib/trip-engine";
+import { loadTripGraph } from "@/lib/trip-engine";
 import { loadCostLedgerProjection } from "@/lib/trip-engine/cost-ledger/index";
 import { loadRosterSummary } from "@/lib/trip-engine/roster-summary";
 import type { TripSetupState } from "@/lib/host/setup/types";
@@ -35,15 +31,17 @@ export async function GET(
     if (engine) {
       const [rosterSummary, costLedger] = await Promise.all([
         loadRosterSummary(tripId),
-        loadCostLedgerProjection(tripId, graph).catch(() => null),
+        loadCostLedgerProjection(tripId, graph, { syncFromGraph: false }).catch(() => null),
       ]);
-      const response = buildSetupEngineResponse(graph, {
-        groupId,
+      return NextResponse.json({
+        graph,
         inviteCode: trip.inviteCode,
         rosterSummary,
-        costLedger,
+        costLedger: costLedger ?? undefined,
+        warnings: [],
+        conflicts: [],
+        readiness: [],
       });
-      return NextResponse.json(serializeSetupResponse(response));
     }
 
     return NextResponse.json({ state: graphToSetupState(graph), inviteCode: trip.inviteCode });

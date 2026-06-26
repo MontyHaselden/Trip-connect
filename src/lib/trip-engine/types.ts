@@ -176,8 +176,8 @@ export type CalendarRenderModel = {
 
 export type SetupEngineResponse = {
   graph: TripEntityGraph;
-  calendarProjection: CalendarProjection;
-  calendarRenderModel: CalendarRenderModel;
+  calendarProjection?: CalendarProjection;
+  calendarRenderModel?: CalendarRenderModel;
   readiness: EngineSectionReadiness[];
   warnings: EngineWarning[];
   conflicts: EngineConflict[];

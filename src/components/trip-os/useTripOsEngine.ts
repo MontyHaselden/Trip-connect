@@ -14,7 +14,14 @@ import {
   tripPersistInFlight,
   waitForTripPersist,
 } from "@/lib/trip-os/persist-queue";
-import { deriveEngineViewFromGraph, hydrateSetupEngineResponse } from "@/lib/trip-engine/build-setup-response";
+import {
+  deriveEngineViewFromGraph,
+  hydrateSetupEngineResponse,
+} from "@/lib/trip-engine/build-setup-response";
+import {
+  setupResponseIncludesCalendarView,
+  stubEngineCalendarView,
+} from "@/lib/trip-engine/stub-engine-view";
 import { applyCommandBatch } from "@/lib/trip-engine/apply-command-batch";
 import { computeReadiness } from "@/lib/trip-engine/compute-readiness";
 import type { TripCommand } from "@/lib/trip-engine/commands";
@@ -76,8 +83,17 @@ export type CostsPatchResult = { ok: true } | { ok: false; error: string };
 /** Debounce before background server sync — local draft is written immediately. */
 const PERSIST_DEBOUNCE_MS = 400;
 const PERSIST_RETRY_MS = 8000;
+const SETUP_FETCH_TIMEOUT_MS = 60_000;
 
 const EMPTY_ROSTER: RosterSummary = { participants: [], groups: [], rooms: [] };
+
+function scheduleIdleWork(run: () => void) {
+  if (typeof requestIdleCallback !== "undefined") {
+    requestIdleCallback(run, { timeout: 2500 });
+  } else {
+    setTimeout(run, 0);
+  }
+}
 
 function withRepairedTransportGraph(graph: TripEntityGraph): TripEntityGraph {
   return repairTransportGraphSync(graph);
@@ -193,27 +209,78 @@ export function useTripOsEngine(tripId: string) {
     [tripId],
   );
 
+  const paintSetupShell = useCallback(
+    (
+      body: SetupEngineResponse & { inviteCode?: string },
+      viewGroupId: string,
+    ) => {
+      const graph = withRepairedTransportGraph(body.graph);
+      const mergedCostLedger = mergeCostLedgerForGraph(
+        dataRef.current?.costLedger,
+        body.costLedger,
+        graph,
+        {
+          forceKeepLocal: financePatchInFlightRef.current > 0,
+        },
+      );
+      const stub = stubEngineCalendarView(graph, viewGroupId);
+      setActiveGroupId(viewGroupId);
+      setData({
+        graph,
+        calendarProjection: stub.calendarProjection,
+        calendarRenderModel: stub.calendarRenderModel,
+        readiness: body.readiness ?? [],
+        warnings: body.warnings ?? [],
+        conflicts: body.conflicts ?? [],
+        inviteCode: body.inviteCode ?? "",
+        rosterSummary: body.rosterSummary ?? EMPTY_ROSTER,
+        costLedger: mergedCostLedger ?? null,
+      });
+      persistLocalSnapshot(graph, {
+        pendingCommands: pendingCommandsRef.current,
+        pendingGroupId: pendingGroupIdRef.current,
+        activeGroupId: viewGroupId,
+        inviteCode: body.inviteCode,
+        rosterSummary: body.rosterSummary ?? EMPTY_ROSTER,
+        costLedger: mergedCostLedger ?? null,
+      });
+    },
+    [persistLocalSnapshot],
+  );
+
   const applyDraft = useCallback(
     (draft: TripLocalDraft, viewGroupId?: string) => {
       const graph = withRepairedTransportGraph(draft.graph);
       const gid = viewGroupId ?? draft.activeGroupId ?? graph.mainGroupId;
-      const costLedger = draft.costLedger
-        ? pruneRunawayLocalFinanceLines(draft.costLedger, graph)
-        : null;
-      setActiveGroupId(gid);
-      setData(
-        buildStateFromGraph(graph, {
-          viewGroupId: gid,
+      paintSetupShell(
+        {
+          graph,
           inviteCode: draft.inviteCode,
           rosterSummary: draft.rosterSummary ?? EMPTY_ROSTER,
-          costLedger,
-        }),
+          warnings: [],
+          conflicts: [],
+          readiness: [],
+        },
+        gid,
       );
-      if (costLedger !== draft.costLedger || graph !== draft.graph) {
-        persistLocalSnapshot(graph, { costLedger });
-      }
+      scheduleIdleWork(() => {
+        const costLedger = draft.costLedger
+          ? pruneRunawayLocalFinanceLines(draft.costLedger, graph)
+          : null;
+        setData(
+          buildStateFromGraph(graph, {
+            viewGroupId: gid,
+            inviteCode: draft.inviteCode,
+            rosterSummary: draft.rosterSummary ?? EMPTY_ROSTER,
+            costLedger,
+          }),
+        );
+        if (costLedger !== draft.costLedger || graph !== draft.graph) {
+          persistLocalSnapshot(graph, { costLedger });
+        }
+      });
     },
-    [buildStateFromGraph, persistLocalSnapshot],
+    [buildStateFromGraph, paintSetupShell, persistLocalSnapshot],
   );
 
   const applyResponse = useCallback(
@@ -233,23 +300,24 @@ export function useTripOsEngine(tripId: string) {
           forceKeepLocal: financePatchInFlightRef.current > 0,
         },
       );
-      const view =
-        context?.rebuildView
-          ? deriveEngineViewFromGraph(graph, {
-              groupId: viewGroupId,
-              costLedger: mergedCostLedger,
-            })
-          : {
+      const hasServerCalendar =
+        !context?.rebuildView && setupResponseIncludesCalendarView(hydrated);
+      const view = hasServerCalendar
+        ? {
+            graph,
+            calendarProjection: hydrated.calendarProjection!,
+            calendarRenderModel: hydrated.calendarRenderModel!,
+            readiness: computeReadiness(
               graph,
-              calendarProjection: hydrated.calendarProjection,
-              calendarRenderModel: hydrated.calendarRenderModel,
-              readiness: computeReadiness(
-                graph,
-                hydrated.calendarProjection,
-                mergedCostLedger,
-              ),
-              conflicts: hydrated.conflicts,
-            };
+              hydrated.calendarProjection!,
+              mergedCostLedger,
+            ),
+            conflicts: hydrated.conflicts ?? [],
+          }
+        : deriveEngineViewFromGraph(graph, {
+            groupId: viewGroupId,
+            costLedger: mergedCostLedger,
+          });
       const next: EngineState = {
         graph: view.graph,
         calendarProjection: view.calendarProjection,
@@ -363,29 +431,7 @@ export function useTripOsEngine(tripId: string) {
       const generation = ++loadGenerationRef.current;
       const silent = options?.silent ?? false;
       const forceServer = options?.forceServer ?? false;
-
-      if (!forceServer) {
-        const draft = readTripLocalDraft(tripId);
-        if (draft?.graph) {
-          pendingCommandsRef.current = [...draft.pendingCommands];
-          pendingGroupIdRef.current = draft.pendingGroupId;
-          try {
-            applyDraft(draft, groupId);
-            setError(null);
-            setLoading(false);
-            setRefreshing(false);
-            if (draft.pendingCommands.length) scheduleFlushRef.current();
-            void fetchServerMetadata(generation, groupId, {
-              keepLocalGraph:
-                draft.pendingCommands.length > 0 ||
-                localCostLedgerIsAhead(draft.costLedger, undefined, draft.graph),
-            });
-            return;
-          } catch {
-            clearTripLocalDraft(tripId);
-          }
-        }
-      }
+      const draft = !forceServer ? readTripLocalDraft(tripId) : null;
 
       if (silent) {
         setRefreshing(true);
@@ -400,25 +446,48 @@ export function useTripOsEngine(tripId: string) {
         }
         if (generation !== loadGenerationRef.current) return;
 
-        const gid = groupId ?? activeGroupIdRef.current;
+        const gid = groupId ?? draft?.activeGroupId ?? activeGroupIdRef.current;
         const qs = new URLSearchParams({ engine: "1" });
         if (gid) qs.set("groupId", gid);
-        const res = await fetch(`/api/trips/${tripId}/setup?${qs}`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), SETUP_FETCH_TIMEOUT_MS);
+        const res = await fetch(`/api/trips/${tripId}/setup?${qs}`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
         const body = (await res.json().catch(() => ({}))) as {
           error?: string;
         } & SetupEngineResponse;
         if (generation !== loadGenerationRef.current) return;
         if (!res.ok) throw new Error(body.error || "Failed to load setup");
-        applyResponse(body, {
-          viewGroupId: gid ?? body.graph.mainGroupId,
-        });
+
+        const viewGroupId = gid ?? body.graph.mainGroupId;
+        if (draft?.pendingCommands.length) {
+          pendingCommandsRef.current = [...draft.pendingCommands];
+          pendingGroupIdRef.current = draft.pendingGroupId;
+        }
+
+        paintSetupShell(body, viewGroupId);
         setSaveStatus("idle");
+        if (!silent) setLoading(false);
+        if (silent) setRefreshing(false);
+
+        scheduleIdleWork(() => {
+          if (generation !== loadGenerationRef.current) return;
+          applyResponse(body, { viewGroupId, rebuildView: true });
+          if (pendingCommandsRef.current.length) scheduleFlushRef.current();
+        });
       } catch (e) {
         if (generation !== loadGenerationRef.current) return;
-        const draft = readTripLocalDraft(tripId);
-        if (draft?.graph) {
-          applyDraft(draft, groupId);
-          setSaveStatus(draft.pendingCommands.length ? "sync_error" : "idle");
+        const fallbackDraft = draft ?? readTripLocalDraft(tripId);
+        if (fallbackDraft?.graph) {
+          try {
+            applyDraft(fallbackDraft, groupId);
+            setSaveStatus(fallbackDraft.pendingCommands.length ? "sync_error" : "idle");
+          } catch {
+            clearTripLocalDraft(tripId);
+            setError(e instanceof Error ? e.message : "Load failed");
+          }
         } else {
           setError(e instanceof Error ? e.message : "Load failed");
         }
@@ -431,7 +500,7 @@ export function useTripOsEngine(tripId: string) {
         }
       }
     },
-    [tripId, applyDraft, applyResponse, fetchServerMetadata],
+    [tripId, applyDraft, applyResponse, paintSetupShell],
   );
 
   const scheduleRetry = useCallback(() => {
@@ -676,6 +745,14 @@ export function useTripOsEngine(tripId: string) {
       setActiveGroupId(groupId);
       setData((prev) => {
         if (!prev) return prev;
+        if (
+          prev.calendarRenderModel.groupId === groupId &&
+          prev.calendarProjection.groupId === groupId &&
+          prev.calendarRenderModel.days.length > 0
+        ) {
+          persistLocalSnapshot(prev.graph, { activeGroupId: groupId });
+          return prev;
+        }
         const next = buildStateFromGraph(prev.graph, {
           viewGroupId: groupId,
           prev,

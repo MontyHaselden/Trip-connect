@@ -10,11 +10,12 @@ import type { TripEntityGraph } from "@/lib/trip-engine/types";
 export async function loadCostLedgerProjection(
   tripId: string,
   graph?: TripEntityGraph | null,
+  options?: { syncFromGraph?: boolean },
 ) {
   await ensureCostSettings(tripId);
 
   const tripGraph = graph ?? (await loadTripGraph(tripId));
-  if (tripGraph) {
+  if (tripGraph && options?.syncFromGraph !== false) {
     const dismissals = await loadFinanceDismissals(tripId);
     await syncCostLedgerFromGraph(tripId, tripGraph, dismissals);
   }

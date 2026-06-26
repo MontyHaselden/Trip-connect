@@ -80,14 +80,17 @@ export function buildSetupEngineResponse(
 
 /** Serialize projection Maps for JSON responses. */
 export function serializeSetupResponse(response: SetupEngineResponse) {
-  return {
-    ...response,
-    calendarProjection: {
+  const serialized: Record<string, unknown> = { ...response };
+  if (response.calendarProjection) {
+    serialized.calendarProjection = {
       ...response.calendarProjection,
       accommodationByDate: Object.fromEntries(response.calendarProjection.accommodationByDate),
-    },
-    calendarRenderModel: serializeRenderModel(response.calendarRenderModel),
-  };
+    };
+  }
+  if (response.calendarRenderModel) {
+    serialized.calendarRenderModel = serializeRenderModel(response.calendarRenderModel);
+  }
+  return serialized;
 }
 
 function toMap<T>(v: Map<string, T> | Record<string, T> | undefined): Map<string, T> {
@@ -120,7 +123,11 @@ export function hydrateSetupEngineResponse(
 ): SetupEngineResponse {
   return {
     ...body,
-    calendarProjection: deserializeCalendarProjection(body.calendarProjection),
-    calendarRenderModel: deserializeRenderModel(body.calendarRenderModel),
+    calendarProjection: body.calendarProjection
+      ? deserializeCalendarProjection(body.calendarProjection)
+      : undefined,
+    calendarRenderModel: body.calendarRenderModel
+      ? deserializeRenderModel(body.calendarRenderModel)
+      : undefined,
   };
 }

@@ -210,8 +210,11 @@ export function TripOsBoard(props: { tripId: string }) {
             saving={engine.refreshing}
             tripId={props.tripId}
           />
-          <main className="flex min-h-0 flex-1 items-center justify-center">
+          <main className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
             <p className="text-sm text-zinc-600">Loading trip engine…</p>
+            <p className="max-w-sm text-center text-xs text-zinc-400">
+              Large trips may take a few seconds to build the calendar.
+            </p>
           </main>
         </div>
       </div>
@@ -235,6 +238,10 @@ export function TripOsBoard(props: { tripId: string }) {
       </div>
     );
   }
+
+  const calendarBootstrapping =
+    engine.data.calendarRenderModel.days.length === 0 ||
+    engine.data.calendarProjection.days.length === 0;
 
   const { graph: tripGraph, calendarProjection, calendarRenderModel, readiness, warnings, conflicts, rosterSummary: roster, costLedger } =
     engine.data;
@@ -364,9 +371,11 @@ export function TripOsBoard(props: { tripId: string }) {
             onClearSelection={calendar.clearSelection}
             headerAside={groupSelector}
             statusLine={
-              saveStatusLine
-                ? `${calendar.statusLine} · ${saveStatusLine}`
-                : calendar.statusLine
+              calendarBootstrapping
+                ? "Building calendar…"
+                : saveStatusLine
+                  ? `${calendar.statusLine} · ${saveStatusLine}`
+                  : calendar.statusLine
             }
           />
         </aside>
