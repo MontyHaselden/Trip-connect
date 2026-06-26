@@ -26,6 +26,7 @@ import {
 } from "@/lib/trip-engine/cost-ledger/merge-local-cost-ledger";
 import { mergeFinancePatchResult } from "@/lib/trip-engine/cost-ledger/merge-finance-patch-result";
 import { mergeActivitiesById } from "@/lib/trip-engine/merge-graph-activities";
+import { repairTransportGraphSync } from "@/lib/trip-engine/repair-transport-graph";
 import { mergeOptimisticSeedsIntoCostLedger } from "@/lib/trip-engine/cost-ledger/optimistic-seed-cost-ledger";
 import { pruneCostLedgerLinkedOrphans } from "@/lib/trip-engine/cost-ledger/prune-cost-ledger-orphans";
 import {
@@ -76,6 +77,10 @@ const PERSIST_DEBOUNCE_MS = 400;
 const PERSIST_RETRY_MS = 8000;
 
 const EMPTY_ROSTER: RosterSummary = { participants: [], groups: [], rooms: [] };
+
+function withRepairedTransportGraph(graph: TripEntityGraph): TripEntityGraph {
+  return repairTransportGraphSync(graph);
+}
 
 function commandsNeedCostLedgerSeed(commands: TripCommand[]): boolean {
   return commands.some((c) =>
@@ -189,21 +194,22 @@ export function useTripOsEngine(tripId: string) {
 
   const applyDraft = useCallback(
     (draft: TripLocalDraft, viewGroupId?: string) => {
-      const gid = viewGroupId ?? draft.activeGroupId ?? draft.graph.mainGroupId;
+      const graph = withRepairedTransportGraph(draft.graph);
+      const gid = viewGroupId ?? draft.activeGroupId ?? graph.mainGroupId;
       const costLedger = draft.costLedger
-        ? pruneRunawayLocalFinanceLines(draft.costLedger, draft.graph)
+        ? pruneRunawayLocalFinanceLines(draft.costLedger, graph)
         : null;
       setActiveGroupId(gid);
       setData(
-        buildStateFromGraph(draft.graph, {
+        buildStateFromGraph(graph, {
           viewGroupId: gid,
           inviteCode: draft.inviteCode,
           rosterSummary: draft.rosterSummary ?? EMPTY_ROSTER,
           costLedger,
         }),
       );
-      if (costLedger !== draft.costLedger) {
-        persistLocalSnapshot(draft.graph, { costLedger });
+      if (costLedger !== draft.costLedger || graph !== draft.graph) {
+        persistLocalSnapshot(graph, { costLedger });
       }
     },
     [buildStateFromGraph, persistLocalSnapshot],
@@ -216,15 +222,16 @@ export function useTripOsEngine(tripId: string) {
     ) => {
       const viewGroupId =
         context?.viewGroupId ?? activeGroupIdRef.current ?? body.graph.mainGroupId;
+      const graph = withRepairedTransportGraph(body.graph);
       const mergedCostLedger = mergeCostLedgerForGraph(
         dataRef.current?.costLedger,
         body.costLedger,
-        body.graph,
+        graph,
         {
           forceKeepLocal: financePatchInFlightRef.current > 0,
         },
       );
-      const next = buildStateFromGraph(body.graph, {
+      const next = buildStateFromGraph(graph, {
         viewGroupId,
         warnings: body.warnings,
         inviteCode: body.inviteCode,
@@ -234,7 +241,7 @@ export function useTripOsEngine(tripId: string) {
       });
       setActiveGroupId(viewGroupId);
       setData(next);
-      persistLocalSnapshot(body.graph, {
+      persistLocalSnapshot(graph, {
         pendingCommands: [],
         pendingGroupId: "",
         activeGroupId: viewGroupId,
