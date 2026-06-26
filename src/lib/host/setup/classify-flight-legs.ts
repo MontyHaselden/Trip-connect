@@ -171,7 +171,7 @@ export function mergeClassifiedLegsIntoState(
       ...leg,
       intercityFromCity: leg.fromCity.trim(),
       intercityToCity: leg.toCity.trim(),
-      originGroupId: state.mainGroupId,
+      originGroupId: leg.originGroupId ?? state.mainGroupId,
     }));
 
   return {

@@ -39,6 +39,8 @@ function mergeGraphState(graph: TripEntityGraph, state: TripSetupState): TripEnt
     bookingsSummary: graph.bookingsSummary,
     emergencySummary: graph.emergencySummary,
     publishSummary: graph.publishSummary,
+    hiddenPendingTransportNeedKeys: graph.hiddenPendingTransportNeedKeys,
+    transportProducts: state.transportProducts ?? graph.transportProducts ?? [],
   };
 }
 
@@ -248,7 +250,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         },
         { preserveCalendarPaint: true },
       );
-      return ok(finalizeTransportChange(graph, derived), warnings);
+      return ok(finalizeTransportChange(next, derived), warnings);
     }
 
     case "addTransportLeg": {
@@ -275,7 +277,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         },
         { preserveCalendarPaint: true },
       );
-      return ok(finalizeTransportChange(graph, derived), warnings);
+      return ok(finalizeTransportChange(next, derived), warnings);
     }
 
     case "updateTransportLeg": {
@@ -329,7 +331,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         },
         { preserveCalendarPaint: true },
       );
-      return ok(finalizeTransportChange(graph, derived), warnings);
+      return ok(finalizeTransportChange(next, derived), warnings);
     }
 
     case "removeTransportLeg": {
@@ -347,7 +349,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         },
         { preserveCalendarPaint: true },
       );
-      return ok(finalizeTransportChange(graph, derived), warnings);
+      return ok(finalizeTransportChange(next, derived), warnings);
     }
 
     case "addTransportProduct": {

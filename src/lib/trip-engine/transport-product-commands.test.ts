@@ -95,4 +95,53 @@ describe("transport product commands", () => {
     assert.equal(removed.intercityLegs[0]?.transportProductId, null);
     assert.equal(removed.intercityLegs[0]?.billingMode, "single");
   });
+
+  it("keeps pass link when adding a classified intercity leg in the same batch", () => {
+    const productId = "prod-jr";
+    const withProduct = applyCommands(graph(), [
+      {
+        type: "addTransportProduct",
+        product: {
+          id: productId,
+          kind: "train_pass",
+          name: "JR Pass",
+          participantIds: ["p1"],
+        },
+      },
+      {
+        type: "addClassifiedTransportLegs",
+        groupId: "g-main",
+        legs: [
+          {
+            id: "leg-kagoshima-hiroshima",
+            transportType: "train",
+            bookingStatus: "flexible",
+            travelDate: "2026-12-13",
+            arrivalDate: "2026-12-13",
+            departureTime: null,
+            arrivalTime: null,
+            fromCity: "Kagoshima",
+            toCity: "Hiroshima",
+            fromStation: "Kagoshima",
+            toStation: "Hiroshima",
+            operator: null,
+            referenceNumber: null,
+            flightNumber: null,
+            notes: null,
+            intercityFromCity: "Kagoshima",
+            intercityToCity: "Hiroshima",
+            legKind: "city_change",
+            originGroupId: "g-main",
+            sourceEntityId: null,
+            transportProductId: productId,
+            billingMode: "product",
+          },
+        ],
+      },
+    ]).graph;
+
+    assert.equal(withProduct.transportProducts.length, 1);
+    assert.equal(withProduct.intercityLegs[0]?.transportProductId, productId);
+    assert.equal(withProduct.intercityLegs[0]?.billingMode, "product");
+  });
 });

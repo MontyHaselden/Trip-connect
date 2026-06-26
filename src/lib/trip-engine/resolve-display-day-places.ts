@@ -45,6 +45,14 @@ function arrivalCity(day: DayPlaceDraft): string {
   return day.primaryCity.trim();
 }
 
+/** Full single-city day inside a stay — do not bridge corridor paint across these. */
+function isSolidStayDay(day: DayPlaceDraft, city: string): boolean {
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const share = day.primaryShare ?? 1;
+  return locationsMatch(primary, city) && !secondary && share >= 0.99;
+}
+
 /** Connect half-painted checkout/check-in days using neighbouring cities. */
 export function fillIncompleteSplitDays(days: DayPlaceDraft[]): DayPlaceDraft[] {
   if (days.length < 2) return days;
@@ -63,7 +71,9 @@ export function fillIncompleteSplitDays(days: DayPlaceDraft[]): DayPlaceDraft[] 
 
     if (primary && !secondary) {
       for (let j = i + 1; j < sorted.length; j++) {
-        const nextCity = arrivalCity(byDate.get(sorted[j]!.date)!);
+        const nextDay = byDate.get(sorted[j]!.date)!;
+        if (isSolidStayDay(nextDay, primary)) break;
+        const nextCity = arrivalCity(nextDay);
         if (!nextCity || locationsMatch(nextCity, primary)) continue;
         byDate.set(date, {
           ...day,
@@ -78,7 +88,9 @@ export function fillIncompleteSplitDays(days: DayPlaceDraft[]): DayPlaceDraft[] 
 
     if (!primary && secondary) {
       for (let j = i - 1; j >= 0; j--) {
-        const prevCity = departureCity(byDate.get(sorted[j]!.date)!);
+        const prevDay = byDate.get(sorted[j]!.date)!;
+        if (isSolidStayDay(prevDay, secondary)) break;
+        const prevCity = departureCity(prevDay);
         if (!prevCity || locationsMatch(prevCity, secondary)) continue;
         byDate.set(date, {
           ...day,

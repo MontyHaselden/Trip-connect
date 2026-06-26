@@ -443,6 +443,20 @@ function repairCommandsForPersist(
   });
 }
 
+function commandsNeedAuthoritativeGraphReload(commands: TripCommand[]): boolean {
+  return commands.some((c) =>
+    [
+      "addTransportProduct",
+      "updateTransportProduct",
+      "removeTransportProduct",
+      "addTransportLeg",
+      "addClassifiedTransportLegs",
+      "updateTransportLeg",
+      "removeTransportLeg",
+    ].includes(c.type),
+  );
+}
+
 /** Apply commands in memory, persist to DB, reload authoritative graph. */
 export async function persistCommands(
   tripId: string,
@@ -583,6 +597,17 @@ export async function persistCommands(
         command.activity.id,
         command.activity.date,
       );
+    }
+  }
+
+  if (stateCommands.length > 0 && commandsNeedAuthoritativeGraphReload(stateCommands)) {
+    const reloaded = await loadTripGraph(tripId);
+    if (reloaded) {
+      return {
+        graph: reloaded,
+        warnings: result.warnings,
+        conflicts: result.conflicts ?? [],
+      };
     }
   }
 

@@ -96,6 +96,49 @@ describe("resolveDisplayDayPlaces", () => {
     assert.equal(dec16?.secondaryCity, "Kyoto");
   });
 
+  it("does not bridge a half-day across a full stay to a distant city change", () => {
+    const stored = [
+      {
+        date: "2026-12-06",
+        primaryCity: "Tokyo",
+        secondaryCity: "Kagoshima",
+        primaryShare: DEFAULT_HALF_SHARE,
+        dayType: "travel" as const,
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-07",
+        primaryCity: "Kagoshima",
+        secondaryCity: null,
+        primaryShare: DEFAULT_HALF_SHARE,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+      ...["2026-12-08", "2026-12-09", "2026-12-10", "2026-12-11", "2026-12-12"].map((date) => ({
+        date,
+        primaryCity: "Kagoshima",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      })),
+      {
+        date: "2026-12-13",
+        primaryCity: "Kagoshima",
+        secondaryCity: "Hiroshima",
+        primaryShare: DEFAULT_HALF_SHARE,
+        dayType: "travel" as const,
+        includeBuffer: false,
+      },
+    ];
+    const derived = stored.map((day) => ({ ...day }));
+
+    const display = resolveDisplayDayPlaces(stored, derived, "2026-12-06", "2026-12-13");
+    const dec7 = display.find((d) => d.date === "2026-12-07");
+    assert.equal(dec7?.primaryCity, "Kagoshima");
+    assert.ok(!dec7?.secondaryCity?.toLowerCase().includes("hiroshima"));
+  });
+
   it("fillIncompleteSplitDays connects checkout and check-in halves", () => {
     const filled = fillIncompleteSplitDays([
       {

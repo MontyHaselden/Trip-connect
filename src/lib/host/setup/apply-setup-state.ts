@@ -174,6 +174,7 @@ function intercityToRow(tripId: string, leg: IntercityLegDraft, sortOrder: numbe
     visibilityMode: visibility.visibilityMode,
     originGroupId: leg.originGroupId ?? null,
     sourceEntityId: leg.sourceEntityId ?? null,
+    transportProductId: leg.transportProductId ?? null,
   };
 }
 

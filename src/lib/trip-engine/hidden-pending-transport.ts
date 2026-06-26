@@ -13,8 +13,14 @@ export function pendingTransportNeedKey(
   groupId: string,
   need: Pick<PendingTransportNeed, "kind" | "date" | "fromCity" | "toCity">,
 ): string {
+  return [groupId, pendingTransportNeedRouteKey(need)].join("|");
+}
+
+/** Route identity shared across participant calendars (no group id). */
+export function pendingTransportNeedRouteKey(
+  need: Pick<PendingTransportNeed, "kind" | "date" | "fromCity" | "toCity">,
+): string {
   return [
-    groupId,
     need.kind,
     need.date,
     normalizeCity(need.fromCity),

@@ -44,11 +44,17 @@ function defaultProductKind(mode: TravelMode, billing: BillingMode): TransportPr
   return "train_pass";
 }
 
+function submitGroupIds(groupId: string, targetGroupIds?: string[]): string[] {
+  if (!targetGroupIds?.length) return [groupId];
+  return [...new Set(targetGroupIds)];
+}
+
 export function AddTransportModal(props: {
   open: boolean;
   onClose: () => void;
   graph: TripEntityGraph;
   groupId: string;
+  targetGroupIds?: string[];
   rosterSummary?: RosterSummary;
   selectedDate?: string | null;
   prefillNeed?: PendingTransportNeed | null;
@@ -140,8 +146,17 @@ export function AddTransportModal(props: {
     } else {
       setProductChoice(defaultPassProductIdForMode(nextMode, passes));
     }
-    setSelectedParticipants(new Set(pool.map((participant) => participant.id)));
-  }, [props.open, props.prefillNeed, props.pendingNeeds, pool, props.graph, props.groupId]);
+    const batchParticipantIds =
+      props.targetGroupIds
+        ?.map((groupId) => props.graph.groups.find((group) => group.id === groupId))
+        .map((group) => group?.personalForParticipantId)
+        .filter((id): id is string => Boolean(id)) ?? [];
+    if (batchParticipantIds.length) {
+      setSelectedParticipants(new Set(batchParticipantIds));
+    } else {
+      setSelectedParticipants(new Set(pool.map((participant) => participant.id)));
+    }
+  }, [props.open, props.prefillNeed, props.pendingNeeds, pool, props.graph, props.groupId, props.targetGroupIds]);
 
   useEffect(() => {
     if (billing !== "product") return;
@@ -157,6 +172,8 @@ export function AddTransportModal(props: {
   if (!props.open) return null;
 
   const need = props.prefillNeed;
+  const groupIds = submitGroupIds(props.groupId, props.targetGroupIds);
+  const isBatchAdd = groupIds.length > 1;
   const isFlightNeed = need && need.kind !== "intercity";
   const pairSummary = returnPair ? returnFlightPairSummary(returnPair) : null;
 
@@ -177,62 +194,76 @@ export function AddTransportModal(props: {
     const legsToAdd: IntercityLegDraft[] = [];
 
     if (returnPair.kind === "pending") {
-      legsToAdd.push(
-        {
-          ...cityMoveToPlaceholderLeg(returnPair.outbound, props.groupId, "outbound_flight"),
-          transportType: "plane",
-          transportProductId: productId,
-          billingMode: "product",
-        },
-        {
-          ...cityMoveToPlaceholderLeg(returnPair.return, props.groupId, "return_flight"),
-          transportType: "plane",
-          transportProductId: productId,
-          billingMode: "product",
-        },
-      );
+      for (const groupId of groupIds) {
+        legsToAdd.push(
+          {
+            ...cityMoveToPlaceholderLeg(returnPair.outbound, groupId, "outbound_flight"),
+            transportType: "plane",
+            transportProductId: productId,
+            billingMode: "product",
+          },
+          {
+            ...cityMoveToPlaceholderLeg(returnPair.return, groupId, "return_flight"),
+            transportType: "plane",
+            transportProductId: productId,
+            billingMode: "product",
+          },
+        );
+      }
     } else if ("returnLeg" in returnPair) {
-      legsToAdd.push({
-        ...cityMoveToPlaceholderLeg(returnPair.outbound, props.groupId, "outbound_flight"),
-        transportType: "plane",
-        transportProductId: productId,
-        billingMode: "product",
-      });
-      commands.push({
-        type: "updateTransportLeg",
-        groupId: props.groupId,
-        bucket: returnPair.returnLeg.bucket,
-        legId: returnPair.returnLeg.leg.id,
-        patch: {
+      for (const groupId of groupIds) {
+        legsToAdd.push({
+          ...cityMoveToPlaceholderLeg(returnPair.outbound, groupId, "outbound_flight"),
+          transportType: "plane",
           transportProductId: productId,
           billingMode: "product",
-        },
-      });
+        });
+      }
+      if (groupIds.length === 1) {
+        commands.push({
+          type: "updateTransportLeg",
+          groupId: groupIds[0]!,
+          bucket: returnPair.returnLeg.bucket,
+          legId: returnPair.returnLeg.leg.id,
+          patch: {
+            transportProductId: productId,
+            billingMode: "product",
+          },
+        });
+      }
     } else {
-      legsToAdd.push({
-        ...cityMoveToPlaceholderLeg(returnPair.return, props.groupId, "return_flight"),
-        transportType: "plane",
-        transportProductId: productId,
-        billingMode: "product",
-      });
-      commands.push({
-        type: "updateTransportLeg",
-        groupId: props.groupId,
-        bucket: returnPair.outboundLeg.bucket,
-        legId: returnPair.outboundLeg.leg.id,
-        patch: {
+      for (const groupId of groupIds) {
+        legsToAdd.push({
+          ...cityMoveToPlaceholderLeg(returnPair.return, groupId, "return_flight"),
+          transportType: "plane",
           transportProductId: productId,
           billingMode: "product",
-        },
-      });
+        });
+      }
+      if (groupIds.length === 1) {
+        commands.push({
+          type: "updateTransportLeg",
+          groupId: groupIds[0]!,
+          bucket: returnPair.outboundLeg.bucket,
+          legId: returnPair.outboundLeg.leg.id,
+          patch: {
+            transportProductId: productId,
+            billingMode: "product",
+          },
+        });
+      }
     }
 
     if (legsToAdd.length) {
-      commands.push({
-        type: "addClassifiedTransportLegs",
-        groupId: props.groupId,
-        legs: legsToAdd,
-      });
+      for (const groupId of groupIds) {
+        const legsForGroup = legsToAdd.filter((leg) => leg.originGroupId === groupId);
+        if (!legsForGroup.length) continue;
+        commands.push({
+          type: "addClassifiedTransportLegs",
+          groupId,
+          legs: legsForGroup,
+        });
+      }
     }
 
     const ok = await props.onDispatch(commands);
@@ -260,17 +291,20 @@ export function AddTransportModal(props: {
       }
     }
 
-    const leg = {
-      ...cityMoveToPlaceholderLeg(need, props.groupId, need.kind),
-      transportType: modeToTransportType(mode),
-      transportProductId: productId,
-      billingMode: productId ? ("product" as const) : ("single" as const),
-    };
-    commands.push({
-      type: "addClassifiedTransportLegs",
-      groupId: props.groupId,
-      legs: [leg],
-    });
+    for (const groupId of groupIds) {
+      commands.push({
+        type: "addClassifiedTransportLegs",
+        groupId,
+        legs: [
+          {
+            ...cityMoveToPlaceholderLeg(need, groupId, need.kind),
+            transportType: modeToTransportType(mode),
+            transportProductId: productId,
+            billingMode: productId ? ("product" as const) : ("single" as const),
+          },
+        ],
+      });
+    }
 
     const ok = await props.onDispatch(commands);
     if (ok) props.onClose();
@@ -303,11 +337,17 @@ export function AddTransportModal(props: {
       billingMode: productId ? ("product" as const) : ("single" as const),
     }));
 
-    commands.push({
-      type: "addClassifiedTransportLegs",
-      groupId: props.groupId,
-      legs: tagged,
-    });
+    for (const groupId of groupIds) {
+      commands.push({
+        type: "addClassifiedTransportLegs",
+        groupId,
+        legs: tagged.map((leg) => ({
+          ...leg,
+          id: newId(),
+          originGroupId: groupId,
+        })),
+      });
+    }
 
     const ok = await props.onDispatch(commands);
     if (ok) props.onClose();
@@ -340,6 +380,7 @@ export function AddTransportModal(props: {
             {!canOfferReturnPackage && need ? (
               <p className="mt-1 text-sm text-zinc-500">
                 {need.fromCity} → {need.toCity} · {need.date}
+                {isBatchAdd ? ` · adding for ${groupIds.length} travellers` : ""}
               </p>
             ) : null}
           </div>
