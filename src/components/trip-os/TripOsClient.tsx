@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { formatTripDateRangeLabel } from "@/lib/host/trip-date-display";
 import type { TripLifecycleStatus } from "@/lib/host/trip-lifecycle";
-import { tripOsNewTripPath, tripOsSetupPath } from "@/lib/trip-os/paths";
+import { createTripShellClient } from "@/lib/trip-os/create-trip-client";
+import { tripOsSetupPath } from "@/lib/trip-os/paths";
 
 import { AccountPlanPanel } from "@/components/dashboard/AccountPlanPanel";
 import { TripStatusBadge } from "./shared/TripStatusBadge";
@@ -32,10 +34,12 @@ type TripRow = {
 };
 
 export function TripOsClient() {
+  const router = useRouter();
   const [trips, setTrips] = useState<TripRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [creatingTrip, setCreatingTrip] = useState(false);
 
   async function loadTrips() {
     const res = await fetch("/api/trips");
@@ -55,6 +59,20 @@ export function TripOsClient() {
   useEffect(() => {
     loadTrips().finally(() => setLoading(false));
   }, []);
+
+  async function startNewTrip() {
+    if (creatingTrip) return;
+    setCreatingTrip(true);
+    setError(null);
+    try {
+      const result = await createTripShellClient();
+      if (!result.ok) throw new Error(result.error);
+      router.push(tripOsSetupPath(result.tripId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create trip");
+      setCreatingTrip(false);
+    }
+  }
 
   async function deleteTrip(trip: TripRow) {
     if (!trip.canDelete || deletingId) return;
@@ -100,9 +118,14 @@ export function TripOsClient() {
                 Open a trip to build the itinerary — or start fresh.
               </p>
             </div>
-            <Link href={tripOsNewTripPath()}>
-              <TripPrimaryButton variant="violet">New trip</TripPrimaryButton>
-            </Link>
+            <TripPrimaryButton
+              variant="violet"
+              type="button"
+              disabled={creatingTrip}
+              onClick={() => void startNewTrip()}
+            >
+              {creatingTrip ? "Creating…" : "New trip"}
+            </TripPrimaryButton>
           </div>
 
           <div className="mt-8">
@@ -153,12 +176,14 @@ export function TripOsClient() {
               {!trips.length ? (
                 <li className="rounded-2xl bg-white px-8 py-12 text-center shadow-sm">
                   <p className="text-sm text-zinc-500">No trips yet.</p>
-                  <Link
-                    href={tripOsNewTripPath()}
-                    className="mt-3 inline-block text-sm font-medium text-violet-600 hover:text-violet-700"
+                  <button
+                    type="button"
+                    onClick={() => void startNewTrip()}
+                    disabled={creatingTrip}
+                    className="mt-3 text-sm font-medium text-violet-600 hover:text-violet-700 disabled:opacity-50"
                   >
-                    Create your first trip →
-                  </Link>
+                    {creatingTrip ? "Creating…" : "Create your first trip →"}
+                  </button>
                 </li>
               ) : null}
             </ul>
