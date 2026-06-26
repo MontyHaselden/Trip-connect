@@ -162,7 +162,7 @@ function deriveLastPaintedDay(input: BoundsInput): string | null {
     if (returnCity && locationsMatch(day.primaryCity, returnCity) && !day.secondaryCity?.trim()) {
       continue;
     }
-    dates.push(day.date);
+    if (isMeaningfulDate(day.date)) dates.push(day.date);
   }
 
   if (!dates.length) return null;

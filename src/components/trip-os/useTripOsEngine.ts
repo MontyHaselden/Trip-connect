@@ -587,7 +587,15 @@ export function useTripOsEngine(tripId: string) {
             }
             await yieldToMain();
             if (generation !== loadGenerationRef.current) return;
-            applyResponse(body, { viewGroupId, rebuildView: true });
+            try {
+              applyResponse(body, { viewGroupId, rebuildView: true });
+            } catch (calendarErr) {
+              setError(
+                calendarErr instanceof Error
+                  ? `Calendar build failed: ${calendarErr.message}`
+                  : "Calendar build failed — try clearing saved browser data.",
+              );
+            }
             stopProgressTicker();
             if (!silent) {
               setLoadStatus(READY_LOAD_STATUS);

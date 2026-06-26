@@ -67,6 +67,9 @@ export function cityOnHalf(day: DayPlaceDraft, half: HalfSide): string {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Hard cap so corrupt trip dates cannot freeze the browser building day arrays. */
+export const MAX_DATE_ENUMERATION_DAYS = 800;
+
 export function addDays(iso: string, delta: number): string {
   const trimmed = iso.trim();
   if (!ISO_DATE.test(trimmed)) return trimmed;
@@ -80,9 +83,11 @@ export function enumerateDates(start: string, end: string): string[] {
   if (!start || !end || start > end) return [];
   const out: string[] = [];
   let cur = start;
-  while (cur <= end) {
+  while (cur <= end && out.length < MAX_DATE_ENUMERATION_DAYS) {
     out.push(cur);
-    cur = addDays(cur, 1);
+    const next = addDays(cur, 1);
+    if (next <= cur) break;
+    cur = next;
   }
   return out;
 }

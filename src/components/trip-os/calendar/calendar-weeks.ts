@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 
 import { weekStartMonday } from "@/lib/host/setup/calendar-bounds";
+import { MAX_DATE_ENUMERATION_DAYS } from "@/lib/host/wizard/location-stays";
 
 export type WeekCell = { iso: string; day: number; monthKey: string };
 
@@ -8,8 +9,9 @@ export function buildScrollWeeks(rangeStart: DateTime, rangeEnd: DateTime): Week
   const weeks: WeekCell[][] = [];
   let cursor = weekStartMonday(rangeStart);
   const lastWeekStart = weekStartMonday(rangeEnd);
+  const maxWeeks = Math.ceil(MAX_DATE_ENUMERATION_DAYS / 7) + 2;
 
-  while (cursor <= lastWeekStart) {
+  while (cursor <= lastWeekStart && weeks.length < maxWeeks) {
     const week: WeekCell[] = [];
     for (let i = 0; i < 7; i++) {
       const d = cursor.plus({ days: i });

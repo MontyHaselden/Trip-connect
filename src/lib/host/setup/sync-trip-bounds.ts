@@ -5,9 +5,16 @@ import {
 } from "@/lib/host/setup/derive-trip-bounds";
 import type { TripSetupState } from "@/lib/host/setup/types";
 import { TRIP_DATES_UNSET, tripDatesAreUnset } from "@/lib/host/trip-date-display";
-import { locationsMatch } from "@/lib/host/wizard/location-stays";
+import { enumerateDates, locationsMatch, MAX_DATE_ENUMERATION_DAYS } from "@/lib/host/wizard/location-stays";
 import { hasScheduledReturnTransport } from "@/lib/host/wizard/transport-day-placement";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
+
+function clampBoundsSpan(bounds: TripBoundsFromContent): TripBoundsFromContent {
+  const span = enumerateDates(bounds.startDate, bounds.endDate);
+  if (!span.length) return bounds;
+  if (span.length < MAX_DATE_ENUMERATION_DAYS) return bounds;
+  return { startDate: span[0]!, endDate: span[span.length - 1]! };
+}
 
 function tripHasStoredContent(state: TripSetupState): boolean {
   const mainDays = state.dayPlacesByGroupId[state.mainGroupId] ?? [];
@@ -70,7 +77,8 @@ export function effectiveTripBoundsFromState(state: TripSetupState): {
 } {
   const content = contentTripBoundsFromState(state);
   if (content) {
-    return { ...content, fromContent: true };
+    const clamped = clampBoundsSpan(content);
+    return { ...clamped, fromContent: true };
   }
   // Stored rows can lag after calendar clears — do not show ghost dates when DB has no content.
   if (!tripHasStoredContent(state)) {
@@ -81,11 +89,11 @@ export function effectiveTripBoundsFromState(state: TripSetupState): {
     };
   }
   if (!tripDatesAreUnset(state.basics.startDate, state.basics.endDate)) {
-    return {
+    const clamped = clampBoundsSpan({
       startDate: state.basics.startDate,
       endDate: state.basics.endDate,
-      fromContent: false,
-    };
+    });
+    return { ...clamped, fromContent: false };
   }
   return {
     startDate: state.basics.startDate,
