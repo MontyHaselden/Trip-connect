@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 
 import type { SetupSectionId } from "@/lib/host/setup/types";
 import {
@@ -20,6 +20,7 @@ import {
   hydrateSetupEngineResponse,
 } from "@/lib/trip-engine/build-setup-response";
 import {
+  fastStubEngineCalendarView,
   setupResponseIncludesCalendarView,
   stubEngineCalendarView,
 } from "@/lib/trip-engine/stub-engine-view";
@@ -581,19 +582,13 @@ export function useTripOsEngine(tripId: string) {
         if (generation !== loadGenerationRef.current) return;
         if (!res.ok) throw new Error(body.error || "Failed to load setup");
 
-        if (skipLocalDraft) {
-          clearTripLocalDraft(tripId);
-          pushLoadLog("cleared local draft (server is source of truth)");
-        }
-
         let draft: TripLocalDraft | null = null;
         if (!skipLocalDraft) {
-          await yieldToMain();
           pushLoadLog("reading local draft");
           draft = readTripLocalDraft(tripId);
+        } else {
+          setTimeout(() => clearTripLocalDraft(tripId), 0);
         }
-
-        await yieldToMain();
 
         const viewGroupId = gid ?? draft?.activeGroupId ?? body.graph.mainGroupId;
         if (draft?.pendingCommands.length) {
@@ -601,12 +596,26 @@ export function useTripOsEngine(tripId: string) {
           pendingGroupIdRef.current = draft.pendingGroupId;
         }
 
-        await yieldToMain();
-
+        const graph = body.graph;
+        const stub = fastStubEngineCalendarView(graph, viewGroupId);
         setLoadStatus({ phase: "preparing", progress: 65, message: "Painting shell…" });
-        pushLoadLog("paintSetupShell");
-        paintSetupShell(body, viewGroupId, { skipTransportRepair: true });
+        pushLoadLog("painting shell (immediate)");
+        setActiveGroupId(viewGroupId);
+        startTransition(() => {
+          setData({
+            graph,
+            calendarProjection: stub.calendarProjection,
+            calendarRenderModel: stub.calendarRenderModel,
+            readiness: body.readiness ?? [],
+            warnings: body.warnings ?? [],
+            conflicts: body.conflicts ?? [],
+            inviteCode: body.inviteCode ?? "",
+            rosterSummary: body.rosterSummary ?? EMPTY_ROSTER,
+            costLedger: body.costLedger ?? null,
+          });
+        });
         setSaveStatus("idle");
+        pushLoadLog("shell painted");
 
         scheduleAfterPaint(() => {
           void (async () => {
@@ -850,6 +859,9 @@ export function useTripOsEngine(tripId: string) {
       clearTimeout(retryTimerRef.current);
       retryTimerRef.current = null;
     }
+    return () => {
+      loadGenerationRef.current += 1;
+    };
   }, [tripId]);
 
   useEffect(() => {

@@ -4,6 +4,51 @@ import { tripDatesAreUnset } from "@/lib/host/trip-date-display";
 
 import type { CalendarProjection, CalendarRenderModel, TripEntityGraph } from "./types";
 
+/** Fast shell — trip DB dates only; skips content-derived bounds on hot load paths. */
+export function fastStubEngineCalendarView(
+  graph: TripEntityGraph,
+  groupId?: string,
+): { calendarProjection: CalendarProjection; calendarRenderModel: CalendarRenderModel } {
+  const gid = groupId ?? graph.mainGroupId;
+  const startDate = graph.basics.startDate;
+  const endDate = graph.basics.endDate;
+  const datesUnset = tripDatesAreUnset(startDate, endDate);
+  const today = todayIso(graph.basics.timezone);
+
+  const calendarProjection: CalendarProjection = {
+    groupId: gid,
+    gridStart: startDate,
+    gridEnd: endDate,
+    days: [],
+    accommodationByDate: new Map(),
+    boundaries: [],
+  };
+
+  const calendarRenderModel: CalendarRenderModel = {
+    groupId: gid,
+    gridStart: startDate,
+    gridEnd: endDate,
+    tripStart: startDate,
+    tripEnd: endDate,
+    departureCity: graph.basics.departureCity,
+    returnCity: graph.basics.returnCity,
+    datesUnset,
+    days: [],
+    overlayMetaByDate: new Map(),
+    accommodationByDate: new Map(),
+    accommodationStays: [],
+    boundaries: [],
+    activitiesByDate: new Map(),
+    projectedDays: [],
+    locationColorByKey: new Map(),
+    scrollAnchorDate: datesUnset ? today : startDate,
+    todayIso: today,
+    interactionStart: datesUnset ? today : startDate,
+  };
+
+  return { calendarProjection, calendarRenderModel };
+}
+
 /** Minimal calendar shell so the board can render while the full projection builds. */
 export function stubEngineCalendarView(
   graph: TripEntityGraph,

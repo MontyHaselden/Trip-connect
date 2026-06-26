@@ -91,6 +91,7 @@ export function TripOsBoard(props: { tripId: string }) {
 
   useEffect(() => {
     clearOversizedTripLocalDraft(props.tripId);
+    clearTripLocalDraft(props.tripId);
     const timer = window.setTimeout(() => {
       void engine.load(undefined, { skipLocalDraft: true });
     }, 0);

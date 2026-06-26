@@ -1,5 +1,7 @@
 "use client";
 
+import dynamic from "next/dynamic";
+
 import type { SetupSectionId } from "@/lib/host/setup/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
@@ -19,7 +21,14 @@ import { EMPTY_CALENDAR_SELECTION } from "@/lib/host/setup/calendar-range-select
 import { IngestPanel } from "./ingest/IngestPanel";
 import { IngestDisabledPanel } from "./ingest/IngestDisabledPanel";
 import { MapView } from "./map/MapView";
-import { SmartOverview } from "./overview/SmartOverview";
+const SmartOverview = dynamic(
+  () => import("./overview/SmartOverview").then((mod) => ({ default: mod.SmartOverview })),
+  {
+    loading: () => (
+      <p className="px-2 py-8 text-center text-sm text-zinc-500">Loading overview…</p>
+    ),
+  },
+);
 import { TRIP_OS_AI_IMPORT_ENABLED } from "@/lib/trip-os/feature-flags";
 import { calendarHasPaint } from "@/lib/trip-engine/calendar-has-paint";
 import { AccommodationSection } from "./sections/AccommodationSection";
