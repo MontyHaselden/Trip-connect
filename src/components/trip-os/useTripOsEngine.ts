@@ -96,17 +96,6 @@ export type TripLoadStatus = {
   message: string;
 };
 
-export type TripLoadDebug = {
-  active: boolean;
-  phase: TripLoadPhase;
-  progress: number;
-  message: string;
-  elapsedMs: number;
-  payloadBytes?: number;
-  meta?: Record<string, unknown>;
-  logs: Array<{ t: number; msg: string }>;
-};
-
 /** Debounce before background server sync — local draft is written immediately. */
 const PERSIST_DEBOUNCE_MS = 400;
 const PERSIST_RETRY_MS = 8000;
@@ -181,41 +170,6 @@ export function useTripOsEngine(tripId: string) {
   const [data, setData] = useState<EngineState | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadStatus, setLoadStatus] = useState<TripLoadStatus>(READY_LOAD_STATUS);
-  const [loadDebug, setLoadDebug] = useState<TripLoadDebug>({
-    active: false,
-    phase: "connecting",
-    progress: 0,
-    message: "",
-    elapsedMs: 0,
-    logs: [],
-  });
-  const loadDebugStartRef = useRef(0);
-
-  const pushLoadLog = useCallback((msg: string, patch?: Partial<TripLoadDebug>) => {
-    const elapsedMs = loadDebugStartRef.current
-      ? Date.now() - loadDebugStartRef.current
-      : 0;
-    setLoadDebug((prev) => ({
-      ...prev,
-      active: true,
-      elapsedMs,
-      ...patch,
-      logs: [...prev.logs.slice(-49), { t: elapsedMs, msg }],
-    }));
-  }, []);
-
-  const resetLoadDebug = useCallback(() => {
-    loadDebugStartRef.current = Date.now();
-    setLoadDebug({
-      active: true,
-      phase: "connecting",
-      progress: 5,
-      message: "Connecting…",
-      elapsedMs: 0,
-      logs: [],
-    });
-  }, []);
-
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<TripSaveStatus>("idle");
@@ -530,15 +484,12 @@ export function useTripOsEngine(tripId: string) {
       const forceServer = options?.forceServer ?? false;
       const skipLocalDraft = options?.skipLocalDraft ?? forceServer;
 
-      resetLoadDebug();
       setRefreshing(true);
       setError(null);
-      setLoadStatus({ phase: "connecting", progress: 10, message: "Connecting…" });
-      pushLoadLog("load() started");
+      setLoadStatus({ phase: "connecting", progress: 10, message: "Loading trip…" });
       await yieldToMain();
       try {
         if (forceServer && pendingCommandsRef.current.length) {
-          pushLoadLog("flushing pending commands before force reload");
           flushPendingRef.current();
           await waitForTripPersist(tripId);
         }
@@ -547,8 +498,7 @@ export function useTripOsEngine(tripId: string) {
         const gid = groupId ?? activeGroupIdRef.current;
         const qs = new URLSearchParams({ engine: "1" });
         if (gid) qs.set("groupId", gid);
-        setLoadStatus({ phase: "downloading", progress: 25, message: "Downloading trip…" });
-        pushLoadLog(`fetch /api/trips/${tripId}/setup?${qs}`);
+        setLoadStatus({ phase: "downloading", progress: 30, message: "Downloading trip…" });
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), SETUP_FETCH_TIMEOUT_MS);
         const res = await fetch(`/api/trips/${tripId}/setup?${qs}`, {
@@ -558,33 +508,22 @@ export function useTripOsEngine(tripId: string) {
         if (generation !== loadGenerationRef.current) return;
 
         const buffer = await res.arrayBuffer();
-        pushLoadLog(`response ${res.status}, ${buffer.byteLength} bytes`, {
-          payloadBytes: buffer.byteLength,
-          progress: 45,
-          phase: "parsing",
-          message: "Parsing trip data…",
-        });
-        setLoadStatus({ phase: "parsing", progress: 45, message: "Parsing trip data…" });
+        setLoadStatus({ phase: "parsing", progress: 50, message: "Reading trip data…" });
         await yieldToMain();
 
-        let body: { error?: string; meta?: Record<string, unknown> } & SetupEngineResponse;
+        let body: { error?: string } & SetupEngineResponse;
         try {
-          body = await parseJsonOffThread<{ error?: string; meta?: Record<string, unknown> } & SetupEngineResponse>(buffer);
+          body = await parseJsonOffThread<{ error?: string } & SetupEngineResponse>(buffer);
         } catch {
           throw new Error("Could not read trip data from the server.");
         }
-        pushLoadLog("JSON parsed", {
-          progress: 55,
-          phase: "preparing",
-          message: "Preparing workspace…",
-          meta: body.meta,
-        });
         if (generation !== loadGenerationRef.current) return;
         if (!res.ok) throw new Error(body.error || "Failed to load setup");
 
+        setLoadStatus({ phase: "preparing", progress: 65, message: "Opening workspace…" });
+
         let draft: TripLocalDraft | null = null;
         if (!skipLocalDraft) {
-          pushLoadLog("reading local draft");
           draft = readTripLocalDraft(tripId);
         } else {
           setTimeout(() => clearTripLocalDraft(tripId), 0);
@@ -598,8 +537,6 @@ export function useTripOsEngine(tripId: string) {
 
         const graph = body.graph;
         const stub = fastStubEngineCalendarView(graph, viewGroupId);
-        setLoadStatus({ phase: "preparing", progress: 65, message: "Painting shell…" });
-        pushLoadLog("painting shell (immediate)");
         setActiveGroupId(viewGroupId);
         startTransition(() => {
           setData({
@@ -615,17 +552,11 @@ export function useTripOsEngine(tripId: string) {
           });
         });
         setSaveStatus("idle");
-        pushLoadLog("shell painted");
 
         scheduleAfterPaint(() => {
           void (async () => {
             if (generation !== loadGenerationRef.current) return;
             setLoadStatus({
-              phase: "building-calendar",
-              progress: 85,
-              message: "Building calendar…",
-            });
-            pushLoadLog("applyResponse (calendar build)", {
               phase: "building-calendar",
               progress: 85,
               message: "Building calendar…",
@@ -638,36 +569,27 @@ export function useTripOsEngine(tripId: string) {
                 rebuildView: true,
                 skipTransportRepair: true,
               });
-              pushLoadLog("calendar ready", {
-                progress: 100,
-                phase: "ready",
-                message: "Ready",
-              });
             } catch (calendarErr) {
-              const errMsg =
+              setError(
                 calendarErr instanceof Error
                   ? `Calendar build failed: ${calendarErr.message}`
-                  : "Calendar build failed.";
-              pushLoadLog(errMsg);
-              setError(errMsg);
+                  : "Calendar build failed.",
+              );
             }
             setLoadStatus(READY_LOAD_STATUS);
-            setLoadDebug((prev) => ({ ...prev, active: false }));
             void refreshCostLedgerRef.current();
             if (pendingCommandsRef.current.length) scheduleFlushRef.current();
           })();
         });
       } catch (e) {
         if (generation !== loadGenerationRef.current) return;
-        pushLoadLog(
-          e instanceof Error ? e.message : "Load failed",
-          { phase: "connecting", progress: 0, message: "Failed" },
-        );
+        setLoadStatus({ phase: "connecting", progress: 0, message: "Load failed" });
         const fallbackDraft = readTripLocalDraft(tripId);
         if (fallbackDraft?.graph) {
           try {
             applyDraft(fallbackDraft, groupId);
             setSaveStatus(fallbackDraft.pendingCommands.length ? "sync_error" : "idle");
+            setLoadStatus(READY_LOAD_STATUS);
           } catch {
             clearTripLocalDraft(tripId);
             setError(e instanceof Error ? e.message : "Load failed");
@@ -687,7 +609,7 @@ export function useTripOsEngine(tripId: string) {
         setLoading(false);
       }
     },
-    [tripId, applyDraft, applyResponse, paintSetupShell, pushLoadLog, resetLoadDebug],
+    [tripId, applyDraft, applyResponse],
   );
 
   const scheduleRetry = useCallback(() => {
@@ -1390,7 +1312,6 @@ export function useTripOsEngine(tripId: string) {
     data,
     loading,
     loadStatus,
-    loadDebug,
     refreshing,
     saving,
     saveStatus,

@@ -40,6 +40,7 @@ export function TripOsNav(props: {
   calmNav?: boolean;
   variant?: "board" | "list";
   backLabel?: string;
+  schoolName?: string | null;
   tripId?: string;
   inviteCode?: string;
   onParticipantUpdated?: () => void;
@@ -58,7 +59,12 @@ export function TripOsNav(props: {
           Trip OS
         </p>
         {variant === "list" ? (
-          <p className="mt-2 text-sm font-medium text-white">Your trips</p>
+          <div className="mt-3">
+            <p className="text-sm font-medium text-white">Dashboard</p>
+            {props.schoolName ? (
+              <p className="mt-1 truncate text-xs text-indigo-200/70">{props.schoolName}</p>
+            ) : null}
+          </div>
         ) : null}
       </div>
 

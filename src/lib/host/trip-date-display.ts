@@ -5,7 +5,13 @@ export function tripDatesAreUnset(startDate: string, endDate: string): boolean {
 }
 
 export function formatTripDateRangeLabel(startDate: string, endDate: string): string {
-  if (tripDatesAreUnset(startDate, endDate)) return "Dates set by AI";
+  if (tripDatesAreUnset(startDate, endDate)) return "";
   if (startDate === endDate) return startDate;
   return `${startDate} → ${endDate}`;
+}
+
+/** Subtitle line for trip list cards — omits unset dates. */
+export function formatTripListDateLabel(startDate: string, endDate: string): string | null {
+  if (tripDatesAreUnset(startDate, endDate)) return null;
+  return formatTripDateRangeLabel(startDate, endDate);
 }
