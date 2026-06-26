@@ -19,7 +19,7 @@ export type TripLocalDraft = {
 
 const STORAGE_PREFIX = "trip-os:draft:";
 /** Drafts above this size freeze the tab on JSON.parse — keep in memory only. */
-export const MAX_TRIP_DRAFT_BYTES = 1_500_000;
+export const MAX_TRIP_DRAFT_BYTES = 300_000;
 
 const memory = new Map<string, TripLocalDraft>();
 

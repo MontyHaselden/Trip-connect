@@ -46,14 +46,24 @@ function buildActivitiesByDate(
   const activities = usesMainGroupCalendarContent(graph, groupId)
     ? activitiesForCalendarView(graph, graph.mainGroupId)
     : activitiesForCalendarView(graph, groupId);
+  const dotted = filterCalendarDotActivities(activities);
+  const byDate = new Map<string, ActivityMarker[]>();
+  for (const activity of dotted) {
+    const end = activity.endDate?.trim() || activity.date;
+    for (const date of enumerateDates(activity.date, end)) {
+      const marker = activityToMarker(activity);
+      const bucket = byDate.get(date);
+      if (bucket) {
+        if (bucket.length < 12) bucket.push(marker);
+      } else {
+        byDate.set(date, [marker]);
+      }
+    }
+  }
   const map = new Map<string, ActivityMarker[]>();
   for (const date of dates) {
-    const onDate = activities.filter((a) => {
-      const end = a.endDate?.trim() || a.date;
-      return a.date <= date && date <= end;
-    });
-    const markers = filterCalendarDotActivities(onDate).map(activityToMarker);
-    if (markers.length) map.set(date, markers);
+    const markers = byDate.get(date);
+    if (markers?.length) map.set(date, markers.slice(0, 12));
   }
   return map;
 }

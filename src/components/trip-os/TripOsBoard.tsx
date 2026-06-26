@@ -388,6 +388,12 @@ export function TripOsBoard(props: { tripId: string }) {
         </main>
         {!hideCalendar ? (
         <aside className="flex min-h-0 w-[min(42rem,48vw)] min-w-[320px] shrink-0 flex-col overflow-hidden bg-white shadow-[inset_1px_0_0_0_rgb(0_0_0/0.04)]">
+          {calendarBootstrapping ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+              <p className="text-sm font-medium text-zinc-700">Building calendar…</p>
+              <p className="text-xs text-zinc-500">Large trips can take a few seconds.</p>
+            </div>
+          ) : (
           <InteractiveTripCalendar
             tripId={props.tripId}
             model={calendarRenderModel}
@@ -399,13 +405,12 @@ export function TripOsBoard(props: { tripId: string }) {
             onClearSelection={calendar.clearSelection}
             headerAside={groupSelector}
             statusLine={
-              calendarBootstrapping
-                ? "Building calendar…"
-                : saveStatusLine
-                  ? `${calendar.statusLine} · ${saveStatusLine}`
-                  : calendar.statusLine
+              saveStatusLine
+                ? `${calendar.statusLine} · ${saveStatusLine}`
+                : calendar.statusLine
             }
           />
+          )}
         </aside>
         ) : null}
       </div>

@@ -123,6 +123,19 @@ function yieldToMain(): Promise<void> {
   });
 }
 
+/** Run after the browser paints — avoids blocking first shell paint on heavy calendar builds. */
+function scheduleAfterPaint(run: () => void) {
+  if (typeof requestAnimationFrame !== "undefined") {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTimeout(run, 0);
+      });
+    });
+    return;
+  }
+  setTimeout(run, 32);
+}
+
 const EMPTY_ROSTER: RosterSummary = { participants: [], groups: [], rooms: [] };
 
 function scheduleIdleWork(run: () => void) {
@@ -568,6 +581,11 @@ export function useTripOsEngine(tripId: string) {
         if (generation !== loadGenerationRef.current) return;
         if (!res.ok) throw new Error(body.error || "Failed to load setup");
 
+        if (skipLocalDraft) {
+          clearTripLocalDraft(tripId);
+          pushLoadLog("cleared local draft (server is source of truth)");
+        }
+
         let draft: TripLocalDraft | null = null;
         if (!skipLocalDraft) {
           await yieldToMain();
@@ -590,7 +608,7 @@ export function useTripOsEngine(tripId: string) {
         paintSetupShell(body, viewGroupId, { skipTransportRepair: true });
         setSaveStatus("idle");
 
-        scheduleIdleWork(() => {
+        scheduleAfterPaint(() => {
           void (async () => {
             if (generation !== loadGenerationRef.current) return;
             setLoadStatus({

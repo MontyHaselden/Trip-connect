@@ -7,9 +7,10 @@ import type {
   ActivityMarker,
   TripEntityGraph,
 } from "./types";
+import type { ActivityDraft } from "@/lib/host/wizard/types";
 import { activitiesForCalendarView } from "./person-lens";
 import { calendarContentScopeForGroup, dayPlacesForGroup } from "./selectors";
-import { filterCalendarDotActivities, activityToMarker } from "./calendar-activity-dots";
+import { activityToMarker, filterCalendarDotActivities } from "./calendar-activity-dots";
 import { resolveDisplayDayPlaces } from "./resolve-display-day-places";
 import {
   participantInheritsMainCalendar,
@@ -39,6 +40,22 @@ function emptyDay(date: string, groupId: string): ProjectedDay {
     warnings: [],
     overlayMeta: "inherit",
   };
+}
+
+function indexCalendarActivitiesByDate(
+  activities: ActivityDraft[],
+): Map<string, ActivityDraft[]> {
+  const dotted = filterCalendarDotActivities(activities);
+  const map = new Map<string, ActivityDraft[]>();
+  for (const activity of dotted) {
+    const end = activity.endDate?.trim() || activity.date;
+    for (const date of enumerateDates(activity.date, end)) {
+      const bucket = map.get(date);
+      if (bucket) bucket.push(activity);
+      else map.set(date, [activity]);
+    }
+  }
+  return map;
 }
 
 function resolveSubgroupDays(main: ProjectedDay[], overlay: ProjectedDay[]): ProjectedDay[] {
@@ -126,13 +143,11 @@ export function projectCalendar(
   const displayDays = resolveDisplayDayPlaces(storedDays, derived.dayPlaces, gridStart, gridEnd);
 
   const groupActivities = activitiesForCalendarView(graph, groupId);
+  const activitiesOnDate = indexCalendarActivitiesByDate(groupActivities);
 
   const baseDays: ProjectedDay[] = displayDays.map((day) => {
-    const onDate = groupActivities.filter((a) => {
-      const end = a.endDate?.trim() || a.date;
-      return a.date <= day.date && day.date <= end;
-    });
-    const activities: ActivityMarker[] = filterCalendarDotActivities(onDate).map(activityToMarker);
+    const onDate = activitiesOnDate.get(day.date) ?? [];
+    const activities: ActivityMarker[] = onDate.map(activityToMarker);
 
     const warnings: ProjectedDay["warnings"] = [];
     if (derived.accommodationByDate.has(day.date) && !day.primaryCity.trim() && !day.secondaryCity?.trim()) {
