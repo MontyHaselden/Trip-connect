@@ -24,7 +24,7 @@ export async function GET(
     if (!trip) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 
     const t0 = performance.now();
-    const graph = await loadTripGraph(tripId);
+    const graph = await loadTripGraph(tripId, { skipFlightLookup: true });
     const loadMs = performance.now() - t0;
     if (!graph) return NextResponse.json({ error: "Trip not found." }, { status: 404 });
 

@@ -9,7 +9,7 @@ import {
 } from "@/lib/db/schema";
 import { ensureMainGroupForTrip } from "@/lib/groups/main-group";
 import { loadTripLocationState } from "@/lib/host/locations/trip-location-state";
-import { repairTransportLegsFromLookup } from "@/lib/host/setup/repair-transport-legs";
+import { repairTransportLegsFromLookup, repairTransportLegsSync } from "@/lib/host/setup/repair-transport-legs";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import { repairTransportGraphSync } from "@/lib/trip-engine/repair-transport-graph";
 import { repairMisplacedSecondaryHalfDays } from "@/lib/trip-engine/sanitize-day-place";
@@ -36,7 +36,10 @@ function rowToDayPlace(row: {
   };
 }
 
-export async function loadTripSetupState(tripId: string): Promise<TripSetupState | null> {
+export async function loadTripSetupState(
+  tripId: string,
+  options?: { skipFlightLookup?: boolean },
+): Promise<TripSetupState | null> {
   const mainGroupId = await ensureMainGroupForTrip(tripId);
 
   const trip = await db
@@ -167,7 +170,9 @@ export async function loadTripSetupState(tripId: string): Promise<TripSetupState
 
   let state = loaded;
   if (hasTransport) {
-    const repairedLegs = await repairTransportLegsFromLookup(loaded);
+    const repairedLegs = options?.skipFlightLookup
+      ? repairTransportLegsSync(loaded)
+      : await repairTransportLegsFromLookup(loaded);
     state = { ...loaded, ...repairedLegs };
   }
 

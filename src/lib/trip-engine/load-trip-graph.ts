@@ -14,8 +14,11 @@ import { repairTransportGraphSync } from "./repair-transport-graph";
 import { loadActivitiesForTrip } from "./activities-persistence";
 import type { TripEntityGraph } from "./types";
 
-export async function loadTripGraph(tripId: string): Promise<TripEntityGraph | null> {
-  const state = await loadTripSetupState(tripId);
+export async function loadTripGraph(
+  tripId: string,
+  options?: { skipFlightLookup?: boolean },
+): Promise<TripEntityGraph | null> {
+  const state = await loadTripSetupState(tripId, options);
   if (!state) return null;
 
   const [activities, bookingRows, tripRow, contactCount, phraseCount] = await Promise.all([
