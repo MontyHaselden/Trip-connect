@@ -16,6 +16,7 @@ export function isTripOsBoardPath(pathname: string, tripId: string): boolean {
   return pathname === base || pathname === `${base}/setup`;
 }
 
+/** @deprecated Trip creation is POST /api/host/trips only — do not link to this path. */
 export function tripOsNewTripPath(): string {
   return `${DASHBOARD_PREFIX}/trips/new`;
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { tripOsNewTripPath } from "@/lib/trip-os/paths";
+import { tripOsHomePath } from "@/lib/trip-os/paths";
 
 export async function GET(request: Request) {
-  return NextResponse.redirect(new URL(tripOsNewTripPath(), request.url));
+  return NextResponse.redirect(new URL(tripOsHomePath(), request.url));
 }
