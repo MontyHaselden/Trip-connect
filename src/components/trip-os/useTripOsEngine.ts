@@ -80,10 +80,36 @@ export type TripSaveStatus = "idle" | "syncing" | "sync_error";
 
 export type CostsPatchResult = { ok: true } | { ok: false; error: string };
 
+export type TripLoadPhase =
+  | "connecting"
+  | "downloading"
+  | "parsing"
+  | "preparing"
+  | "building-calendar"
+  | "ready";
+
+export type TripLoadStatus = {
+  phase: TripLoadPhase;
+  progress: number;
+  message: string;
+};
+
 /** Debounce before background server sync — local draft is written immediately. */
 const PERSIST_DEBOUNCE_MS = 400;
 const PERSIST_RETRY_MS = 8000;
-const SETUP_FETCH_TIMEOUT_MS = 60_000;
+const SETUP_FETCH_TIMEOUT_MS = 30_000;
+
+const READY_LOAD_STATUS: TripLoadStatus = {
+  phase: "ready",
+  progress: 100,
+  message: "",
+};
+
+function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
 
 const EMPTY_ROSTER: RosterSummary = { participants: [], groups: [], rooms: [] };
 
@@ -128,6 +154,11 @@ function mergeCostLedgerForGraph(
 export function useTripOsEngine(tripId: string) {
   const [data, setData] = useState<EngineState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadStatus, setLoadStatus] = useState<TripLoadStatus>({
+    phase: "connecting",
+    progress: 0,
+    message: "Connecting to server…",
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<TripSaveStatus>("idle");
@@ -148,6 +179,32 @@ export function useTripOsEngine(tripId: string) {
   >(async () => true);
   const financePatchInFlightRef = useRef(0);
   const optimisticLineMapRef = useRef(new Map<string, string>());
+  const progressTickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshCostLedgerRef = useRef<
+    () => Promise<CostLedgerProjection | null>
+  >(async () => null);
+
+  const stopProgressTicker = useCallback(() => {
+    if (progressTickerRef.current) {
+      clearInterval(progressTickerRef.current);
+      progressTickerRef.current = null;
+    }
+  }, []);
+
+  const startProgressTicker = useCallback(
+    (from: number, to: number) => {
+      stopProgressTicker();
+      let progress = from;
+      progressTickerRef.current = setInterval(() => {
+        progress = Math.min(to, progress + 1.2);
+        setLoadStatus((prev) => ({ ...prev, progress }));
+        if (progress >= to) stopProgressTicker();
+      }, 180);
+    },
+    [stopProgressTicker],
+  );
+
+  useEffect(() => () => stopProgressTicker(), [stopProgressTicker]);
 
   const buildStateFromGraph = useCallback(
     (
@@ -437,6 +494,12 @@ export function useTripOsEngine(tripId: string) {
         setRefreshing(true);
       } else {
         setLoading(true);
+        setLoadStatus({
+          phase: "connecting",
+          progress: 5,
+          message: "Connecting to server…",
+        });
+        startProgressTicker(5, 42);
       }
       setError(null);
       try {
@@ -455,11 +518,43 @@ export function useTripOsEngine(tripId: string) {
           signal: controller.signal,
         });
         clearTimeout(timeout);
-        const body = (await res.json().catch(() => ({}))) as {
-          error?: string;
-        } & SetupEngineResponse;
+        stopProgressTicker();
+        if (!silent) {
+          setLoadStatus({
+            phase: "downloading",
+            progress: 48,
+            message: "Download complete, reading trip data…",
+          });
+        }
+        if (generation !== loadGenerationRef.current) return;
+
+        const text = await res.text();
+        if (!silent) {
+          setLoadStatus({
+            phase: "parsing",
+            progress: 54,
+            message: "Parsing trip data…",
+          });
+        }
+        await yieldToMain();
+
+        let body: { error?: string } & SetupEngineResponse;
+        try {
+          body = JSON.parse(text) as { error?: string } & SetupEngineResponse;
+        } catch {
+          throw new Error("Could not read trip data from the server.");
+        }
         if (generation !== loadGenerationRef.current) return;
         if (!res.ok) throw new Error(body.error || "Failed to load setup");
+
+        if (!silent) {
+          setLoadStatus({
+            phase: "preparing",
+            progress: 64,
+            message: "Preparing workspace…",
+          });
+        }
+        await yieldToMain();
 
         const viewGroupId = gid ?? body.graph.mainGroupId;
         if (draft?.pendingCommands.length) {
@@ -469,30 +564,67 @@ export function useTripOsEngine(tripId: string) {
 
         paintSetupShell(body, viewGroupId);
         setSaveStatus("idle");
-        if (!silent) setLoading(false);
+        if (!silent) {
+          setLoadStatus({
+            phase: "preparing",
+            progress: 72,
+            message: "Workspace ready",
+          });
+          setLoading(false);
+        }
         if (silent) setRefreshing(false);
 
         scheduleIdleWork(() => {
-          if (generation !== loadGenerationRef.current) return;
-          applyResponse(body, { viewGroupId, rebuildView: true });
-          if (pendingCommandsRef.current.length) scheduleFlushRef.current();
+          void (async () => {
+            if (generation !== loadGenerationRef.current) return;
+            if (!silent) {
+              setLoadStatus({
+                phase: "building-calendar",
+                progress: 80,
+                message: "Building calendar…",
+              });
+              startProgressTicker(80, 95);
+            }
+            await yieldToMain();
+            if (generation !== loadGenerationRef.current) return;
+            applyResponse(body, { viewGroupId, rebuildView: true });
+            stopProgressTicker();
+            if (!silent) {
+              setLoadStatus(READY_LOAD_STATUS);
+            }
+            void refreshCostLedgerRef.current();
+            if (pendingCommandsRef.current.length) scheduleFlushRef.current();
+          })();
         });
       } catch (e) {
+        stopProgressTicker();
         if (generation !== loadGenerationRef.current) return;
         const fallbackDraft = draft ?? readTripLocalDraft(tripId);
         if (fallbackDraft?.graph) {
           try {
             applyDraft(fallbackDraft, groupId);
             setSaveStatus(fallbackDraft.pendingCommands.length ? "sync_error" : "idle");
+            if (!silent) setLoadStatus(READY_LOAD_STATUS);
           } catch {
             clearTripLocalDraft(tripId);
-            setError(e instanceof Error ? e.message : "Load failed");
+            setError(
+              e instanceof Error
+                ? e.message
+                : "Load failed — try clearing saved browser data below.",
+            );
           }
         } else {
-          setError(e instanceof Error ? e.message : "Load failed");
+          const message =
+            e instanceof Error && e.name === "AbortError"
+              ? "Server took too long to respond (30s). The trip may be very large — try again or clear saved browser data."
+              : e instanceof Error
+                ? e.message
+                : "Load failed";
+          setError(message);
         }
       } finally {
         if (generation !== loadGenerationRef.current) return;
+        stopProgressTicker();
         if (silent) {
           setRefreshing(false);
         } else {
@@ -500,7 +632,7 @@ export function useTripOsEngine(tripId: string) {
         }
       }
     },
-    [tripId, applyDraft, applyResponse, paintSetupShell],
+    [tripId, applyDraft, applyResponse, paintSetupShell, startProgressTicker, stopProgressTicker],
   );
 
   const scheduleRetry = useCallback(() => {
@@ -788,6 +920,8 @@ export function useTripOsEngine(tripId: string) {
       return null;
     }
   }, [tripId, persistLocalSnapshot]);
+
+  refreshCostLedgerRef.current = refreshCostLedgerFromServer;
 
   const materializeLinkedFinanceLines = useCallback(async (): Promise<void> => {
     const ledger = dataRef.current?.costLedger;
@@ -1169,6 +1303,7 @@ export function useTripOsEngine(tripId: string) {
   return {
     data,
     loading,
+    loadStatus,
     refreshing,
     saving,
     saveStatus,

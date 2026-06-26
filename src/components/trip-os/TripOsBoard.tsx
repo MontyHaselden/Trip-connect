@@ -28,6 +28,7 @@ import type { FinanceBuiltInSection } from "@/lib/trip-engine/cost-ledger/financ
 import type { EngineSectionReadiness } from "@/lib/trip-engine/types";
 
 import { TripOsNav } from "./TripOsNav";
+import { TripOsLoadScreen } from "./TripOsLoadScreen";
 import { TripOsWorkspace, type TripOsSection } from "./TripOsWorkspace";
 import { useTripOsEngine } from "./useTripOsEngine";
 
@@ -210,12 +211,11 @@ export function TripOsBoard(props: { tripId: string }) {
             saving={engine.refreshing}
             tripId={props.tripId}
           />
-          <main className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
-            <p className="text-sm text-zinc-600">Loading trip engine…</p>
-            <p className="max-w-sm text-center text-xs text-zinc-400">
-              Large trips may take a few seconds to build the calendar.
-            </p>
-          </main>
+          <TripOsLoadScreen
+            tripId={props.tripId}
+            status={engine.loadStatus}
+            onRetry={() => void engine.load(undefined, { forceServer: true })}
+          />
         </div>
       </div>
     );
@@ -231,9 +231,12 @@ export function TripOsBoard(props: { tripId: string }) {
             onBackHome={() => router.push(tripOsHomePath())}
             tripId={props.tripId}
           />
-          <main className="flex min-h-0 flex-1 items-center justify-center">
-            <p className="text-sm text-red-600">{engine.error || "Failed to load trip."}</p>
-          </main>
+          <TripOsLoadScreen
+            tripId={props.tripId}
+            status={engine.loadStatus}
+            error={engine.error}
+            onRetry={() => void engine.load(undefined, { forceServer: true })}
+          />
         </div>
       </div>
     );
@@ -280,6 +283,22 @@ export function TripOsBoard(props: { tripId: string }) {
 
   return (
     <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
+      {calendarBootstrapping && engine.loadStatus.phase === "building-calendar" ? (
+        <div className="shrink-0 border-b border-zinc-100 bg-violet-50/60 px-4 py-2">
+          <div className="mx-auto flex max-w-lg items-center gap-3">
+            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-violet-100">
+              <div
+                className="h-full rounded-full bg-violet-500 transition-[width] duration-300"
+                style={{ width: `${engine.loadStatus.progress}%` }}
+              />
+            </div>
+            <span className="shrink-0 text-xs text-violet-800">
+              {engine.loadStatus.message || "Building calendar…"}{" "}
+              <span className="tabular-nums">{Math.round(engine.loadStatus.progress)}%</span>
+            </span>
+          </div>
+        </div>
+      ) : null}
       {engine.error ? (
         <div className="shrink-0 bg-red-50 px-4 py-2 text-sm text-red-700">{engine.error}</div>
       ) : null}

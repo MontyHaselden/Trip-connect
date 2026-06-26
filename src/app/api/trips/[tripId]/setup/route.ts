@@ -7,7 +7,6 @@ import { applyTripSetupState } from "@/lib/host/setup/apply-setup-state";
 import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import { syncActivitiesForTrip } from "@/lib/trip-engine/activities-persistence";
 import { loadTripGraph } from "@/lib/trip-engine";
-import { loadCostLedgerProjection } from "@/lib/trip-engine/cost-ledger/index";
 import { loadRosterSummary } from "@/lib/trip-engine/roster-summary";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
@@ -29,15 +28,11 @@ export async function GET(
     const groupId = url.searchParams.get("groupId") ?? graph.mainGroupId;
 
     if (engine) {
-      const [rosterSummary, costLedger] = await Promise.all([
-        loadRosterSummary(tripId),
-        loadCostLedgerProjection(tripId, graph, { syncFromGraph: false }).catch(() => null),
-      ]);
+      const rosterSummary = await loadRosterSummary(tripId);
       return NextResponse.json({
         graph,
         inviteCode: trip.inviteCode,
         rosterSummary,
-        costLedger: costLedger ?? undefined,
         warnings: [],
         conflicts: [],
         readiness: [],
