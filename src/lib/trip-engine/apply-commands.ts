@@ -26,6 +26,7 @@ import {
   mergeMainWithPersonalOverlay,
 } from "./personal-location-overlay";
 import { personalGroupForGroupId } from "./person-lens";
+import { normalizeCommand, type TripCommand } from "./commands";
 import { repairTransportGraphSync } from "./repair-transport-graph";
 import { pendingTransportNeedKey } from "./hidden-pending-transport";
 import type { CommandResult, EngineConflict, EngineWarning, TripEntityGraph } from "./types";

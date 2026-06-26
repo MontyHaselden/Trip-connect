@@ -65,7 +65,7 @@ function productKindMatchesLeg(
   if (kind === "flight_package") {
     return leg.transportType === "plane" && bucket !== "intercity";
   }
-  if (kind === "rail_pass") {
+  if (kind === "train_pass") {
     return bucket === "intercity" && leg.transportType !== "plane";
   }
   return true;

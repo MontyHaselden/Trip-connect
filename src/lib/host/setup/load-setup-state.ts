@@ -12,6 +12,8 @@ import { loadTripLocationState } from "@/lib/host/locations/trip-location-state"
 import { repairTransportLegsFromLookup } from "@/lib/host/setup/repair-transport-legs";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import { repairTransportGraphSync } from "@/lib/trip-engine/repair-transport-graph";
+import { repairMisplacedSecondaryHalfDays } from "@/lib/trip-engine/sanitize-day-place";
+import { graphToSetupState, setupStateToGraph } from "@/lib/trip-engine/adapters";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
 import type { GroupOverlayOpDraft, SetupGroup, TripSetupState } from "./types";
@@ -159,14 +161,19 @@ export async function loadTripSetupState(tripId: string): Promise<TripSetupState
     state.accommodationStays,
   );
 
-  const repairedState = repairTransportGraphSync(
-    syncTripBoundsFromContent({
-      ...state,
-      dayPlacesByGroupId: {
-        ...state.dayPlacesByGroupId,
-        [state.mainGroupId]: repairedMainDays,
-      },
-    }),
+  const repairedState = graphToSetupState(
+    repairTransportGraphSync(
+      setupStateToGraph(
+        tripId,
+        syncTripBoundsFromContent({
+          ...state,
+          dayPlacesByGroupId: {
+            ...state.dayPlacesByGroupId,
+            [state.mainGroupId]: repairedMainDays,
+          },
+        }),
+      ),
+    ),
   );
 
   return repairedState;
