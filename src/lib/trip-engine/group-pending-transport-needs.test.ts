@@ -102,6 +102,27 @@ describe("listPendingTransportNeedsForDisplay", () => {
       assert.equal(items[0].scopes.length, 2);
     }
   });
+
+  it("groups routes when participant calendars use different city label variants", () => {
+    const sections = [
+      scope("g-amanda", "Amanda", [
+        need("intercity", "2026-12-06", "Tokyo", "Tottori"),
+      ]),
+      scope("g-kaleb", "Kaleb", [
+        need("intercity", "2026-12-06", "Tokyo, Japan", "Tottori"),
+      ]),
+      scope("g-mia", "Mia", [
+        need("intercity", "2026-12-06", "Tokyo", "Tottori, Japan"),
+      ]),
+    ];
+
+    const items = listPendingTransportNeedsForDisplay(sections, new Set());
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.type, "grouped");
+    if (items[0]?.type === "grouped") {
+      assert.equal(items[0].scopes.length, 3);
+    }
+  });
 });
 
 describe("formatGroupedTravellerLabel", () => {

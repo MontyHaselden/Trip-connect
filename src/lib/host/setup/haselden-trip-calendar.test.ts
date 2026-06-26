@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { isAirportPlace, parseAirportRouteLabel } from "@/lib/geo/airport-codes";
+import { isAirportPlace } from "@/lib/geo/airport-codes";
 import { locationRangesFromDays } from "@/lib/host/setup/location-range-display";
 import {
   classifyImportedFlightChain,
@@ -17,17 +17,10 @@ import {
 import { deriveCalendarState } from "@/lib/host/setup/derive-calendar";
 import { deriveHomeArrivalDay, deriveTripBoundsFromContent } from "@/lib/host/setup/derive-trip-bounds";
 import { effectiveHotelBandStart } from "@/lib/host/setup/accommodation-calendar";
-import {
-  MAJOR_TRAVEL_DEST_START,
-  MAJOR_TRAVEL_ORIGIN_END,
-} from "@/lib/host/setup/transport-corridor";
 import { locationRangesFromContent } from "@/lib/host/setup/location-range-display";
 import { applySetupTransportChange } from "@/lib/host/setup/apply-setup-transport";
 import { calendarGridBounds, calendarScrollBounds } from "@/lib/host/setup/calendar-bounds";
-import {
-  computeTravelDayLayouts,
-  hasScheduledReturnTransport,
-} from "@/lib/host/wizard/transport-day-placement";
+import { hasScheduledReturnTransport } from "@/lib/host/wizard/transport-day-placement";
 import { allPlaneLegsFromState } from "@/lib/host/setup/infer-flight-calendar";
 
 describe("haselden Aug 2026 golden trip", () => {
@@ -71,7 +64,7 @@ describe("haselden Aug 2026 golden trip", () => {
     assert.equal(effectiveHotelBandStart(patong, planeLegs), "2026-08-24");
   });
 
-  it("paints travel stacks and day-scoped overnight return", () => {
+  it("paints location days and day-scoped overnight return (no calendar transit bands)", () => {
     const synced = applySetupTransportChange(state, {});
     const trip = {
       startDate: synced.basics.startDate,
@@ -91,12 +84,6 @@ describe("haselden Aug 2026 golden trip", () => {
       overlayStoredLocationGaps: false,
     });
 
-    const layouts = computeTravelDayLayouts(synced, trip, {
-      stays: state.accommodationStays,
-    });
-    const aug23 = layouts.get("2026-08-23");
-    const sep4 = layouts.get("2026-09-04");
-    const sep5 = layouts.get("2026-09-05");
     const aug22 = derived.dayPlaces.find((d) => d.date === "2026-08-22");
     const sep6 = derived.dayPlaces.find((d) => d.date === "2026-09-06");
     const sep4Day = derived.dayPlaces.find((d) => d.date === "2026-09-04");
@@ -113,18 +100,6 @@ describe("haselden Aug 2026 golden trip", () => {
     assert.equal(aug24?.primaryShare, 1);
     assert.ok(derived.accommodationByDate.has("2026-08-24"));
 
-    assert.deepEqual(parseAirportRouteLabel(aug23?.find((s) => s.kind === "transit")?.label ?? ""), [
-      "CHC",
-      "MEL",
-      "HKT",
-    ]);
-    const origin = aug23?.find((s) => s.kind === "city" && s.start === 0);
-    const dest = aug23?.find((s) => s.kind === "city" && s.start === MAJOR_TRAVEL_DEST_START);
-    assert.equal(origin?.colorOnly, true);
-    assert.equal(dest?.colorOnly, true);
-    assert.equal(dest?.kind === "city" ? dest.city : "", "Patong");
-    assert.equal(origin?.end, MAJOR_TRAVEL_ORIGIN_END);
-
     const locationRanges = locationRangesFromContent({
       days: derived.dayPlaces,
       tripStart: trip.startDate,
@@ -140,14 +115,6 @@ describe("haselden Aug 2026 golden trip", () => {
     const patongRange = locationRanges.find((r) => r.location === "Patong");
     assert.equal(patongRange?.startDate, "2026-08-24");
     assert.ok(!locationRanges.some((r) => r.location === "Phuket"));
-    assert.deepEqual(parseAirportRouteLabel(sep4?.find((s) => s.kind === "transit")?.label ?? ""), [
-      "BKK",
-      "MEL",
-    ]);
-    assert.deepEqual(parseAirportRouteLabel(sep5?.find((s) => s.kind === "transit")?.label ?? ""), [
-      "MEL",
-      "CHC",
-    ]);
     assert.equal(aug22?.dayType, "buffer");
     assert.ok(aug22?.primaryCity.includes("Christchurch"));
     assert.equal(aug22?.primaryShare, 1);

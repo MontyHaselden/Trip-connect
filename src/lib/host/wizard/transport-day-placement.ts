@@ -666,17 +666,10 @@ export function flightArrivalDates(
 }
 
 export function travelPaintStartByDate(
-  draft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs">,
-  trip: TripBounds,
+  _draft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs">,
+  _trip: TripBounds,
 ): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const [date, segments] of computeTravelDayLayouts(draft, trip)) {
-    const paintStart = travelLayoutPaintStart(segments);
-    if (paintStart > 0 && paintStart < 1) {
-      map.set(date, paintStart);
-    }
-  }
-  return map;
+  return new Map();
 }
 
 /** Afternoon flight out — morning share is still paintable for the last stay. */
@@ -697,7 +690,7 @@ export function hasAfternoonDepartureTravel(
 export function tripDayHasPaintableStaySlot(
   date: string,
   trip: TripBounds,
-  segments: CalendarDaySegment[] | undefined,
+  _segments?: CalendarDaySegment[] | undefined,
   day?: Pick<DayPlaceDraft, "primaryCity" | "secondaryCity" | "primaryShare"> | null,
 ): boolean {
   if (date < trip.startDate || date > trip.endDate) return false;
@@ -719,29 +712,12 @@ export function tripDayHasPaintableStaySlot(
       day?.secondaryCity?.trim() &&
       share < 1
     ) {
-      if (date === trip.startDate) {
-        const paintStart = travelLayoutPaintStart(segments);
-        if (paintStart > 0 && paintStart < 1) return false;
-      }
       return false;
     }
     return true;
   }
 
-  if (date !== trip.startDate && date !== trip.endDate) return true;
-
-  if (date === trip.endDate && hasAfternoonDepartureTravel(segments)) return true;
-
-  const morningTravelEnd = travelLayoutMorningPaintEnd(segments);
-  if (date === trip.startDate && morningTravelEnd > 0 && morningTravelEnd < 1) return true;
-
-  const paintStart = travelLayoutPaintStart(segments);
-  if (date === trip.startDate && paintStart > 0 && paintStart < 1) return true;
-
-  // Empty or painted edge days with no transport layout blocking the cell yet.
-  if (!segments?.length) return true;
-
-  return false;
+  return true;
 }
 
 /** Matches calendar cell selectability — clicking elsewhere should clear a pending range. */
@@ -765,8 +741,6 @@ export function isCalendarDayInteractive(input: {
   if (iso < rangeStart || iso > rangeEnd) return false;
   if (day?.dayType === "buffer") return false;
 
-  if (travelSegments?.length) return true;
-
   const secondary = day?.secondaryCity?.trim() ?? "";
   const share = day?.primaryShare ?? 1;
   if (secondary || (day?.primaryCity.trim() && share < 1)) return true;
@@ -789,9 +763,8 @@ export function isCalendarDaySelectable(input: {
   const rangeEnd = paintEnd ?? trip.endDate;
   if (iso < rangeStart || iso > rangeEnd) return false;
   if (day?.dayType === "buffer") return false;
-  if (travelLayoutBlocksPainting(travelSegments)) return false;
   const isHomeEdge = iso === trip.startDate || iso === trip.endDate;
-  if (isHomeEdge && !tripDayHasPaintableStaySlot(iso, trip, travelSegments, day)) {
+  if (isHomeEdge && !tripDayHasPaintableStaySlot(iso, trip, undefined, day)) {
     return false;
   }
   return true;
@@ -901,60 +874,15 @@ function paintedStayCity(day: DayPlaceDraft | null): string {
  */
 export function mergeTravelWithPaintedStay(
   segments: CalendarDaySegment[] | undefined,
-  day: DayPlaceDraft | null,
+  _day: DayPlaceDraft | null,
 ): { segments: CalendarDaySegment[] | undefined; hideMergedStayCity: boolean } {
-  segments = withoutAirportCitySegments(segments);
-  if (!segments?.length || !day) {
-    return { segments, hideMergedStayCity: false };
-  }
-
-  const paintStart = travelLayoutPaintStart(segments);
-  if (paintStart >= 1 - 0.001) {
-    return { segments, hideMergedStayCity: false };
-  }
-
-  const painted = paintedStayCity(day);
-  if (!painted) return { segments, hideMergedStayCity: false };
-
-  const landingIdx = segments.findLastIndex(
-    (segment) =>
-      segment.kind === "city" &&
-      (citiesMatch(segment.city, painted) || placesShareMetro(segment.city, painted)),
-  );
-
-  const merged = segments.map((segment) => ({ ...segment }));
-
-  if (landingIdx >= 0) {
-    const landing = merged[landingIdx]!;
-    if (landing.kind !== "city") return { segments, hideMergedStayCity: false };
-    // Departure-day origin (e.g. Bangkok checkout + evening flight): keep the stay
-    // location band for the city label; drop the duplicate travel city slice.
-    if (landing.start < 0.01) {
-      merged.splice(landingIdx, 1);
-      return { segments: merged, hideMergedStayCity: false };
-    }
-    if (landing.colorOnly) {
-      return { segments: merged, hideMergedStayCity: true };
-    }
-    landing.end = 1;
-    return { segments: merged, hideMergedStayCity: true };
-  }
-
-  const primary = day.primaryCity.trim();
-  const secondary = day.secondaryCity?.trim() ?? "";
-  const share = day.primaryShare ?? 1;
-  if (primary && !secondary && share < 1) {
-    // Checkout departure day — stay band already paints the morning city.
-    return { segments: merged, hideMergedStayCity: false };
-  }
-  merged.push({ kind: "city", city: painted, start: paintStart, end: 1 });
-  return { segments: merged, hideMergedStayCity: true };
+  return { segments, hideMergedStayCity: false };
 }
 
 export function travelLayoutBlocksPainting(
-  segments: CalendarDaySegment[] | undefined,
+  _segments: CalendarDaySegment[] | undefined,
 ): boolean {
-  return travelLayoutPaintStart(segments) >= 1 - 0.001;
+  return false;
 }
 
 function findOnwardLeg(
@@ -998,344 +926,22 @@ function intercityLegIds(
   return new Set(draft.intercityLegs.map((leg) => leg.id));
 }
 
-/**
- * Travel days show grey in-transit blocks only — painted stays come from Dates & Places.
- * Arrival days: transit band then paintable remainder. Departure days: paintable then transit.
- */
+/** Calendar no longer renders transport layouts — kept for API compatibility. */
 export function computeTravelDayLayouts(
-  draft: TransportCalendarInput,
-  trip: TripBounds,
-  options?: CalendarTransportOptions,
+  _draft: TransportCalendarInput,
+  _trip: TripBounds,
+  _options?: CalendarTransportOptions,
 ): Map<string, CalendarDaySegment[]> {
-  const skipInFlightIds = intercityLegIds(draft);
-  draft = calendarTransportDraft(normalizeTransportCalendarDraft(draft), options);
-  const stays = options?.stays ?? [];
-  const map = new Map<string, CalendarDaySegment[]>();
-  const legs = allTransportLegs(draft).filter((leg) => !leg.surfaceOnly);
-  const planeLegs = legs.filter((leg) => leg.transportType === "plane");
-  const HALF = DEFAULT_HALF_SHARE;
-
-  const candidateDates = new Set<string>();
-  for (const leg of legs) {
-    if (inCalendarRange(leg.travelDate, trip, draft)) candidateDates.add(leg.travelDate);
-    const arr = arrivalDate(leg);
-    if (inCalendarRange(arr, trip, draft)) candidateDates.add(arr);
-  }
-
-  function setChainedReturnHomeArrivalLayout(
-    date: string,
-    connectionLeg: TransportLegDraft,
-    homeLeg: TransportLegDraft,
-  ): void {
-    if (arrivalDate(homeLeg) !== date) return;
-
-    const homeShares = arrivalDayShares(homeLeg, true);
-    const homeCity = trip.returnCity.trim() || metroDisplayLabel(homeLeg.toCity);
-    if (!homeCity) return;
-
-    const routeLabel = flightRouteAirportLabelForDate(
-      [connectionLeg, homeLeg],
-      date,
-      arrivalDate,
-    );
-
-    map.set(date, [
-      transitSegment(routeLabel, 0, homeShares.transitEnd, connectionLeg),
-      {
-        kind: "city",
-        start: homeShares.transitEnd,
-        end: 1,
-        city: homeCity,
-      },
-    ]);
-  }
-
-  function isFinalHomeChainArrival(leg: TransportLegDraft): boolean {
-    if (!isHomeReturnLeg(leg, trip.returnCity)) return false;
-    if (findOnwardLeg(legs, leg.travelDate, leg.toCity.trim(), leg.id)) return false;
-    return Boolean(findInboundConnectionLeg(planeLegsOnly(legs), leg));
-  }
-
-  function setHomeLandingOnly(date: string, leg: TransportLegDraft): void {
-    const homeShares = arrivalDayShares(leg, true);
-    const homeCity = trip.returnCity.trim() || metroDisplayLabel(leg.toCity);
-    if (!homeCity) return;
-    map.set(date, [
-      {
-        kind: "city",
-        start: homeShares.transitEnd,
-        end: 1,
-        city: homeCity,
-      },
-    ]);
-  }
-
-  function setArrivalLayout(date: string, plane: TransportLegDraft): void {
-    if (isFinalHomeChainArrival(plane)) {
-      setHomeLandingOnly(date, plane);
-      return;
-    }
-
-    const homeLanding = isHomeReturnArrival(plane.toCity, trip);
-    const shares = arrivalDayShares(plane, homeLanding);
-    const onward = findOnwardLeg(legs, date, plane.toCity.trim(), plane.id);
-    const onwardHome =
-      onward && isHomeReturnLeg(onward, trip.returnCity);
-
-    if (onwardHome && plane.travelDate.trim() !== date) {
-      if (arrivalDate(onward) === date) {
-        setChainedReturnHomeArrivalLayout(date, plane, onward);
-      }
-      return;
-    }
-
-    const routeLegs = onward ? [plane, onward] : [plane];
-    const segments: CalendarDaySegment[] = [
-      transitSegment(
-        flightRouteAirportLabel(routeLegs),
-        0,
-        shares.transitEnd,
-        plane,
-      ),
-    ];
-
-    if (!onward && homeLanding && shares.landingEnd > shares.transitEnd) {
-      segments.push({
-        kind: "city",
-        start: shares.transitEnd,
-        end: 1,
-        city: trip.returnCity.trim() || plane.toCity.trim(),
-      });
-    } else if (!onward && !homeLanding && shares.landingEnd > shares.transitEnd) {
-      const dest = resolveArrivalStayCity(plane.toCity, stays, planeLegs, date);
-      const metro = metroDisplayLabel(plane.toCity);
-      if (dest !== metro) {
-        segments.push({
-          kind: "city",
-          start: shares.transitEnd,
-          end: 1,
-          city: dest,
-          colorOnly: true,
-        });
-      }
-    }
-
-    map.set(date, segments);
-  }
-
-  for (const date of candidateDates) {
-    const arrivingLegs = legs.filter(
-      (leg) =>
-        legUsesTransitOverlay(leg) &&
-        leg.toCity.trim() &&
-        arrivalDate(leg) === date &&
-        leg.travelDate !== date,
-    );
-
-    const arrivingPlane = preferPlaneLeg(
-      arrivingLegs.filter((leg) => leg.transportType === "plane"),
-    );
-    if (arrivingPlane) {
-      setArrivalLayout(date, arrivingPlane);
-      continue;
-    }
-
-    const departingLegs = legs.filter(
-      (leg) =>
-        legUsesTransitOverlay(leg) &&
-        leg.travelDate === date &&
-        leg.fromCity.trim(),
-    );
-    const departingPlane = preferPlaneLeg(
-      departingLegs.filter((leg) => leg.transportType === "plane"),
-    );
-    if (departingPlane) {
-      const chain = connectionChainFrom(departingPlane, legs);
-      const chainEndsHome =
-        chain.length >= 2 && isHomeReturnLeg(chain[chain.length - 1]!, trip.returnCity);
-
-      if (chainEndsHome) {
-        map.set(date, buildMultiLegDepartureLayout(chain, trip, stays, planeLegs));
-        continue;
-      }
-
-      const crossoverDay = (draft.dayPlaces ?? []).find((d) => d.date === date);
-      if (isFlightCrossoverDay(crossoverDay, departingPlane, legs)) {
-        map.set(
-          date,
-          buildFlightCrossoverLayout(departingPlane, legs, trip, stays, planeLegs),
-        );
-        continue;
-      }
-
-      const sameDayLanding =
-        arrivalDate(departingPlane) === date && departingPlane.toCity.trim();
-      const onward =
-        sameDayLanding &&
-        findOnwardLeg(legs, date, departingPlane.toCity.trim(), departingPlane.id);
-      if (onward) {
-        const chain = connectionChainFrom(departingPlane, legs);
-        map.set(
-          date,
-          chain.length >= 2
-            ? buildMultiLegDepartureLayout(chain, trip, stays, planeLegs)
-            : buildFlightCrossoverLayout(
-                departingPlane,
-                [departingPlane, onward],
-                trip,
-                stays,
-                planeLegs,
-              ),
-        );
-        continue;
-      }
-
-      const rawDepShare = timeToShare(departingPlane.departureTime, HALF);
-      const depShare = departureDayCityEndShare(
-        departingPlane.departureTime,
-        rawDepShare,
-      );
-      const morningCity = departureMorningCity(departingPlane.fromCity, trip, date);
-      const segments: CalendarDaySegment[] = [];
-      if (depShare > 0.02 && morningCity) {
-        segments.push({
-          kind: "city",
-          city: morningCity,
-          start: 0,
-          end: depShare,
-          colorOnly: isMajorTravelDay(legs, date),
-        });
-      }
-      segments.push(
-        transitSegment(flightRouteAirportLabel([departingPlane]), depShare, 1, departingPlane),
-      );
-      map.set(date, segments);
-      continue;
-    }
-
-    const sameDayArrivals = legs.filter(
-      (leg) =>
-        legUsesTransitOverlay(leg) &&
-        leg.travelDate === date &&
-        arrivalDate(leg) === date &&
-        leg.toCity.trim() &&
-        !isHomeDeparture(leg.fromCity, trip, date),
-    );
-    const sameDayArrival = preferPlaneLeg(
-      sameDayArrivals.filter((leg) => leg.transportType === "plane"),
-    );
-    if (sameDayArrival) {
-      setArrivalLayout(date, sameDayArrival);
-    }
-  }
-
-  for (const leg of legs) {
-    if (skipInFlightIds.has(leg.id)) continue;
-    if (!legUsesTransitOverlay(leg) || leg.transportType !== "plane") continue;
-    const dep = leg.travelDate.trim();
-    const arr = arrivalDate(leg);
-    if (!dep || arr <= dep) continue;
-    let cursor = addDays(dep, 1);
-    while (cursor < arr) {
-      if (inCalendarRange(cursor, trip, draft) && !map.has(cursor)) {
-        map.set(cursor, [
-          transitSegment(flightRouteAirportLabel([leg]), 0, 1, leg),
-        ]);
-      }
-      cursor = addDays(cursor, 1);
-    }
-  }
-
-  for (const leg of draft.intercityLegs) {
-    if (leg.surfaceOnly) continue;
-    const date = leg.travelDate.trim();
-    if (!date || !inCalendarRange(date, trip, draft) || map.has(date)) continue;
-    if (!intercityShowsCalendarTransit(leg)) continue;
-
-    const day = (draft.dayPlaces ?? []).find((d) => d.date === date);
-    if (isIntercityCrossoverDay(day, leg)) {
-      const layout = buildIntercityCrossoverLayout(leg);
-      if (layout) map.set(date, layout);
-    }
-  }
-
-  return map;
+  return new Map();
 }
 
-function pushDepartureOverlay(
-  map: Map<string, TransitOverlay[]>,
-  date: string,
-  label: string,
-  depShare: number,
-): void {
-  const list = map.get(date) ?? [];
-  const next = list.filter((overlay) => !overlay.label.startsWith("Depart for "));
-  if (next.some((overlay) => overlay.label === label)) {
-    map.set(date, next);
-    return;
-  }
-  next.push({ fromShare: depShare, toShare: 1, label });
-  map.set(date, next);
-}
-
-function pushArrivalOverlay(
-  map: Map<string, TransitOverlay[]>,
-  date: string,
-  label: string,
-  arrShare: number,
-): void {
-  const list = map.get(date) ?? [];
-  const next = list.filter((overlay) => !overlay.label.startsWith("Arrive in "));
-  if (next.some((overlay) => overlay.label === label)) {
-    map.set(date, next);
-    return;
-  }
-  next.push({ fromShare: 0, toShare: arrShare, label });
-  map.set(date, next);
-}
-
-/** Travel labels on the calendar (e.g. "Depart for Tokyo") — city paint stays half/full only. */
+/** Calendar no longer renders transit overlays — kept for API compatibility. */
 export function computeTransitOverlays(
-  draft: TransportCalendarInput,
-  trip: TripBounds,
-  options?: CalendarTransportOptions,
+  _draft: TransportCalendarInput,
+  _trip: TripBounds,
+  _options?: CalendarTransportOptions,
 ): Map<string, TransitOverlay[]> {
-  draft = calendarTransportDraft(normalizeTransportCalendarDraft(draft), options);
-  const map = new Map<string, TransitOverlay[]>();
-  const depShare = DEFAULT_HALF_SHARE;
-  const arrShare = DEFAULT_HALF_SHARE;
-
-  for (const leg of allTransportLegs(draft)) {
-    if (leg.surfaceOnly) continue;
-    if (!legUsesTransitOverlay(leg) || !leg.fromCity.trim() || !leg.toCity.trim()) continue;
-
-    const depDate = leg.travelDate;
-    const arrDate = arrivalDate(leg);
-    const depLabel = calendarDepartureLabel(leg);
-    const arrLabel = calendarArrivalLabel(leg);
-
-    if (depDate === arrDate) {
-      if (inCalendarRange(depDate, trip, draft)) {
-        const intercity = draft.intercityLegs.find((row) => row.id === leg.id);
-        const day = (draft.dayPlaces ?? []).find((d) => d.date === depDate);
-        const skipDepartChip =
-          Boolean(intercity && day && isIntercityCrossoverDay(day, intercity));
-        if (!skipDepartChip) {
-          pushDepartureOverlay(map, depDate, depLabel, depShare);
-        }
-      }
-      continue;
-    }
-
-    if (inCalendarRange(depDate, trip, draft)) {
-      pushDepartureOverlay(map, depDate, depLabel, depShare);
-    }
-    if (inCalendarRange(arrDate, trip, draft)) {
-      pushArrivalOverlay(map, arrDate, arrLabel, arrShare);
-    }
-  }
-
-  return map;
+  return new Map();
 }
 
 export function computeCalendarTransport(
@@ -1354,19 +960,21 @@ export function computeCalendarTransport(
 export function buildTripDayCoverageContext(
   draft: Pick<TripWizardDraft, "outboundLegs" | "returnLegs" | "intercityLegs" | "dayPlaces">,
   trip: TripBounds,
-  options?: CalendarTransportOptions,
+  _options?: CalendarTransportOptions,
 ): TripDayCoverageContext {
-  const { travelLayouts } = computeCalendarTransport(draft, trip, options);
   return {
     flightDepartureDates: flightDepartureDates(draft, trip),
     flightArrivalDates: flightArrivalDates(draft, trip),
     hasPaintableStaySlot: (date, day) =>
-      tripDayHasPaintableStaySlot(date, trip, travelLayouts.get(date), day),
+      tripDayHasPaintableStaySlot(date, trip, undefined, day),
     isTravelOnlyDay: (date) => {
-      const segments = travelLayouts.get(date);
-      if (!segments?.length) return false;
       const day = draft.dayPlaces.find((d) => d.date === date) ?? null;
-      return !tripDayHasPaintableStaySlot(date, trip, segments, day);
+      if (day?.primaryCity.trim() || day?.secondaryCity?.trim()) return false;
+      for (const leg of allTransportLegs(draft)) {
+        if (leg.surfaceOnly) continue;
+        if (leg.travelDate === date || arrivalDate(leg) === date) return true;
+      }
+      return false;
     },
   };
 }

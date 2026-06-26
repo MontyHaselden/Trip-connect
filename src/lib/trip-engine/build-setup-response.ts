@@ -11,8 +11,6 @@ function serializeRenderModel(model: CalendarRenderModel) {
   return {
     ...model,
     overlayMetaByDate: Object.fromEntries(model.overlayMetaByDate),
-    travelLayoutsByDate: Object.fromEntries(model.travelLayoutsByDate),
-    transitByDate: Object.fromEntries(model.transitByDate),
     accommodationByDate: Object.fromEntries(model.accommodationByDate),
     activitiesByDate: Object.fromEntries(model.activitiesByDate),
     locationColorByKey: Object.fromEntries(model.locationColorByKey),
@@ -90,8 +88,6 @@ export function deserializeRenderModel(raw: CalendarRenderModel): CalendarRender
   return {
     ...raw,
     overlayMetaByDate: toMap(raw.overlayMetaByDate as Map<string, CalendarRenderModel["overlayMetaByDate"] extends Map<string, infer V> ? V : never> | Record<string, CalendarRenderModel["overlayMetaByDate"] extends Map<string, infer V> ? V : never>),
-    travelLayoutsByDate: toMap(raw.travelLayoutsByDate),
-    transitByDate: toMap(raw.transitByDate),
     accommodationByDate: toMap(raw.accommodationByDate),
     activitiesByDate: toMap(raw.activitiesByDate),
     locationColorByKey: toMap(raw.locationColorByKey),

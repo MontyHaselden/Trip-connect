@@ -160,8 +160,6 @@ export type CalendarRenderModel = {
   days: DayPlaceDraft[];
   baseDays?: DayPlaceDraft[];
   overlayMetaByDate: Map<string, OverlayMeta>;
-  travelLayoutsByDate: Map<string, import("@/lib/host/wizard/transport-day-placement").CalendarDaySegment[]>;
-  transitByDate: Map<string, import("@/lib/host/wizard/transport-day-placement").TransitOverlay[]>;
   accommodationByDate: Map<string, string>;
   accommodationStays: AccommodationStayDraft[];
   boundaries: NightBoundary[];

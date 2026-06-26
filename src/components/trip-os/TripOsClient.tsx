@@ -8,7 +8,7 @@ import type { TripLifecycleStatus } from "@/lib/host/trip-lifecycle";
 import { tripOsNewTripPath, tripOsSetupPath } from "@/lib/trip-os/paths";
 
 import { AccountPlanPanel } from "@/components/dashboard/AccountPlanPanel";
-import { TripStatusBadge } from "@/components/dashboard/TripStatusBadge";
+import { TripStatusBadge } from "./shared/TripStatusBadge";
 
 import { TripEyebrow } from "./shared/TripEyebrow";
 import { TripOsNav } from "./TripOsNav";

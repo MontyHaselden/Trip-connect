@@ -8,11 +8,6 @@ import {
   collectOrderedTripLocationNames,
   type LocationPaletteSwatch,
 } from "@/lib/host/wizard/location-stays";
-import {
-  type CalendarDaySegment,
-  type TransitOverlay,
-  computeCalendarTransport,
-} from "@/lib/host/wizard/transport-day-placement";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import { projectCalendar, type ProjectCalendarOptions } from "./project-calendar";
 import { participantInheritsMainCalendar, participantUsesLocationOverlayProjection, activitiesForCalendarView } from "./person-lens";
@@ -117,23 +112,6 @@ export function buildCalendarRenderModel(
 
   resolveDisplayDayPlaces(storedDays, derived.dayPlaces, gridStart, gridEnd);
 
-  const transportDraft = {
-    outboundLegs: scope.outboundLegs,
-    returnLegs: scope.returnLegs,
-    intercityLegs: scope.intercityLegs,
-    dayPlaces: storedDays,
-  };
-  const tripBounds = {
-    startDate: bounds.startDate,
-    endDate: bounds.endDate,
-    departureCity: graph.basics.departureCity,
-    returnCity: graph.basics.returnCity,
-  };
-  const { travelLayouts, transitOverlays } = computeCalendarTransport(
-    transportDraft,
-    tripBounds,
-  );
-
   const projection = projectCalendar(graph, { groupId, gridStart, gridEnd, ...options });
   const allDates = enumerateDates(gridStart, gridEnd);
   const days = projection.days.map(projectedToDayPlace);
@@ -162,8 +140,6 @@ export function buildCalendarRenderModel(
     datesUnset,
     days,
     overlayMetaByDate,
-    travelLayoutsByDate: travelLayouts,
-    transitByDate: transitOverlays,
     accommodationByDate: derived.accommodationByDate,
     accommodationStays: usesMainGroupCalendarContent(graph, groupId)
       ? namedStays(graph, graph.mainGroupId)
@@ -177,5 +153,3 @@ export function buildCalendarRenderModel(
     interactionStart: gridMeta.interactionStart,
   };
 }
-
-export type { CalendarDaySegment, TransitOverlay };

@@ -73,18 +73,13 @@ export function InteractiveTripCalendar(props: {
 
   function renderCell(cell: WeekCell) {
     const day = dayByDate.get(cell.iso) ?? emptyGridDay(cell.iso);
-    const travelSegments = model.travelLayoutsByDate.get(cell.iso);
-    const transitOverlays = model.transitByDate.get(cell.iso) ?? [];
-    const hasTransport = Boolean(travelSegments?.length || transitOverlays.length);
     const isHomeEdge = cell.iso === model.tripStart || cell.iso === model.tripEnd;
     const edgePaintable =
-      isHomeEdge &&
-      (Boolean(day.primaryCity.trim() || day.secondaryCity?.trim()) || hasTransport);
+      isHomeEdge && Boolean(day.primaryCity.trim() || day.secondaryCity?.trim());
     const isInteractive = isTripOsDayInteractive({
       iso: cell.iso,
       model,
       day,
-      travelSegments,
     });
     const primaryCity = day.primaryCity.trim();
     const secondaryCity = day.secondaryCity?.trim() ?? "";
@@ -125,8 +120,6 @@ export function InteractiveTripCalendar(props: {
         locationColorByKey={model.locationColorByKey}
         pendingFillHalf={props.pendingFillHalf}
         onDayClick={props.onDayClick}
-        transitOverlays={transitOverlays}
-        travelSegments={travelSegments}
       />
     );
   }

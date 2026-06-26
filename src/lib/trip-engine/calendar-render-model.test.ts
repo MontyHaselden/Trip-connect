@@ -92,7 +92,6 @@ describe("buildCalendarRenderModel", () => {
     assert.equal(model.scrollAnchorDate, "2026-08-26");
     assert.ok(model.activitiesByDate.has("2026-08-26"));
     assert.equal(model.activitiesByDate.get("2026-08-26")?.[0]?.title, "Temple");
-    assert.ok(model.travelLayoutsByDate.size > 0 || model.transitByDate.size > 0);
     assert.ok(model.days.length > 0);
     assert.ok(model.boundaries.length >= 0);
     assert.ok(model.todayIso);
@@ -150,10 +149,10 @@ describe("buildCalendarRenderModel", () => {
 
     const graph = setupStateToGraph("t1", state);
     const model = buildCalendarRenderModel(graph);
-    const dec22 = model.transitByDate.get("2026-12-22") ?? [];
-    assert.ok(
-      dec22.some((overlay) => overlay.label === "Arrive in Christchurch"),
-      `expected arrival overlay on 2026-12-22, got ${JSON.stringify(dec22)}`,
-    );
+    assert.equal(graph.returnLegs[0]?.arrivalDate, "2026-12-22");
+    const dec21 = model.days.find((day) => day.date === "2026-12-21");
+    assert.ok(dec21);
+    assert.match(dec21!.primaryCity, /Tokyo/i);
+    assert.match(dec21!.secondaryCity ?? "", /Christchurch/i);
   });
 });

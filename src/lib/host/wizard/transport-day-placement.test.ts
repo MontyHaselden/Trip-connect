@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   computeCalendarTransport,
   computeTransitOverlays,
+  flightArrivalDates,
 } from "./transport-day-placement";
 import type { DayPlaceDraft, IntercityLegDraft } from "./types";
 
@@ -39,7 +40,7 @@ function intercity(overrides: Partial<IntercityLegDraft> = {}): IntercityLegDraf
 }
 
 describe("surfaceOnly transport filtering", () => {
-  it("omits surface-only intercity legs from transit overlays", () => {
+  it("omits surface-only intercity legs from arrival date tracking", () => {
     const draft = {
       outboundLegs: [],
       returnLegs: [],
@@ -56,58 +57,22 @@ describe("surfaceOnly transport filtering", () => {
       ],
     };
 
-    const overlays = computeTransitOverlays(draft, trip);
-    assert.equal(overlays.has("2026-12-13"), false);
+    const arrivals = flightArrivalDates(draft, trip);
+    assert.equal(arrivals.has("2026-12-13"), false);
   });
 
-  it("keeps allocated intercity legs on the calendar", () => {
+  it("calendar transport helpers return empty maps (transport is not rendered on calendar)", () => {
     const draft = {
       outboundLegs: [],
       returnLegs: [],
       intercityLegs: [intercity()],
-      dayPlaces: [
-        {
-          date: "2026-12-13",
-          primaryCity: "Kagoshima",
-          secondaryCity: "Hiroshima",
-          primaryShare: 0.5,
-          dayType: "travel",
-          includeBuffer: false,
-        } satisfies DayPlaceDraft,
-      ],
+      dayPlaces: [] as DayPlaceDraft[],
     };
 
-    const { travelLayouts } = computeCalendarTransport(draft, trip);
-    assert.ok(travelLayouts.has("2026-12-13"));
-  });
-
-  it("keeps full-width in-flight bands on middle days for multi-day flights", () => {
-    const draft = {
-      outboundLegs: [
-        {
-          id: "out-1",
-          transportType: "plane",
-          bookingStatus: "booked",
-          travelDate: "2026-12-05",
-          arrivalDate: "2026-12-07",
-          departureTime: "10:00",
-          arrivalTime: "18:00",
-          fromCity: "Christchurch",
-          toCity: "Narita",
-          fromStation: null,
-          toStation: null,
-          operator: null,
-          referenceNumber: null,
-          flightNumber: "NZ99",
-          notes: null,
-        },
-      ],
-      returnLegs: [],
-      intercityLegs: [],
-      dayPlaces: [],
-    };
-
-    const { travelLayouts } = computeCalendarTransport(draft, trip);
-    assert.ok(travelLayouts.has("2026-12-06"));
+    const overlays = computeTransitOverlays(draft, trip);
+    const { travelLayouts, transitOverlays } = computeCalendarTransport(draft, trip);
+    assert.equal(overlays.size, 0);
+    assert.equal(travelLayouts.size, 0);
+    assert.equal(transitOverlays.size, 0);
   });
 });

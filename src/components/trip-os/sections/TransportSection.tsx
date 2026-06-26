@@ -29,6 +29,10 @@ import {
   type PendingTransportScopeRef,
 } from "@/lib/trip-engine/group-pending-transport-needs";
 import {
+  groupPersonalTransportScopesForDisplay,
+  type TransportLegDisplayScope,
+} from "@/lib/trip-engine/group-transport-legs-for-display";
+import {
   pendingNeedLabel,
   pendingTransportNeedsFromCalendar,
   type PendingTransportNeed,
@@ -275,10 +279,10 @@ export function TransportSection(props: {
     [props.graph, roster, props.groupId],
   );
 
-  const allScopes = useMemo(
-    () => [scopedLegs.wholeGroup, ...scopedLegs.otherScopes],
-    [scopedLegs],
-  );
+  const allScopes = useMemo((): TransportLegDisplayScope[] => {
+    const groupedPersonal = groupPersonalTransportScopesForDisplay(scopedLegs.otherScopes);
+    return [scopedLegs.wholeGroup, ...groupedPersonal];
+  }, [scopedLegs]);
 
   const transportFinanceAttention = useMemo(
     () => transportLegFinanceAttentionById(props.costLedger, props.graph),
@@ -317,24 +321,30 @@ export function TransportSection(props: {
     leg: TransportLegDraft | IntercityLegDraft,
     bucket: LegBucket,
     groupId: string,
+    groupedTargets?: Array<{ legId: string; groupId: string }>,
   ) {
     const route = legRouteLabel(leg, props.graph);
     const schedule = legScheduleSummary(leg);
-    if (
-      !window.confirm(
-        `Remove ${route}${schedule ? ` (${schedule})` : ""}? It will reappear in "From your calendar" so you can add it again.`,
-      )
-    ) {
+    const targetCount = groupedTargets?.length ?? 1;
+    const prompt =
+      targetCount > 1
+        ? `Remove ${route}${schedule ? ` (${schedule})` : ""} for ${targetCount} travellers? They will reappear in "From your calendar" so you can add them again.`
+        : `Remove ${route}${schedule ? ` (${schedule})` : ""}? It will reappear in "From your calendar" so you can add it again.`;
+    if (!window.confirm(prompt)) {
       return;
     }
-    await props.onDispatch([
-      {
-        type: "removeTransportLeg",
-        groupId,
+    const targets =
+      groupedTargets?.length ?
+        groupedTargets
+      : [{ legId: leg.id, groupId }];
+    await props.onDispatch(
+      targets.map((target) => ({
+        type: "removeTransportLeg" as const,
+        groupId: target.groupId,
         bucket,
-        legId: leg.id,
-      },
-    ]);
+        legId: target.legId,
+      })),
+    );
   }
 
   function openAdd(need: PendingTransportNeed, groupId: string, targetGroupIds?: string[]) {
@@ -607,12 +617,18 @@ export function TransportSection(props: {
     );
   }
 
-  function renderScopeLegs(scope: TripScopeSection<ScopedTransportLeg>) {
+  function renderScopeLegs(scope: TransportLegDisplayScope) {
     if (!scope.items.length) return null;
 
     const isWholeGroup = scope.groupId === props.graph.mainGroupId;
-    const isActiveScope = scope.groupId === props.groupId;
-    const scopeHint = scopeEditHint(props.graph, props.groupId, scope);
+    const isGroupedPersonal = Boolean(scope.groupedLegTargets?.length);
+    const isActiveScope =
+      scope.groupId === props.groupId ||
+      (isGroupedPersonal &&
+        scope.groupedLegTargets?.some((target) => target.groupId === props.groupId));
+    const scopeHint = isGroupedPersonal
+      ? null
+      : scopeEditHint(props.graph, props.groupId, scope);
     const grouped = groupTransportLegs(scope.items, products);
     const orphanProducts = orphanTransportProducts(
       products,
@@ -701,7 +717,14 @@ export function TransportSection(props: {
                           ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
                           : undefined
                       }
-                      onDelete={() => void deleteLeg(leg, legBucket(leg.id), scope.groupId)}
+                      onDelete={() =>
+                        void deleteLeg(
+                          leg,
+                          legBucket(leg.id),
+                          scope.groupId,
+                          scope.groupedLegTargets,
+                        )
+                      }
                       saving={props.saving}
                       {...legFinanceActions(leg)}
                     />
@@ -735,7 +758,14 @@ export function TransportSection(props: {
                         ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
                         : undefined
                     }
-                    onDelete={() => void deleteLeg(leg, legBucket(leg.id), scope.groupId)}
+                    onDelete={() =>
+                      void deleteLeg(
+                        leg,
+                        legBucket(leg.id),
+                        scope.groupId,
+                        scope.groupedLegTargets,
+                      )
+                    }
                     saving={props.saving}
                     {...legFinanceActions(leg)}
                   />

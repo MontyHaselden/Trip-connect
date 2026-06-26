@@ -2,12 +2,9 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { tripHiddenTransportNeeds } from "@/lib/db/schema";
+import { locationPaletteKey } from "@/lib/host/wizard/location-stays";
 
 import type { PendingTransportKind, PendingTransportNeed } from "./pending-city-moves";
-
-function normalizeCity(city: string): string {
-  return city.trim().toLowerCase();
-}
 
 export function pendingTransportNeedKey(
   groupId: string,
@@ -23,8 +20,8 @@ export function pendingTransportNeedRouteKey(
   return [
     need.kind,
     need.date,
-    normalizeCity(need.fromCity),
-    normalizeCity(need.toCity),
+    locationPaletteKey(need.fromCity),
+    locationPaletteKey(need.toCity),
   ].join("|");
 }
 
