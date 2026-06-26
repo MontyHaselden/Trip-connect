@@ -235,8 +235,13 @@ export function TransportSection(props: {
   );
 
   const pendingListItems = useMemo(
-    () => listPendingTransportNeedsForDisplay(pendingScopeSections, separatedRouteKeys),
-    [pendingScopeSections, separatedRouteKeys],
+    () =>
+      listPendingTransportNeedsForDisplay(
+        pendingScopeSections,
+        separatedRouteKeys,
+        props.graph.mainGroupId,
+      ),
+    [pendingScopeSections, separatedRouteKeys, props.graph.mainGroupId],
   );
 
   const hiddenScopeSections = useMemo(
@@ -248,8 +253,13 @@ export function TransportSection(props: {
   );
 
   const hiddenListItems = useMemo(
-    () => listPendingTransportNeedsForDisplay(hiddenScopeSections, separatedRouteKeys),
-    [hiddenScopeSections, separatedRouteKeys],
+    () =>
+      listPendingTransportNeedsForDisplay(
+        hiddenScopeSections,
+        separatedRouteKeys,
+        props.graph.mainGroupId,
+      ),
+    [hiddenScopeSections, separatedRouteKeys, props.graph.mainGroupId],
   );
 
   const hiddenCount = useMemo(

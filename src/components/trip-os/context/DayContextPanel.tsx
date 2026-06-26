@@ -768,6 +768,7 @@ export function DayContextPanel(props: {
     options?: { replaceLocationLabels?: boolean; propagateGroupIds?: string[] },
   ) {
     if (!stayDraft) return;
+    const unifyRange = Boolean(options?.replaceLocationLabels || isMultiDayRange);
     const isReplacingStay = Boolean(
       linkedStay &&
         (linkedStay.name?.trim() !== stayDraft.name.trim() ||
@@ -855,7 +856,7 @@ export function DayContextPanel(props: {
       commands.push({
         type: "addStay",
         groupId,
-        replaceLocationLabels: options?.replaceLocationLabels,
+        replaceLocationLabels: unifyRange,
         stay: {
           id: newId(),
           url: null,
@@ -868,14 +869,14 @@ export function DayContextPanel(props: {
         type: "updateStay",
         groupId,
         stayId: stayDraft.id,
-        replaceLocationLabels: options?.replaceLocationLabels,
+        replaceLocationLabels: unifyRange,
         patch: payload,
       });
     } else {
       commands.push({
         type: "addStay",
         groupId,
-        replaceLocationLabels: options?.replaceLocationLabels,
+        replaceLocationLabels: unifyRange,
         stay: {
           id: newId(),
           url: null,

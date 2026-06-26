@@ -9,6 +9,7 @@ import { clearCalendarContentInRange } from "@/lib/host/setup/clear-day-content"
 import {
   removeAccommodationAndCitiesFromRange,
   trimConflictingStaysForLocationPaint,
+  trimNamedStaysOverlappingIncoming,
 } from "@/lib/host/setup/remove-accommodation-range";
 import { mergeAccommodationStays } from "@/lib/host/setup/entity-scope";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
@@ -171,9 +172,17 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
       const groupId = command.groupId;
       const stay = { ...command.stay, originGroupId: command.stay.originGroupId ?? groupId };
       const withoutOrphans = dropUnnamedStaysOverlappingNamed(graph.accommodationStays, stay);
+      const trimmed = command.replaceLocationLabels
+        ? trimNamedStaysOverlappingIncoming(
+            withoutOrphans,
+            stay,
+            groupId,
+            graph.mainGroupId,
+          )
+        : withoutOrphans;
       let nextGraph: TripEntityGraph = {
         ...graph,
-        accommodationStays: [...withoutOrphans, stay],
+        accommodationStays: [...trimmed, stay],
       };
       const replaceStayIds = command.replaceLocationLabels
         ? new Set([stay.id])
@@ -195,7 +204,11 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
       const existing = graph.accommodationStays[idx]!;
       const groupId = command.groupId ?? existing.originGroupId ?? graph.mainGroupId;
       const updated = { ...existing, ...command.patch };
-      const stays = graph.accommodationStays.map((s, i) => (i === idx ? updated : s));
+      const otherStays = graph.accommodationStays.filter((s) => s.id !== command.stayId);
+      const trimmedOthers = command.replaceLocationLabels
+        ? trimNamedStaysOverlappingIncoming(otherStays, updated, groupId, graph.mainGroupId)
+        : otherStays;
+      const stays = [...trimmedOthers, updated];
       let nextGraph: TripEntityGraph = { ...graph, accommodationStays: stays };
       const replaceStayIds = command.replaceLocationLabels
         ? new Set([command.stayId])

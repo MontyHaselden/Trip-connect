@@ -5,6 +5,7 @@ import {
   removeAccommodationAndCitiesFromRange,
   splitStaysForRangeRemoval,
   trimConflictingStaysForLocationPaint,
+  trimNamedStaysOverlappingIncoming,
 } from "./remove-accommodation-range";
 import { clearCalendarContentInRange } from "./clear-day-content";
 import type { TripSetupState } from "./types";
@@ -65,6 +66,58 @@ describe("splitStaysForRangeRemoval", () => {
     assert.equal(next[0]?.checkOutDate, "2026-08-25");
     assert.equal(next[1]?.checkInDate, "2026-08-28");
     assert.equal(next[1]?.checkOutDate, "2026-09-01");
+  });
+});
+
+describe("trimNamedStaysOverlappingIncoming", () => {
+  it("shortens a later stay when saving one hotel across a mixed range", () => {
+    const mainGroupId = "main";
+    const kyoto = {
+      id: "stay-kyoto",
+      cityLabel: "Kyoto, Japan",
+      stayType: "hotel" as const,
+      name: "VIA INN Prime Kyotoeki Hachijoguchi",
+      url: null,
+      address: null,
+      phone: null,
+      checkInDate: "2026-12-15",
+      checkOutDate: "2026-12-17",
+      notes: null,
+      isHomestayGroup: false,
+      multipleInCity: false,
+      originGroupId: mainGroupId,
+    };
+    const tokyo = {
+      id: "stay-tokyo",
+      cityLabel: "Tokyo, Japan",
+      stayType: "hotel" as const,
+      name: "Grand Prince Hotel Shin Takanawa",
+      url: null,
+      address: null,
+      phone: null,
+      checkInDate: "2026-12-17",
+      checkOutDate: "2026-12-21",
+      notes: null,
+      isHomestayGroup: false,
+      multipleInCity: false,
+      originGroupId: mainGroupId,
+    };
+    const incoming = {
+      ...kyoto,
+      checkOutDate: "2026-12-18",
+    };
+
+    const next = trimNamedStaysOverlappingIncoming(
+      [kyoto, tokyo],
+      incoming,
+      mainGroupId,
+      mainGroupId,
+    );
+
+    assert.equal(next.length, 1);
+    assert.equal(next[0]?.id, "stay-tokyo");
+    assert.equal(next[0]?.checkInDate, "2026-12-18");
+    assert.equal(next[0]?.checkOutDate, "2026-12-21");
   });
 });
 

@@ -100,6 +100,17 @@ export function AddRoomsModal(props: {
     return map;
   }, [data]);
 
+  const draftRoomByParticipant = useMemo(() => {
+    const map = new Map<string, { rowKey: string; label: string }>();
+    for (const row of rows) {
+      const label = row.roomName.trim() || "another room";
+      for (const participantId of row.participantIds) {
+        map.set(participantId, { rowKey: row.key, label });
+      }
+    }
+    return map;
+  }, [rows]);
+
   function updateRow(key: string, patch: Partial<RoomRow>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   }
@@ -294,22 +305,33 @@ export function AddRoomsModal(props: {
                       <div className="flex flex-wrap gap-1.5">
                         {students.map((student) => {
                           const selected = row.participantIds.includes(student.id);
-                          const otherRoom = assignedRoomByParticipant.get(student.id);
-                          const taken = Boolean(otherRoom) && !selected;
+                          const savedRoom = assignedRoomByParticipant.get(student.id);
+                          const draftRoom = draftRoomByParticipant.get(student.id);
+                          const takenInSaved = Boolean(savedRoom) && !selected;
+                          const takenInOtherDraft =
+                            Boolean(draftRoom && draftRoom.rowKey !== row.key) && !selected;
                           return (
                             <button
                               key={student.id}
                               type="button"
-                              disabled={busy || taken}
+                              disabled={busy || takenInSaved}
                               onClick={() => toggleParticipant(row.key, student.id)}
-                              title={taken ? `Already in room ${otherRoom}` : undefined}
+                              title={
+                                takenInSaved
+                                  ? `Already in room ${savedRoom}`
+                                  : takenInOtherDraft
+                                    ? `In ${draftRoom!.label} — click to move here`
+                                    : undefined
+                              }
                               className={[
                                 "rounded-full px-3 py-1.5 text-xs font-medium transition",
                                 selected
                                   ? "bg-zinc-900 text-white shadow-sm"
-                                  : taken
-                                    ? "bg-zinc-100 text-zinc-400"
-                                    : "bg-zinc-50 text-zinc-700 ring-1 ring-zinc-200 hover:ring-zinc-300",
+                                  : takenInSaved
+                                    ? "cursor-not-allowed bg-zinc-100 text-zinc-400"
+                                    : takenInOtherDraft
+                                      ? "bg-zinc-100/70 text-zinc-400 opacity-45 saturate-50 hover:opacity-70"
+                                      : "bg-zinc-50 text-zinc-700 ring-1 ring-zinc-200 hover:ring-zinc-300",
                               ].join(" ")}
                             >
                               {student.fullName}

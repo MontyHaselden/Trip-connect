@@ -63,6 +63,45 @@ describe("listPendingTransportNeedsForDisplay", () => {
     assert.equal(items.length, 2);
     assert.equal(items.every((item) => item.type === "single"), true);
   });
+
+  it("prefers whole group when main and personal scopes share the same route", () => {
+    const outbound = need("outbound_flight", "2026-12-05", "Christchurch", "Tokyo");
+    const sections = [
+      {
+        groupId: "g-main",
+        title: "Whole group",
+        memberNames: [],
+        items: [outbound],
+      },
+      scope("g-amanda", "Amanda", [outbound]),
+      scope("g-kaleb", "Kaleb", [outbound]),
+      scope("g-mia", "Mia", [outbound]),
+      scope("g-trenuela", "Trenuela", [outbound]),
+    ];
+
+    const items = listPendingTransportNeedsForDisplay(sections, new Set(), "g-main");
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.type, "single");
+    if (items[0]?.type === "single") {
+      assert.equal(items[0].scope.groupId, "g-main");
+      assert.equal(items[0].scope.title, "Whole group");
+    }
+  });
+
+  it("still groups personal-only routes without whole group", () => {
+    const outbound = need("outbound_flight", "2026-12-06", "Christchurch", "Tokyo");
+    const sections = [
+      scope("g-amanda", "Amanda", [outbound]),
+      scope("g-kaleb", "Kaleb", [outbound]),
+    ];
+
+    const items = listPendingTransportNeedsForDisplay(sections, new Set(), "g-main");
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.type, "grouped");
+    if (items[0]?.type === "grouped") {
+      assert.equal(items[0].scopes.length, 2);
+    }
+  });
 });
 
 describe("formatGroupedTravellerLabel", () => {

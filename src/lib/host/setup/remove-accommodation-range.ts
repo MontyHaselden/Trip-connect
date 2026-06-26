@@ -121,6 +121,49 @@ export function splitStaysForRangeRemoval(
   return result;
 }
 
+function stayOriginGroupId(
+  stay: AccommodationStayDraft,
+  mainGroupId: string,
+): string {
+  return stay.originGroupId ?? mainGroupId;
+}
+
+function stayInGroupScope(
+  stay: AccommodationStayDraft,
+  groupId: string,
+  mainGroupId: string,
+): boolean {
+  const origin = stayOriginGroupId(stay, mainGroupId);
+  if (groupId === mainGroupId) return !stay.originGroupId || origin === mainGroupId;
+  return origin === groupId;
+}
+
+/** Trim or split other named stays that overlap a newly saved stay in the same group. */
+export function trimNamedStaysOverlappingIncoming(
+  stays: AccommodationStayDraft[],
+  incoming: AccommodationStayDraft,
+  groupId: string,
+  mainGroupId: string,
+): AccommodationStayDraft[] {
+  if (!incoming.name?.trim()) return stays;
+
+  const nightEnd = addDays(incoming.checkOutDate, -1);
+  if (nightEnd < incoming.checkInDate) return stays;
+
+  const outOfScope = stays.filter((stay) => !stayInGroupScope(stay, groupId, mainGroupId));
+  const scoped = stays.filter(
+    (stay) => stayInGroupScope(stay, groupId, mainGroupId) && stay.id !== incoming.id,
+  );
+  const trimmedNamed = splitStaysForRangeRemoval(
+    scoped.filter((stay) => stay.name?.trim()),
+    incoming.checkInDate,
+    nightEnd,
+  );
+  const unnamed = scoped.filter((stay) => !stay.name?.trim());
+
+  return [...outOfScope, ...trimmedNamed, ...unnamed];
+}
+
 /** Shorten or split named stays that overlap a new location paint with a different city. */
 export function trimConflictingStaysForLocationPaint(
   stays: AccommodationStayDraft[],
