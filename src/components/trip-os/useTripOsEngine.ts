@@ -488,12 +488,12 @@ export function useTripOsEngine(tripId: string) {
   const load = useCallback(
     async (
       groupId?: string,
-      options?: { silent?: boolean; forceServer?: boolean },
+      options?: { silent?: boolean; forceServer?: boolean; skipLocalDraft?: boolean },
     ) => {
       const generation = ++loadGenerationRef.current;
       const silent = options?.silent ?? false;
       const forceServer = options?.forceServer ?? false;
-      const draft = !forceServer ? readTripLocalDraft(tripId) : null;
+      const skipLocalDraft = options?.skipLocalDraft ?? forceServer;
 
       if (silent) {
         setRefreshing(true);
@@ -507,6 +507,7 @@ export function useTripOsEngine(tripId: string) {
         startProgressTicker(5, 42);
       }
       setError(null);
+      await yieldToMain();
       try {
         if (forceServer && pendingCommandsRef.current.length) {
           flushPendingRef.current();
@@ -514,7 +515,7 @@ export function useTripOsEngine(tripId: string) {
         }
         if (generation !== loadGenerationRef.current) return;
 
-        const gid = groupId ?? draft?.activeGroupId ?? activeGroupIdRef.current;
+        const gid = groupId ?? activeGroupIdRef.current;
         const qs = new URLSearchParams({ engine: "1" });
         if (gid) qs.set("groupId", gid);
         const controller = new AbortController();
@@ -552,6 +553,12 @@ export function useTripOsEngine(tripId: string) {
         if (generation !== loadGenerationRef.current) return;
         if (!res.ok) throw new Error(body.error || "Failed to load setup");
 
+        let draft: TripLocalDraft | null = null;
+        if (!skipLocalDraft) {
+          await yieldToMain();
+          draft = readTripLocalDraft(tripId);
+        }
+
         if (!silent) {
           setLoadStatus({
             phase: "preparing",
@@ -561,7 +568,7 @@ export function useTripOsEngine(tripId: string) {
         }
         await yieldToMain();
 
-        const viewGroupId = gid ?? body.graph.mainGroupId;
+        const viewGroupId = gid ?? draft?.activeGroupId ?? body.graph.mainGroupId;
         if (draft?.pendingCommands.length) {
           pendingCommandsRef.current = [...draft.pendingCommands];
           pendingGroupIdRef.current = draft.pendingGroupId;
@@ -621,7 +628,7 @@ export function useTripOsEngine(tripId: string) {
       } catch (e) {
         stopProgressTicker();
         if (generation !== loadGenerationRef.current) return;
-        const fallbackDraft = draft ?? readTripLocalDraft(tripId);
+        const fallbackDraft = readTripLocalDraft(tripId);
         if (fallbackDraft?.graph) {
           try {
             applyDraft(fallbackDraft, groupId);

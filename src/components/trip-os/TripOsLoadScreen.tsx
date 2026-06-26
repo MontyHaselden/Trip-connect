@@ -1,6 +1,11 @@
 "use client";
 
-import { clearTripLocalDraft } from "@/lib/trip-os/local-draft";
+import { useEffect } from "react";
+
+import {
+  clearOversizedTripLocalDraft,
+  clearTripLocalDraft,
+} from "@/lib/trip-os/local-draft";
 
 import type { TripLoadStatus } from "./useTripOsEngine";
 
@@ -12,6 +17,10 @@ export function TripOsLoadScreen(props: {
 }) {
   const { status, error } = props;
   const progress = Math.min(100, Math.max(0, status.progress));
+
+  useEffect(() => {
+    clearOversizedTripLocalDraft(props.tripId);
+  }, [props.tripId]);
 
   function handleResetCache() {
     clearTripLocalDraft(props.tripId);
@@ -72,10 +81,11 @@ export function TripOsLoadScreen(props: {
       </div>
 
       <p className="max-w-md text-center text-[11px] leading-relaxed text-zinc-400">
-        Developer tools on Mac: <kbd className="rounded bg-zinc-100 px-1">⌘</kbd>{" "}
+        DevTools on Mac: <kbd className="rounded bg-zinc-100 px-1">⌘</kbd>{" "}
         <kbd className="rounded bg-zinc-100 px-1">⌥</kbd>{" "}
-        <kbd className="rounded bg-zinc-100 px-1">I</kbd> (or right‑click → Inspect).
-        If the page is frozen, wait for the load to finish or try another browser tab.
+        <kbd className="rounded bg-zinc-100 px-1">I</kbd> — not F12. If this tab is
+        frozen, open DevTools from a different tab via the Window menu, or try{" "}
+        <strong>Clear saved browser data</strong> above.
       </p>
     </main>
   );

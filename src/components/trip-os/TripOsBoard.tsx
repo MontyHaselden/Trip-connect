@@ -88,7 +88,7 @@ export function TripOsBoard(props: { tripId: string }) {
       : null;
 
   useEffect(() => {
-    void engine.load();
+    void engine.load(undefined, { skipLocalDraft: true });
   }, [props.tripId]); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only initial load
 
   useEffect(() => {
@@ -98,6 +98,7 @@ export function TripOsBoard(props: { tripId: string }) {
   }, [activeSection]);
 
   useEffect(() => {
+    if (engine.loading) return;
     const draft = readTripLocalDraft(props.tripId);
     if (draft?.calendarLens) {
       setCalendarLens(draft.calendarLens);
