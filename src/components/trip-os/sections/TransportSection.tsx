@@ -90,6 +90,7 @@ function LegRow(props: {
   financeAttentionReason?: string | null;
   onOpenFinance?: () => void;
   onEdit?: () => void;
+  onDelete?: () => void;
   showFinanceActions?: boolean;
   saving?: boolean;
   onMarkTbc?: () => void;
@@ -142,6 +143,16 @@ function LegRow(props: {
               className="text-sm font-medium text-violet-700 hover:text-violet-900"
             >
               Edit
+            </button>
+          ) : null}
+          {props.onDelete ? (
+            <button
+              type="button"
+              onClick={props.onDelete}
+              disabled={props.saving}
+              className="text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+            >
+              Delete
             </button>
           ) : null}
         </div>
@@ -247,6 +258,30 @@ export function TransportSection(props: {
     if (props.graph.intercityLegs.some((x) => x.id === legId)) return "intercity";
     if (props.graph.outboundLegs.some((x) => x.id === legId)) return "outbound";
     return "return";
+  }
+
+  async function deleteLeg(
+    leg: TransportLegDraft | IntercityLegDraft,
+    bucket: LegBucket,
+    groupId: string,
+  ) {
+    const route = legRouteLabel(leg, props.graph);
+    const schedule = legScheduleSummary(leg);
+    if (
+      !window.confirm(
+        `Remove ${route}${schedule ? ` (${schedule})` : ""}? It will reappear in "From your calendar" so you can add it again.`,
+      )
+    ) {
+      return;
+    }
+    await props.onDispatch([
+      {
+        type: "removeTransportLeg",
+        groupId,
+        bucket,
+        legId: leg.id,
+      },
+    ]);
   }
 
   function openAdd(need: PendingTransportNeed, groupId: string) {
@@ -443,6 +478,11 @@ export function TransportSection(props: {
                           ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
                           : undefined
                       }
+                      onDelete={
+                        isActiveScope
+                          ? () => void deleteLeg(leg, legBucket(leg.id), scope.groupId)
+                          : undefined
+                      }
                       saving={props.saving}
                       {...legFinanceActions(leg)}
                     />
@@ -474,6 +514,11 @@ export function TransportSection(props: {
                     onEdit={
                       isActiveScope
                         ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
+                        : undefined
+                    }
+                    onDelete={
+                      isActiveScope
+                        ? () => void deleteLeg(leg, legBucket(leg.id), scope.groupId)
                         : undefined
                     }
                     saving={props.saving}

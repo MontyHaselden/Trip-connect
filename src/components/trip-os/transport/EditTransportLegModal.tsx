@@ -131,6 +131,27 @@ export function EditTransportLegModal(props: {
     }
   }
 
+  async function removeLeg() {
+    if (!draft || !props.bucket) return;
+    const route = legRouteLabel(draft, props.graph);
+    if (
+      !window.confirm(
+        `Remove ${route}? It will reappear in "From your calendar" so you can add it again.`,
+      )
+    ) {
+      return;
+    }
+    const ok = await props.onDispatch([
+      {
+        type: "removeTransportLeg",
+        groupId: props.groupId,
+        bucket: props.bucket,
+        legId: draft.id,
+      },
+    ]);
+    if (ok) props.onClose();
+  }
+
   async function save() {
     if (!draft || !props.bucket) return;
     const commands: TripCommand[] = [];
@@ -426,22 +447,32 @@ export function EditTransportLegModal(props: {
           />
         </div>
 
-        <div className="mt-4 flex justify-end gap-2 border-t border-zinc-100 pt-3">
+        <div className="mt-4 flex items-center justify-between gap-2 border-t border-zinc-100 pt-3">
           <button
             type="button"
-            onClick={props.onClose}
-            className="rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100"
+            disabled={props.saving}
+            onClick={() => void removeLeg()}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
           >
-            Cancel
+            Delete
           </button>
-          <button
-            type="button"
-            disabled={saveDisabled}
-            onClick={() => void save()}
-            className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:bg-zinc-300"
-          >
-            Save
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={props.onClose}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={saveDisabled}
+              onClick={() => void save()}
+              className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:bg-zinc-300"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </div>
     </div>
