@@ -164,9 +164,6 @@ export function TripOsNav(props: {
             ← All trips
           </button>
         ) : null}
-        {props.saving ? (
-          <p className="mt-2 px-3 text-xs text-indigo-300/40">Saving…</p>
-        ) : null}
       </div>
     </aside>
   );

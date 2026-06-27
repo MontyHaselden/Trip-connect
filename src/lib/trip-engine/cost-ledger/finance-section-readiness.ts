@@ -8,8 +8,10 @@ import {
 import { effectiveLineTotalCents } from "./finance-grid-totals";
 import { isAllocationBalanced } from "./smart-split";
 import { allTransportLegs } from "./transport-finance-product";
+import { financeSeedAccommodationStays } from "./accommodation-finance-leg";
 import type { CostLedgerProjection, CostLineItemDraft, LineAllocationResult } from "./types";
 import type { TripEntityGraph } from "../types";
+import type { AccommodationStayDraft } from "@/lib/host/wizard/types";
 
 export type FinanceSectionAllocationStatus = {
   section: FinanceBuiltInSection;
@@ -226,6 +228,18 @@ export function stayFinanceDisplayStatus(
 ): EntityFinanceDisplayStatus {
   if (!ledger) return "none";
   return entityFinanceDisplayStatus(linkedLinesForStay(stayId, ledger), ledger);
+}
+
+/** Named calendar stays should keep finance attention visible even before ledger sync finishes. */
+export function stayFinanceDisplayStatusForStay(
+  stay: Pick<AccommodationStayDraft, "id" | "name">,
+  ledger: CostLedgerProjection | null | undefined,
+  graph: TripEntityGraph,
+): EntityFinanceDisplayStatus {
+  const status = stayFinanceDisplayStatus(stay.id, ledger);
+  if (status !== "none") return status;
+  const financeEligible = financeSeedAccommodationStays(graph).some((row) => row.id === stay.id);
+  return financeEligible ? "needs_attention" : "none";
 }
 
 export function transportLegFinanceDisplayStatus(

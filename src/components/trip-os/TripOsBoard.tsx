@@ -30,7 +30,6 @@ import { financeSectionAllocationStatus } from "@/lib/trip-engine/cost-ledger/fi
 import type { FinanceBuiltInSection } from "@/lib/trip-engine/cost-ledger/finance-sections";
 import type { EngineSectionReadiness } from "@/lib/trip-engine/types";
 
-import { TripLoadBar } from "./TripLoadBar";
 import { TripOsNav } from "./TripOsNav";
 import { TripOsWorkspace, type TripOsSection } from "./TripOsWorkspace";
 import { useTripOsEngine } from "./useTripOsEngine";
@@ -240,15 +239,9 @@ export function TripOsBoard(props: { tripId: string }) {
     [engine.data, handleNavSelect],
   );
 
-  const showLoadBar =
-    engine.loadStatus.phase !== "ready" ||
-    engine.refreshing ||
-    (!engine.data && !engine.error);
-
   if (!engine.data) {
     return (
       <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
-        <TripLoadBar status={engine.loadStatus} visible={showLoadBar} />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <TripOsNav
             activeSection={activeSection}
@@ -333,14 +326,6 @@ export function TripOsBoard(props: { tripId: string }) {
 
   return (
     <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
-      <TripLoadBar
-        status={
-          calendarBootstrapping
-            ? { phase: "building-calendar", progress: 90, message: "Building calendar…" }
-            : engine.loadStatus
-        }
-        visible={calendarBootstrapping || engine.loadStatus.phase !== "ready"}
-      />
       {engine.error ? (
         <div className="shrink-0 bg-red-50 px-4 py-2 text-sm text-red-700">{engine.error}</div>
       ) : null}

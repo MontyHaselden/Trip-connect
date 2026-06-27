@@ -353,6 +353,15 @@ export function useTripOsEngine(tripId: string) {
           forceKeepLocal: financePatchInFlightRef.current > 0,
         },
       );
+      const roster =
+        hydrated.rosterSummary ?? dataRef.current?.rosterSummary ?? EMPTY_ROSTER;
+      const costLedger = mergeOptimisticSeedsIntoCostLedger(
+        mergedCostLedger !== undefined
+          ? mergedCostLedger
+          : (dataRef.current?.costLedger ?? null),
+        graph,
+        roster,
+      );
       const hasServerCalendar =
         !context?.rebuildView && setupResponseIncludesCalendarView(hydrated);
       const view = hasServerCalendar
@@ -363,13 +372,13 @@ export function useTripOsEngine(tripId: string) {
             readiness: computeReadiness(
               graph,
               hydrated.calendarProjection!,
-              mergedCostLedger,
+              costLedger,
             ),
             conflicts: hydrated.conflicts ?? [],
           }
         : deriveEngineViewFromGraph(graph, {
             groupId: viewGroupId,
-            costLedger: mergedCostLedger,
+            costLedger,
           });
       const next: EngineState = {
         graph: view.graph,
@@ -379,11 +388,8 @@ export function useTripOsEngine(tripId: string) {
         warnings: hydrated.warnings ?? dataRef.current?.warnings ?? [],
         conflicts: view.conflicts,
         inviteCode: hydrated.inviteCode ?? dataRef.current?.inviteCode ?? "",
-        rosterSummary: hydrated.rosterSummary ?? dataRef.current?.rosterSummary ?? EMPTY_ROSTER,
-        costLedger:
-          mergedCostLedger !== undefined
-            ? mergedCostLedger
-            : (dataRef.current?.costLedger ?? null),
+        rosterSummary: roster,
+        costLedger,
       };
       setActiveGroupId(viewGroupId);
       setData(next);
@@ -549,7 +555,7 @@ export function useTripOsEngine(tripId: string) {
             conflicts: body.conflicts ?? [],
             inviteCode: body.inviteCode ?? "",
             rosterSummary: body.rosterSummary ?? EMPTY_ROSTER,
-            costLedger: body.costLedger ?? null,
+            costLedger: body.costLedger ?? dataRef.current?.costLedger ?? null,
           });
         });
         setSaveStatus("idle");
@@ -928,7 +934,11 @@ export function useTripOsEngine(tripId: string) {
         const merged = mergeCostLedgerForGraph(prev.costLedger, body.costLedger, prev.graph, {
           forceKeepLocal: financePatchInFlightRef.current > 0,
         });
-        const costLedger = merged ?? body.costLedger!;
+        const costLedger = mergeOptimisticSeedsIntoCostLedger(
+          merged ?? body.costLedger!,
+          prev.graph,
+          prev.rosterSummary ?? EMPTY_ROSTER,
+        );
         remapOptimisticFinanceLineIds(costLedger, optimisticLineMapRef.current);
         persistLocalSnapshot(prev.graph, { costLedger });
         return { ...prev, costLedger };

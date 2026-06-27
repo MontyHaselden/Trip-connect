@@ -267,10 +267,6 @@ export function CalendarPersonLens(props: {
         ) : null}
       </div>
 
-      {lensBusy ? (
-        <p className="max-w-[14rem] text-right text-[10px] text-zinc-500">Saving…</p>
-      ) : null}
-
       {sharedWith.length > 0 && selectedPerson ? (
         <p className="max-w-[14rem] text-right text-[10px] text-amber-700">
           Also affects {sharedWith.join(", ")}

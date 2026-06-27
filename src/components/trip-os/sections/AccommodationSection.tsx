@@ -6,7 +6,7 @@ import { homestayPeriodStays, nonHomestayStays } from "@/lib/host/accommodation/
 import { stayTypeLabel } from "@/lib/host/accommodation/stay-type-labels";
 import type { AccommodationStayDraft } from "@/lib/host/wizard/types";
 import {
-  stayFinanceDisplayStatus,
+  stayFinanceDisplayStatusForStay,
   stayFinanceAttentionById,
   stayFinanceAttentionReason,
   stayFinanceLineId,
@@ -252,7 +252,13 @@ export function AccommodationSection(props: {
           headerAction={scopeHeaderAction(scope)}
         />
         <ul className="space-y-2">
-          {scope.items.map((s) => (
+          {scope.items.map((s) => {
+            const financeStatus = stayFinanceDisplayStatusForStay(
+              s,
+              props.costLedger,
+              props.graph,
+            );
+            return (
             <StayListItem
               key={s.id}
               stay={s}
@@ -263,17 +269,18 @@ export function AccommodationSection(props: {
                 Boolean(s.name?.trim())
               }
               onAddRooms={() => openRoomsForStay(scope.groupId, s.id)}
-              financeStatus={stayFinanceDisplayStatus(s.id, props.costLedger)}
+              financeStatus={financeStatus}
               financeAttentionReason={stayFinanceAttentionReason(s.id, props.costLedger)}
               onOpenFinance={() => openStayFinance(s.id)}
               showFinanceActions={
-                stayFinanceDisplayStatus(s.id, props.costLedger) === "needs_attention" &&
+                financeStatus === "needs_attention" &&
                 Boolean(props.onCostsAction)
               }
               saving={props.saving}
               onMarkTbc={() => void markStayTbc(s.id)}
             />
-          ))}
+            );
+          })}
         </ul>
       </div>
     );

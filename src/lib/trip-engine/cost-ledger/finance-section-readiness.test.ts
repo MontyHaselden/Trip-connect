@@ -12,6 +12,7 @@ import {
   lineNeedsFinanceAllocation,
   stayFinanceAttentionById,
   stayFinanceDisplayStatus,
+  stayFinanceDisplayStatusForStay,
   transportLegFinanceAttentionById,
 } from "./finance-section-readiness";
 import type { CostLineItemDraft } from "./types";
@@ -301,6 +302,30 @@ describe("finance section readiness", () => {
     assert.equal(stayFinanceDisplayStatus("stay-1", ledger), "needs_attention");
     assert.equal(stayFinanceDisplayStatus("stay-2", ledger), "complete");
     assert.equal(stayFinanceDisplayStatus("stay-missing", ledger), "none");
+  });
+
+  it("shows accommodation finance attention before ledger sync when stay is named", () => {
+    const graph = {
+      mainGroupId: "main",
+      accommodationStays: [
+        {
+          id: "stay-1",
+          name: "Hotel Villa Fontaine",
+          cityLabel: "Tokyo",
+          checkInDate: "2026-12-05",
+          checkOutDate: "2026-12-06",
+          originGroupId: "main",
+        },
+      ],
+    } as TripEntityGraph;
+    assert.equal(
+      stayFinanceDisplayStatusForStay(
+        graph.accommodationStays[0]!,
+        null,
+        graph,
+      ),
+      "needs_attention",
+    );
   });
 
   it("treats activity lines marked no_cost as finance-complete without a price", () => {
