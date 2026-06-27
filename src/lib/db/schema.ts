@@ -1063,6 +1063,8 @@ export const groupDayPlaces = pgTable(
       .notNull()
       .references(() => groups.id, { onDelete: "cascade" }),
     date: date("date").notNull(),
+    amCity: text("am_city").notNull().default(""),
+    pmCity: text("pm_city").notNull().default(""),
     primaryCity: text("primary_city").notNull().default(""),
     secondaryCity: text("secondary_city"),
     primaryShare: numeric("primary_share", { precision: 4, scale: 3 })

@@ -1,6 +1,12 @@
 import { deriveCalendarState } from "@/lib/host/setup/derive-calendar";
 import { effectiveTripBoundsFromState } from "@/lib/host/setup/sync-trip-bounds";
+import {
+  dayPlacesToSlices,
+  mergeOverrides,
+  slicesToDayPlaces,
+} from "@/lib/calendar-core";
 import { enumerateDates } from "@/lib/host/wizard/location-stays";
+import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import type {
   CalendarProjection,
   ProjectedDay,
@@ -11,13 +17,10 @@ import type { ActivityDraft } from "@/lib/host/wizard/types";
 import { activitiesForCalendarView } from "./person-lens";
 import { calendarContentScopeForGroup, dayPlacesForGroup } from "./selectors";
 import { activityToMarker, filterCalendarDotActivities } from "./calendar-activity-dots";
-import { resolveDisplayDayPlaces } from "./resolve-display-day-places";
 import {
   participantInheritsMainCalendar,
-  participantUsesLocationOverlayProjection,
   personalGroupForGroupId,
 } from "./person-lens";
-import { mergeParticipantLocationOverlay } from "./merge-participant-location-overlay";
 
 export type ProjectCalendarOptions = {
   groupId?: string;
@@ -26,7 +29,18 @@ export type ProjectCalendarOptions = {
   gridEnd?: string;
 };
 
-function emptyDay(date: string, groupId: string): ProjectedDay {
+function emptyDayPlace(date: string): DayPlaceDraft {
+  return {
+    date,
+    primaryCity: "",
+    secondaryCity: null,
+    primaryShare: 1,
+    dayType: "trip",
+    includeBuffer: false,
+  };
+}
+
+function emptyProjectedDay(date: string, groupId: string): ProjectedDay {
   return {
     date,
     groupId,
@@ -40,6 +54,43 @@ function emptyDay(date: string, groupId: string): ProjectedDay {
     warnings: [],
     overlayMeta: "inherit",
   };
+}
+
+function storedDaysForGroup(graph: TripEntityGraph, groupId: string): DayPlaceDraft[] {
+  const mainSlices = dayPlacesToSlices(dayPlacesForGroup(graph, graph.mainGroupId));
+  const groupSlices = dayPlacesToSlices(dayPlacesForGroup(graph, groupId));
+
+  if (groupId === graph.mainGroupId) {
+    return slicesToDayPlaces(mainSlices);
+  }
+
+  if (participantInheritsMainCalendar(graph, groupId)) {
+    return slicesToDayPlaces(mainSlices);
+  }
+
+  const personal = personalGroupForGroupId(graph, groupId);
+  if (personal?.inheritMode === "independent") {
+    return slicesToDayPlaces(groupSlices);
+  }
+
+  return slicesToDayPlaces(mergeOverrides(mainSlices, groupSlices, "override"));
+}
+
+function overlayMetaForDay(
+  graph: TripEntityGraph,
+  groupId: string,
+  date: string,
+  day: DayPlaceDraft,
+): ProjectedDay["overlayMeta"] {
+  if (groupId === graph.mainGroupId) return "inherit";
+  const personal = personalGroupForGroupId(graph, groupId);
+  if (!personal || participantInheritsMainCalendar(graph, groupId)) return "inherit";
+  if (personal.inheritMode === "independent") return "override";
+  const stored = dayPlacesForGroup(graph, groupId);
+  const hasOverride = stored.some((d) => d.date === date);
+  if (!hasOverride) return "inherit";
+  const hasPaint = Boolean(day.primaryCity.trim() || day.secondaryCity?.trim());
+  return hasPaint ? "override" : "inherit";
 }
 
 function indexCalendarActivitiesByDate(
@@ -58,21 +109,6 @@ function indexCalendarActivitiesByDate(
   return map;
 }
 
-function resolveSubgroupDays(main: ProjectedDay[], overlay: ProjectedDay[]): ProjectedDay[] {
-  const mainByDate = new Map(main.map((d) => [d.date, d]));
-  const overlayByDate = new Map(overlay.map((d) => [d.date, d]));
-  const dates = new Set([...mainByDate.keys(), ...overlayByDate.keys()]);
-  return [...dates].sort().map((date) => {
-    const o = overlayByDate.get(date);
-    const m = mainByDate.get(date);
-    if (!o) return m ?? emptyDay(date, main[0]?.groupId ?? "");
-    if (!m) return { ...o, overlayMeta: "add" as const };
-    const hasOverlayPaint = Boolean(o.primaryCity.trim() || o.secondaryCity?.trim());
-    if (hasOverlayPaint) return { ...o, overlayMeta: "override" as const };
-    return { ...m, overlayMeta: "inherit" as const };
-  });
-}
-
 export function projectCalendar(
   graph: TripEntityGraph,
   options?: ProjectCalendarOptions,
@@ -82,41 +118,7 @@ export function projectCalendar(
   const gridStart = options?.gridStart ?? bounds.startDate;
   const gridEnd = options?.gridEnd ?? bounds.endDate;
 
-  if (groupId !== graph.mainGroupId && participantInheritsMainCalendar(graph, groupId)) {
-    const main = projectCalendar(graph, {
-      ...options,
-      groupId: graph.mainGroupId,
-      gridStart,
-      gridEnd,
-    });
-    if (groupId === graph.mainGroupId) return main;
-    return {
-      ...main,
-      groupId,
-      days: main.days.map((day) => ({
-        ...day,
-        groupId,
-        overlayMeta: "inherit" as const,
-      })),
-    };
-  }
-
-  if (groupId !== graph.mainGroupId && participantUsesLocationOverlayProjection(graph, groupId)) {
-    const main = projectCalendar(graph, {
-      ...options,
-      groupId: graph.mainGroupId,
-      gridStart,
-      gridEnd,
-    });
-    const storedOverlay = dayPlacesForGroup(graph, groupId);
-    const days = mergeParticipantLocationOverlay(main.days, storedOverlay).map((day) => ({
-      ...day,
-      groupId,
-    }));
-    return { ...main, groupId, days };
-  }
-
-  const storedDays = dayPlacesForGroup(graph, groupId);
+  const storedDays = storedDaysForGroup(graph, groupId);
   const scope = calendarContentScopeForGroup(graph, groupId);
 
   const derived = deriveCalendarState({
@@ -140,64 +142,38 @@ export function projectCalendar(
     inferLocationsFromTransport: false,
   });
 
-  const displayDays = resolveDisplayDayPlaces(storedDays, derived.dayPlaces, gridStart, gridEnd);
-
+  const storedByDate = new Map(storedDays.map((day) => [day.date, day]));
   const groupActivities = activitiesForCalendarView(graph, groupId);
   const activitiesOnDate = indexCalendarActivitiesByDate(groupActivities);
 
-  const baseDays: ProjectedDay[] = displayDays.map((day) => {
-    const onDate = activitiesOnDate.get(day.date) ?? [];
+  const days: ProjectedDay[] = enumerateDates(gridStart, gridEnd).map((date) => {
+    const day = storedByDate.get(date) ?? emptyDayPlace(date);
+    const onDate = activitiesOnDate.get(date) ?? [];
     const activities: ActivityMarker[] = onDate.map(activityToMarker);
-
     const warnings: ProjectedDay["warnings"] = [];
-    if (derived.accommodationByDate.has(day.date) && !day.primaryCity.trim() && !day.secondaryCity?.trim()) {
+
+    if (derived.accommodationByDate.has(date) && !day.primaryCity.trim() && !day.secondaryCity?.trim()) {
       warnings.push({
-        id: `accom-no-city-${day.date}`,
-        message: `Accommodation without city paint on ${day.date}`,
+        id: `accom-no-city-${date}`,
+        message: `Accommodation without city paint on ${date}`,
         severity: "warning",
       });
     }
 
     return {
-      date: day.date,
+      date,
       groupId,
       primaryCity: day.primaryCity,
       secondaryCity: day.secondaryCity,
       primaryShare: day.primaryShare,
       dayType: day.dayType,
-      accommodationLabel: derived.accommodationByDate.get(day.date) ?? null,
+      accommodationLabel: derived.accommodationByDate.get(date) ?? null,
       transportOverlays: [],
       activities,
       warnings,
-      overlayMeta: "inherit",
+      overlayMeta: overlayMetaForDay(graph, groupId, date, day),
     };
   });
-
-  let days = baseDays;
-  if (groupId !== graph.mainGroupId) {
-    const personal = personalGroupForGroupId(graph, groupId);
-    const skipMainMerge =
-      personal?.inheritMode === "independent" ||
-      participantUsesLocationOverlayProjection(graph, groupId);
-    if (!skipMainMerge) {
-      const mainProjection = projectCalendar(graph, {
-        groupId: graph.mainGroupId,
-        gridStart,
-        gridEnd,
-        overlayStoredLocationGaps: true,
-      });
-      days = resolveSubgroupDays(mainProjection.days, baseDays);
-    }
-  }
-
-  const dayIndex = new Set(days.map((d) => d.date));
-  for (const date of enumerateDates(gridStart, gridEnd)) {
-    if (!dayIndex.has(date)) {
-      days.push(emptyDay(date, groupId));
-      dayIndex.add(date);
-    }
-  }
-  days.sort((a, b) => a.date.localeCompare(b.date));
 
   return {
     groupId,
@@ -207,4 +183,11 @@ export function projectCalendar(
     accommodationByDate: derived.accommodationByDate,
     boundaries: derived.boundaries,
   };
+}
+
+export function projectMainCalendar(
+  graph: TripEntityGraph,
+  options?: Omit<ProjectCalendarOptions, "groupId">,
+): CalendarProjection {
+  return projectCalendar(graph, { ...options, groupId: graph.mainGroupId });
 }

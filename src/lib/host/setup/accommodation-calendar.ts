@@ -1,7 +1,8 @@
 import { placesShareMetro } from "@/lib/geo/airport-codes";
 import { inferCityLabelFromAddress } from "@/lib/geo/accommodation-search";
 import { metroDisplayLabel } from "@/lib/host/setup/infer-flight-calendar";
-import { inferDayPlacesFromStay, normalizeInteriorStayDays } from "@/lib/host/setup-inference";
+import { alignStayToSlices, dayPlacesToSlices, slicesToDayPlaces } from "@/lib/calendar-core";
+import { normalizeInteriorStayDays } from "@/lib/host/setup-inference";
 import { fillAccommodationInteriorGaps } from "@/lib/host/setup/fill-accommodation-gaps";
 import { inferStaysFromDayPlaces, getEmptyHalf, locationsMatch } from "@/lib/host/wizard/location-stays";
 import { arrivalDate, isLateArrival } from "@/lib/host/wizard/transport-day-placement";
@@ -414,22 +415,14 @@ export function alignAccommodationStaysToLocationStays(
 export function applyStaysToDayPlaces(
   dayPlaces: DayPlaceDraft[],
   stays: AccommodationStayDraft[],
-  options?: { replaceStayIds?: Set<string> },
+  _options?: { replaceStayIds?: Set<string> },
 ): DayPlaceDraft[] {
-  let result = dayPlaces;
+  let slices = dayPlacesToSlices(dayPlaces);
   for (const stay of stays) {
     const city = stayCityLabel(stay);
     if (!city) continue;
-    const replaceExisting = options?.replaceStayIds?.has(stay.id) ?? false;
-    result = inferDayPlacesFromStay(
-      result,
-      {
-        cityLabel: city,
-        checkInDate: stay.checkInDate,
-        checkOutDate: stay.checkOutDate,
-      },
-      replaceExisting ? { replaceExisting: true } : undefined,
-    );
+    slices = alignStayToSlices(slices, city, stay.checkInDate, stay.checkOutDate);
   }
-  return fillAccommodationInteriorGaps(normalizeInteriorStayDays(result, stays), stays);
+  const days = slicesToDayPlaces(slices);
+  return fillAccommodationInteriorGaps(normalizeInteriorStayDays(days, stays), stays);
 }

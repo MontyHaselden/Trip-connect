@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { sanitizeDayType } from "@/lib/trip-engine/sanitize-day-place";
+import { dayPlaceToSlice, sliceToDayPlace } from "@/lib/calendar-core/adapters";
 import {
   groupDayPlaces,
   groupOverlayOps,
@@ -36,6 +37,12 @@ import { mainAccommodationStays, mainIntercityLegs, mainTransportLegs } from "./
 import type { GroupOverlayOpDraft, TripSetupState } from "./types";
 
 function travelCalendarLabel(day: DayPlaceDraft): string | null {
+  const slice = dayPlaceToSlice(day);
+  const am = slice.amCity.trim();
+  const pm = slice.pmCity.trim();
+  if (am && pm && am !== pm) return `${am} → ${pm}`;
+  if (am && pm && am === pm) return null;
+  if (am && pm) return `${am} / ${pm}`;
   if (day.dayType === "travel" && day.secondaryCity?.trim()) {
     return `${day.primaryCity} → ${day.secondaryCity}`;
   }
@@ -84,18 +91,24 @@ export async function syncGroupDayPlaces(
   const UPSERT_CHUNK = 50;
   for (let i = 0; i < normalizedDays.length; i += UPSERT_CHUNK) {
     const chunk = normalizedDays.slice(i, i + UPSERT_CHUNK);
-    const rows = chunk.map((day) => ({
-      tripId,
-      groupId,
-      date: day.date,
-      primaryCity: day.primaryCity,
-      secondaryCity: day.secondaryCity,
-      primaryShare: String(normalizeDayShare(day.primaryShare)),
-      dayType: sanitizeDayType(day.dayType),
-      calendarLabel: travelCalendarLabel(day),
-      weatherLocationQuery: day.primaryCity.trim() || null,
-      updatedAt,
-    }));
+    const rows = chunk.map((day) => {
+      const slice = dayPlaceToSlice(day);
+      const legacy = sliceToDayPlace(slice);
+      return {
+        tripId,
+        groupId,
+        date: day.date,
+        amCity: slice.amCity,
+        pmCity: slice.pmCity,
+        primaryCity: legacy.primaryCity,
+        secondaryCity: legacy.secondaryCity,
+        primaryShare: String(normalizeDayShare(legacy.primaryShare)),
+        dayType: sanitizeDayType(day.dayType),
+        calendarLabel: travelCalendarLabel(day),
+        weatherLocationQuery: slice.amCity.trim() || slice.pmCity.trim() || null,
+        updatedAt,
+      };
+    });
 
     await db
       .insert(groupDayPlaces)
@@ -103,6 +116,8 @@ export async function syncGroupDayPlaces(
       .onConflictDoUpdate({
         target: [groupDayPlaces.tripId, groupDayPlaces.groupId, groupDayPlaces.date],
         set: {
+          amCity: sql`excluded.am_city`,
+          pmCity: sql`excluded.pm_city`,
           primaryCity: sql`excluded.primary_city`,
           secondaryCity: sql`excluded.secondary_city`,
           primaryShare: sql`excluded.primary_share`,

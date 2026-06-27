@@ -48,7 +48,7 @@ import {
   stayInheritsFromMainGroup,
   staysForCalendarView,
 } from "@/lib/trip-engine/person-lens";
-import { isCitySplitDay } from "@/lib/trip-engine/paint-location-preflight";
+import { isCitySplitDay } from "@/lib/calendar-core";
 import {
   cityOnHalf,
   enumerateDates,

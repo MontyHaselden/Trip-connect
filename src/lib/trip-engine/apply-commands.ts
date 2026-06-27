@@ -20,13 +20,7 @@ import {
   shiftTripDates,
 } from "@/lib/host/setup/set-trip-date-range";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
-import { enumerateDates } from "@/lib/host/wizard/location-stays";
-import { mergeSetDayPlacesDays } from "./sanitize-day-place";
-import { paintLocationDayRange, paintLocationDayRangeProtected } from "./paint-day-range";
-import {
-  extractPersonalLocationOverlayDelta,
-  mergeMainWithPersonalOverlay,
-} from "./personal-location-overlay";
+import { paintDayRangeForGroup, setDayPlacesForGroup } from "@/lib/calendar-core/graph-bridge";
 import { personalGroupForGroupId } from "./person-lens";
 import { pruneStalePersonalTransportLegs } from "./prune-stale-personal-transport-legs";
 import { normalizeCommand, type TripCommand } from "./commands";
@@ -118,31 +112,6 @@ function dayHasPaint(day: { primaryCity: string; secondaryCity?: string | null }
   return Boolean(day.primaryCity.trim() || day.secondaryCity?.trim());
 }
 
-/** Keep location paint outside the edited range; replace days inside the range. */
-function mergeLocationPaintIntoGroup(
-  existing: DayPlaceDraft[],
-  painted: DayPlaceDraft[],
-  rangeStart: string,
-  rangeEnd: string,
-): DayPlaceDraft[] {
-  const end = rangeEnd || rangeStart;
-  const paintedByDate = new Map(painted.map((day) => [day.date, day]));
-  const byDate = new Map(existing.map((day) => [day.date, day]));
-
-  for (const date of enumerateDates(rangeStart, end)) {
-    const next = paintedByDate.get(date);
-    if (next) {
-      byDate.set(date, next);
-      continue;
-    }
-    byDate.delete(date);
-  }
-
-  return [...byDate.values()]
-    .filter((day) => dayHasPaint(day))
-    .sort((a, b) => a.date.localeCompare(b.date));
-}
-
 function applyPersonalCalendarSideEffects(
   graph: TripEntityGraph,
   groupId: string,
@@ -154,7 +123,7 @@ function applyPersonalCalendarSideEffects(
 function applyPersonalLocationPaint(
   graph: TripEntityGraph,
   groupId: string,
-  painted: ReturnType<typeof paintLocationDayRange>,
+  painted: DayPlaceDraft[],
 ): TripEntityGraph {
   const personal = personalGroupForGroupId(graph, groupId);
   const groups =
@@ -494,69 +463,9 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
       }
       const endDate = rangeEnd || rangeStart;
 
-      if (personalGroupForGroupId(graph, groupId)) {
-        const personal = personalGroupForGroupId(graph, groupId)!;
-        const paintedArgs = [
-          rangeStart,
-          endDate,
-          location.trim(),
-          startHalf,
-          endHalf,
-        ] as const;
-
-        if (personal.inheritMode === "independent") {
-          const dayPlaces = graph.dayPlacesByGroupId[groupId] ?? [];
-          const painted = paintLocationDayRangeProtected(dayPlaces, ...paintedArgs);
-          const merged = mergeLocationPaintIntoGroup(
-            dayPlaces,
-            painted,
-            rangeStart,
-            endDate,
-          );
-          return ok(
-            mergeGraphState(
-              graph,
-              applyPersonalCalendarSideEffects(
-                {
-                  ...graph,
-                  dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: merged },
-                },
-                groupId,
-              ),
-            ),
-            warnings,
-          );
-        }
-
-        const mainDays = graph.dayPlacesByGroupId[graph.mainGroupId] ?? [];
-        const storedOverlay = graph.dayPlacesByGroupId[groupId] ?? [];
-        const base = mergeMainWithPersonalOverlay(graph, groupId);
-        const painted = paintLocationDayRangeProtected(base, ...paintedArgs, {
-          transitionContextDays: mainDays,
-          protectOriginals: storedOverlay,
-        });
-        const overlayOnly = extractPersonalLocationOverlayDelta(
-          mainDays,
-          painted,
-          graph.dayPlacesByGroupId[groupId] ?? [],
-          rangeStart,
-          endDate,
-        );
-        return ok(
-          mergeGraphState(
-            graph,
-            applyPersonalCalendarSideEffects(
-              applyPersonalLocationPaint(graph, groupId, overlayOnly),
-              groupId,
-            ),
-          ),
-          warnings,
-        );
-      }
-
-      const dayPlaces = graph.dayPlacesByGroupId[groupId] ?? [];
-      const painted = paintLocationDayRangeProtected(
-        dayPlaces,
+      const painted = paintDayRangeForGroup(
+        graph,
+        groupId,
         rangeStart,
         endDate,
         location.trim(),
@@ -568,10 +477,13 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
 
       if (!needsReplan) {
         return ok(
-          {
-            ...graph,
-            dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: painted },
-          },
+          mergeGraphState(
+            graph,
+            applyPersonalCalendarSideEffects(
+              applyPersonalLocationPaint(graph, groupId, painted),
+              groupId,
+            ),
+          ),
           warnings,
         );
       }
@@ -587,12 +499,13 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         rangeStart,
         endDate,
       );
-      const next = syncTripBoundsFromContent({
+      const nextState = syncTripBoundsFromContent({
         ...graph,
         accommodationStays: mergeAccommodationStays(graph, groupId, trimmedStays),
         dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: painted },
       });
-      return ok(mergeGraphState(graph, next), warnings);
+      const nextGraph = mergeGraphState(graph, nextState);
+      return ok(applyPersonalCalendarSideEffects(nextGraph, groupId), warnings);
     }
 
     case "clearDayRange": {
@@ -612,46 +525,20 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
     }
 
     case "setDayPlaces": {
+      const painted = setDayPlacesForGroup(graph, command.groupId, command.days);
+
       if (personalGroupForGroupId(graph, command.groupId)) {
-        const personal = personalGroupForGroupId(graph, command.groupId)!;
-
-        if (personal.inheritMode === "independent") {
-          const existing = graph.dayPlacesByGroupId[command.groupId] ?? [];
-          const merged = mergeSetDayPlacesDays(existing, command.days);
-          const next = syncTripBoundsFromContent({
-            ...graph,
-            dayPlacesByGroupId: {
-              ...graph.dayPlacesByGroupId,
-              [command.groupId]: merged,
-            },
-          });
-          return ok(
-            applyPersonalCalendarSideEffects(
-              mergeGraphState(graph, next),
-              command.groupId,
-            ),
-            warnings,
-          );
-        }
-
-        const mainDays = graph.dayPlacesByGroupId[graph.mainGroupId] ?? [];
-        const dates = command.days.map((d) => d.date).filter(Boolean);
-        const rangeStart = dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : "";
-        const rangeEnd = dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : "";
-        const overlayOnly = extractPersonalLocationOverlayDelta(
-          mainDays,
-          command.days,
-          graph.dayPlacesByGroupId[command.groupId] ?? [],
-          rangeStart,
-          rangeEnd,
-        );
+        const synced = syncTripBoundsFromContent({
+          ...graph,
+          dayPlacesByGroupId: {
+            ...graph.dayPlacesByGroupId,
+            [command.groupId]: painted,
+          },
+        });
         return ok(
-          mergeGraphState(
-            graph,
-            applyPersonalCalendarSideEffects(
-              applyPersonalLocationPaint(graph, command.groupId, overlayOnly),
-              command.groupId,
-            ),
+          applyPersonalCalendarSideEffects(
+            mergeGraphState(graph, synced),
+            command.groupId,
           ),
           warnings,
         );
@@ -662,7 +549,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
           ...graph,
           dayPlacesByGroupId: {
             ...graph.dayPlacesByGroupId,
-            [command.groupId]: command.days,
+            [command.groupId]: painted,
           },
         },
         command.groupId,

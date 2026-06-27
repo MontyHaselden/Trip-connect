@@ -64,7 +64,7 @@ describe("projectCalendar", () => {
     assert.ok(projection.days.length > 0);
   });
 
-  it("location-only participant overlay keeps main logistics and repairs travel day", () => {
+  it("location-only participant overlay keeps main logistics and explicit travel day override", () => {
     const graph = setupStateToGraph("trip-1", {
       ...stateWithStay(),
       groups: [
@@ -117,6 +117,14 @@ describe("projectCalendar", () => {
             dayType: "trip" as const,
             includeBuffer: false,
           })),
+          {
+            date: "2026-08-31",
+            primaryCity: "Tottori",
+            secondaryCity: "Tokyo",
+            primaryShare: 0.5,
+            dayType: "travel" as const,
+            includeBuffer: false,
+          },
         ],
       },
       intercityLegs: [

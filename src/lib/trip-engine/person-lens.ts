@@ -261,6 +261,21 @@ export function participantHasLocationOnlyOverrides(
   );
 }
 
+/** Calendar storage mode for a personal group. */
+export function groupCalendarMode(
+  graph: TripEntityGraph,
+  groupId: string,
+): "inherit" | "override" {
+  if (groupId === graph.mainGroupId) return "inherit";
+  const personal = personalGroupForGroupId(graph, groupId);
+  if (!personal) return "inherit";
+  if (personal.inheritMode === "independent" || personal.inheritMode === "overlay") {
+    return "override";
+  }
+  if (participantInheritsMainCalendar(graph, groupId)) return "inherit";
+  return "override";
+}
+
 /** Project participant calendar from main plan + location overlay only. */
 export function participantUsesLocationOverlayProjection(
   graph: TripEntityGraph,

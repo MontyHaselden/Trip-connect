@@ -344,6 +344,8 @@ export async function buildSnapshotV1(
         id: groupDayPlaces.id,
         groupId: groupDayPlaces.groupId,
         date: groupDayPlaces.date,
+        amCity: groupDayPlaces.amCity,
+        pmCity: groupDayPlaces.pmCity,
         primaryCity: groupDayPlaces.primaryCity,
         secondaryCity: groupDayPlaces.secondaryCity,
         primaryShare: groupDayPlaces.primaryShare,

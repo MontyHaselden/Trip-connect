@@ -1,10 +1,12 @@
 import { applyStaysToDayPlaces, stayCityLabel } from "@/lib/host/setup/accommodation-calendar";
 import { stayDatesForSelection } from "@/lib/host/setup/day-selection-setup";
-import { clearAllLocationInSpan } from "@/lib/trip-engine/paint-day-range";
 import {
   clearPersonalOverlayLocationInSpan,
+  clearRange,
+  dayPlacesToSlices,
   isPersonalOverlayGroup,
-} from "@/lib/trip-engine/personal-location-overlay";
+  slicesToDayPlaces,
+} from "@/lib/calendar-core";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import {
   groupAccommodationStays,
@@ -349,9 +351,8 @@ export function removeAccommodationAndCitiesFromRange(
       withGaps = applyStaysToDayPlaces(withGaps, remainingStays);
     }
   } else {
-    const cleared = clearAllLocationInSpan(
-      [...repaintedOutside, ...daysInsideRange],
-      halfSelection,
+    const cleared = slicesToDayPlaces(
+      clearRange(dayPlacesToSlices([...repaintedOutside, ...daysInsideRange]), halfSelection),
     );
     withGaps = staysWereModified
       ? applyStaysToDayPlaces(cleared, remainingStays)

@@ -1,7 +1,7 @@
 import type { IntercityLegDraft } from "@/lib/host/wizard/types";
 
 import { participantCalendarFollowsTransportLeg } from "./cost-ledger/presence";
-import { mergeMainWithPersonalOverlay } from "./personal-location-overlay";
+import { projectedDayPlacesForGroup } from "@/lib/calendar-core";
 import { personalGroupForGroupId } from "./person-lens";
 import type { ResolvedParticipantPlan } from "./resolve-participant-graph";
 import { dayPlacesForGroup } from "./selectors";
@@ -14,11 +14,23 @@ function planForPersonalGroup(
   const personal = personalGroupForGroupId(graph, groupId);
   if (!personal?.personalForParticipantId) return null;
 
-  const mode = personal.inheritMode === "independent" ? "independent" : "overlay";
-  const days =
-    mode === "independent"
-      ? dayPlacesForGroup(graph, groupId)
-      : mergeMainWithPersonalOverlay(graph, groupId);
+  const storageMode =
+    personal.inheritMode === "independent"
+      ? "independent"
+      : personal.inheritMode === "overlay"
+        ? "overlay"
+        : "inherit";
+  const mode: ResolvedParticipantPlan["mode"] =
+    storageMode === "independent"
+      ? "independent"
+      : storageMode === "overlay"
+        ? "overlay"
+        : "main";
+  const days = projectedDayPlacesForGroup(
+    dayPlacesForGroup(graph, graph.mainGroupId),
+    dayPlacesForGroup(graph, groupId),
+    storageMode,
+  );
 
   const legIds = new Set(
     graph.intercityLegs.filter((leg) => leg.originGroupId === groupId).map((leg) => leg.id),

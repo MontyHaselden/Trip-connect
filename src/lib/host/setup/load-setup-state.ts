@@ -12,20 +12,32 @@ import { loadTripLocationState } from "@/lib/host/locations/trip-location-state"
 import { repairTransportLegsFromLookup, repairTransportLegsSync } from "@/lib/host/setup/repair-transport-legs";
 import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import { repairTransportGraphSync } from "@/lib/trip-engine/repair-transport-graph";
-import { repairMisplacedSecondaryHalfDays } from "@/lib/trip-engine/sanitize-day-place";
 import { gridBoundsForTripLoad } from "@/lib/trip-engine/grid-bounds-for-load";
 import { graphToSetupState, setupStateToGraph } from "@/lib/trip-engine/adapters";
+import { sliceToDayPlace } from "@/lib/calendar-core/adapters";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
 import type { GroupOverlayOpDraft, SetupGroup, TripSetupState } from "./types";
 
 function rowToDayPlace(row: {
   date: string;
+  amCity?: string | null;
+  pmCity?: string | null;
   primaryCity: string;
   secondaryCity: string | null;
   primaryShare: string | number;
   dayType: string | null;
 }): DayPlaceDraft {
+  const am = row.amCity?.trim() ?? "";
+  const pm = row.pmCity?.trim() ?? "";
+  if (am || pm) {
+    return sliceToDayPlace({
+      date: row.date,
+      amCity: am,
+      pmCity: pm,
+      dayType: (row.dayType ?? "trip") as DayPlaceDraft["dayType"],
+    });
+  }
   return {
     date: row.date,
     primaryCity: row.primaryCity,
@@ -177,17 +189,13 @@ export async function loadTripSetupState(
   }
 
   const mainDays = state.dayPlacesByGroupId[state.mainGroupId] ?? [];
-  const repairedMainDays = repairMisplacedSecondaryHalfDays(
-    mainDays,
-    state.accommodationStays,
-  );
 
   const repairedState = options?.skipFlightLookup
     ? {
         ...state,
         dayPlacesByGroupId: {
           ...state.dayPlacesByGroupId,
-          [state.mainGroupId]: repairedMainDays,
+          [state.mainGroupId]: mainDays,
         },
       }
     : graphToSetupState(
@@ -198,7 +206,7 @@ export async function loadTripSetupState(
               ...state,
               dayPlacesByGroupId: {
                 ...state.dayPlacesByGroupId,
-                [state.mainGroupId]: repairedMainDays,
+                [state.mainGroupId]: mainDays,
               },
             }),
           ),

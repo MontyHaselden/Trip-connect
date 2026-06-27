@@ -213,6 +213,8 @@ The graph is the data truth.
 The calendar is the main interactive visual editor/projection of that truth.
 ```
 
+**Calendar slice model (June 2026):** Location paint is stored as explicit `am_city` / `pm_city` halves per group per day in `group_day_places`. All mutations go through `src/lib/calendar-core/` (`paintRange`, `mergeOverrides`, `clearRange`). See [`CALENDAR_SLICE_SPEC.md`](./CALENDAR_SLICE_SPEC.md). Projection reads stored slices only — no display-time repair or overlay delta merge.
+
 The calendar must not be passive.
 
 The host should be able to:
