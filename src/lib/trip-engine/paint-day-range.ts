@@ -14,6 +14,13 @@ import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
 import { protectTravelSplitDays, isTravelSplitDay } from "./paint-location-preflight";
 
+export type PaintLocationDayRangeOptions = {
+  /** Adjacent-day context for arrival/departure half-days (e.g. main group when painting personal overlay). */
+  transitionContextDays?: DayPlaceDraft[];
+  /** Only restore travel splits that existed here; defaults to the full `days` input. */
+  protectOriginals?: DayPlaceDraft[];
+};
+
 function emptyDay(date: string): DayPlaceDraft {
   return {
     date,
@@ -555,9 +562,11 @@ function priorDepartCityForRangeStart(
   days: DayPlaceDraft[],
   rangeStart: string,
   location: string,
+  contextDays?: DayPlaceDraft[],
 ): string | null {
+  const contextByDate = new Map((contextDays ?? days).map((d) => [d.date, d]));
   const byDate = new Map(days.map((d) => [d.date, d]));
-  const prev = byDate.get(addDays(rangeStart, -1));
+  const prev = contextByDate.get(addDays(rangeStart, -1));
   if (prev) {
     const city = endingCityOnDay(prev);
     if (city && !locationsMatch(city, location)) return city;
@@ -574,9 +583,11 @@ function nextArrivalCityForRangeEnd(
   days: DayPlaceDraft[],
   rangeEnd: string,
   location: string,
+  contextDays?: DayPlaceDraft[],
 ): string | null {
+  const contextByDate = new Map((contextDays ?? days).map((d) => [d.date, d]));
   const byDate = new Map(days.map((d) => [d.date, d]));
-  const next = byDate.get(addDays(rangeEnd, 1));
+  const next = contextByDate.get(addDays(rangeEnd, 1));
   if (next) {
     const city = startingCityOnDay(next);
     if (city && !locationsMatch(city, location)) return city;
@@ -610,6 +621,7 @@ function paintLocationFullCalendarDays(
   rangeStart: string,
   rangeEnd: string,
   location: string,
+  transitionContextDays?: DayPlaceDraft[],
 ): DayPlaceDraft[] {
   const loc = location.trim();
   const end = rangeEnd || rangeStart;
@@ -629,8 +641,8 @@ function paintLocationFullCalendarDays(
     return result.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim());
   }
 
-  const departCity = priorDepartCityForRangeStart(result, rangeStart, loc);
-  const arrivalCity = nextArrivalCityForRangeEnd(result, end, loc);
+  const departCity = priorDepartCityForRangeStart(result, rangeStart, loc, transitionContextDays);
+  const arrivalCity = nextArrivalCityForRangeEnd(result, end, loc, transitionContextDays);
 
   result = result.map((day) => {
     if (day.date < rangeStart || day.date > end) return day;
@@ -662,9 +674,11 @@ export function paintLocationDayRange(
   location: string,
   startHalf: HalfSide | "full" = "full",
   endHalf: HalfSide | "full" = "full",
+  options?: PaintLocationDayRangeOptions,
 ): DayPlaceDraft[] {
   const loc = location.trim();
   const end = rangeEnd || rangeStart;
+  const transitionContextDays = options?.transitionContextDays;
 
   if (rangeStart === end) {
     return paintLocationSingleDay(days, rangeStart, end, loc, startHalf, endHalf);
@@ -672,7 +686,7 @@ export function paintLocationDayRange(
 
   if (startHalf === "full" && endHalf === "full") {
     return clearLocationSpillAfterCheckout(
-      paintLocationFullCalendarDays(days, rangeStart, end, loc),
+      paintLocationFullCalendarDays(days, rangeStart, end, loc, transitionContextDays),
       end,
       loc,
     );
@@ -701,8 +715,10 @@ export function paintLocationDayRangeProtected(
   location: string,
   startHalf: HalfSide | "full" = "full",
   endHalf: HalfSide | "full" = "full",
+  options?: PaintLocationDayRangeOptions,
 ): DayPlaceDraft[] {
-  const originals = new Map(days.map((day) => [day.date, day]));
+  const protectFrom = options?.protectOriginals ?? days;
+  const originals = new Map(protectFrom.map((day) => [day.date, day]));
   const painted = paintLocationDayRange(
     days,
     rangeStart,
@@ -710,6 +726,7 @@ export function paintLocationDayRangeProtected(
     location,
     startHalf,
     endHalf,
+    options,
   );
   return protectTravelSplitDays(originals, painted, rangeStart, rangeEnd, startHalf, endHalf);
 }

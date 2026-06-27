@@ -11,6 +11,7 @@ import { staysForCalendarView } from "./person-lens";
 import { projectCalendar } from "./project-calendar";
 import { calendarContentScopeForGroup, staysForGroup } from "./selectors";
 import { TRANSPORT_CORRIDOR_LEFT_SHARE } from "@/lib/host/setup/transport-corridor";
+import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
 function japanAmandaFixture(): TripSetupState {
@@ -161,6 +162,80 @@ describe("personal location overlay", () => {
     assert.equal(projected.days.find((d) => d.date === "2026-12-05")?.primaryCity, "Kagoshima");
   });
 
+  it("multi-day personal paint keeps half-day edges against main calendar context", () => {
+    const mainLateTripDays: DayPlaceDraft[] = [
+      ...["2026-12-15", "2026-12-16", "2026-12-17"].map((date) => ({
+        date,
+        primaryCity: "Kyoto",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      })),
+      {
+        date: "2026-12-18",
+        primaryCity: "Kyoto",
+        secondaryCity: "Tokyo",
+        primaryShare: TRANSPORT_CORRIDOR_LEFT_SHARE,
+        dayType: "travel" as const,
+        includeBuffer: false,
+      },
+      ...["2026-12-19", "2026-12-20", "2026-12-21"].map((date) => ({
+        date,
+        primaryCity: "Tokyo",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      })),
+      {
+        date: "2026-12-22",
+        primaryCity: "Tokyo",
+        secondaryCity: "Christchurch",
+        primaryShare: TRANSPORT_CORRIDOR_LEFT_SHARE,
+        dayType: "travel" as const,
+        includeBuffer: false,
+      },
+    ];
+
+    const graph = setupStateToGraph("trip-1", {
+      ...japanAmandaFixture(),
+      basics: {
+        ...japanAmandaFixture().basics,
+        endDate: "2026-12-22",
+      },
+      dayPlacesByGroupId: {
+        "g-main": mainLateTripDays,
+        "g-amanda": [],
+      },
+    });
+
+    const result = applyCommands(graph, [
+      {
+        type: "paintDayRange",
+        groupId: "g-amanda",
+        rangeStart: "2026-12-18",
+        rangeEnd: "2026-12-21",
+        location: "Kagoshima",
+      },
+    ]);
+
+    const personal = projectCalendar(result.graph, { groupId: "g-amanda" });
+    const dec18 = personal.days.find((d) => d.date === "2026-12-18");
+    const dec19 = personal.days.find((d) => d.date === "2026-12-19");
+    const dec21 = personal.days.find((d) => d.date === "2026-12-21");
+
+    assert.equal(dec18?.primaryCity, "Kyoto");
+    assert.equal(dec18?.secondaryCity, "Kagoshima");
+    assert.ok((dec18?.primaryShare ?? 1) < 0.99);
+    assert.equal(dec19?.primaryCity, "Kagoshima");
+    assert.equal(dec19?.secondaryCity, null);
+    assert.equal(dec19?.primaryShare, 1);
+    assert.equal(dec21?.primaryCity, "Kagoshima");
+    assert.equal(dec21?.secondaryCity, "Tokyo");
+    assert.ok((dec21?.primaryShare ?? 1) < 0.99);
+  });
+
   it("independent calendar derivation does not borrow main stays for cell bands", () => {
     const graph = setupStateToGraph("trip-1", {
       ...japanAmandaFixture(),
@@ -203,7 +278,10 @@ describe("personal location overlay", () => {
     ]);
 
     const overlay = result.graph.dayPlacesByGroupId["g-amanda"] ?? [];
-    assert.ok(overlay.every((day) => day.date !== "2026-12-13"));
+    const dec13Overlay = overlay.find((day) => day.date === "2026-12-13");
+    assert.equal(dec13Overlay?.primaryCity, "Tottori");
+    assert.equal(dec13Overlay?.secondaryCity, "Hiroshima");
+    assert.ok((dec13Overlay?.primaryShare ?? 1) < 0.99);
     assert.ok(overlay.some((day) => day.date === "2026-12-12" && day.primaryCity === "Tottori"));
 
     const main = projectCalendar(result.graph, { groupId: "g-main" });
@@ -233,7 +311,7 @@ describe("personal location overlay", () => {
     assert.equal(merged.find((d) => d.date === "2026-12-12")?.primaryCity, "Kagoshima");
   });
 
-  it("extractPersonalLocationOverlayDelta omits flattened travel split days", () => {
+  it("extractPersonalLocationOverlayDelta stores different-city corridor edges", () => {
     const mainDays = japanAmandaFixture().dayPlacesByGroupId["g-main"] ?? [];
     const delta = extractPersonalLocationOverlayDelta(
       mainDays,
@@ -249,6 +327,38 @@ describe("personal location overlay", () => {
         {
           date: "2026-12-13",
           primaryCity: "Tottori",
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: "trip",
+          includeBuffer: false,
+        },
+      ],
+      [],
+      "2026-12-06",
+      "2026-12-13",
+    );
+
+    assert.equal(delta.length, 2);
+    assert.ok(delta.some((day) => day.date === "2026-12-12" && day.primaryCity === "Tottori"));
+    assert.ok(delta.some((day) => day.date === "2026-12-13" && day.primaryCity === "Tottori"));
+  });
+
+  it("extractPersonalLocationOverlayDelta omits same-primary flattened corridor days", () => {
+    const mainDays = japanAmandaFixture().dayPlacesByGroupId["g-main"] ?? [];
+    const delta = extractPersonalLocationOverlayDelta(
+      mainDays,
+      [
+        {
+          date: "2026-12-12",
+          primaryCity: "Tottori",
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: "trip",
+          includeBuffer: false,
+        },
+        {
+          date: "2026-12-13",
+          primaryCity: "Kagoshima",
           secondaryCity: null,
           primaryShare: 1,
           dayType: "trip",

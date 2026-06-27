@@ -1,5 +1,5 @@
 import { applySetupAccommodationChange } from "@/lib/host/setup/apply-setup-accommodation";
-import { applyGroupInference } from "@/lib/host/setup/apply-setup-state";
+import { applyGroupInferenceForGroups } from "@/lib/host/setup/apply-setup-state";
 import { applySetupTransportChange } from "@/lib/host/setup/apply-setup-transport";
 import { enforceGroupHalfDayBoundaries } from "@/lib/host/setup/enforce-content-half-days";
 import {
@@ -62,7 +62,10 @@ function inferPersonalGroupTransportCalendar(
   groupId: string,
 ): TripEntityGraph {
   if (groupId === graph.mainGroupId) return graph;
-  return mergeGraphState(graph, applyGroupInference(graphToSetupState(graph), groupId));
+  return mergeGraphState(
+    graph,
+    applyGroupInferenceForGroups(graphToSetupState(graph), [groupId]),
+  );
 }
 
 function warn(id: string, message: string, section = "general"): EngineWarning {
@@ -485,8 +488,12 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         }
 
         const mainDays = graph.dayPlacesByGroupId[graph.mainGroupId] ?? [];
+        const storedOverlay = graph.dayPlacesByGroupId[groupId] ?? [];
         const base = mergeMainWithPersonalOverlay(graph, groupId);
-        const painted = paintLocationDayRangeProtected(base, ...paintedArgs);
+        const painted = paintLocationDayRangeProtected(base, ...paintedArgs, {
+          transitionContextDays: mainDays,
+          protectOriginals: storedOverlay,
+        });
         const overlayOnly = extractPersonalLocationOverlayDelta(
           mainDays,
           painted,

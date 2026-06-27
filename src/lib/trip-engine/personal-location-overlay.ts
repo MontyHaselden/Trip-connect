@@ -4,6 +4,8 @@ import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import type { NightPairSelection } from "@/lib/host/setup/night-pair-selection";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
+import { locationsMatch } from "@/lib/host/wizard/location-stays";
+
 import { clearAllLocationInSpan } from "./paint-day-range";
 import { isTravelSplitDay } from "./paint-location-preflight";
 import type { TripEntityGraph } from "./types";
@@ -138,8 +140,11 @@ function shouldOmitOverlayDate(
 ): boolean {
   if (!mainDay || !isTravelSplitDay(mainDay)) return false;
   if (isTravelSplitDay(paintedDay)) return false;
+  const paintedPrimary = paintedDay.primaryCity.trim();
+  const mainPrimary = mainDay.primaryCity.trim();
+  if (paintedPrimary && !locationsMatch(paintedPrimary, mainPrimary)) return false;
   const end = rangeEnd || rangeStart;
-  // Multi-day paints flatten corridor days — corridor replacement handles display.
+  // Same primary as main corridor — corridor replacement handles display on that edge.
   if (rangeStart !== end) return true;
   return false;
 }
