@@ -1,4 +1,21 @@
+import type { IntercityLegDraft, TransportLegDraft } from "@/lib/host/wizard/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
+
+function legEndpointCities(leg: TransportLegDraft | IntercityLegDraft): {
+  fromCity: string;
+  toCity: string;
+} {
+  if ("intercityFromCity" in leg) {
+    return {
+      fromCity: leg.intercityFromCity?.trim() || leg.fromCity?.trim() || "",
+      toCity: leg.intercityToCity?.trim() || leg.toCity?.trim() || "",
+    };
+  }
+  return {
+    fromCity: leg.fromCity?.trim() || "",
+    toCity: leg.toCity?.trim() || "",
+  };
+}
 
 function paintDayRangeKey(command: Extract<TripCommand, { type: "paintDayRange" }>): string {
   return [
@@ -21,12 +38,13 @@ function transportLegKey(
   command: Extract<TripCommand, { type: "addTransportLeg" }>,
 ): string {
   const leg = command.leg;
+  const { fromCity, toCity } = legEndpointCities(leg);
   return [
     command.groupId,
     command.bucket ?? "intercity",
     leg.travelDate,
-    leg.fromCity ?? leg.intercityFromCity ?? "",
-    leg.toCity ?? leg.intercityToCity ?? "",
+    fromCity,
+    toCity,
   ].join("|");
 }
 
