@@ -80,7 +80,7 @@ function suppressPendingNeedsCoveredByLegs(
   for (const need of pendingTransportNeedsFromCalendar(graph, groupId, {
     includeHidden: true,
   })) {
-    if (legs.some((leg) => transportLegCoversCityMove(leg, need))) {
+    if (legs.some((leg) => transportLegCoversCityMove(leg, need, { scopeGroupId: groupId }))) {
       keys.add(pendingTransportNeedKey(groupId, need));
     }
   }

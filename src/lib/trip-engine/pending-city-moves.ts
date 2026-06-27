@@ -67,15 +67,22 @@ function legDatesAlignWithMove(leg: TransportLegDraft | IntercityLegDraft, move:
   return false;
 }
 
-function legCoversMove(leg: TransportLegDraft | IntercityLegDraft, move: CityMove): boolean {
+function legCoversMove(
+  leg: TransportLegDraft | IntercityLegDraft,
+  move: CityMove,
+  scopeGroupId?: string,
+): boolean {
   const { from, to } = legEndpoints(leg);
   if (!from || !to) return false;
   if (legDatesAlignWithMove(leg, move) && routeMatchesMove(from, to, move)) return true;
 
   // Personal/subgroup legs: calendar fromCity can lag behind overlay paint (e.g. main
   // Kagoshima on the prior evening) while the saved leg is Tokyo → Tottori.
+  // Never apply this loose match to main-group legs on a personal scope — e.g. main
+  // Kagoshima → Hiroshima must not hide a party fork Tottori → Hiroshima.
   if (
-    leg.originGroupId &&
+    scopeGroupId &&
+    leg.originGroupId === scopeGroupId &&
     legDatesAlignWithMove(leg, move) &&
     locationsMatch(to, move.toCity)
   ) {
@@ -89,8 +96,9 @@ function legCoversMove(leg: TransportLegDraft | IntercityLegDraft, move: CityMov
 export function transportLegCoversCityMove(
   leg: TransportLegDraft | IntercityLegDraft,
   move: CityMove,
+  options?: { scopeGroupId?: string },
 ): boolean {
-  return legCoversMove(leg, move);
+  return legCoversMove(leg, move, options?.scopeGroupId);
 }
 
 function isMainOwnedLeg(
@@ -297,7 +305,9 @@ export function pendingTransportNeedsFromCalendar(
   }
 
   const legs = scopedTransportLegs(graph, groupId);
-  const uncovered = moves.filter((move) => !legs.some((leg) => legCoversMove(leg, move)));
+  const uncovered = moves.filter(
+    (move) => !legs.some((leg) => legCoversMove(leg, move, groupId)),
+  );
 
   const needs = sortPendingNeeds(
     uncovered.map((move) => ({

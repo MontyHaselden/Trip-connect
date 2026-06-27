@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import {
+  buildJapanPartyGraph,
+  japanPartyRoster,
+  paintPartyTottoriFork,
+} from "@/lib/trip-admin/fixtures/japan-kaleb";
+
 import { setupStateToGraph } from "./adapters";
+import { applyCommands } from "./apply-commands";
+import { expandCommandsForCalendarLens } from "./calendar-lens-dispatch";
 import {
   detectMissingOutboundFlight,
   detectMissingReturnFlight,
@@ -499,6 +507,105 @@ describe("pendingTransportNeedsFromCalendar", () => {
       intercityKind: "city_change" as const,
       surfaceOnly: false,
     };
-    assert.ok(transportLegCoversCityMove(leg, move));
+    assert.ok(transportLegCoversCityMove(leg, move, { scopeGroupId: "g-amanda" }));
+  });
+
+  it("main-group leg does not cover personal fork when only destination matches", () => {
+    const move = {
+      fromCity: "Tottori",
+      toCity: "Hiroshima",
+      date: "2026-12-13",
+    };
+    const mainLeg = {
+      id: "leg-kag-hiro",
+      transportType: "train" as const,
+      bookingStatus: "not_booked" as const,
+      travelDate: "2026-12-13",
+      arrivalDate: null,
+      departureTime: null,
+      arrivalTime: null,
+      fromCity: "Kagoshima",
+      toCity: "Hiroshima",
+      fromStation: null,
+      toStation: null,
+      operator: null,
+      referenceNumber: null,
+      flightNumber: null,
+      notes: null,
+      originGroupId: "g-main",
+      intercityFromCity: "Kagoshima",
+      intercityToCity: "Hiroshima",
+      surfaceOnly: false,
+    };
+    assert.equal(
+      transportLegCoversCityMove(mainLeg, move, { scopeGroupId: "g-amanda" }),
+      false,
+    );
+  });
+
+  it("party Tottori fork surfaces Tottori to Hiroshima when rejoining main corridor", () => {
+    const roster = japanPartyRoster();
+    let graph = paintPartyTottoriFork(buildJapanPartyGraph(), roster);
+
+    const rejoinCommands = expandCommandsForCalendarLens(
+      [
+        {
+          type: "paintDayRange",
+          groupId: "g-amanda",
+          rangeStart: "2026-12-13",
+          rangeEnd: "2026-12-14",
+          location: "Hiroshima",
+          startHalf: "pm",
+          endHalf: "full",
+        },
+      ],
+      {
+        kind: "party",
+        participantIds: ["p-amanda", "p-kaleb", "p-mia", "p-trenuela"],
+      },
+      graph,
+      roster,
+    );
+    graph = applyCommands(graph, rejoinCommands).graph;
+    graph = applyCommands(graph, [
+      {
+        type: "addTransportLeg",
+        groupId: "g-main",
+        bucket: "intercity",
+        leg: {
+          id: "leg-kag-hiro",
+          transportType: "train",
+          bookingStatus: "not_booked",
+          travelDate: "2026-12-13",
+          arrivalDate: null,
+          departureTime: null,
+          arrivalTime: null,
+          fromCity: "Kagoshima",
+          toCity: "Hiroshima",
+          fromStation: null,
+          toStation: null,
+          operator: null,
+          referenceNumber: null,
+          flightNumber: null,
+          notes: null,
+          intercityFromCity: "Kagoshima",
+          intercityToCity: "Hiroshima",
+          originGroupId: graph.mainGroupId,
+          sourceEntityId: null,
+        },
+      },
+    ]).graph;
+
+    const pending = pendingTransportNeedsFromCalendar(graph, "g-amanda").filter(
+      (need) => need.kind === "intercity",
+    );
+    assert.ok(
+      pending.some(
+        (need) =>
+          need.date === "2026-12-13" &&
+          need.fromCity.includes("Tottori") &&
+          need.toCity.includes("Hiroshima"),
+      ),
+    );
   });
 });
