@@ -291,6 +291,9 @@ function applyGroupInference(
 ): TripSetupState {
   if (activeGroupId === state.mainGroupId) return state;
 
+  const group = state.groups?.find((g) => g.id === activeGroupId);
+  const isLocationOverlay = group?.inheritMode === "overlay";
+
   let dayPlaces = state.dayPlacesByGroupId[activeGroupId] ?? [];
   const groupStays = state.accommodationStays.filter((s) => s.originGroupId === activeGroupId);
   const groupLegs = state.intercityLegs.filter((l) => l.originGroupId === activeGroupId);
@@ -298,9 +301,11 @@ function applyGroupInference(
   for (const stay of groupStays) {
     dayPlaces = inferDayPlacesFromStay(dayPlaces, stay, { replaceExisting: true });
   }
-  for (const leg of groupLegs) {
-    if (leg.surfaceOnly) continue;
-    dayPlaces = inferDayPlacesFromIntercityLeg(dayPlaces, leg, { stays: groupStays });
+  if (!isLocationOverlay) {
+    for (const leg of groupLegs) {
+      if (leg.surfaceOnly) continue;
+      dayPlaces = inferDayPlacesFromIntercityLeg(dayPlaces, leg, { stays: groupStays });
+    }
   }
 
   const overlayOps = inferHideOpsForGroupStays(

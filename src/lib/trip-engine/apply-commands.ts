@@ -33,6 +33,10 @@ import { normalizeCommand, type TripCommand } from "./commands";
 import { graphToSetupState } from "./adapters";
 import { repairTransportGraphSync } from "./repair-transport-graph";
 import { pendingTransportNeedKey } from "./hidden-pending-transport";
+import {
+  pendingTransportNeedsFromCalendar,
+  transportLegCoversCityMove,
+} from "./pending-city-moves";
 import type { CommandResult, EngineConflict, EngineWarning, TripEntityGraph } from "./types";
 import type { TripSetupState } from "@/lib/host/setup/types";
 import type { TransportProductDraft } from "@/lib/host/wizard/types";
@@ -66,6 +70,27 @@ function inferPersonalGroupTransportCalendar(
     graph,
     applyGroupInferenceForGroups(graphToSetupState(graph), [groupId]),
   );
+}
+
+function suppressPendingNeedsCoveredByLegs(
+  graph: TripEntityGraph,
+  groupId: string,
+  legs: Array<
+    | TripEntityGraph["outboundLegs"][number]
+    | TripEntityGraph["returnLegs"][number]
+    | TripEntityGraph["intercityLegs"][number]
+  >,
+): TripEntityGraph {
+  if (!legs.length) return graph;
+  const keys = new Set(graph.hiddenPendingTransportNeedKeys ?? []);
+  for (const need of pendingTransportNeedsFromCalendar(graph, groupId, {
+    includeHidden: true,
+  })) {
+    if (legs.some((leg) => transportLegCoversCityMove(leg, need))) {
+      keys.add(pendingTransportNeedKey(groupId, need));
+    }
+  }
+  return { ...graph, hiddenPendingTransportNeedKeys: [...keys] };
 }
 
 function warn(id: string, message: string, section = "general"): EngineWarning {
@@ -288,7 +313,12 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         { preserveCalendarPaint: true },
       );
       const finalized = finalizeTransportChange(next, derived);
-      return ok(inferPersonalGroupTransportCalendar(finalized, command.groupId), warnings);
+      const inferred = inferPersonalGroupTransportCalendar(finalized, command.groupId);
+      const legsForGroup = legsWithGroup.filter((leg) => leg.originGroupId === command.groupId);
+      return ok(
+        suppressPendingNeedsCoveredByLegs(inferred, command.groupId, legsForGroup),
+        warnings,
+      );
     }
 
     case "addTransportLeg": {
@@ -315,7 +345,18 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         },
         { preserveCalendarPaint: true },
       );
-      return ok(finalizeTransportChange(next, derived), warnings);
+      const finalized = finalizeTransportChange(next, derived);
+      const withInference = inferPersonalGroupTransportCalendar(finalized, command.groupId);
+      const legList =
+        command.bucket === "outbound"
+          ? [leg as TripEntityGraph["outboundLegs"][number]]
+          : command.bucket === "return"
+            ? [leg as TripEntityGraph["returnLegs"][number]]
+            : [leg as TripEntityGraph["intercityLegs"][number]];
+      return ok(
+        suppressPendingNeedsCoveredByLegs(withInference, command.groupId, legList),
+        warnings,
+      );
     }
 
     case "updateTransportLeg": {

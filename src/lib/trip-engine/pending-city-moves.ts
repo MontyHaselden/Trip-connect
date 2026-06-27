@@ -71,7 +71,27 @@ function legDatesAlignWithMove(leg: TransportLegDraft | IntercityLegDraft, move:
 function legCoversMove(leg: TransportLegDraft | IntercityLegDraft, move: CityMove): boolean {
   const { from, to } = legEndpoints(leg);
   if (!from || !to) return false;
-  return legDatesAlignWithMove(leg, move) && routeMatchesMove(from, to, move);
+  if (legDatesAlignWithMove(leg, move) && routeMatchesMove(from, to, move)) return true;
+
+  // Personal/subgroup legs: calendar fromCity can lag behind overlay paint (e.g. main
+  // Kagoshima on the prior evening) while the saved leg is Tokyo → Tottori.
+  if (
+    leg.originGroupId &&
+    legDatesAlignWithMove(leg, move) &&
+    locationsMatch(to, move.toCity)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/** True when an existing transport leg satisfies a calendar gap suggestion. */
+export function transportLegCoversCityMove(
+  leg: TransportLegDraft | IntercityLegDraft,
+  move: CityMove,
+): boolean {
+  return legCoversMove(leg, move);
 }
 
 function isMainOwnedLeg(

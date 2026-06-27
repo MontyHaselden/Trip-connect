@@ -6,6 +6,7 @@ import {
   detectMissingOutboundFlight,
   detectMissingReturnFlight,
   pendingTransportNeedsFromCalendar,
+  transportLegCoversCityMove,
 } from "./pending-city-moves";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
@@ -470,5 +471,34 @@ describe("pendingTransportNeedsFromCalendar", () => {
     const graph = setupStateToGraph("trip-1", state);
     const pending = pendingTransportNeedsFromCalendar(graph, "g-amanda");
     assert.ok(!pending.some((need) => need.kind === "outbound_flight"));
+  });
+
+  it("personal subgroup leg covers same-day gap when calendar fromCity drifted", () => {
+    const move = {
+      fromCity: "Kagoshima",
+      toCity: "Tottori",
+      date: "2026-12-06",
+    };
+    const leg = {
+      id: "leg-tottori",
+      transportType: "train" as const,
+      bookingStatus: "not_booked" as const,
+      travelDate: "2026-12-06",
+      departureTime: null,
+      arrivalTime: null,
+      fromCity: "Tokyo",
+      toCity: "Tottori",
+      fromStation: null,
+      toStation: null,
+      operator: null,
+      referenceNumber: null,
+      notes: null,
+      originGroupId: "g-amanda",
+      intercityFromCity: "Tokyo",
+      intercityToCity: "Tottori",
+      intercityKind: "city_change" as const,
+      surfaceOnly: false,
+    };
+    assert.ok(transportLegCoversCityMove(leg, move));
   });
 });

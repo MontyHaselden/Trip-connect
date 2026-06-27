@@ -236,6 +236,95 @@ describe("personal location overlay", () => {
     assert.ok((dec21?.primaryShare ?? 1) < 0.99);
   });
 
+  it("adding personal transport leg does not overwrite overlay location paint", () => {
+    const graph = setupStateToGraph("trip-1", {
+      ...japanAmandaFixture(),
+      dayPlacesByGroupId: {
+        "g-main": [
+          {
+            date: "2026-12-05",
+            primaryCity: "",
+            secondaryCity: "Tokyo",
+            primaryShare: TRANSPORT_CORRIDOR_LEFT_SHARE,
+            dayType: "trip" as const,
+            includeBuffer: false,
+          },
+          {
+            date: "2026-12-06",
+            primaryCity: "Tokyo",
+            secondaryCity: "Kagoshima",
+            primaryShare: TRANSPORT_CORRIDOR_LEFT_SHARE,
+            dayType: "travel" as const,
+            includeBuffer: false,
+          },
+          ...["2026-12-07", "2026-12-08", "2026-12-09", "2026-12-10", "2026-12-11", "2026-12-12"].map(
+            (date) => ({
+              date,
+              primaryCity: "Kagoshima",
+              secondaryCity: null,
+              primaryShare: 1,
+              dayType: "trip" as const,
+              includeBuffer: false,
+            }),
+          ),
+        ],
+        "g-amanda": [],
+      },
+    });
+
+    const painted = applyCommands(graph, [
+      {
+        type: "paintDayRange",
+        groupId: "g-amanda",
+        rangeStart: "2026-12-06",
+        rangeEnd: "2026-12-12",
+        location: "Tottori",
+        startHalf: "right",
+        endHalf: "full",
+      },
+    ]).graph;
+    const overlayBefore = painted.dayPlacesByGroupId["g-amanda"] ?? [];
+
+    const withLeg = applyCommands(painted, [
+      {
+        type: "addClassifiedTransportLegs",
+        groupId: "g-amanda",
+        legs: [
+          {
+            id: "leg-tottori",
+            transportType: "train",
+            bookingStatus: "not_booked",
+            travelDate: "2026-12-06",
+            departureTime: null,
+            arrivalTime: null,
+            fromCity: "Tokyo",
+            toCity: "Tottori",
+            fromStation: null,
+            toStation: null,
+            operator: null,
+            referenceNumber: null,
+            notes: null,
+            originGroupId: "g-amanda",
+            intercityFromCity: "Tokyo",
+            intercityToCity: "Tottori",
+            intercityKind: "city_change",
+            surfaceOnly: false,
+          },
+        ],
+      },
+    ]).graph;
+
+    const overlay = withLeg.dayPlacesByGroupId["g-amanda"] ?? [];
+    assert.ok(overlay.some((day) => day.date === "2026-12-08" && day.primaryCity === "Tottori"));
+    assert.deepEqual(
+      overlay.find((day) => day.date === "2026-12-06"),
+      overlayBefore.find((day) => day.date === "2026-12-06"),
+    );
+    const mainDec5 = withLeg.dayPlacesByGroupId["g-main"]?.find((day) => day.date === "2026-12-05");
+    assert.equal(mainDec5?.secondaryCity, "Tokyo");
+    assert.equal(mainDec5?.primaryCity, "");
+  });
+
   it("independent calendar derivation does not borrow main stays for cell bands", () => {
     const graph = setupStateToGraph("trip-1", {
       ...japanAmandaFixture(),
