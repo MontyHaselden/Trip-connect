@@ -5,8 +5,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   editGroupIdForLens,
+  calendarLensScopeGroupIds,
+  normalizeCalendarLens,
+  transportViewGroupIdForLens,
   type CalendarLens,
 } from "@/lib/trip-engine/person-lens";
+import { expandCommandsForCalendarLens } from "@/lib/trip-engine/calendar-lens-dispatch";
 import {
   clearOversizedTripLocalDraft,
   clearTripLocalDraft,
@@ -76,13 +80,26 @@ export function TripOsBoard(props: { tripId: string }) {
   const dispatchWithPreviewRefresh = useCallback(
     async (commands: TripCommand[]) => {
       saveScrollPosition();
-      const ok = await engine.dispatch(commands);
+      const graph = engine.data?.graph;
+      const roster = engine.data?.rosterSummary;
+      const expanded =
+        graph && roster
+          ? expandCommandsForCalendarLens(commands, calendarLens, graph, roster)
+          : commands;
+      const ok = await engine.dispatch(expanded);
       if (ok) {
         scheduleParticipantPreviewRefresh();
       }
       return ok;
     },
-    [engine.dispatch, scheduleParticipantPreviewRefresh, saveScrollPosition],
+    [
+      calendarLens,
+      engine.data?.graph,
+      engine.data?.rosterSummary,
+      engine.dispatch,
+      scheduleParticipantPreviewRefresh,
+      saveScrollPosition,
+    ],
   );
 
   const saveStatusLine =
@@ -107,8 +124,14 @@ export function TripOsBoard(props: { tripId: string }) {
     if (calendarLensHydratedRef.current) return;
     if (!engine.data) return;
     const draft = readTripLocalDraft(props.tripId);
-    if (draft?.calendarLens) {
-      setCalendarLens(draft.calendarLens);
+    if (draft?.calendarLens && engine.data?.graph && engine.data?.rosterSummary) {
+      setCalendarLens(
+        normalizeCalendarLens(
+          draft.calendarLens,
+          engine.data.graph,
+          engine.data.rosterSummary,
+        ),
+      );
     }
     calendarLensHydratedRef.current = true;
   }, [props.tripId, engine.data]);
@@ -139,6 +162,15 @@ export function TripOsBoard(props: { tripId: string }) {
     graph && rosterSummary
       ? editGroupIdForLens(graph, calendarLens, rosterSummary)
       : engine.activeGroupId || graph?.mainGroupId || "";
+
+  const scopeGroupFilter =
+    graph && rosterSummary
+      ? calendarLensScopeGroupIds(calendarLens, graph, rosterSummary)
+      : null;
+  const transportViewGroupId =
+    graph && rosterSummary
+      ? transportViewGroupIdForLens(graph, calendarLens, rosterSummary)
+      : editGroupId;
 
   const calendarView = useMemo(() => {
     if (!engine.data || !graph) return null;
@@ -377,6 +409,9 @@ export function TripOsBoard(props: { tripId: string }) {
               section={activeSection}
               graph={tripGraph}
               groupId={activeGroupId}
+              transportViewGroupId={transportViewGroupId}
+              scopeGroupFilter={scopeGroupFilter}
+              calendarLens={calendarLens}
               tripId={props.tripId}
               inviteCode={engine.data.inviteCode}
               readiness={readiness}

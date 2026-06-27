@@ -53,7 +53,118 @@ export function stayInheritsFromMainGroup(
 
 export type CalendarLens =
   | { kind: "whole_group" }
-  | { kind: "person"; participantId: string };
+  | { kind: "person"; participantId: string }
+  | { kind: "subgroup"; groupId: string }
+  | { kind: "party"; participantIds: string[] };
+
+export function isCalendarSubgroup(group: TripEntityGraph["groups"][number]): boolean {
+  return !group.isMain && !group.personalForParticipantId;
+}
+
+export function calendarSubgroups(graph: TripEntityGraph): TripEntityGraph["groups"] {
+  return graph.groups.filter(isCalendarSubgroup).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function rosterParticipantIdsForGroup(
+  roster: RosterSummary,
+  groupId: string,
+): string[] {
+  return roster.participants.filter((p) => p.groupIds.includes(groupId)).map((p) => p.id);
+}
+
+export function personalGroupIdForParticipant(
+  graph: TripEntityGraph,
+  participantId: string,
+): string | null {
+  return (
+    graph.groups.find((g) => g.personalForParticipantId === participantId && !g.isMain)?.id ?? null
+  );
+}
+
+export function partyPersonalGroupIds(
+  graph: TripEntityGraph,
+  participantIds: string[],
+): string[] {
+  return participantIds
+    .map((id) => personalGroupIdForParticipant(graph, id))
+    .filter((id): id is string => Boolean(id));
+}
+
+export function normalizeCalendarLens(
+  lens: CalendarLens,
+  graph: TripEntityGraph,
+  roster: RosterSummary,
+): CalendarLens {
+  if (lens.kind === "whole_group") return lens;
+  if (lens.kind === "person") {
+    if (roster.participants.some((p) => p.id === lens.participantId)) return lens;
+    return { kind: "whole_group" };
+  }
+  if (lens.kind === "subgroup") {
+    if (graph.groups.some((g) => g.id === lens.groupId && isCalendarSubgroup(g))) return lens;
+    return { kind: "whole_group" };
+  }
+  if (lens.kind === "party") {
+    const ids = lens.participantIds.filter((id) =>
+      roster.participants.some((p) => p.id === id),
+    );
+    if (ids.length >= 2) return { kind: "party", participantIds: ids };
+    if (ids.length === 1) return { kind: "person", participantId: ids[0]! };
+    return { kind: "whole_group" };
+  }
+  return { kind: "whole_group" };
+}
+
+export function lensDisplayLabel(
+  lens: CalendarLens,
+  graph: TripEntityGraph,
+  roster: RosterSummary,
+): string {
+  if (lens.kind === "whole_group") return "Whole group";
+  if (lens.kind === "person") {
+    const person = roster.participants.find((p) => p.id === lens.participantId);
+    return person?.fullName?.trim() || "Participant";
+  }
+  if (lens.kind === "subgroup") {
+    const group = graph.groups.find((g) => g.id === lens.groupId);
+    const members = rosterParticipantIdsForGroup(roster, lens.groupId).length;
+    const name = group?.name?.trim() || "Travel party";
+    return members > 0 ? `${name} (${members})` : name;
+  }
+  const names = lens.participantIds
+    .map((id) => roster.participants.find((p) => p.id === id)?.fullName?.trim())
+    .filter(Boolean) as string[];
+  if (names.length <= 2) return names.join(" & ");
+  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
+/** Group ids whose personal/subgroup transport rows belong to this lens (null = show all). */
+export function calendarLensScopeGroupIds(
+  lens: CalendarLens,
+  graph: TripEntityGraph,
+  roster: RosterSummary,
+): string[] | null {
+  if (lens.kind === "whole_group") return null;
+  if (lens.kind === "subgroup") return [lens.groupId];
+  if (lens.kind === "person") {
+    const groupId = editGroupIdForLens(graph, lens, roster);
+    return groupId !== graph.mainGroupId ? [groupId] : null;
+  }
+  if (lens.kind === "party") {
+    const ids = partyPersonalGroupIds(graph, lens.participantIds);
+    return ids.length ? ids : null;
+  }
+  return null;
+}
+
+export function transportViewGroupIdForLens(
+  graph: TripEntityGraph,
+  lens: CalendarLens,
+  roster: RosterSummary,
+): string {
+  if (lens.kind === "party") return graph.mainGroupId;
+  return editGroupIdForLens(graph, lens, roster);
+}
 
 export function editGroupIdForLens(
   graph: TripEntityGraph,
@@ -61,6 +172,26 @@ export function editGroupIdForLens(
   roster: RosterSummary,
 ): string {
   if (lens.kind === "whole_group") return graph.mainGroupId;
+
+  if (lens.kind === "subgroup") {
+    if (graph.groups.some((g) => g.id === lens.groupId && isCalendarSubgroup(g))) {
+      return lens.groupId;
+    }
+    return graph.mainGroupId;
+  }
+
+  if (lens.kind === "party") {
+    const sorted = [...lens.participantIds].sort((a, b) => {
+      const na = roster.participants.find((p) => p.id === a)?.fullName ?? "";
+      const nb = roster.participants.find((p) => p.id === b)?.fullName ?? "";
+      return na.localeCompare(nb);
+    });
+    for (const participantId of sorted) {
+      const personalGroupId = personalGroupIdForParticipant(graph, participantId);
+      if (personalGroupId) return personalGroupId;
+    }
+    return graph.mainGroupId;
+  }
 
   const person = roster.participants.find((p) => p.id === lens.participantId);
   if (!person) return graph.mainGroupId;

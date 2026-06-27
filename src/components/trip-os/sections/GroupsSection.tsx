@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 
-import type { TripEntityGraph } from "@/lib/trip-engine/types";
+import type { RosterSummary, TripEntityGraph } from "@/lib/trip-engine/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
+import { isCalendarSubgroup, rosterParticipantIdsForGroup } from "@/lib/trip-engine/person-lens";
 
 import { AsyncButton } from "../shared/AsyncButton";
 import { TripInput, tripFieldClass } from "../shared/TripInput";
@@ -12,9 +13,11 @@ import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 
 export function GroupsSection(props: {
   graph: TripEntityGraph;
+  rosterSummary?: RosterSummary;
   saving?: boolean;
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
 }) {
+  const roster = props.rosterSummary ?? { participants: [], groups: [], rooms: [] };
   const [name, setName] = useState("");
   const [type, setType] = useState("split_travel");
 
@@ -22,10 +25,17 @@ export function GroupsSection(props: {
     <TripSectionShell
       eyebrow="Advanced"
       title="Groups"
-      description="Main group plus subgroup overlays for split travel."
+      description="Create a travel party for people sharing the same flights or city changes. Assign members in Users, then pick the party from the calendar lens."
     >
       <ul className="space-y-2">
-        {props.graph.groups.map((g) => (
+        {props.graph.groups.map((g) => {
+          const memberIds = isCalendarSubgroup(g)
+            ? rosterParticipantIdsForGroup(roster, g.id)
+            : [];
+          const memberNames = memberIds
+            .map((id) => roster.participants.find((p) => p.id === id)?.fullName?.trim())
+            .filter(Boolean);
+          return (
           <li
             key={g.id}
             className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm"
@@ -35,7 +45,10 @@ export function GroupsSection(props: {
                 {g.name}
                 {g.isMain ? " (main)" : ""}
               </p>
-              <p className="text-sm text-zinc-500">{g.type}</p>
+              <p className="text-sm text-zinc-500">
+                {g.type}
+                {memberNames.length ? ` · ${memberNames.join(", ")}` : ""}
+              </p>
             </div>
             {!g.isMain ? (
               <AsyncButton
@@ -48,9 +61,14 @@ export function GroupsSection(props: {
               </AsyncButton>
             ) : null}
           </li>
-        ))}
+          );
+        })}
       </ul>
-      <TripSoftPanel title="Create group">
+      <TripSoftPanel title="Create travel party">
+        <p className="mb-3 text-xs text-zinc-500">
+          Example: &quot;Tottori side trip&quot; for everyone flying Tokyo → Tottori together. Add
+          flights once on that party&apos;s calendar instead of four separate sections.
+        </p>
         <div className="grid gap-2 sm:grid-cols-2">
           <TripInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Group name" />
           <select value={type} onChange={(e) => setType(e.target.value)} className={tripFieldClass}>

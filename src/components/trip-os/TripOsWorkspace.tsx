@@ -15,6 +15,8 @@ import type {
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
 
+import type { CalendarLens } from "@/lib/trip-engine/person-lens";
+
 import type { CalendarSelection } from "./calendar/useCalendarSelection";
 import { EMPTY_CALENDAR_SELECTION } from "@/lib/host/setup/calendar-range-selection";
 
@@ -49,6 +51,9 @@ export function TripOsWorkspace(props: {
   section: TripOsSection;
   graph: TripEntityGraph;
   groupId: string;
+  transportViewGroupId?: string;
+  scopeGroupFilter?: string[] | null;
+  calendarLens?: CalendarLens;
   tripId: string;
   inviteCode: string;
   readiness: EngineSectionReadiness[];
@@ -75,6 +80,7 @@ export function TripOsWorkspace(props: {
   onGoToDateFromMap?: (iso: string) => void;
 }) {
   const { graph, groupId, tripId, inviteCode, onDispatch, saving } = props;
+  const transportGroupId = props.transportViewGroupId ?? groupId;
 
   switch (props.section) {
     case "overview":
@@ -131,7 +137,8 @@ export function TripOsWorkspace(props: {
       return (
         <TransportSection
           graph={graph}
-          groupId={groupId}
+          groupId={transportGroupId}
+          scopeGroupFilter={props.scopeGroupFilter ?? null}
           selectedDate={props.selectedDay?.date ?? null}
           saving={saving}
           onDispatch={onDispatch}

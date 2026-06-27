@@ -295,6 +295,7 @@ function LegRow(props: {
 export function TransportSection(props: {
   graph: TripEntityGraph;
   groupId: string;
+  scopeGroupFilter?: string[] | null;
   selectedDate?: string | null;
   saving?: boolean;
   rosterSummary?: RosterSummary;
@@ -306,6 +307,18 @@ export function TransportSection(props: {
 }) {
   const roster = props.rosterSummary ?? { participants: [], groups: [], rooms: [] };
   const products = props.graph.transportProducts ?? [];
+
+  function filterScopedLists<T>(lists: {
+    wholeGroup: TripScopeSection<T>;
+    otherScopes: TripScopeSection<T>[];
+  }) {
+    const filter = props.scopeGroupFilter;
+    if (!filter?.length) return lists;
+    return {
+      wholeGroup: lists.wholeGroup,
+      otherScopes: lists.otherScopes.filter((scope) => filter.includes(scope.groupId)),
+    };
+  }
 
   const [addOpen, setAddOpen] = useState(false);
   const [prefillNeed, setPrefillNeed] = useState<PendingTransportNeed | null>(null);
@@ -320,13 +333,19 @@ export function TransportSection(props: {
   const [hiddenOpen, setHiddenOpen] = useState(false);
 
   const pendingScopes = useMemo(
-    () => pendingTransportNeedsListedByScope(props.graph, roster, props.groupId),
-    [props.graph, roster, props.groupId],
+    () =>
+      filterScopedLists(
+        pendingTransportNeedsListedByScope(props.graph, roster, props.groupId),
+      ),
+    [props.graph, roster, props.groupId, props.scopeGroupFilter],
   );
 
   const hiddenScopes = useMemo(
-    () => hiddenPendingTransportNeedsListedByScope(props.graph, roster, props.groupId),
-    [props.graph, roster, props.groupId],
+    () =>
+      filterScopedLists(
+        hiddenPendingTransportNeedsListedByScope(props.graph, roster, props.groupId),
+      ),
+    [props.graph, roster, props.groupId, props.scopeGroupFilter],
   );
 
   const pendingScopeSections = useMemo(
@@ -371,8 +390,11 @@ export function TransportSection(props: {
   );
 
   const scopedLegs = useMemo(
-    () => transportLegsListedByScope(props.graph, roster, props.groupId),
-    [props.graph, roster, props.groupId],
+    () =>
+      filterScopedLists(
+        transportLegsListedByScope(props.graph, roster, props.groupId),
+      ),
+    [props.graph, roster, props.groupId, props.scopeGroupFilter],
   );
 
   const allScopes = useMemo((): TransportLegDisplayScope[] => {
