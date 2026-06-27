@@ -98,7 +98,14 @@ function clearHalfLocation(day: DayPlaceDraft, half: HalfSide): DayPlaceDraft {
   }
 
   if (secondary) {
-    return { ...day, secondaryCity: null, primaryShare: primary ? 1 : share, dayType: "trip" };
+    const keepHalf =
+      primary && (share < 0.99 || day.dayType === "travel");
+    return {
+      ...day,
+      secondaryCity: null,
+      primaryShare: keepHalf ? DEFAULT_HALF_SHARE : primary ? 1 : share,
+      dayType: keepHalf ? "trip" : "trip",
+    };
   }
   if (primary && share < 0.99) {
     return { ...day, primaryCity: "", primaryShare: 1, dayType: "trip" };
@@ -108,6 +115,23 @@ function clearHalfLocation(day: DayPlaceDraft, half: HalfSide): DayPlaceDraft {
 
 function dayHasPaint(day: DayPlaceDraft): boolean {
   return Boolean(day.primaryCity.trim() || day.secondaryCity?.trim());
+}
+
+function endingCityOnDay(day: DayPlaceDraft): string {
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const primary = day.primaryCity.trim();
+  return secondary || primary;
+}
+
+function departureEdgeDay(date: string, city: string): DayPlaceDraft {
+  return {
+    date,
+    primaryCity: city,
+    secondaryCity: null,
+    primaryShare: DEFAULT_HALF_SHARE,
+    dayType: "trip",
+    includeBuffer: false,
+  };
 }
 
 /** Remove location paint across a selection using the same night span as apply/paint. */
@@ -178,6 +202,22 @@ export function clearAllLocationInSpan(
     }
 
     if (multiDay && isCheckIn && startHalf === "full") {
+      const primary = day.primaryCity.trim();
+      const secondary = day.secondaryCity?.trim() ?? "";
+      const share = day.primaryShare ?? 1;
+      const isFullIncomingOnly = primary && !secondary && share >= 0.99;
+
+      if (isFullIncomingOnly) {
+        const prev = byDate.get(addDays(date, -1));
+        const prevCity = prev ? endingCityOnDay(prev) : "";
+        if (prevCity) {
+          byDate.set(date, departureEdgeDay(date, prevCity));
+        } else {
+          byDate.delete(date);
+        }
+        continue;
+      }
+
       const cleared = clearHalfLocation(day, "right");
       if (dayHasPaint(cleared)) byDate.set(date, cleared);
       else byDate.delete(date);
@@ -445,7 +485,41 @@ function paintLocationHalfAwareCalendarRange(
   return result.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim());
 }
 
-/** Paint every selected calendar day as a full single-city day (inclusive day selection). */
+function priorDepartCityForRangeStart(
+  days: DayPlaceDraft[],
+  rangeStart: string,
+  location: string,
+): string | null {
+  const byDate = new Map(days.map((d) => [d.date, d]));
+  const prev = byDate.get(addDays(rangeStart, -1));
+  if (prev) {
+    const city = endingCityOnDay(prev);
+    if (city && !locationsMatch(city, location)) return city;
+  }
+  const current = byDate.get(rangeStart);
+  if (current) {
+    const primary = current.primaryCity.trim();
+    if (primary && !locationsMatch(primary, location)) return primary;
+  }
+  return null;
+}
+
+function paintArrivalTransitionDay(
+  day: DayPlaceDraft,
+  location: string,
+  departCity: string,
+): DayPlaceDraft {
+  return {
+    date: day.date,
+    primaryCity: departCity,
+    secondaryCity: location.trim(),
+    primaryShare: DEFAULT_HALF_SHARE,
+    dayType: day.dayType === "buffer" ? "buffer" : "travel",
+    includeBuffer: day.includeBuffer,
+  };
+}
+
+/** Paint every selected calendar day as full single-city, with a travel split on range start when needed. */
 function paintLocationFullCalendarDays(
   days: DayPlaceDraft[],
   rangeStart: string,
@@ -455,8 +529,30 @@ function paintLocationFullCalendarDays(
   const loc = location.trim();
   const end = rangeEnd || rangeStart;
   let result = ensureDaysInPaintRange(days, rangeStart, end);
+
+  if (rangeStart === end) {
+    result = result.map((day) => {
+      if (day.date !== rangeStart) return day;
+      return {
+        ...day,
+        primaryCity: loc,
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: day.dayType === "buffer" ? "buffer" : "trip",
+      };
+    });
+    return result.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim());
+  }
+
+  const departCity = priorDepartCityForRangeStart(result, rangeStart, loc);
+
   result = result.map((day) => {
     if (day.date < rangeStart || day.date > end) return day;
+
+    if (day.date === rangeStart && departCity) {
+      return paintArrivalTransitionDay(day, loc, departCity);
+    }
+
     return {
       ...day,
       primaryCity: loc,
