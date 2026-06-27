@@ -195,8 +195,8 @@ function mainGroupDepartsOnTravelDate(
   return cityMatchesPlace(mainDay.primaryCity, fromKey, fromRaw);
 }
 
-/** True when a participant's calendar follows this transport leg. */
-export function participantUsesTransportLeg(
+/** Calendar route match for transport legs (main group + shared hub departures). */
+export function participantCalendarFollowsTransportLeg(
   plan: ResolvedParticipantPlan,
   leg: Pick<
     TransportLegDraft,
@@ -204,15 +204,11 @@ export function participantUsesTransportLeg(
   > & {
     intercityFromCity?: string;
     intercityToCity?: string;
+    originGroupId?: string | null;
   },
   graph?: TripEntityGraph,
 ): boolean {
   if (leg.surfaceOnly) return false;
-
-  const legOrigin = (leg as { originGroupId?: string | null }).originGroupId?.trim();
-  if (graph && legOrigin && legOrigin !== graph.mainGroupId) {
-    return plan.legIds.has(leg.id);
-  }
 
   const travelDate = leg.travelDate?.trim();
   if (!travelDate) return plan.legIds.has(leg.id);
@@ -253,6 +249,29 @@ export function participantUsesTransportLeg(
   if (hasTo && !hasFrom) return true;
 
   return false;
+}
+
+/** True when a participant's calendar follows this transport leg. */
+export function participantUsesTransportLeg(
+  plan: ResolvedParticipantPlan,
+  leg: Pick<
+    TransportLegDraft,
+    "id" | "travelDate" | "arrivalDate" | "fromCity" | "toCity" | "surfaceOnly"
+  > & {
+    intercityFromCity?: string;
+    intercityToCity?: string;
+    originGroupId?: string | null;
+  },
+  graph?: TripEntityGraph,
+): boolean {
+  if (leg.surfaceOnly) return false;
+
+  const legOrigin = leg.originGroupId?.trim();
+  if (graph && legOrigin && legOrigin !== graph.mainGroupId) {
+    return plan.legIds.has(leg.id);
+  }
+
+  return participantCalendarFollowsTransportLeg(plan, leg, graph);
 }
 
 function legEligible(

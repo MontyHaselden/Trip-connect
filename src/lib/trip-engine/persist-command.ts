@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { entityBookingDetails, groups, trips } from "@/lib/db/schema";
 import {
+  applyGroupInferenceForGroups,
   applyTripSetupState,
   persistResetGroupFromMain,
   syncGroupDayPlacesForGroups,
@@ -576,7 +577,11 @@ export async function persistCommands(
       );
     } else {
       const syncTransportItems = commandsNeedTransportItinerarySync(stateCommands);
-      const setupState = graphToSetupState(result.graph);
+      const batchGroupIds = allGroupIdsFromCommands(stateCommands);
+      const setupState = applyGroupInferenceForGroups(
+        graphToSetupState(result.graph),
+        batchGroupIds,
+      );
       await applyTripSetupState(tripId, setupState, {
         activeGroupId,
         skipWizardItineraryItems: true,
@@ -584,11 +589,11 @@ export async function persistCommands(
         syncAccommodationItems: false,
       });
       if (syncTransportItems) {
-        await syncIntercityLegsForGroups(
-          tripId,
-          setupState,
-          allGroupIdsFromCommands(stateCommands),
-        );
+        await syncIntercityLegsForGroups(tripId, setupState, batchGroupIds);
+        const personalGroupIds = batchGroupIds.filter((id) => id !== setupState.mainGroupId);
+        if (personalGroupIds.length) {
+          await syncGroupDayPlacesForGroups(tripId, setupState, personalGroupIds);
+        }
       }
       await syncActivitiesForTrip(tripId, result.graph.activities);
       await reconcileTransportItineraryItems(tripId, {

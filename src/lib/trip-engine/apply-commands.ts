@@ -1,4 +1,5 @@
 import { applySetupAccommodationChange } from "@/lib/host/setup/apply-setup-accommodation";
+import { applyGroupInference } from "@/lib/host/setup/apply-setup-state";
 import { applySetupTransportChange } from "@/lib/host/setup/apply-setup-transport";
 import { enforceGroupHalfDayBoundaries } from "@/lib/host/setup/enforce-content-half-days";
 import {
@@ -29,6 +30,7 @@ import {
 import { personalGroupForGroupId } from "./person-lens";
 import { pruneStalePersonalTransportLegs } from "./prune-stale-personal-transport-legs";
 import { normalizeCommand, type TripCommand } from "./commands";
+import { graphToSetupState } from "./adapters";
 import { repairTransportGraphSync } from "./repair-transport-graph";
 import { pendingTransportNeedKey } from "./hidden-pending-transport";
 import type { CommandResult, EngineConflict, EngineWarning, TripEntityGraph } from "./types";
@@ -53,6 +55,14 @@ function finalizeTransportChange(
   derived: TripSetupState,
 ): TripEntityGraph {
   return mergeGraphState(graph, syncTripBoundsFromContent(derived));
+}
+
+function inferPersonalGroupTransportCalendar(
+  graph: TripEntityGraph,
+  groupId: string,
+): TripEntityGraph {
+  if (groupId === graph.mainGroupId) return graph;
+  return mergeGraphState(graph, applyGroupInference(graphToSetupState(graph), groupId));
 }
 
 function warn(id: string, message: string, section = "general"): EngineWarning {
@@ -274,7 +284,8 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         },
         { preserveCalendarPaint: true },
       );
-      return ok(finalizeTransportChange(next, derived), warnings);
+      const finalized = finalizeTransportChange(next, derived);
+      return ok(inferPersonalGroupTransportCalendar(finalized, command.groupId), warnings);
     }
 
     case "addTransportLeg": {

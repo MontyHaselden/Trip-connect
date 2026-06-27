@@ -1,6 +1,6 @@
 import type { IntercityLegDraft } from "@/lib/host/wizard/types";
 
-import { participantUsesTransportLeg } from "./cost-ledger/presence";
+import { participantCalendarFollowsTransportLeg } from "./cost-ledger/presence";
 import { mergeMainWithPersonalOverlay } from "./personal-location-overlay";
 import { personalGroupForGroupId } from "./person-lens";
 import type { ResolvedParticipantPlan } from "./resolve-participant-graph";
@@ -47,7 +47,8 @@ function legStillMatchesCalendar(
   plan: ResolvedParticipantPlan,
   leg: IntercityLegDraft,
 ): boolean {
-  return participantUsesTransportLeg(plan, leg, graph);
+  if (!plan.legIds.has(leg.id)) return false;
+  return participantCalendarFollowsTransportLeg(plan, leg, graph);
 }
 
 /** Drop personal intercity legs that no longer match the participant calendar. */

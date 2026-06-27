@@ -167,10 +167,15 @@ describe("party batch calendar persist", () => {
 
     for (const groupId of ["g-amanda", "g-kaleb", "g-mia", "g-trenuela"]) {
       const overlay = result.dayPlacesByGroupId[groupId] ?? [];
+      const dec6 = overlay.find((day) => day.date === "2026-12-06");
+      const dec7 = overlay.find((day) => day.date === "2026-12-07");
       assert.ok(
-        overlay.some((day) => day.date === "2026-12-06" && day.primaryCity === "Tottori"),
-        `expected Tottori overlay for ${groupId}`,
+        dec6 &&
+          (dec6.primaryCity === "Tottori" ||
+            dec6.secondaryCity === "Tottori"),
+        `expected Tottori on Dec 6 for ${groupId}`,
       );
+      assert.equal(dec7?.primaryCity, "Tottori", `expected full Tottori on Dec 7 for ${groupId}`);
     }
   });
 });

@@ -320,6 +320,19 @@ function applyGroupInference(
   };
 }
 
+/** Infer personal overlay day paint from each group's transport legs and stays. */
+export function applyGroupInferenceForGroups(
+  state: TripSetupState,
+  groupIds: Iterable<string>,
+): TripSetupState {
+  let next = state;
+  for (const groupId of groupIds) {
+    if (groupId === state.mainGroupId) continue;
+    next = applyGroupInference(next, groupId);
+  }
+  return next;
+}
+
 export type TripSetupPersistMode = "full" | "dayPlaces" | "accommodation";
 
 export async function applyTripSetupState(

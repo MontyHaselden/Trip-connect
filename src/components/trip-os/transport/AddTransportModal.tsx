@@ -304,6 +304,16 @@ export function AddTransportModal(props: {
           },
         ],
       });
+      commands.push({
+        type: "hidePendingTransportNeed",
+        groupId,
+        need: {
+          kind: need.kind,
+          date: need.date,
+          fromCity: need.fromCity,
+          toCity: need.toCity,
+        },
+      });
     }
 
     const ok = await props.onDispatch(commands);
