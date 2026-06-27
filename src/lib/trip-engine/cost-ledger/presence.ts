@@ -147,17 +147,6 @@ function cityMatchesPlace(city: string, placeKey: string, placeRaw: string): boo
   );
 }
 
-function participantAtPlaceOnDate(
-  plan: ResolvedParticipantPlan,
-  date: string,
-  placeKey: string,
-  placeRaw: string,
-): boolean {
-  return citiesForParticipantOnDate(plan, date).some((city) =>
-    cityMatchesPlace(city, placeKey, placeRaw),
-  );
-}
-
 /** Left half of a travel split day matches the leg origin — same flight, personal destination may differ. */
 function participantDepartsFromOnTravelDate(
   plan: ResolvedParticipantPlan,
@@ -182,6 +171,42 @@ function participantArrivesAtOnDate(
     return cityMatchesPlace(day.secondaryCity, toKey, toRaw);
   }
   return cityMatchesPlace(day.primaryCity, toKey, toRaw);
+}
+
+/** Overlay fork day shows a different destination than this main-group leg. */
+function overlayCalendarDestinationDiffersFromLeg(
+  plan: ResolvedParticipantPlan,
+  travelDate: string,
+  toKey: string,
+  toRaw: string,
+): boolean {
+  const day = plan.daysByDate.get(travelDate);
+  const destination = day?.secondaryCity?.trim();
+  if (!destination) return false;
+  return !cityMatchesPlace(destination, toKey, toRaw);
+}
+
+/** Personal leg on the same day to a different city — not on the main booking. */
+function overlayParticipantHasConflictingPersonalLeg(
+  plan: ResolvedParticipantPlan,
+  graph: TripEntityGraph,
+  travelDate: string,
+  toKey: string,
+  toRaw: string,
+): boolean {
+  for (const legId of plan.legIds) {
+    const personal = findTransportLeg(graph, legId);
+    if (!personal) continue;
+    const origin = personal.originGroupId ?? graph.mainGroupId;
+    if (origin === graph.mainGroupId) continue;
+    if (personal.travelDate?.trim() !== travelDate) continue;
+    const endpoints = transportLegEndpoints(personal);
+    if (!endpoints.toKey) continue;
+    if (!cityMatchesPlace(toRaw, endpoints.toKey, endpoints.toRaw)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function mainGroupDepartsOnTravelDate(
@@ -216,6 +241,19 @@ export function participantCalendarFollowsTransportLeg(
   const { fromKey, toKey, fromRaw, toRaw } = transportLegEndpoints(leg);
   if (!fromKey || !toKey) return plan.legIds.has(leg.id);
 
+  if (
+    graph &&
+    plan.mode === "overlay" &&
+    (!leg.originGroupId || leg.originGroupId === graph.mainGroupId)
+  ) {
+    if (overlayCalendarDestinationDiffersFromLeg(plan, travelDate, toKey, toRaw)) {
+      return false;
+    }
+    if (overlayParticipantHasConflictingPersonalLeg(plan, graph, travelDate, toKey, toRaw)) {
+      return false;
+    }
+  }
+
   const dayCities = citiesForParticipantOnDate(plan, travelDate);
   const hasFrom = dayCities.some((city) => cityMatchesPlace(city, fromKey, fromRaw));
   const hasTo = dayCities.some((city) => cityMatchesPlace(city, toKey, toRaw));
@@ -243,7 +281,6 @@ export function participantCalendarFollowsTransportLeg(
     for (const date of [travelDate, arrivalDate, addDays(travelDate, 1)]) {
       if (participantArrivesAtOnDate(plan, date, toKey, toRaw)) return true;
     }
-    if (participantAtPlaceOnDate(plan, travelDate, fromKey, fromRaw)) return true;
   }
 
   if (hasTo && !hasFrom) return true;

@@ -1402,6 +1402,7 @@ export function useTripOsEngine(tripId: string) {
     setActiveSection,
     activeGroupId,
     load,
+    refreshCostLedger: refreshCostLedgerFromServer,
     dispatch,
     switchGroup,
     patchCosts,

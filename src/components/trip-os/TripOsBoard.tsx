@@ -223,10 +223,10 @@ export function TripOsBoard(props: { tripId: string }) {
         setParticipantViewRefreshKey((k) => k + 1);
       }
       if (resolved === "finance") {
-        void engine.load(undefined, { silent: true });
+        void engine.refreshCostLedger();
       }
     },
-    [calendar, engine.load],
+    [calendar, engine.refreshCostLedger],
   );
 
   const handleOpenFinanceSection = useCallback(
@@ -235,9 +235,9 @@ export function TripOsBoard(props: { tripId: string }) {
       calendar.clearSelection();
       setActiveSection("finance");
       setMiddleView("section");
-      void engine.load(undefined, { silent: true });
+      void engine.refreshCostLedger();
     },
-    [calendar, engine.load],
+    [calendar, engine.refreshCostLedger],
   );
 
   const handleReadinessIndicator = useCallback(
