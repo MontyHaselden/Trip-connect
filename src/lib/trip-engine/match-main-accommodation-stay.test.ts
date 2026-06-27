@@ -5,6 +5,7 @@ import { setupStateToGraph } from "./adapters";
 import { applyCommands } from "./apply-commands";
 import {
   borrowMainStayOverlayOp,
+  buildAdoptMainGroupStayCommands,
   borrowedMainActivitiesForParticipant,
   borrowedMainStaysForParticipant,
   canAdoptMainGroupStayForParticipant,
@@ -257,7 +258,7 @@ describe("match-main-accommodation-stay", () => {
     assert.ok(isBorrowMainStayOp(op));
   });
 
-  it("borrowMainStayOverlayOp adopts one main hotel without copying locations", () => {
+  it("buildAdoptMainGroupStayCommands borrows hotel and paints main locations on its nights", () => {
     const base = macyIndependentFixture();
     const tokyoNights = ["2026-12-18", "2026-12-19", "2026-12-20"] as const;
     base.dayPlacesByGroupId["g-main"] = [
@@ -323,22 +324,23 @@ describe("match-main-accommodation-stay", () => {
 
     const graph = setupStateToGraph("trip-1", base);
     const mainStay = graph.accommodationStays.find((stay) => stay.id === "stay-yaeno")!;
-    const adopted = applyCommands(graph, [
-      {
-        type: "addGroupDayOverride",
-        groupId: "g-macy",
-        op: borrowMainStayOverlayOp("g-macy", mainStay.id),
-      },
-    ]).graph;
+    const adopted = applyCommands(
+      graph,
+      buildAdoptMainGroupStayCommands(graph, "g-macy", mainStay),
+    ).graph;
 
     assert.equal(
       adopted.dayPlacesByGroupId["g-macy"]?.find((d) => d.date === "2026-12-18")?.primaryCity,
-      "Kyoto",
+      "Tokyo, Japan",
+    );
+    assert.equal(
+      adopted.dayPlacesByGroupId["g-macy"]?.find((d) => d.date === "2026-12-19")?.primaryCity,
+      "Tokyo, Japan",
     );
     assert.ok(
       borrowedMainStaysForParticipant(adopted, "g-macy").some((stay) => stay.id === mainStay.id),
     );
-    assert.equal(borrowedMainActivitiesForParticipant(adopted, "g-macy").length, 0);
+    assert.equal(borrowedMainActivitiesForParticipant(adopted, "g-macy").length, 1);
     assert.ok(
       staysForCalendarView(adopted, "g-macy").some((stay) => stay.id === mainStay.id),
     );

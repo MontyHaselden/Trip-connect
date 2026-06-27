@@ -36,12 +36,10 @@ import {
 import { shortCityName } from "@/lib/host/setup/location-range-display";
 import { dayPlacesForGroup, staysForGroup } from "@/lib/trip-engine/selectors";
 import {
-  borrowMainStayOverlayOp,
+  buildAdoptMainGroupStayCommands,
   canAdoptMainGroupStayForParticipant,
-  findBorrowMainStayOp,
   findMatchingMainStay,
   formatStayNightSpan,
-  stayNamesMatch,
   suggestedMainStaysForParticipantEdit,
   type MainStayMatch,
 } from "@/lib/trip-engine/match-main-accommodation-stay";
@@ -736,30 +734,7 @@ export function DayContextPanel(props: {
 
   async function adoptMainGroupStay(mainStay: AccommodationStayDraft) {
     setActionError(null);
-
-    const overlappingSameHotel = staysForGroup(graph, groupId).filter(
-      (stay) =>
-        stayNamesMatch(stay.name ?? "", mainStay.name ?? "") &&
-        stay.checkInDate < mainStay.checkOutDate &&
-        mainStay.checkInDate < stay.checkOutDate,
-    );
-
-    const commands: TripCommand[] = [
-      ...overlappingSameHotel.map((stay) => ({
-        type: "removeStay" as const,
-        groupId,
-        stayId: stay.id,
-      })),
-    ];
-
-    if (!findBorrowMainStayOp(graph, groupId, mainStay.id)) {
-      commands.push({
-        type: "addGroupDayOverride",
-        groupId,
-        op: borrowMainStayOverlayOp(groupId, mainStay.id),
-      });
-    }
-
+    const commands = buildAdoptMainGroupStayCommands(graph, groupId, mainStay);
     const ok = await props.onDispatch(commands);
     if (ok) {
       setStayConflictDialog(null);
@@ -1409,8 +1384,8 @@ export function DayContextPanel(props: {
                     mainStayMatch!.mainStay.checkInDate,
                     mainStayMatch!.mainStay.checkOutDate,
                   )}
-                  ). {participantLabel} can use that hotel without a duplicate row — personal
-                  locations on the calendar stay as they are.
+                  ). {participantLabel} can use that hotel without a duplicate row — calendar
+                  locations on those hotel nights will match the main group.
                 </p>
                 <button
                   type="button"
@@ -1540,7 +1515,7 @@ export function DayContextPanel(props: {
             ) : null}
             <p className="text-xs text-zinc-500">
               {canFollowMainGroupStay
-                ? `Apply will use the main group hotel for ${participantLabel} — your painted locations stay unchanged.`
+                ? `Apply will use the main group hotel for ${participantLabel} and paint main locations on those nights.`
                 : linkedStayIsInherited
                 ? "Saving creates a personal stay for this participant — the main group homestay is unchanged."
                 : linkedStay && linkedStay.checkInDate > rangeStart

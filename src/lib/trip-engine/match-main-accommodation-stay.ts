@@ -4,6 +4,7 @@ import type { GroupOverlayOpDraft } from "@/lib/host/setup/types";
 import type { AccommodationStayDraft, ActivityDraft, DayPlaceDraft } from "@/lib/host/wizard/types";
 import { newId } from "@/lib/host/wizard/types";
 
+import type { TripCommand } from "./commands";
 import { activitiesForGroup, dayPlacesForGroup, staysForGroup } from "./selectors";
 import { personalGroupForGroupId } from "./person-lens";
 import type { TripEntityGraph } from "./types";
@@ -265,6 +266,43 @@ export function mergePersonalDayPlacesFromMain(
     });
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Borrow a main-group hotel and paint main locations on its nights only. */
+export function buildAdoptMainGroupStayCommands(
+  graph: TripEntityGraph,
+  groupId: string,
+  mainStay: AccommodationStayDraft,
+): TripCommand[] {
+  const personalDays = dayPlacesForGroup(graph, groupId);
+  const mainDays = dayPlacesForGroup(graph, graph.mainGroupId);
+  const merged = mergePersonalDayPlacesFromMain(personalDays, mainDays, mainStay);
+
+  const overlappingSameHotel = staysForGroup(graph, groupId).filter(
+    (stay) =>
+      stayNamesMatch(stay.name ?? "", mainStay.name ?? "") &&
+      stay.checkInDate < mainStay.checkOutDate &&
+      mainStay.checkInDate < stay.checkOutDate,
+  );
+
+  const commands: TripCommand[] = [
+    { type: "setDayPlaces", groupId, days: merged },
+    ...overlappingSameHotel.map((stay) => ({
+      type: "removeStay" as const,
+      groupId,
+      stayId: stay.id,
+    })),
+  ];
+
+  if (!findBorrowMainStayOp(graph, groupId, mainStay.id)) {
+    commands.push({
+      type: "addGroupDayOverride",
+      groupId,
+      op: borrowMainStayOverlayOp(groupId, mainStay.id),
+    });
+  }
+
+  return commands;
 }
 
 export function formatStayNightSpan(checkIn: string, checkOut: string): string {
