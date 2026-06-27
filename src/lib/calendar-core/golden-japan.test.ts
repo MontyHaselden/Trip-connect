@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { extractOverrides, mergeOverrides } from "./merge-overrides";
 import { paintRange } from "./paint-range";
-import { mergeOverrides } from "./merge-overrides";
 import { fullDaySlice, travelDaySlice } from "./slice-day";
 
 const MAIN_CORRIDOR = [
@@ -62,7 +62,8 @@ describe("golden Japan Dec 5–21 corridor", () => {
       "full",
       { transitionContextSlices: main },
     );
-    const projected = mergeOverrides(main, personalStored, "override");
+    const stored = extractOverrides(main, personalStored);
+    const projected = mergeOverrides(main, stored, "override");
 
     const dec5 = projected.find((d) => d.date === "2026-12-05");
     const dec6 = projected.find((d) => d.date === "2026-12-06");
@@ -76,7 +77,7 @@ describe("golden Japan Dec 5–21 corridor", () => {
     assert.equal(dec7?.amCity, "Tottori");
     assert.equal(dec7?.pmCity, "Tottori");
     assert.equal(dec13?.amCity, "Tottori");
-    assert.equal(dec13?.pmCity, "");
+    assert.equal(dec13?.pmCity, "Kyoto");
     assert.equal(dec14?.amCity, "Kyoto");
   });
 
@@ -91,8 +92,9 @@ describe("golden Japan Dec 5–21 corridor", () => {
       "full",
       { transitionContextSlices: main },
     );
-    const first = mergeOverrides(main, storedPersonal, "override");
-    const second = mergeOverrides(main, storedPersonal, "override");
+    const stored = extractOverrides(main, storedPersonal);
+    const first = mergeOverrides(main, stored, "override");
+    const second = mergeOverrides(main, stored, "override");
     assert.deepEqual(first, second);
   });
 

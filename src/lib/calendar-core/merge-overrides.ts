@@ -21,7 +21,16 @@ export function mergeOverrides(
       const main = mainByDate.get(date) ?? emptySlice(date);
       const override = overrideByDate.get(date);
       if (!override) return main;
-      return normalizeSlice(override);
+
+      const amCity = override.amCity.trim() || main.amCity;
+      const pmCity = override.pmCity.trim() || main.pmCity;
+
+      return normalizeSlice({
+        date,
+        amCity,
+        pmCity,
+        dayType: override.dayType ?? main.dayType,
+      });
     })
     .filter(sliceHasPaint);
 }

@@ -47,4 +47,21 @@ describe("calendar-core mergeOverrides", () => {
     assert.ok(overrides.some((d) => d.date === "2026-12-06"));
     assert.ok(!overrides.some((d) => d.date === "2026-12-05"));
   });
+
+  it("round-trips sparse half overrides through extract and merge", () => {
+    const painted = [
+      travelDaySlice("2026-12-06", "Tokyo", "Tottori"),
+      fullDaySlice("2026-12-07", "Tottori"),
+      fullDaySlice("2026-12-08", "Tottori"),
+    ];
+    const stored = extractOverrides(main, painted);
+    const dec6Stored = stored.find((d) => d.date === "2026-12-06");
+    assert.equal(dec6Stored?.pmCity, "Tottori");
+    assert.equal(dec6Stored?.amCity, "");
+
+    const projected = mergeOverrides(main, stored, "override");
+    const dec6 = projected.find((d) => d.date === "2026-12-06");
+    assert.equal(dec6?.amCity, "Tokyo");
+    assert.equal(dec6?.pmCity, "Tottori");
+  });
 });
