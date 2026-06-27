@@ -294,8 +294,10 @@ function LegRow(props: {
 
 export function TransportSection(props: {
   graph: TripEntityGraph;
-  groupId: string;
-  scopeGroupFilter?: string[] | null;
+  /** Scope used to list whole-group + personal/subgroup rows (usually main group). */
+  listGroupId: string;
+  /** Active calendar lens group — controls edit/highlight affordances only. */
+  calendarEditGroupId: string;
   selectedDate?: string | null;
   saving?: boolean;
   rosterSummary?: RosterSummary;
@@ -308,21 +310,9 @@ export function TransportSection(props: {
   const roster = props.rosterSummary ?? { participants: [], groups: [], rooms: [] };
   const products = props.graph.transportProducts ?? [];
 
-  function filterScopedLists<T>(lists: {
-    wholeGroup: TripScopeSection<T>;
-    otherScopes: TripScopeSection<T>[];
-  }) {
-    const filter = props.scopeGroupFilter;
-    if (!filter?.length) return lists;
-    return {
-      wholeGroup: lists.wholeGroup,
-      otherScopes: lists.otherScopes.filter((scope) => filter.includes(scope.groupId)),
-    };
-  }
-
   const [addOpen, setAddOpen] = useState(false);
   const [prefillNeed, setPrefillNeed] = useState<PendingTransportNeed | null>(null);
-  const [addGroupId, setAddGroupId] = useState(props.groupId);
+  const [addGroupId, setAddGroupId] = useState(props.calendarEditGroupId);
   const [addTargetGroupIds, setAddTargetGroupIds] = useState<string[] | null>(null);
   const [separatedRouteKeys, setSeparatedRouteKeys] = useState<Set<string>>(() => new Set());
   const [editingLeg, setEditingLeg] = useState<{
@@ -333,19 +323,13 @@ export function TransportSection(props: {
   const [hiddenOpen, setHiddenOpen] = useState(false);
 
   const pendingScopes = useMemo(
-    () =>
-      filterScopedLists(
-        pendingTransportNeedsListedByScope(props.graph, roster, props.groupId),
-      ),
-    [props.graph, roster, props.groupId, props.scopeGroupFilter],
+    () => pendingTransportNeedsListedByScope(props.graph, roster, props.listGroupId),
+    [props.graph, roster, props.listGroupId],
   );
 
   const hiddenScopes = useMemo(
-    () =>
-      filterScopedLists(
-        hiddenPendingTransportNeedsListedByScope(props.graph, roster, props.groupId),
-      ),
-    [props.graph, roster, props.groupId, props.scopeGroupFilter],
+    () => hiddenPendingTransportNeedsListedByScope(props.graph, roster, props.listGroupId),
+    [props.graph, roster, props.listGroupId],
   );
 
   const pendingScopeSections = useMemo(
@@ -390,11 +374,8 @@ export function TransportSection(props: {
   );
 
   const scopedLegs = useMemo(
-    () =>
-      filterScopedLists(
-        transportLegsListedByScope(props.graph, roster, props.groupId),
-      ),
-    [props.graph, roster, props.groupId, props.scopeGroupFilter],
+    () => transportLegsListedByScope(props.graph, roster, props.listGroupId),
+    [props.graph, roster, props.listGroupId],
   );
 
   const allScopes = useMemo((): TransportLegDisplayScope[] => {
@@ -466,7 +447,7 @@ export function TransportSection(props: {
   }
 
   function openAdd(need: PendingTransportNeed, groupId: string, targetGroupIds?: string[]) {
-    if (groupId !== props.groupId) {
+    if (groupId !== props.calendarEditGroupId) {
       props.onSwitchGroup?.(groupId);
     }
     setPrefillNeed(need);
@@ -486,38 +467,35 @@ export function TransportSection(props: {
       groupId: scope.groupId,
       title: scope.title,
       memberNames: scope.memberNames,
-      items: [],
+      items: [scope.need],
     };
   }
 
-  async function hideNeedForScopes(need: PendingTransportNeed, scopes: PendingTransportScopeRef[]) {
+  async function hideNeedForScopes(scopes: PendingTransportScopeRef[]) {
     await props.onDispatch(
       scopes.map((scope) => ({
         type: "hidePendingTransportNeed" as const,
         groupId: scope.groupId,
         need: {
-          kind: need.kind,
-          date: need.date,
-          fromCity: need.fromCity,
-          toCity: need.toCity,
+          kind: scope.need.kind,
+          date: scope.need.date,
+          fromCity: scope.need.fromCity,
+          toCity: scope.need.toCity,
         },
       })),
     );
   }
 
-  async function unhideNeedForScopes(
-    need: PendingTransportNeed,
-    scopes: PendingTransportScopeRef[],
-  ) {
+  async function unhideNeedForScopes(scopes: PendingTransportScopeRef[]) {
     await props.onDispatch(
       scopes.map((scope) => ({
         type: "unhidePendingTransportNeed" as const,
         groupId: scope.groupId,
         need: {
-          kind: need.kind,
-          date: need.date,
-          fromCity: need.fromCity,
-          toCity: need.toCity,
+          kind: scope.need.kind,
+          date: scope.need.date,
+          fromCity: scope.need.fromCity,
+          toCity: scope.need.toCity,
         },
       })),
     );
@@ -538,7 +516,7 @@ export function TransportSection(props: {
     const travellerLabel = formatGroupedTravellerLabel(scopes);
     const primaryGroupId = scopes[0]!.groupId;
     const groupIds = scopes.map((scope) => scope.groupId);
-    const isActiveScope = scopes.some((scope) => scope.groupId === props.groupId);
+    const isActiveScope = scopes.some((scope) => scope.groupId === props.calendarEditGroupId);
 
     return (
       <li
@@ -599,7 +577,7 @@ export function TransportSection(props: {
             {mode === "hidden" ? (
               <button
                 type="button"
-                onClick={() => void unhideNeedForScopes(need, scopes)}
+                onClick={() => void unhideNeedForScopes(scopes)}
                 className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
               >
                 Show
@@ -608,7 +586,7 @@ export function TransportSection(props: {
               <>
                 <button
                   type="button"
-                  onClick={() => void hideNeedForScopes(need, scopes)}
+                  onClick={() => void hideNeedForScopes(scopes)}
                   className="rounded-lg px-2 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-800"
                 >
                   Hide
@@ -639,7 +617,7 @@ export function TransportSection(props: {
     mode: "visible" | "hidden",
   ) {
     const scopeLabel = pendingNeedScopeLabel(props.graph, scope);
-    const isActiveScope = scope.groupId === props.groupId;
+    const isActiveScope = scope.groupId === props.calendarEditGroupId;
 
     return (
       <li
@@ -687,11 +665,12 @@ export function TransportSection(props: {
             <button
               type="button"
               onClick={() =>
-                void unhideNeedForScopes(need, [
+                void unhideNeedForScopes([
                   {
                     groupId: scope.groupId,
                     title: scope.title,
                     memberNames: scope.memberNames,
+                    need,
                   },
                 ])
               }
@@ -704,11 +683,12 @@ export function TransportSection(props: {
               <button
                 type="button"
                 onClick={() =>
-                  void hideNeedForScopes(need, [
+                  void hideNeedForScopes([
                     {
                       groupId: scope.groupId,
                       title: scope.title,
                       memberNames: scope.memberNames,
+                      need,
                     },
                   ])
                 }
@@ -741,12 +721,12 @@ export function TransportSection(props: {
     const isWholeGroup = scope.groupId === props.graph.mainGroupId;
     const isGroupedPersonal = Boolean(scope.groupedLegTargets?.length);
     const isActiveScope =
-      scope.groupId === props.groupId ||
+      scope.groupId === props.calendarEditGroupId ||
       (isGroupedPersonal &&
-        scope.groupedLegTargets?.some((target) => target.groupId === props.groupId));
+        scope.groupedLegTargets?.some((target) => target.groupId === props.calendarEditGroupId));
     const scopeHint = isGroupedPersonal
       ? null
-      : scopeEditHint(props.graph, props.groupId, scope);
+      : scopeEditHint(props.graph, props.calendarEditGroupId, scope);
     const grouped = groupTransportLegs(scope.items, products);
     const orphanProducts = orphanTransportProducts(
       products,
@@ -1026,7 +1006,7 @@ export function TransportSection(props: {
         onClose={() => {
           setAddOpen(false);
           setPrefillNeed(null);
-          setAddGroupId(props.groupId);
+          setAddGroupId(props.calendarEditGroupId);
           setAddTargetGroupIds(null);
         }}
         graph={props.graph}
@@ -1045,7 +1025,7 @@ export function TransportSection(props: {
         leg={editingLeg?.leg ?? null}
         bucket={editingLeg?.bucket ?? null}
         graph={props.graph}
-        groupId={props.groupId}
+        groupId={props.calendarEditGroupId}
         rosterSummary={props.rosterSummary}
         saving={props.saving}
         onClose={() => setEditingLeg(null)}

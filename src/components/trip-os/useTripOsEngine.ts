@@ -867,6 +867,17 @@ export function useTripOsEngine(tripId: string) {
       if (!started) return;
 
       let graph = started.graph;
+
+      const latestBefore = dataRef.current;
+      if (!latestBefore) return;
+      const optimistic = buildStateFromGraph(graph, {
+        viewGroupId: groupId,
+        prev: latestBefore,
+      });
+      if (generation !== switchGroupGenerationRef.current) return;
+      setData(optimistic);
+      persistLocalSnapshot(graph, { activeGroupId: groupId });
+
       const needsDayPlaces =
         groupId !== graph.mainGroupId &&
         !(graph.dayPlacesByGroupId[groupId]?.length ?? 0);
@@ -905,7 +916,6 @@ export function useTripOsEngine(tripId: string) {
         graph === latest.graph &&
         activeGroupIdRef.current === groupId
       ) {
-        persistLocalSnapshot(graph, { activeGroupId: groupId });
         return;
       }
 

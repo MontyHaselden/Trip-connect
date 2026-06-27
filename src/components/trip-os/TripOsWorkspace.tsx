@@ -51,8 +51,6 @@ export function TripOsWorkspace(props: {
   section: TripOsSection;
   graph: TripEntityGraph;
   groupId: string;
-  transportViewGroupId?: string;
-  scopeGroupFilter?: string[] | null;
   calendarLens?: CalendarLens;
   tripId: string;
   inviteCode: string;
@@ -80,7 +78,6 @@ export function TripOsWorkspace(props: {
   onGoToDateFromMap?: (iso: string) => void;
 }) {
   const { graph, groupId, tripId, inviteCode, onDispatch, saving } = props;
-  const transportGroupId = props.transportViewGroupId ?? groupId;
 
   switch (props.section) {
     case "overview":
@@ -137,8 +134,8 @@ export function TripOsWorkspace(props: {
       return (
         <TransportSection
           graph={graph}
-          groupId={transportGroupId}
-          scopeGroupFilter={props.scopeGroupFilter ?? null}
+          listGroupId={graph.mainGroupId}
+          calendarEditGroupId={groupId}
           selectedDate={props.selectedDay?.date ?? null}
           saving={saving}
           onDispatch={onDispatch}

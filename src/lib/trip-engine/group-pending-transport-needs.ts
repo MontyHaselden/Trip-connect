@@ -1,4 +1,4 @@
-import { pendingTransportNeedRouteKey } from "./hidden-pending-transport";
+import { pendingTransportNeedGroupKey } from "./hidden-pending-transport";
 import type { PendingTransportNeed } from "./pending-city-moves";
 import type { TripScopeSection } from "./section-scope-lists";
 
@@ -6,6 +6,7 @@ export type PendingTransportScopeRef = {
   groupId: string;
   title: string;
   memberNames: string[];
+  need: PendingTransportNeed;
 };
 
 export type PendingTransportListItem =
@@ -24,11 +25,13 @@ export type PendingTransportListItem =
 
 function scopeRefFromSection(
   section: TripScopeSection<PendingTransportNeed>,
+  need: PendingTransportNeed,
 ): PendingTransportScopeRef {
   return {
     groupId: section.groupId,
     title: section.title,
     memberNames: section.memberNames,
+    need,
   };
 }
 
@@ -55,6 +58,10 @@ function applyMainGroupScopePreference(
   return mainScope ? [mainScope] : scopes;
 }
 
+function pickRepresentativeNeed(scopes: PendingTransportScopeRef[]): PendingTransportNeed {
+  return [...scopes].sort((a, b) => a.need.date.localeCompare(b.need.date))[0]!.need;
+}
+
 /** Collapse identical calendar gaps across participant scopes into one shared row. */
 export function listPendingTransportNeedsForDisplay(
   sections: TripScopeSection<PendingTransportNeed>[],
@@ -63,15 +70,16 @@ export function listPendingTransportNeedsForDisplay(
 ): PendingTransportListItem[] {
   const byRoute = new Map<
     string,
-    { need: PendingTransportNeed; scopes: PendingTransportScopeRef[]; hasMain: boolean }
+    { scopes: PendingTransportScopeRef[]; hasMain: boolean }
   >();
 
   for (const section of sections) {
-    const scope = scopeRefFromSection(section);
     for (const need of section.items) {
-      const routeKey = pendingTransportNeedRouteKey(need);
-      const bucket = byRoute.get(routeKey) ?? { need, scopes: [], hasMain: false };
-      if (!byRoute.has(routeKey)) byRoute.set(routeKey, bucket);
+      const groupKey = pendingTransportNeedGroupKey(need);
+      const bucket = byRoute.get(groupKey) ?? { scopes: [], hasMain: false };
+      if (!byRoute.has(groupKey)) byRoute.set(groupKey, bucket);
+
+      const scope = scopeRefFromSection(section, need);
 
       if (mainGroupId && scope.groupId === mainGroupId) {
         bucket.hasMain = true;
@@ -88,14 +96,15 @@ export function listPendingTransportNeedsForDisplay(
   }
 
   const items: PendingTransportListItem[] = [];
-  for (const [routeKey, { need, scopes }] of byRoute) {
+  for (const [routeKey, { scopes }] of byRoute) {
     const sortedScopes = applyMainGroupScopePreference(
       [...scopes].sort((a, b) => a.title.localeCompare(b.title)),
       mainGroupId,
     );
+    const need = pickRepresentativeNeed(sortedScopes);
     if (separatedRouteKeys.has(routeKey) || sortedScopes.length <= 1) {
       for (const scope of sortedScopes) {
-        items.push({ type: "single", routeKey, need, scope });
+        items.push({ type: "single", routeKey, need: scope.need, scope });
       }
       continue;
     }
@@ -105,7 +114,9 @@ export function listPendingTransportNeedsForDisplay(
   return sortListItems(items);
 }
 
-export function formatGroupedTravellerLabel(scopes: PendingTransportScopeRef[]): string {
+export function formatGroupedTravellerLabel(
+  scopes: Array<{ title: string; memberNames: string[] }>,
+): string {
   if (scopes.length === 1 && scopes[0]?.title.trim() === "Whole group") {
     return "Whole group";
   }

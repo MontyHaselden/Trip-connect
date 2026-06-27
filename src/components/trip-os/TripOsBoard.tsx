@@ -5,9 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   editGroupIdForLens,
-  calendarLensScopeGroupIds,
   normalizeCalendarLens,
-  transportViewGroupIdForLens,
   type CalendarLens,
 } from "@/lib/trip-engine/person-lens";
 import { expandCommandsForCalendarLens } from "@/lib/trip-engine/calendar-lens-dispatch";
@@ -162,15 +160,6 @@ export function TripOsBoard(props: { tripId: string }) {
     graph && rosterSummary
       ? editGroupIdForLens(graph, calendarLens, rosterSummary)
       : engine.activeGroupId || graph?.mainGroupId || "";
-
-  const scopeGroupFilter =
-    graph && rosterSummary
-      ? calendarLensScopeGroupIds(calendarLens, graph, rosterSummary)
-      : null;
-  const transportViewGroupId =
-    graph && rosterSummary
-      ? transportViewGroupIdForLens(graph, calendarLens, rosterSummary)
-      : editGroupId;
 
   const calendarView = useMemo(() => {
     if (!engine.data || !graph) return null;
@@ -331,6 +320,8 @@ export function TripOsBoard(props: { tripId: string }) {
     calendarView?.calendarProjection ?? engine.data!.calendarProjection;
   const activeGroupId = editGroupId;
   const calmNav = isTripWelcomeState(graphToSetupState(tripGraph));
+  const calendarLensReady =
+    calendarRenderModel.groupId === editGroupId && calendarRenderModel.days.length > 0;
 
   const selectedDay =
     calendar.selection.rangeStart
@@ -409,8 +400,6 @@ export function TripOsBoard(props: { tripId: string }) {
               section={activeSection}
               graph={tripGraph}
               groupId={activeGroupId}
-              transportViewGroupId={transportViewGroupId}
-              scopeGroupFilter={scopeGroupFilter}
               calendarLens={calendarLens}
               tripId={props.tripId}
               inviteCode={engine.data.inviteCode}
@@ -462,6 +451,7 @@ export function TripOsBoard(props: { tripId: string }) {
                 ? `${calendar.statusLine} · ${saveStatusLine}`
                 : calendar.statusLine
             }
+            interactionDisabled={!calendarLensReady || engine.saving || engine.refreshing}
           />
           )}
         </aside>

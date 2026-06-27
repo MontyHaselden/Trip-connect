@@ -1,7 +1,7 @@
 import { locationPaletteKey } from "@/lib/host/wizard/location-stays";
 import type { IntercityLegDraft, TransportLegDraft } from "@/lib/host/wizard/types";
 
-import { formatGroupedTravellerLabel, type PendingTransportScopeRef } from "./group-pending-transport-needs";
+import { formatGroupedTravellerLabel } from "./group-pending-transport-needs";
 import type { ScopedTransportLeg, TripScopeSection } from "./section-scope-lists";
 
 export type TransportLegGroupedTarget = {
@@ -13,9 +13,13 @@ export type TransportLegDisplayScope = TripScopeSection<ScopedTransportLeg> & {
   groupedLegTargets?: TransportLegGroupedTarget[];
 };
 
-function scopeRefFromSection(
-  section: TripScopeSection<ScopedTransportLeg>,
-): PendingTransportScopeRef {
+type TransportLegScopeRef = {
+  groupId: string;
+  title: string;
+  memberNames: string[];
+};
+
+function scopeRefFromSection(section: TripScopeSection<ScopedTransportLeg>): TransportLegScopeRef {
   return {
     groupId: section.groupId,
     title: section.title,
@@ -57,7 +61,7 @@ export function groupPersonalTransportScopesForDisplay(
   if (!otherScopes.length) return [];
 
   type Pair = {
-    scope: PendingTransportScopeRef;
+    scope: TransportLegScopeRef;
     leg: ScopedTransportLeg;
   };
 

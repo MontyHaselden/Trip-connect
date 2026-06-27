@@ -5,7 +5,7 @@ import {
   formatGroupedTravellerLabel,
   listPendingTransportNeedsForDisplay,
 } from "./group-pending-transport-needs";
-import { pendingTransportNeedRouteKey } from "./hidden-pending-transport";
+import { pendingTransportNeedGroupKey, pendingTransportNeedRouteKey } from "./hidden-pending-transport";
 import type { PendingTransportNeed } from "./pending-city-moves";
 import type { TripScopeSection } from "./section-scope-lists";
 
@@ -57,7 +57,7 @@ describe("listPendingTransportNeedsForDisplay", () => {
       scope("g-amanda", "Amanda", [shared]),
       scope("g-kaleb", "Kaleb", [shared]),
     ];
-    const routeKey = pendingTransportNeedRouteKey(shared);
+    const routeKey = pendingTransportNeedGroupKey(shared);
 
     const items = listPendingTransportNeedsForDisplay(sections, new Set([routeKey]));
     assert.equal(items.length, 2);
@@ -123,15 +123,33 @@ describe("listPendingTransportNeedsForDisplay", () => {
       assert.equal(items[0].scopes.length, 3);
     }
   });
+
+  it("groups routes when participant calendars split on different dates", () => {
+    const sections = [
+      scope("g-kaleb", "Kaleb", [need("intercity", "2026-12-06", "Tokyo", "Tottori")]),
+      scope("g-mia", "Mia", [need("intercity", "2026-12-06", "Tokyo", "Tottori")]),
+      scope("g-trenuela", "Trenuela", [
+        need("intercity", "2026-12-07", "Tokyo", "Tottori"),
+      ]),
+    ];
+
+    const items = listPendingTransportNeedsForDisplay(sections, new Set());
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.type, "grouped");
+    if (items[0]?.type === "grouped") {
+      assert.equal(items[0].scopes.length, 3);
+    }
+  });
 });
 
 describe("formatGroupedTravellerLabel", () => {
   it("joins traveller names naturally", () => {
+    const shared = need("intercity", "2026-12-06", "Tokyo", "Tottori");
     const label = formatGroupedTravellerLabel([
-      { groupId: "g1", title: "Amanda", memberNames: ["Amanda"] },
-      { groupId: "g2", title: "Kaleb", memberNames: ["Kaleb"] },
-      { groupId: "g3", title: "Mia", memberNames: ["Mia"] },
-      { groupId: "g4", title: "Trenuela", memberNames: ["Trenuela"] },
+      { groupId: "g1", title: "Amanda", memberNames: ["Amanda"], need: shared },
+      { groupId: "g2", title: "Kaleb", memberNames: ["Kaleb"], need: shared },
+      { groupId: "g3", title: "Mia", memberNames: ["Mia"], need: shared },
+      { groupId: "g4", title: "Trenuela", memberNames: ["Trenuela"], need: shared },
     ]);
     assert.equal(label, "Amanda, Kaleb, Mia, and Trenuela");
   });

@@ -37,6 +37,7 @@ export function InteractiveTripCalendar(props: {
   headerAside?: ReactNode;
   statusLine?: string;
   onClearSelection?: () => void;
+  interactionDisabled?: boolean;
 }) {
   const { model, selection } = props;
   const hasSelection = Boolean(selection.rangeStart);
@@ -154,9 +155,12 @@ export function InteractiveTripCalendar(props: {
 
       <div
         ref={props.scrollRef}
-        className="trip-os-calendar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3"
+        className="relative trip-os-calendar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3"
         onClick={handleEmptyAreaClick}
       >
+        {props.interactionDisabled ? (
+          <div className="pointer-events-auto absolute inset-0 z-20 bg-white/50 backdrop-blur-[1px]" />
+        ) : null}
         {weekSections.map((section) => (
           <div key={section.key} className="mb-2 last:mb-0">
             {section.monthLabel ? (

@@ -25,6 +25,13 @@ export function pendingTransportNeedRouteKey(
   ].join("|");
 }
 
+/** Group identical city-change gaps even when participant calendars split on different dates. */
+export function pendingTransportNeedGroupKey(
+  need: Pick<PendingTransportNeed, "kind" | "fromCity" | "toCity">,
+): string {
+  return [need.kind, locationPaletteKey(need.fromCity), locationPaletteKey(need.toCity)].join("|");
+}
+
 export function parsePendingTransportNeedKey(key: string): {
   groupId: string;
   kind: PendingTransportKind;
