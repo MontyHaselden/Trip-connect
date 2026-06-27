@@ -4,6 +4,9 @@ import type { TransportLegDraft } from "@/lib/host/wizard/types";
 import type { TransportProductDraft } from "@/lib/host/wizard/types";
 import { legsForTransportProduct } from "@/lib/host/locations/transport-products";
 
+import { transportLegDisplayKey } from "../group-transport-legs-for-display";
+import { allTransportLegs } from "./transport-finance-product";
+
 import { costSplitParticipants } from "./allocate";
 import {
   citiesForParticipantOnDate,
@@ -100,6 +103,22 @@ function findTransportLeg(graph: TripEntityGraph, legId: string) {
   );
 }
 
+/** Collapsed personal legs share one finance row — check every sibling id for presence. */
+export function transportLegIdsForFinancePresence(
+  graph: TripEntityGraph,
+  legId: string,
+): string[] {
+  const leg = findTransportLeg(graph, legId);
+  if (!leg) return [legId];
+  const origin = leg.originGroupId ?? graph.mainGroupId;
+  if (origin === graph.mainGroupId) return [legId];
+  const key = transportLegDisplayKey(leg);
+  return allTransportLegs(graph)
+    .filter((row) => (row.originGroupId ?? graph.mainGroupId) !== graph.mainGroupId)
+    .filter((row) => transportLegDisplayKey(row) === key)
+    .map((row) => row.id);
+}
+
 function transportLegEndpoints(leg: {
   fromCity: string;
   toCity: string;
@@ -190,6 +209,11 @@ export function participantUsesTransportLeg(
 ): boolean {
   if (leg.surfaceOnly) return false;
 
+  const legOrigin = (leg as { originGroupId?: string | null }).originGroupId?.trim();
+  if (graph && legOrigin && legOrigin !== graph.mainGroupId) {
+    return plan.legIds.has(leg.id);
+  }
+
   const travelDate = leg.travelDate?.trim();
   if (!travelDate) return plan.legIds.has(leg.id);
 
@@ -209,7 +233,15 @@ export function participantUsesTransportLeg(
 
   if (hasFrom && arrivesAtDestination) return true;
 
-  if (participantDepartsFromOnTravelDate(plan, travelDate, fromKey, fromRaw)) return true;
+  if (
+    participantDepartsFromOnTravelDate(plan, travelDate, fromKey, fromRaw) &&
+    (arrivesAtDestination ||
+      citiesForParticipantOnDate(plan, travelDate).some((city) =>
+        cityMatchesPlace(city, toKey, toRaw),
+      ))
+  ) {
+    return true;
+  }
 
   if (graph && plan.mode === "overlay" && mainGroupDepartsOnTravelDate(graph, travelDate, fromKey, fromRaw)) {
     for (const date of [travelDate, arrivalDate, addDays(travelDate, 1)]) {
@@ -301,10 +333,11 @@ export function eligibleParticipantIdsForLine(
   }
 
   if (line.linkedTransportLegId) {
+    const legIds = transportLegIdsForFinancePresence(graph, line.linkedTransportLegId);
     return pool
       .filter((p) => {
         const plan = presence.get(p.id);
-        return plan ? legEligible(plan, graph, line.linkedTransportLegId!) : false;
+        return plan ? legIds.some((legId) => legEligible(plan, graph, legId)) : false;
       })
       .map((p) => p.id);
   }

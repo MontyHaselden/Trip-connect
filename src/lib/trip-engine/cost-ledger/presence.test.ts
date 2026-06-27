@@ -537,4 +537,172 @@ describe("presence eligibility", () => {
     assert.ok(eligible.includes("p-macy"));
     assert.ok(eligible.includes("p-sam"));
   });
+
+  it("limits personal Tokyo to Tottori finance to travellers with that personal leg", async () => {
+    const { buildParticipantPresenceMap, eligibleParticipantIdsForLine } = await import(
+      "./presence"
+    );
+    const graph = {
+      ...miniGraph(),
+      groups: [
+        {
+          id: "main",
+          name: "Main",
+          type: "main",
+          description: null,
+          sortOrder: 0,
+          isMain: true,
+        },
+        {
+          id: "amanda",
+          name: "Amanda",
+          type: "split_travel",
+          description: null,
+          sortOrder: 1,
+          isMain: false,
+          inheritMode: "overlay",
+          personalForParticipantId: "p-amanda",
+        },
+        {
+          id: "kaleb",
+          name: "Kaleb",
+          type: "split_travel",
+          description: null,
+          sortOrder: 2,
+          isMain: false,
+          inheritMode: "overlay",
+          personalForParticipantId: "p-kaleb",
+        },
+      ],
+      dayPlacesByGroupId: {
+        main: [
+          {
+            date: "2026-12-06",
+            primaryCity: "Tokyo, Japan",
+            secondaryCity: "Kagoshima, Japan",
+            primaryShare: 0.5,
+            dayType: "travel",
+            includeBuffer: false,
+          },
+        ],
+        amanda: [
+          {
+            date: "2026-12-06",
+            primaryCity: "Tokyo, Japan",
+            secondaryCity: "Tottori, Japan",
+            primaryShare: 0.5,
+            dayType: "travel",
+            includeBuffer: false,
+          },
+        ],
+        kaleb: [
+          {
+            date: "2026-12-06",
+            primaryCity: "Tokyo, Japan",
+            secondaryCity: "Tottori, Japan",
+            primaryShare: 0.5,
+            dayType: "travel",
+            includeBuffer: false,
+          },
+        ],
+      },
+      intercityLegs: [
+        {
+          id: "leg-tok-tottori-amanda",
+          transportType: "plane",
+          bookingStatus: "placeholder",
+          travelDate: "2026-12-06",
+          arrivalDate: "2026-12-06",
+          departureTime: null,
+          arrivalTime: null,
+          fromCity: "Tokyo, Japan",
+          toCity: "Tottori, Japan",
+          intercityFromCity: "Tokyo, Japan",
+          intercityToCity: "Tottori, Japan",
+          fromStation: null,
+          toStation: null,
+          operator: null,
+          referenceNumber: null,
+          flightNumber: null,
+          notes: null,
+          originGroupId: "amanda",
+        },
+        {
+          id: "leg-tok-tottori-kaleb",
+          transportType: "plane",
+          bookingStatus: "placeholder",
+          travelDate: "2026-12-06",
+          arrivalDate: "2026-12-06",
+          departureTime: null,
+          arrivalTime: null,
+          fromCity: "Tokyo, Japan",
+          toCity: "Tottori, Japan",
+          intercityFromCity: "Tokyo, Japan",
+          intercityToCity: "Tottori, Japan",
+          fromStation: null,
+          toStation: null,
+          operator: null,
+          referenceNumber: null,
+          flightNumber: null,
+          notes: null,
+          originGroupId: "kaleb",
+        },
+      ],
+    } as TripEntityGraph;
+    const roster = {
+      participants: [
+        {
+          id: "p-amanda",
+          fullName: "Amanda",
+          role: "student",
+          inCostSplit: true,
+          groupIds: ["amanda"],
+          roomId: null,
+        },
+        {
+          id: "p-kaleb",
+          fullName: "Kaleb",
+          role: "student",
+          inCostSplit: true,
+          groupIds: ["kaleb"],
+          roomId: null,
+        },
+        {
+          id: "p-sam",
+          fullName: "Sam",
+          role: "student",
+          inCostSplit: true,
+          groupIds: ["main"],
+          roomId: null,
+        },
+      ],
+      groups: [
+        { id: "main", name: "Main" },
+        { id: "amanda", name: "Amanda" },
+        { id: "kaleb", name: "Kaleb" },
+      ],
+      rooms: [],
+    };
+    const presence = buildParticipantPresenceMap(graph, roster);
+    const line = {
+      id: "line-tottori",
+      sortOrder: 0,
+      category: "transport" as const,
+      description: "Tokyo -> Tottori",
+      notes: null,
+      totalAmountCents: 0,
+      currency: "NZD",
+      quantity: null,
+      allocationRuleType: "equal_present" as const,
+      allocationRulePayload: {},
+      linkedStayId: null,
+      linkedTransportLegId: "leg-tok-tottori-amanda",
+      linkedActivityId: null,
+      scope: "presence" as const,
+      supplierPaymentStatus: null,
+      ...defaultCostLineFinanceFields(),
+    };
+    const eligible = eligibleParticipantIdsForLine(line, graph, roster, presence);
+    assert.deepEqual(eligible.sort(), ["p-amanda", "p-kaleb"]);
+  });
 });
