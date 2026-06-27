@@ -7,6 +7,7 @@ import {
   financeSectionList,
   groupLinesByFinanceSection,
   isFinanceCalendarSection,
+  isVisibleTransportFinanceLine,
   supportsManualExpenseLines,
 } from "./finance-sections";
 import { buildParticipantPresenceMap } from "./presence";
@@ -195,6 +196,77 @@ describe("groupLinesByFinanceSection", () => {
     const grouped = groupLinesByFinanceSection([orphanLine], undefined, settings);
     assert.equal(grouped.get("other")?.length, 1);
     assert.equal(grouped.get(deletedSectionId as "other"), undefined);
+  });
+
+  it("hides duplicate and product-billed per-leg transport rows from the transport tab", () => {
+    const graph = {
+      mainGroupId: "main",
+      outboundLegs: [],
+      returnLegs: [],
+      intercityLegs: [
+        {
+          id: "leg-canonical",
+          transportType: "plane",
+          fromCity: "Tokyo",
+          toCity: "Tottori",
+          travelDate: "2026-12-06",
+          originGroupId: "g-amanda",
+        },
+        {
+          id: "leg-duplicate",
+          transportType: "plane",
+          fromCity: "Tokyo",
+          toCity: "Tottori",
+          travelDate: "2026-12-06",
+          originGroupId: "g-kaleb",
+        },
+        {
+          id: "leg-jr",
+          transportType: "train",
+          fromCity: "Tottori",
+          toCity: "Hiroshima",
+          travelDate: "2026-12-13",
+          originGroupId: "g-amanda",
+          transportProductId: "prod-jr",
+        },
+      ],
+      transportProducts: [{ id: "prod-jr", kind: "train_pass", name: "JR Pass", participantIds: [] }],
+    } as TripEntityGraph;
+
+    const canonicalLine = line({
+      id: "line-canonical",
+      category: "transport",
+      linkedTransportLegId: "leg-canonical",
+    });
+    const duplicateLine = line({
+      id: "line-duplicate",
+      category: "transport",
+      linkedTransportLegId: "leg-duplicate",
+    });
+    const jrStaleLine = line({
+      id: "line-jr-stale",
+      category: "transport",
+      linkedTransportLegId: "leg-jr",
+    });
+    const jrProductLine = line({
+      id: "line-jr-product",
+      category: "transport",
+      linkedTransportProductId: "prod-jr",
+    });
+
+    assert.equal(isVisibleTransportFinanceLine(canonicalLine, graph), true);
+    assert.equal(isVisibleTransportFinanceLine(duplicateLine, graph), false);
+    assert.equal(isVisibleTransportFinanceLine(jrStaleLine, graph), false);
+    assert.equal(isVisibleTransportFinanceLine(jrProductLine, graph), true);
+
+    const grouped = groupLinesByFinanceSection(
+      [canonicalLine, duplicateLine, jrStaleLine, jrProductLine],
+      graph,
+    );
+    assert.deepEqual(
+      grouped.get("transport")?.map((row) => row.id),
+      ["line-canonical", "line-jr-product"],
+    );
   });
 });
 

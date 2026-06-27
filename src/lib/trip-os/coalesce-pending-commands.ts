@@ -73,6 +73,15 @@ function updateTransportLegKey(
   return [command.groupId, command.bucket, command.legId].join("|");
 }
 
+function classifiedTransportLegsKey(
+  command: Extract<TripCommand, { type: "addClassifiedTransportLegs" }>,
+): string {
+  const leg = command.legs[0];
+  if (!leg) return command.groupId;
+  const { fromCity, toCity } = legEndpointCities(leg);
+  return [command.groupId, leg.travelDate, fromCity, toCity].join("|");
+}
+
 /** Collapse rapid duplicate calendar/transport intents before a persist batch. */
 export function coalescePendingCommands(commands: TripCommand[]): TripCommand[] {
   if (commands.length <= 1) return commands;
@@ -81,6 +90,7 @@ export function coalescePendingCommands(commands: TripCommand[]): TripCommand[] 
   const paintIndex = new Map<string, number>();
   const needIndex = new Map<string, number>();
   const addLegIndex = new Map<string, number>();
+  const classifiedLegIndex = new Map<string, number>();
   const updateLegIndex = new Map<string, number>();
   const dayPlacesIndex = new Map<string, number>();
 
@@ -119,6 +129,18 @@ export function coalescePendingCommands(commands: TripCommand[]): TripCommand[] 
         result[existing] = command;
       } else {
         addLegIndex.set(key, result.length);
+        result.push(command);
+      }
+      continue;
+    }
+
+    if (command.type === "addClassifiedTransportLegs") {
+      const key = classifiedTransportLegsKey(command);
+      const existing = classifiedLegIndex.get(key);
+      if (existing !== undefined) {
+        result[existing] = command;
+      } else {
+        classifiedLegIndex.set(key, result.length);
         result.push(command);
       }
       continue;

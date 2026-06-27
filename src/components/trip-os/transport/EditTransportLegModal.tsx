@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { TransportLegForm } from "@/components/host/wizard/shared/TransportLegForm";
 import { legsForTransportProduct } from "@/lib/host/locations/transport-products";
@@ -80,8 +80,12 @@ export function EditTransportLegModal(props: {
 }) {
   const roster = props.rosterSummary ?? { participants: [], groups: [], rooms: [] };
   const products = props.graph.transportProducts ?? [];
-  const isGrouped = Boolean(props.groupedLegTargets?.length);
-  const isMainGroup = props.groupId === props.graph.mainGroupId && !isGrouped;
+  const wasOpenRef = useRef(false);
+  const groupedLegTargetsRef = useRef<TransportLegGroupedTarget[] | undefined>(undefined);
+  const isGroupedEdit = Boolean(
+    (groupedLegTargetsRef.current ?? props.groupedLegTargets)?.length,
+  );
+  const isMainGroup = props.groupId === props.graph.mainGroupId && !isGroupedEdit;
 
   const [draft, setDraft] = useState<TransportLegDraft | IntercityLegDraft | null>(null);
   const [flightRole, setFlightRole] = useState<LegBucket>("intercity");
@@ -124,13 +128,26 @@ export function EditTransportLegModal(props: {
   );
 
   useEffect(() => {
-    if (!props.open || !props.leg || !props.bucket) return;
+    if (!props.open) {
+      wasOpenRef.current = false;
+      groupedLegTargetsRef.current = undefined;
+      return;
+    }
+    if (!props.leg || !props.bucket) return;
+
+    const opening = !wasOpenRef.current;
+    wasOpenRef.current = true;
+    if (opening) {
+      groupedLegTargetsRef.current = props.groupedLegTargets;
+    }
+
     setDraft({ ...props.leg });
     setFlightRole(props.bucket);
-    setSelectedGroupIds(
-      props.groupedLegTargets?.map((target) => target.groupId) ??
-        [props.groupId],
-    );
+    if (opening) {
+      setSelectedGroupIds(
+        groupedLegTargetsRef.current?.map((target) => target.groupId) ?? [props.groupId],
+      );
+    }
     const kind = defaultProductKind(props.leg);
     setNewProductName(
       kind === "flight_package" ? "Return flights" : transportProductKindLabel(kind),
@@ -160,6 +177,8 @@ export function EditTransportLegModal(props: {
   }, [props.open, props.leg, props.bucket, props.graph, products, flightPackages, props.groupId, props.groupedLegTargets]);
 
   if (!props.open || !draft || !props.bucket) return null;
+
+  const groupedLegTargets = groupedLegTargetsRef.current ?? props.groupedLegTargets;
 
   const tripLookup = { state: graphToSetupState(props.graph) };
   const routeTitle = legRouteLabel(draft, props.graph);
@@ -315,7 +334,7 @@ export function EditTransportLegModal(props: {
   async function save() {
     if (!draft || !props.bucket) return;
 
-    if (isGrouped && props.groupedLegTargets?.length) {
+    if (isGroupedEdit && groupedLegTargets?.length) {
       if (!selectedGroupIds.length) {
         window.alert("Choose at least one traveller for this leg.");
         return;
@@ -326,7 +345,7 @@ export function EditTransportLegModal(props: {
         ...buildGroupedTransportLegCommands({
           draft: draftWithBilling(billing),
           bucket: props.bucket,
-          groupedLegTargets: props.groupedLegTargets,
+          groupedLegTargets,
           selectedGroupIds,
         }),
       ]);
@@ -377,11 +396,11 @@ export function EditTransportLegModal(props: {
   }
 
   const showPassBilling = !isPlane;
-  const showFlightBilling = !isGrouped && isPlane;
+  const showFlightBilling = !isGroupedEdit && isPlane;
   const packageNeedsPair = billingChoice === "package" && isPlane && packageTarget === "new";
   const saveDisabled =
     props.saving ||
-    (isGrouped && !selectedGroupIds.length) ||
+    (isGroupedEdit && !selectedGroupIds.length) ||
     (billingChoice === "existing" && !productId) ||
     (packageNeedsPair && !pairedLegId);
 
@@ -396,7 +415,7 @@ export function EditTransportLegModal(props: {
           <div className="min-w-0">
             <h3 className="truncate text-base font-semibold text-zinc-900">{routeTitle}</h3>
             <p className="text-xs text-zinc-500">
-              {isGrouped ? "Edit route, billing, and travellers" : "Edit transport"}
+              {isGroupedEdit ? "Edit route, billing, and travellers" : "Edit transport"}
             </p>
           </div>
           <button
@@ -409,7 +428,7 @@ export function EditTransportLegModal(props: {
         </div>
 
         <div className="mt-3 space-y-3">
-          {isGrouped ? (
+          {isGroupedEdit ? (
             <div className="rounded-xl bg-violet-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-violet-800">
                 Travellers on this leg
@@ -512,7 +531,7 @@ export function EditTransportLegModal(props: {
             </div>
           ) : null}
 
-          {!isGrouped && billingChoice === "package" && isPlane ? (
+          {!isGroupedEdit && billingChoice === "package" && isPlane ? (
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="block text-xs text-zinc-600">
                 <span className="mb-1 block font-medium text-zinc-800">With flight</span>
@@ -559,7 +578,7 @@ export function EditTransportLegModal(props: {
             </div>
           ) : null}
 
-          {!isGrouped && billingChoice === "package" && isPlane && flightPackages.length && packageTarget === "new" ? (
+          {!isGroupedEdit && billingChoice === "package" && isPlane && flightPackages.length && packageTarget === "new" ? (
             <label className="block text-xs text-zinc-600">
               <span className="mb-1 block font-medium text-zinc-800">Finance name</span>
               <input

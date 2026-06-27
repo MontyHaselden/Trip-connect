@@ -1,5 +1,6 @@
 import type { TripCommand } from "./commands";
 import type { TransportLegGroupedTarget } from "./group-transport-legs-for-display";
+import type { PendingTransportNeed } from "./pending-city-moves";
 import { newId, type IntercityLegDraft, type TransportLegDraft } from "@/lib/host/wizard/types";
 
 type LegBucket = "outbound" | "return" | "intercity";
@@ -18,6 +19,33 @@ function legPatchFromDraft(
     patch.intercityToCity = ic.intercityToCity || draft.toCity;
   }
   return patch;
+}
+
+function pendingNeedFromDraft(
+  draft: TransportLegDraft | IntercityLegDraft,
+): Pick<PendingTransportNeed, "kind" | "date" | "fromCity" | "toCity"> {
+  const fromCity =
+    ("intercityFromCity" in draft ? draft.intercityFromCity : null)?.trim() ||
+    draft.fromCity.trim();
+  const toCity =
+    ("intercityToCity" in draft ? draft.intercityToCity : null)?.trim() || draft.toCity.trim();
+  return {
+    kind: "intercity",
+    date: draft.travelDate,
+    fromCity,
+    toCity,
+  };
+}
+
+function unhidePendingNeedCommands(groupIds: string[], draft: TransportLegDraft | IntercityLegDraft) {
+  const need = pendingNeedFromDraft(draft);
+  return groupIds.map(
+    (groupId): TripCommand => ({
+      type: "unhidePendingTransportNeed",
+      groupId,
+      need,
+    }),
+  );
 }
 
 function cloneLegForGroup(
@@ -76,6 +104,14 @@ export function buildGroupedTransportLegCommands(input: {
       legs: [cloneLegForGroup(draft, groupId)],
     });
   }
+
+  const removedGroupIds = groupedLegTargets
+    .map((target) => target.groupId)
+    .filter((groupId) => !selected.has(groupId));
+  commands.push(
+    ...unhidePendingNeedCommands([...selected], draft),
+    ...unhidePendingNeedCommands(removedGroupIds, draft),
+  );
 
   return commands;
 }

@@ -190,16 +190,12 @@ function linkedLinesForTransportLeg(
   leg: { id: string; transportProductId?: string | null },
   ledger: CostLedgerProjection,
 ): CostLineItemDraft[] {
-  return ledger.lineItems.filter((line) => {
-    if (line.linkedTransportLegId === leg.id) return true;
-    if (
-      leg.transportProductId &&
-      line.linkedTransportProductId === leg.transportProductId
-    ) {
-      return true;
-    }
-    return false;
-  });
+  if (leg.transportProductId) {
+    return ledger.lineItems.filter(
+      (line) => line.linkedTransportProductId === leg.transportProductId,
+    );
+  }
+  return ledger.lineItems.filter((line) => line.linkedTransportLegId === leg.id);
 }
 
 function linkedLinesForActivity(

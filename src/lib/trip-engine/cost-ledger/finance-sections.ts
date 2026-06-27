@@ -1,5 +1,6 @@
 import type { StayType } from "@/lib/host/wizard/types";
 import type { TripEntityGraph } from "../types";
+import { allTransportLegs, financeSeedTransportLegs } from "./transport-finance-product";
 import type { RosterSummary } from "../types";
 
 import { orderFinanceSectionLines } from "./finance-line-chronology";
@@ -173,6 +174,18 @@ export function financeSectionForLine(
   return null;
 }
 
+/** Hide stale per-leg transport rows covered by a pass/product or duplicate route seed. */
+export function isVisibleTransportFinanceLine(
+  line: CostLineItemDraft,
+  graph?: TripEntityGraph | null,
+): boolean {
+  if (!line.linkedTransportLegId || !graph) return true;
+  const leg = allTransportLegs(graph).find((row) => row.id === line.linkedTransportLegId);
+  if (!leg) return true;
+  if (leg.transportProductId) return false;
+  return financeSeedTransportLegs(graph).some((row) => row.id === leg.id);
+}
+
 export function groupLinesByFinanceSection(
   lines: CostLineItemDraft[],
   graph?: TripEntityGraph | null,
@@ -183,6 +196,7 @@ export function groupLinesByFinanceSection(
     sections.map((s) => [s, []]),
   );
   for (const line of lines) {
+    if (!isVisibleTransportFinanceLine(line, graph)) continue;
     const section = financeSectionForLine(line, graph, settings);
     if (!section) continue;
     if (!grouped.has(section)) {

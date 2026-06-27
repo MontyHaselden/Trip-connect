@@ -14,6 +14,7 @@ import {
   stayFinanceDisplayStatus,
   stayFinanceDisplayStatusForStay,
   transportLegFinanceAttentionById,
+  transportLegFinanceDisplayStatus,
 } from "./finance-section-readiness";
 import type { CostLineItemDraft } from "./types";
 import type { TripEntityGraph } from "../types";
@@ -257,6 +258,64 @@ describe("finance section readiness", () => {
     const map = transportLegFinanceAttentionById(ledger, graph);
     assert.equal(map.get("leg-a"), "product-line");
     assert.equal(map.get("leg-b"), "product-line");
+  });
+
+  it("ignores stale per-leg finance rows when a leg is billed on a transport product", () => {
+    const graph = minimalGraph();
+    graph.intercityLegs = [
+      {
+        id: "leg-hiroshima",
+        groupId: "group-main",
+        transportType: "train",
+        fromCity: "Tottori",
+        toCity: "Hiroshima",
+        travelDate: "2026-12-13",
+        transportProductId: "prod-jr",
+      } as TripEntityGraph["intercityLegs"][number],
+    ];
+    const ledger = emptyCostLedgerProjection();
+    ledger.lineItems = [
+      line({
+        id: "product-line",
+        category: "transport",
+        description: "JR Pass",
+        linkedTransportProductId: "prod-jr",
+        totalAmountCents: 120_000,
+        allocationRulePayload: {},
+      }),
+      line({
+        id: "stale-leg-line",
+        category: "transport",
+        description: "2026-12-13: Tottori → Hiroshima",
+        linkedTransportLegId: "leg-hiroshima",
+        allocationRulePayload: {},
+      }),
+    ];
+    ledger.lineAllocations = [
+      {
+        lineItemId: "product-line",
+        balanced: true,
+        pinnedParticipantIds: ["p1", "p2"],
+        eligibleParticipantIds: ["p1", "p2"],
+        allocations: { p1: 60_000, p2: 60_000 },
+        allocatedTotalCents: 120_000,
+      },
+      {
+        lineItemId: "stale-leg-line",
+        balanced: true,
+        pinnedParticipantIds: [],
+        eligibleParticipantIds: ["p1", "p2"],
+        allocations: {},
+        allocatedTotalCents: 0,
+      },
+    ];
+    assert.equal(
+      transportLegFinanceDisplayStatus(
+        { id: "leg-hiroshima", transportProductId: "prod-jr" },
+        ledger,
+      ),
+      "complete",
+    );
   });
 
   it("maps activity ids to finance lines that need attention", () => {

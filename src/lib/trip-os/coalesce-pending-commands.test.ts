@@ -114,4 +114,42 @@ describe("coalescePendingCommands", () => {
       assert.equal(out[0].days.length, 2);
     }
   });
+
+  it("keeps the last addClassifiedTransportLegs for the same group and route", () => {
+    const leg = {
+      id: "leg-1",
+      transportType: "train" as const,
+      bookingStatus: "not_booked" as const,
+      travelDate: "2026-12-13",
+      arrivalDate: null,
+      departureTime: null,
+      arrivalTime: null,
+      fromCity: "Tottori",
+      toCity: "Hiroshima",
+      fromStation: null,
+      toStation: null,
+      operator: null,
+      referenceNumber: null,
+      flightNumber: null,
+      notes: null,
+      intercityFromCity: "Tottori",
+      intercityToCity: "Hiroshima",
+      originGroupId: "g-amanda",
+      transportProductId: "jr-pass",
+      billingMode: "product" as const,
+    };
+    const out = coalescePendingCommands([
+      { type: "addClassifiedTransportLegs", groupId: "g-amanda", legs: [leg] },
+      {
+        type: "addClassifiedTransportLegs",
+        groupId: "g-amanda",
+        legs: [{ ...leg, id: "leg-2", transportProductId: "jr-pass" }],
+      },
+    ]);
+
+    assert.equal(out.length, 1);
+    if (out[0]?.type === "addClassifiedTransportLegs") {
+      assert.equal(out[0].legs[0]?.id, "leg-2");
+    }
+  });
 });

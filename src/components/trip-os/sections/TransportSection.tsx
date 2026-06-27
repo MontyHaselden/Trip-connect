@@ -47,6 +47,7 @@ import {
   pendingTransportNeedsFromCalendar,
   type PendingTransportNeed,
 } from "@/lib/trip-engine/pending-city-moves";
+import { pendingTransportNeedKey } from "@/lib/trip-engine/hidden-pending-transport";
 import { compareTransportLegsChronologically } from "@/lib/trip-engine/transport-display";
 import { transportRouteLabel } from "@/lib/trip-engine/transport-route-label";
 import { legRouteLabel } from "@/lib/trip-engine/flight-package-pairs";
@@ -320,7 +321,6 @@ export function TransportSection(props: {
     groupedLegTargets?: TransportLegGroupedTarget[];
   } | null>(null);
   const [editingProduct, setEditingProduct] = useState<TransportProductDraft | null>(null);
-  const [hiddenOpen, setHiddenOpen] = useState(false);
 
   const pendingScopes = useMemo(
     () => pendingTransportListedFromProjection(props.adminProjection),
@@ -340,16 +340,6 @@ export function TransportSection(props: {
     [pendingScopes],
   );
 
-  const pendingListItems = useMemo(
-    () =>
-      listPendingTransportNeedsForDisplay(
-        pendingScopeSections,
-        separatedRouteKeys,
-        props.graph.mainGroupId,
-      ),
-    [pendingScopeSections, separatedRouteKeys, props.graph.mainGroupId],
-  );
-
   const hiddenScopeSections = useMemo(
     () =>
       [hiddenScopes.wholeGroup, ...hiddenScopes.otherScopes].filter(
@@ -358,19 +348,37 @@ export function TransportSection(props: {
     [hiddenScopes],
   );
 
-  const hiddenListItems = useMemo(
+  const calendarPendingSections = useMemo(() => {
+    const byGroupId = new Map<string, TripScopeSection<PendingTransportNeed>>();
+
+    for (const section of [...pendingScopeSections, ...hiddenScopeSections]) {
+      const existing = byGroupId.get(section.groupId);
+      if (!existing) {
+        byGroupId.set(section.groupId, { ...section, items: [...section.items] });
+        continue;
+      }
+      const seen = new Set(
+        existing.items.map((need) => pendingTransportNeedKey(section.groupId, need)),
+      );
+      for (const need of section.items) {
+        const key = pendingTransportNeedKey(section.groupId, need);
+        if (seen.has(key)) continue;
+        existing.items.push(need);
+        seen.add(key);
+      }
+    }
+
+    return [...byGroupId.values()];
+  }, [pendingScopeSections, hiddenScopeSections]);
+
+  const pendingListItems = useMemo(
     () =>
       listPendingTransportNeedsForDisplay(
-        hiddenScopeSections,
+        calendarPendingSections,
         separatedRouteKeys,
         props.graph.mainGroupId,
       ),
-    [hiddenScopeSections, separatedRouteKeys, props.graph.mainGroupId],
-  );
-
-  const hiddenCount = useMemo(
-    () => hiddenListItems.length,
-    [hiddenListItems],
+    [calendarPendingSections, separatedRouteKeys, props.graph.mainGroupId],
   );
 
   const scopedLegs = useMemo(
@@ -471,46 +479,15 @@ export function TransportSection(props: {
     };
   }
 
-  async function hideNeedForScopes(scopes: PendingTransportScopeRef[]) {
-    await props.onDispatch(
-      scopes.map((scope) => ({
-        type: "hidePendingTransportNeed" as const,
-        groupId: scope.groupId,
-        need: {
-          kind: scope.need.kind,
-          date: scope.need.date,
-          fromCity: scope.need.fromCity,
-          toCity: scope.need.toCity,
-        },
-      })),
-    );
-  }
-
-  async function unhideNeedForScopes(scopes: PendingTransportScopeRef[]) {
-    await props.onDispatch(
-      scopes.map((scope) => ({
-        type: "unhidePendingTransportNeed" as const,
-        groupId: scope.groupId,
-        need: {
-          kind: scope.need.kind,
-          date: scope.need.date,
-          fromCity: scope.need.fromCity,
-          toCity: scope.need.toCity,
-        },
-      })),
-    );
-  }
-
-  function renderPendingListItem(item: PendingTransportListItem, mode: "visible" | "hidden") {
+  function renderPendingListItem(item: PendingTransportListItem) {
     if (item.type === "grouped") {
-      return renderGroupedPendingNeed(item, mode);
+      return renderGroupedPendingNeed(item);
     }
-    return renderPendingNeed(item.need, scopeSectionFromRef(item.scope), mode);
+    return renderPendingNeed(item.need, scopeSectionFromRef(item.scope));
   }
 
   function renderGroupedPendingNeed(
     item: Extract<PendingTransportListItem, { type: "grouped" }>,
-    mode: "visible" | "hidden",
   ) {
     const { need, scopes, routeKey } = item;
     const travellerLabel = formatGroupedTravellerLabel(scopes);
@@ -523,21 +500,11 @@ export function TransportSection(props: {
     return (
       <li
         key={`grouped:${routeKey}`}
-        className={[
-          "flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5",
-          mode === "hidden"
-            ? "border-zinc-200 bg-zinc-50"
-            : "border-amber-200 bg-amber-50",
-        ].join(" ")}
+        className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5"
       >
         <div className="min-w-0 text-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <p
-              className={[
-                "text-[10px] font-semibold uppercase tracking-wide",
-                mode === "hidden" ? "text-zinc-500" : "text-amber-800",
-              ].join(" ")}
-            >
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800">
               {pendingNeedLabel(need)}
             </p>
             <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-900">
@@ -547,7 +514,7 @@ export function TransportSection(props: {
               Same for all
             </span>
           </div>
-          <p className={mode === "hidden" ? "font-medium text-zinc-700" : "font-medium text-amber-950"}>
+          <p className="font-medium text-amber-950">
             {transportRouteLabel({
               from: need.fromCity,
               to: need.toCity,
@@ -555,59 +522,34 @@ export function TransportSection(props: {
               graph: props.graph,
             })}
           </p>
-          <p className={mode === "hidden" ? "text-xs text-zinc-500" : "text-xs text-amber-800"}>
+          <p className="text-xs text-amber-800">
             {DateTime.fromISO(need.date).toFormat("d MMM yyyy")}
           </p>
-          {mode === "visible" ? (
-            <p className="mt-1 text-xs text-zinc-600">
-              One booking can cover everyone on this route. Use separate flights if numbers or times
-              differ.
-            </p>
-          ) : null}
+          <p className="mt-1 text-xs text-zinc-600">
+            One booking can cover everyone on this route. Use separate flights if numbers or times
+            differ.
+          </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center">
-          {mode === "visible" ? (
-            <button
-              type="button"
-              onClick={() => separateFlights(routeKey)}
-              className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-100"
-            >
-              Separate flights
-            </button>
-          ) : null}
-          <div className="flex items-center gap-2">
-            {mode === "hidden" ? (
-              <button
-                type="button"
-                onClick={() => void unhideNeedForScopes(scopes)}
-                className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-              >
-                Show
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => void hideNeedForScopes(scopes)}
-                  className="rounded-lg px-2 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-800"
-                >
-                  Hide
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openAdd(need, primaryGroupId, groupIds)}
-                  title={
-                    isActiveScope
-                      ? `Add transport for ${travellerLabel}`
-                      : `Switch calendar and add transport for ${travellerLabel}`
-                  }
-                  className="rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-950"
-                >
-                  Add for all
-                </button>
-              </>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => separateFlights(routeKey)}
+            className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-100"
+          >
+            Separate flights
+          </button>
+          <button
+            type="button"
+            onClick={() => openAdd(need, primaryGroupId, groupIds)}
+            title={
+              isActiveScope
+                ? `Add transport for ${travellerLabel}`
+                : `Switch calendar and add transport for ${travellerLabel}`
+            }
+            className="rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-950"
+          >
+            Add for all
+          </button>
         </div>
       </li>
     );
@@ -616,7 +558,6 @@ export function TransportSection(props: {
   function renderPendingNeed(
     need: PendingTransportNeed,
     scope: TripScopeSection<PendingTransportNeed>,
-    mode: "visible" | "hidden",
   ) {
     const scopeLabel = pendingNeedScopeLabel(props.graph, scope);
     const isActiveScope = isScopeEditable(
@@ -628,28 +569,18 @@ export function TransportSection(props: {
     return (
       <li
         key={`${scope.groupId}:${need.kind}:${need.date}:${need.fromCity}:${need.toCity}`}
-        className={[
-          "flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5",
-          mode === "hidden"
-            ? "border-zinc-200 bg-zinc-50"
-            : "border-amber-200 bg-amber-50",
-        ].join(" ")}
+        className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5"
       >
         <div className="min-w-0 text-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <p
-              className={[
-                "text-[10px] font-semibold uppercase tracking-wide",
-                mode === "hidden" ? "text-zinc-500" : "text-amber-800",
-              ].join(" ")}
-            >
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800">
               {pendingNeedLabel(need)}
             </p>
             <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-900">
               {scopeLabel}
             </span>
           </div>
-          <p className={mode === "hidden" ? "font-medium text-zinc-700" : "font-medium text-amber-950"}>
+          <p className="font-medium text-amber-950">
             {transportRouteLabel({
               from: need.fromCity,
               to: need.toCity,
@@ -657,66 +588,27 @@ export function TransportSection(props: {
               graph: props.graph,
             })}
           </p>
-          <p className={mode === "hidden" ? "text-xs text-zinc-500" : "text-xs text-amber-800"}>
+          <p className="text-xs text-amber-800">
             {DateTime.fromISO(need.date).toFormat("d MMM yyyy")}
           </p>
-          {!isActiveScope && mode === "visible" ? (
+          {!isActiveScope ? (
             <p className="mt-1 text-xs text-violet-700">
               Edit on {scope.title}&apos;s calendar
             </p>
           ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {mode === "hidden" ? (
-            <button
-              type="button"
-              onClick={() =>
-                void unhideNeedForScopes([
-                  {
-                    groupId: scope.groupId,
-                    title: scope.title,
-                    memberNames: scope.memberNames,
-                    need,
-                  },
-                ])
-              }
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-            >
-              Show
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() =>
-                  void hideNeedForScopes([
-                    {
-                      groupId: scope.groupId,
-                      title: scope.title,
-                      memberNames: scope.memberNames,
-                      need,
-                    },
-                  ])
-                }
-                className="rounded-lg px-2 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-800"
-              >
-                Hide
-              </button>
-              <button
-                type="button"
-                onClick={() => openAdd(need, scope.groupId)}
-                title={
-                  isActiveScope
-                    ? undefined
-                    : `Switch to ${scope.title}'s calendar and add this transport`
-                }
-                className="rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-950"
-              >
-                Add
-              </button>
-            </>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => openAdd(need, scope.groupId)}
+          title={
+            isActiveScope
+              ? undefined
+              : `Switch to ${scope.title}'s calendar and add this transport`
+          }
+          className="rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-950"
+        >
+          Add
+        </button>
       </li>
     );
   }
@@ -994,31 +886,8 @@ export function TransportSection(props: {
             times or flight numbers differ.
           </p>
           <ul className="mt-3 space-y-2">
-            {pendingListItems.map((item) => renderPendingListItem(item, "visible"))}
+            {pendingListItems.map((item) => renderPendingListItem(item))}
           </ul>
-        </TripSoftPanel>
-      ) : null}
-
-      {hiddenCount > 0 ? (
-        <TripSoftPanel title={`Hidden (${hiddenCount})`} className="mb-6">
-          <button
-            type="button"
-            onClick={() => setHiddenOpen((open) => !open)}
-            className="text-sm font-medium text-zinc-600 hover:text-zinc-900"
-          >
-            {hiddenOpen ? "Collapse hidden routes" : "Show hidden calendar routes"}
-          </button>
-          {hiddenOpen ? (
-            <div className="mt-3">
-              <p className="text-xs text-zinc-500">
-                These moves are still on the calendar but won&apos;t appear in the main list.
-                Show one again if you want to add transport for it.
-              </p>
-              <ul className="mt-3 space-y-2">
-                {hiddenListItems.map((item) => renderPendingListItem(item, "hidden"))}
-              </ul>
-            </div>
-          ) : null}
         </TripSoftPanel>
       ) : null}
 

@@ -51,6 +51,10 @@ describe("buildGroupedTransportLegCommands", () => {
     );
     const added = commands.find((command) => command.type === "addClassifiedTransportLegs");
     assert.equal(added?.groupId, "g-trenuela");
+    assert.equal(
+      commands.filter((command) => command.type === "unhidePendingTransportNeed").length,
+      4,
+    );
   });
 
   it("removes legs for travellers who were unchecked", () => {

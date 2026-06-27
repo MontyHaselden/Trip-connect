@@ -12,6 +12,8 @@ import { duplicatePersonalStayIdsForFinance } from "./accommodation-finance-leg"
 import {
   canonicalPersonalTransportLegId,
   duplicatePersonalTransportLegIdsForFinance,
+  financeSeedTransportLegs,
+  allTransportLegs,
 } from "./transport-finance-product";
 
 export async function deleteCostLinesForStay(tripId: string, stayId: string): Promise<void> {
@@ -164,6 +166,7 @@ export async function purgeDuplicatePersonalTransportFinanceLines(
     .select({
       id: costLineItems.id,
       linkedTransportLegId: costLineItems.linkedTransportLegId,
+      totalAmountCents: costLineItems.totalAmountCents,
     })
     .from(costLineItems)
     .where(eq(costLineItems.tripId, tripId));
@@ -171,7 +174,7 @@ export async function purgeDuplicatePersonalTransportFinanceLines(
   const lineByLegId = new Map(
     lines
       .filter((line) => line.linkedTransportLegId)
-      .map((line) => [line.linkedTransportLegId!, line.id]),
+      .map((line) => [line.linkedTransportLegId!, line]),
   );
 
   let changes = 0;
@@ -182,8 +185,23 @@ export async function purgeDuplicatePersonalTransportFinanceLines(
     const canonicalLegId = canonicalPersonalTransportLegId(graph, legId);
     if (canonicalLegId === legId) continue;
 
-    const canonicalLineId = lineByLegId.get(canonicalLegId);
-    if (canonicalLineId) {
+    const canonicalLine = lineByLegId.get(canonicalLegId);
+    if (canonicalLine) {
+      const canonicalTotal = canonicalLine.totalAmountCents ?? 0;
+      const duplicateTotal = line.totalAmountCents ?? 0;
+      if (canonicalTotal <= 0 && duplicateTotal > 0) {
+        await db.delete(costLineItems).where(eq(costLineItems.id, canonicalLine.id));
+        await db
+          .update(costLineItems)
+          .set({ linkedTransportLegId: canonicalLegId, updatedAt: new Date() })
+          .where(eq(costLineItems.id, line.id));
+        lineByLegId.delete(canonicalLegId);
+        lineByLegId.set(canonicalLegId, { ...line, linkedTransportLegId: canonicalLegId });
+        lineByLegId.delete(legId);
+        changes += 2;
+        continue;
+      }
+
       await db.delete(costLineItems).where(eq(costLineItems.id, line.id));
       lineByLegId.delete(legId);
       changes++;
@@ -194,9 +212,42 @@ export async function purgeDuplicatePersonalTransportFinanceLines(
       .update(costLineItems)
       .set({ linkedTransportLegId: canonicalLegId, updatedAt: new Date() })
       .where(eq(costLineItems.id, line.id));
-    lineByLegId.set(canonicalLegId, line.id);
+    lineByLegId.set(canonicalLegId, { ...line, linkedTransportLegId: canonicalLegId });
     lineByLegId.delete(legId);
     changes++;
+  }
+
+  return changes;
+}
+
+/** Drop per-leg finance rows that should be covered by a pass/product or duplicate route seed. */
+export async function purgeStaleTransportLegFinanceLines(
+  tripId: string,
+  graph: TripEntityGraph,
+): Promise<number> {
+  const seedLegIds = new Set(financeSeedTransportLegs(graph).map((leg) => leg.id));
+  const legsById = new Map(allTransportLegs(graph).map((leg) => [leg.id, leg]));
+
+  const lines = await db
+    .select({
+      id: costLineItems.id,
+      linkedTransportLegId: costLineItems.linkedTransportLegId,
+    })
+    .from(costLineItems)
+    .where(eq(costLineItems.tripId, tripId));
+
+  let changes = 0;
+  for (const line of lines) {
+    const legId = line.linkedTransportLegId;
+    if (!legId) continue;
+
+    const leg = legsById.get(legId);
+    if (!leg) continue;
+
+    if (leg.transportProductId || !seedLegIds.has(legId)) {
+      await db.delete(costLineItems).where(eq(costLineItems.id, line.id));
+      changes++;
+    }
   }
 
   return changes;
