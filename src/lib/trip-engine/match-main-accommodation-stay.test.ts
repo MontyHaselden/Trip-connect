@@ -260,10 +260,17 @@ describe("match-main-accommodation-stay", () => {
 
   it("buildAdoptMainGroupStayCommands borrows hotel and paints main locations on its nights", () => {
     const base = macyIndependentFixture();
-    const tokyoNights = ["2026-12-18", "2026-12-19", "2026-12-20"] as const;
     base.dayPlacesByGroupId["g-main"] = [
       ...(base.dayPlacesByGroupId["g-main"] ?? []),
-      ...tokyoNights.map((date) => ({
+      {
+        date: "2026-12-18",
+        primaryCity: "Kyoto",
+        secondaryCity: "Tokyo, Japan",
+        primaryShare: 0.5,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+      ...["2026-12-19", "2026-12-20"].map((date) => ({
         date,
         primaryCity: "Tokyo, Japan",
         secondaryCity: null,
@@ -334,6 +341,10 @@ describe("match-main-accommodation-stay", () => {
       "Tokyo, Japan",
     );
     assert.equal(
+      adopted.dayPlacesByGroupId["g-macy"]?.find((d) => d.date === "2026-12-18")?.secondaryCity,
+      null,
+    );
+    assert.equal(
       adopted.dayPlacesByGroupId["g-macy"]?.find((d) => d.date === "2026-12-19")?.primaryCity,
       "Tokyo, Japan",
     );
@@ -344,6 +355,37 @@ describe("match-main-accommodation-stay", () => {
     assert.ok(
       staysForCalendarView(adopted, "g-macy").some((stay) => stay.id === mainStay.id),
     );
+  });
+
+  it("mergePersonalDayPlacesFromMain drops main transfer corridor on check-in night", () => {
+    const graph = setupStateToGraph("trip-1", macyIndependentFixture());
+    const mainStay = graph.accommodationStays[0]!;
+    const personalDays = graph.dayPlacesByGroupId["g-macy"] ?? [];
+    const mainDays = [
+      ...(graph.dayPlacesByGroupId["g-main"] ?? []),
+      {
+        date: "2026-12-13",
+        primaryCity: "Hiroshima",
+        secondaryCity: "Kyoto",
+        primaryShare: 0.5,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-14",
+        primaryCity: "Hiroshima",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+    ];
+    const merged = mergePersonalDayPlacesFromMain(personalDays, mainDays, mainStay);
+    const checkInDay = merged.find((d) => d.date === "2026-12-13");
+    assert.equal(checkInDay?.primaryCity, "Hiroshima");
+    assert.equal(checkInDay?.secondaryCity, null);
+    assert.equal(checkInDay?.primaryShare, 1);
+    assert.ok(merged.some((d) => d.date === "2026-12-14" && d.primaryCity === "Hiroshima"));
   });
 
   it("mergePersonalDayPlacesFromMain copies main nights into personal overlay", () => {

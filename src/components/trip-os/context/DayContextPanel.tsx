@@ -37,6 +37,7 @@ import { shortCityName } from "@/lib/host/setup/location-range-display";
 import { dayPlacesForGroup, staysForGroup } from "@/lib/trip-engine/selectors";
 import {
   buildAdoptMainGroupStayCommands,
+  borrowedMainStayIdsForGroup,
   canAdoptMainGroupStayForParticipant,
   findMatchingMainStay,
   formatStayNightSpan,
@@ -494,6 +495,12 @@ export function DayContextPanel(props: {
     () => Boolean(linkedStay && stayInheritsFromMainGroup(graph, groupId, linkedStay!)),
     [graph, groupId, linkedStay],
   );
+
+  const borrowedMainStayToSync = useMemo(() => {
+    if (!linkedStayIsInherited || !linkedStay) return null;
+    if (!borrowedMainStayIdsForGroup(graph, groupId).has(linkedStay.id)) return null;
+    return linkedStay;
+  }, [graph, groupId, linkedStay, linkedStayIsInherited]);
 
   const canFollowMainGroupStay = useMemo(() => {
     if (!stayDraft?.checkIn || !stayDraft.checkOut || !mainStayMatch) return false;
@@ -1385,7 +1392,8 @@ export function DayContextPanel(props: {
                     mainStayMatch!.mainStay.checkOutDate,
                   )}
                   ). {participantLabel} can use that hotel without a duplicate row — calendar
-                  locations on those hotel nights will match the main group.
+                  locations on those hotel nights will match the main group (without group travel
+                  corridors on check-in).
                 </p>
                 <button
                   type="button"
@@ -1512,6 +1520,22 @@ export function DayContextPanel(props: {
                 />
                 Each student stays with a different host family
               </label>
+            ) : null}
+            {borrowedMainStayToSync ? (
+              <div className="rounded-md border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs leading-relaxed text-violet-950">
+                <p className="font-medium">Using the main group hotel</p>
+                <p className="mt-1">
+                  Refresh calendar locations for this hotel from the main group — transfer-day
+                  halves (e.g. Kyoto before Tokyo) are not copied.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void adoptMainGroupStay(borrowedMainStayToSync)}
+                  className="mt-2 font-medium text-violet-800 hover:underline"
+                >
+                  Sync locations from main
+                </button>
+              </div>
             ) : null}
             <p className="text-xs text-zinc-500">
               {canFollowMainGroupStay

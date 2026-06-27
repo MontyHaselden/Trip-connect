@@ -250,20 +250,67 @@ export function canAdoptMainGroupStayForParticipant(
   );
 }
 
+function isSplitLocationDay(
+  day: Pick<DayPlaceDraft, "primaryCity" | "secondaryCity" | "primaryShare">,
+): boolean {
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const share = day.primaryShare ?? 1;
+  return Boolean(primary && secondary && share < 1);
+}
+
+function fullDayPlace(date: string, city: string, template?: DayPlaceDraft): DayPlaceDraft {
+  return {
+    date,
+    primaryCity: city,
+    secondaryCity: null,
+    primaryShare: 1,
+    dayType: template?.dayType ?? "trip",
+    includeBuffer: template?.includeBuffer ?? false,
+  };
+}
+
+/** Copy one hotel night from main — drop group travel corridors on check-in. */
+export function personalDayPlaceFromMainForStayNight(
+  date: string,
+  mainDay: DayPlaceDraft,
+  stay: AccommodationStayDraft,
+  includeBuffer: boolean,
+): DayPlaceDraft {
+  const stayCity = stayCityLabel(stay).trim();
+  if (
+    date === stay.checkInDate &&
+    stayCity &&
+    isSplitLocationDay(mainDay)
+  ) {
+    return fullDayPlace(date, stayCity, { ...mainDay, includeBuffer });
+  }
+
+  return {
+    ...mainDay,
+    date,
+    includeBuffer,
+  };
+}
+
 export function mergePersonalDayPlacesFromMain(
   personalDays: DayPlaceDraft[],
   mainDays: DayPlaceDraft[],
-  stay: Pick<AccommodationStayDraft, "checkInDate" | "checkOutDate">,
+  stay: AccommodationStayDraft,
 ): DayPlaceDraft[] {
   const byDate = new Map(personalDays.map((d) => [d.date, d]));
   for (const date of stayNightDates(stay.checkInDate, stay.checkOutDate)) {
     const main = mainDays.find((d) => d.date === date);
     if (!main) continue;
-    byDate.set(date, {
-      ...main,
+    byDate.set(
       date,
-      includeBuffer: byDate.get(date)?.includeBuffer ?? false,
-    });
+      personalDayPlaceFromMainForStayNight(
+        date,
+        main,
+        stay,
+        byDate.get(date)?.includeBuffer ?? false,
+      ),
+    );
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
