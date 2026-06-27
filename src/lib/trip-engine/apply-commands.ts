@@ -20,12 +20,14 @@ import {
 } from "@/lib/host/setup/set-trip-date-range";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import { enumerateDates } from "@/lib/host/wizard/location-stays";
+import { mergeSetDayPlacesDays } from "./sanitize-day-place";
 import { paintLocationDayRange, paintLocationDayRangeProtected } from "./paint-day-range";
 import {
   extractPersonalLocationOverlayDelta,
   mergeMainWithPersonalOverlay,
 } from "./personal-location-overlay";
 import { personalGroupForGroupId } from "./person-lens";
+import { pruneStalePersonalTransportLegs } from "./prune-stale-personal-transport-legs";
 import { normalizeCommand, type TripCommand } from "./commands";
 import { repairTransportGraphSync } from "./repair-transport-graph";
 import { pendingTransportNeedKey } from "./hidden-pending-transport";
@@ -101,6 +103,14 @@ function mergeLocationPaintIntoGroup(
   return [...byDate.values()]
     .filter((day) => dayHasPaint(day))
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function applyPersonalCalendarSideEffects(
+  graph: TripEntityGraph,
+  groupId: string,
+): TripEntityGraph {
+  if (!personalGroupForGroupId(graph, groupId)) return graph;
+  return pruneStalePersonalTransportLegs(graph, groupId);
 }
 
 function applyPersonalLocationPaint(
@@ -449,10 +459,16 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
             endDate,
           );
           return ok(
-            {
-              ...graph,
-              dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: merged },
-            },
+            mergeGraphState(
+              graph,
+              applyPersonalCalendarSideEffects(
+                {
+                  ...graph,
+                  dayPlacesByGroupId: { ...graph.dayPlacesByGroupId, [groupId]: merged },
+                },
+                groupId,
+              ),
+            ),
             warnings,
           );
         }
@@ -467,7 +483,16 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
           rangeStart,
           endDate,
         );
-        return ok(applyPersonalLocationPaint(graph, groupId, overlayOnly), warnings);
+        return ok(
+          mergeGraphState(
+            graph,
+            applyPersonalCalendarSideEffects(
+              applyPersonalLocationPaint(graph, groupId, overlayOnly),
+              groupId,
+            ),
+          ),
+          warnings,
+        );
       }
 
       const dayPlaces = graph.dayPlacesByGroupId[groupId] ?? [];
@@ -529,6 +554,27 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
 
     case "setDayPlaces": {
       if (personalGroupForGroupId(graph, command.groupId)) {
+        const personal = personalGroupForGroupId(graph, command.groupId)!;
+
+        if (personal.inheritMode === "independent") {
+          const existing = graph.dayPlacesByGroupId[command.groupId] ?? [];
+          const merged = mergeSetDayPlacesDays(existing, command.days);
+          const next = syncTripBoundsFromContent({
+            ...graph,
+            dayPlacesByGroupId: {
+              ...graph.dayPlacesByGroupId,
+              [command.groupId]: merged,
+            },
+          });
+          return ok(
+            mergeGraphState(
+              graph,
+              applyPersonalCalendarSideEffects(next, command.groupId),
+            ),
+            warnings,
+          );
+        }
+
         const mainDays = graph.dayPlacesByGroupId[graph.mainGroupId] ?? [];
         const dates = command.days.map((d) => d.date).filter(Boolean);
         const rangeStart = dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : "";
@@ -540,7 +586,16 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
           rangeStart,
           rangeEnd,
         );
-        return ok(applyPersonalLocationPaint(graph, command.groupId, overlayOnly), warnings);
+        return ok(
+          mergeGraphState(
+            graph,
+            applyPersonalCalendarSideEffects(
+              applyPersonalLocationPaint(graph, command.groupId, overlayOnly),
+              command.groupId,
+            ),
+          ),
+          warnings,
+        );
       }
 
       const synced = enforceGroupHalfDayBoundaries(

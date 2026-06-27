@@ -1,6 +1,7 @@
 import type { TripEntityGraph } from "../types";
 import { legsForTransportProduct } from "@/lib/host/locations/transport-products";
 import { transportLegRouteLabel } from "../transport-route-label";
+import { transportLegDisplayKey } from "../group-transport-legs-for-display";
 import type { TransportProductDraft } from "@/lib/host/wizard/types";
 
 import type { CostLineItemDraft } from "./types";
@@ -60,7 +61,28 @@ export function financeSeedTransportProducts(
 export function financeSeedTransportLegs(
   graph: TripEntityGraph,
 ): Array<TripEntityGraph["outboundLegs"][number]> {
-  return allTransportLegs(graph).filter((leg) => !leg.transportProductId);
+  const legs = allTransportLegs(graph).filter((leg) => !leg.transportProductId);
+  const mainGroupId = graph.mainGroupId;
+  const kept: typeof legs = [];
+  const personalByKey = new Map<string, typeof legs>();
+
+  for (const leg of legs) {
+    const origin = leg.originGroupId ?? mainGroupId;
+    if (origin === mainGroupId) {
+      kept.push(leg);
+      continue;
+    }
+    const key = transportLegDisplayKey(leg);
+    const bucket = personalByKey.get(key) ?? [];
+    bucket.push(leg);
+    personalByKey.set(key, bucket);
+  }
+
+  for (const bucket of personalByKey.values()) {
+    kept.push(bucket[0]!);
+  }
+
+  return kept;
 }
 
 export function buildTransportProductSeeds(

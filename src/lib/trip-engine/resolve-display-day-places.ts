@@ -84,6 +84,8 @@ export function fillIncompleteSplitDays(days: DayPlaceDraft[]): DayPlaceDraft[] 
         }
         const nextCity = arrivalCity(nextDay);
         if (!nextCity || locationsMatch(nextCity, primary)) continue;
+        // Do not extend a half-day into the prior evening when the next day is a full stay there.
+        if (isSolidStayDay(nextDay, nextCity)) continue;
         byDate.set(date, {
           ...day,
           secondaryCity: nextCity,

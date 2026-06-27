@@ -6,6 +6,8 @@ import { DateTime } from "luxon";
 import type { TripEntityGraph, RosterSummary } from "@/lib/trip-engine/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 import {
+  groupedTransportLegFinanceAttentionReason,
+  groupedTransportLegFinanceDisplayStatus,
   transportLegFinanceDisplayStatus,
   transportLegFinanceAttentionById,
   transportLegFinanceAttentionReason,
@@ -727,6 +729,11 @@ export function TransportSection(props: {
     const scopeHint = isGroupedPersonal
       ? null
       : scopeEditHint(props.graph, props.calendarEditGroupId, scope);
+    const groupedLegs = isGroupedPersonal
+      ? (scope.groupedLegTargets ?? [])
+          .map((target) => props.graph.intercityLegs.find((leg) => leg.id === target.legId))
+          .filter((leg): leg is (typeof props.graph.intercityLegs)[number] => Boolean(leg))
+      : [];
     const grouped = groupTransportLegs(scope.items, products);
     const orphanProducts = orphanTransportProducts(
       products,
@@ -742,7 +749,9 @@ export function TransportSection(props: {
     });
 
     function legFinanceActions(leg: ScopedTransportLeg) {
-      const financeStatus = transportLegFinanceDisplayStatus(leg, props.costLedger);
+      const financeStatus = isGroupedPersonal
+        ? groupedTransportLegFinanceDisplayStatus(groupedLegs, props.costLedger)
+        : transportLegFinanceDisplayStatus(leg, props.costLedger);
       return {
         showFinanceActions:
           financeStatus === "needs_attention" && Boolean(props.onCostsAction),
@@ -919,11 +928,16 @@ export function TransportSection(props: {
                     graph={props.graph}
                     bucket={legBucket(leg.id)}
                     scopeHint={scopeHint}
-                    financeStatus={transportLegFinanceDisplayStatus(leg, props.costLedger)}
-                    financeAttentionReason={transportLegFinanceAttentionReason(
-                      leg,
-                      props.costLedger,
-                    )}
+                    financeStatus={
+                      isGroupedPersonal
+                        ? groupedTransportLegFinanceDisplayStatus(groupedLegs, props.costLedger)
+                        : transportLegFinanceDisplayStatus(leg, props.costLedger)
+                    }
+                    financeAttentionReason={
+                      isGroupedPersonal
+                        ? groupedTransportLegFinanceAttentionReason(groupedLegs, props.costLedger)
+                        : transportLegFinanceAttentionReason(leg, props.costLedger)
+                    }
                     onOpenFinance={() => openLegFinance(leg)}
                     onEdit={
                       isActiveScope

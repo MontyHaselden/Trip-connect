@@ -149,16 +149,16 @@ describe("personal location overlay", () => {
     const dec5 = stored.find((d) => d.date === "2026-12-05");
     const dec6 = stored.find((d) => d.date === "2026-12-06");
     const dec7 = stored.find((d) => d.date === "2026-12-07");
-    assert.equal(dec5?.secondaryCity, "Kagoshima");
-    assert.equal(dec5?.primaryShare, 0.5);
+    assert.equal(dec5?.primaryCity, "Kagoshima");
+    assert.equal(dec5?.primaryShare, 1);
     assert.equal(dec6?.primaryCity, "Kagoshima");
     assert.equal(dec6?.primaryShare, 1);
     assert.equal(dec7?.primaryCity, "Kagoshima");
-    assert.equal(dec7?.primaryShare, 0.5);
+    assert.equal(dec7?.primaryShare, 1);
 
     const projected = projectCalendar(result.graph, { groupId: "g-macy" });
     assert.equal(projected.days.find((d) => d.date === "2026-12-06")?.primaryCity, "Kagoshima");
-    assert.equal(projected.days.find((d) => d.date === "2026-12-05")?.secondaryCity, "Kagoshima");
+    assert.equal(projected.days.find((d) => d.date === "2026-12-05")?.primaryCity, "Kagoshima");
   });
 
   it("independent calendar derivation does not borrow main stays for cell bands", () => {

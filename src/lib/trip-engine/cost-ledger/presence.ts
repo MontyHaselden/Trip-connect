@@ -230,8 +230,7 @@ function legEligible(
 ): boolean {
   const leg = findTransportLeg(graph, legId);
   if (!leg) return false;
-  if (participantUsesTransportLeg(plan, leg, graph)) return true;
-  return plan.legIds.has(legId) && plan.mode === "independent";
+  return participantUsesTransportLeg(plan, leg, graph);
 }
 
 function transportProductEligible(

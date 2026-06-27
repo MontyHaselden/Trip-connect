@@ -260,6 +260,56 @@ describe("match-main-accommodation-stay", () => {
     assert.ok(merged.some((d) => d.date === "2026-12-14" && d.primaryCity === "Hiroshima"));
   });
 
+  it("setDayPlaces on independent participant adopts main stay for calendar borrowing", () => {
+    const base = macyIndependentFixture();
+    const tokyoNights = ["2026-12-18", "2026-12-19", "2026-12-20"] as const;
+    base.dayPlacesByGroupId["g-main"] = [
+      ...(base.dayPlacesByGroupId["g-main"] ?? []),
+      ...tokyoNights.map((date) => ({
+        date,
+        primaryCity: "Tokyo, Japan",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      })),
+    ];
+    base.accommodationStays.push({
+      id: "stay-yaeno",
+      cityLabel: "Tokyo, Japan",
+      stayType: "hotel",
+      name: "Hotel Yaenomidori Tokyo",
+      url: null,
+      address: null,
+      phone: null,
+      checkInDate: "2026-12-18",
+      checkOutDate: "2026-12-21",
+      notes: null,
+      isHomestayGroup: false,
+      multipleInCity: false,
+    });
+
+    const graph = setupStateToGraph("trip-1", base);
+    const mainStay = graph.accommodationStays.find((stay) => stay.id === "stay-yaeno")!;
+    const merged = mergePersonalDayPlacesFromMain(
+      graph.dayPlacesByGroupId["g-macy"] ?? [],
+      graph.dayPlacesByGroupId["g-main"] ?? [],
+      mainStay,
+    );
+
+    const adopted = applyCommands(graph, [
+      { type: "setDayPlaces", groupId: "g-macy", days: merged },
+    ]).graph;
+
+    assert.ok(participantLocationsAlignWithMainStay(adopted, "g-macy", mainStay));
+    assert.ok(
+      borrowedMainStaysForParticipant(adopted, "g-macy").some((stay) => stay.id === mainStay.id),
+    );
+    assert.ok(
+      staysForCalendarView(adopted, "g-macy").some((stay) => stay.id === mainStay.id),
+    );
+  });
+
   it("borrowedMainActivitiesForParticipant includes main activities on aligned dates", () => {
     const base = macyIndependentFixture();
     base.dayPlacesByGroupId["g-main"] = [

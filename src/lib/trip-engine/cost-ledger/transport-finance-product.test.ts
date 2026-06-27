@@ -112,4 +112,56 @@ describe("transport product finance seeding", () => {
     const next = seedItemsNotYetPresent(existing, seeds);
     assert.equal(next.length, 0);
   });
+
+  it("collapses identical personal transport legs into one finance seed", () => {
+    const graph = baseGraph();
+    graph.intercityLegs.push(
+      {
+        id: "leg-personal-a",
+        transportType: "plane",
+        bookingStatus: "not_booked",
+        travelDate: "2026-12-11",
+        arrivalDate: null,
+        departureTime: null,
+        arrivalTime: null,
+        fromCity: "Tokyo",
+        toCity: "Tottori",
+        fromStation: null,
+        toStation: null,
+        operator: null,
+        referenceNumber: null,
+        flightNumber: "JL123",
+        notes: null,
+        intercityFromCity: "Tokyo",
+        intercityToCity: "Tottori",
+        originGroupId: "g-a",
+      },
+      {
+        id: "leg-personal-b",
+        transportType: "plane",
+        bookingStatus: "not_booked",
+        travelDate: "2026-12-11",
+        arrivalDate: null,
+        departureTime: null,
+        arrivalTime: null,
+        fromCity: "Tokyo",
+        toCity: "Tottori",
+        fromStation: null,
+        toStation: null,
+        operator: null,
+        referenceNumber: null,
+        flightNumber: "JL123",
+        notes: null,
+        intercityFromCity: "Tokyo",
+        intercityToCity: "Tottori",
+        originGroupId: "g-b",
+      },
+    );
+
+    const seeds = buildSeedLineItems(graph).filter(
+      (seed) => seed.linkedTransportLegId?.startsWith("leg-personal-"),
+    );
+    const linkedIds = seeds.map((seed) => seed.linkedTransportLegId).sort();
+    assert.deepEqual(linkedIds, ["leg-personal-a"]);
+  });
 });

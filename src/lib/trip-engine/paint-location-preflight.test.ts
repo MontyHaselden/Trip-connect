@@ -106,7 +106,7 @@ function japanState(): TripSetupState {
 }
 
 describe("protectTravelSplitDays", () => {
-  it("preserves travel split at range end when painting through it", () => {
+  it("preserves travel split at range end when painting through it with full edges", () => {
     const originals = new Map([
       ["2026-12-13", day("2026-12-13", "Kagoshima", "Hiroshima", 0.5)],
     ]);

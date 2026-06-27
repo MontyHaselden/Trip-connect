@@ -5,6 +5,7 @@ import { entityBookingDetails, groups, trips } from "@/lib/db/schema";
 import {
   applyTripSetupState,
   persistResetGroupFromMain,
+  syncGroupDayPlacesForGroups,
   syncIntercityLegsForGroups,
 } from "@/lib/host/setup/apply-setup-state";
 import { syncTransportLegsTable } from "@/lib/host/locations/apply-location-state";
@@ -499,6 +500,12 @@ export async function persistCommands(
 
   const result = applyCommands(workingGraph, normalized);
 
+  for (const leg of workingGraph.intercityLegs) {
+    if (result.graph.intercityLegs.some((row) => row.id === leg.id)) continue;
+    await purgeTransportItineraryForRemovedLeg(tripId, leg.id, leg);
+    await deleteCostLinesForTransportLeg(tripId, leg.id);
+  }
+
   for (const command of normalized) {
     if (command.type === "hidePendingTransportNeed") {
       await hidePendingTransportNeed(tripId, command.groupId, command.need);
@@ -540,7 +547,9 @@ export async function persistCommands(
     if (stateCommands.every(isBasicsOnlyCommand)) {
       await persistBasicsCommand(tripId, result.graph.basics);
     } else if (isDayPlacesOnlyBatch(stateCommands)) {
-      await applyTripSetupState(tripId, graphToSetupState(result.graph), {
+      const setupState = graphToSetupState(result.graph);
+      const batchGroupIds = allGroupIdsFromCommands(stateCommands);
+      await applyTripSetupState(tripId, setupState, {
         activeGroupId,
         persistMode: "dayPlaces",
         syncMainAccommodationStays: stateCommands.some(
@@ -548,6 +557,11 @@ export async function persistCommands(
         ),
         affectedDates: affectedDatesFromCommands(stateCommands),
       });
+      const extraGroupIds = batchGroupIds.filter((id) => id !== activeGroupId);
+      if (extraGroupIds.length) {
+        await syncGroupDayPlacesForGroups(tripId, setupState, extraGroupIds);
+      }
+      await syncIntercityLegsForGroups(tripId, setupState, batchGroupIds);
     } else if (isAccommodationStayBatch(stateCommands)) {
       await applyTripSetupState(tripId, graphToSetupState(result.graph), {
         activeGroupId,

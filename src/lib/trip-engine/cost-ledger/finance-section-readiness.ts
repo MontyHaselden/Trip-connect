@@ -250,6 +250,29 @@ export function transportLegFinanceDisplayStatus(
   return entityFinanceDisplayStatus(linkedLinesForTransportLeg(leg, ledger), ledger);
 }
 
+export function groupedTransportLegFinanceDisplayStatus(
+  legs: Array<{ id: string; transportProductId?: string | null }>,
+  ledger: CostLedgerProjection | null | undefined,
+): EntityFinanceDisplayStatus {
+  if (!ledger || !legs.length) return "none";
+  const statuses = legs.map((leg) => transportLegFinanceDisplayStatus(leg, ledger));
+  if (statuses.some((status) => status === "needs_attention")) return "needs_attention";
+  if (statuses.some((status) => status === "tbc")) return "tbc";
+  if (statuses.some((status) => status === "complete")) return "complete";
+  return statuses[0] ?? "none";
+}
+
+export function groupedTransportLegFinanceAttentionReason(
+  legs: Array<{ id: string; transportProductId?: string | null }>,
+  ledger: CostLedgerProjection | null | undefined,
+): string | null {
+  for (const leg of legs) {
+    const reason = transportLegFinanceAttentionReason(leg, ledger);
+    if (reason) return reason;
+  }
+  return null;
+}
+
 export function activityFinanceDisplayStatus(
   activityId: string,
   ledger: CostLedgerProjection | null | undefined,

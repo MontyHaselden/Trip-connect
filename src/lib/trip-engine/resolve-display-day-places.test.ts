@@ -140,6 +140,47 @@ describe("resolveDisplayDayPlaces", () => {
     assert.ok(!dec7?.secondaryCity?.toLowerCase().includes("hiroshima"));
   });
 
+  it("does not bridge a prior half-day into a full stay that starts the next day", () => {
+    const stored = [
+      {
+        date: "2026-12-12",
+        primaryCity: "Kagoshima",
+        secondaryCity: null,
+        primaryShare: DEFAULT_HALF_SHARE,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-13",
+        primaryCity: "Hiroshima",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-14",
+        primaryCity: "Hiroshima",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-15",
+        primaryCity: "Hiroshima",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+    ];
+    const display = resolveDisplayDayPlaces(stored, stored, "2026-12-12", "2026-12-15");
+    const dec12 = display.find((d) => d.date === "2026-12-12");
+    assert.equal(dec12?.primaryCity, "Kagoshima");
+    assert.equal(dec12?.secondaryCity, null);
+  });
+
   it("fillIncompleteSplitDays connects checkout and check-in halves", () => {
     const filled = fillIncompleteSplitDays([
       {

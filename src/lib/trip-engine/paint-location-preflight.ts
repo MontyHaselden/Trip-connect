@@ -36,8 +36,9 @@ export function protectTravelSplitDays(
       continue;
     }
 
-    if (date === rangeStart && startHalf === "right") continue;
-    if (date === end && endHalf === "left") continue;
+    // Explicit half selection means the host is repainting that slice — do not restore.
+    if (date === rangeStart && startHalf !== "full") continue;
+    if (date === end && endHalf !== "full") continue;
 
     if (date === rangeStart || date === end) {
       byDate.set(date, { ...original });

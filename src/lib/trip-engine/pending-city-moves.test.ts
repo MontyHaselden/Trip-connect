@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { setupStateToGraph } from "./adapters";
 import {
   detectMissingOutboundFlight,
+  detectMissingReturnFlight,
   pendingTransportNeedsFromCalendar,
 } from "./pending-city-moves";
 import type { TripSetupState } from "@/lib/host/setup/types";
@@ -122,15 +123,72 @@ describe("detectMissingOutboundFlight", () => {
   });
 });
 
+describe("detectMissingReturnFlight", () => {
+  it("flags Tokyo to Christchurch when the last trip day is abroad without a travel split", () => {
+    const state = japanOutboundState();
+    state.dayPlacesByGroupId.main = [
+      {
+        date: "2026-12-05",
+        primaryCity: "Christchurch",
+        secondaryCity: "Tokyo, Japan",
+        primaryShare: 0.5,
+        dayType: "travel",
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-18",
+        primaryCity: "Kyoto",
+        secondaryCity: "Tokyo",
+        primaryShare: 0.5,
+        dayType: "travel",
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-19",
+        primaryCity: "Tokyo",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip",
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-20",
+        primaryCity: "Tokyo",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip",
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-21",
+        primaryCity: "Tokyo",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip",
+        includeBuffer: false,
+      },
+    ];
+    const move = detectMissingReturnFlight(
+      state.dayPlacesByGroupId.main ?? [],
+      state.basics,
+    );
+    assert.ok(move);
+    assert.match(move.fromCity, /Tokyo/i);
+    assert.match(move.toCity, /Christchurch/i);
+    assert.equal(move.date, "2026-12-21");
+  });
+});
+
 describe("pendingTransportNeedsFromCalendar", () => {
   it("flags Kyoto → Tokyo travel split when no intercity leg exists", () => {
     const graph = setupStateToGraph("trip-1", baseState());
     const pending = pendingTransportNeedsFromCalendar(graph, "main");
-    assert.equal(pending.length, 1);
-    assert.equal(pending[0]?.fromCity, "Kyoto");
-    assert.equal(pending[0]?.toCity, "Tokyo");
-    assert.equal(pending[0]?.date, "2026-12-23");
-    assert.equal(pending[0]?.kind, "intercity");
+    assert.equal(pending.length, 2);
+    const intercity = pending.find((need) => need.kind === "intercity");
+    assert.equal(intercity?.fromCity, "Kyoto");
+    assert.equal(intercity?.toCity, "Tokyo");
+    assert.equal(intercity?.date, "2026-12-23");
+    assert.ok(pending.some((need) => need.kind === "return_flight"));
   });
 
   it("includes outbound and return flights for a Japan trip", () => {
@@ -143,6 +201,43 @@ describe("pendingTransportNeedsFromCalendar", () => {
     assert.equal(outbound?.fromCity, "Christchurch");
     assert.match(outbound?.toCity ?? "", /Tokyo/i);
     assert.ok(!pending.some((need) => need.kind === "return_flight" && need.date === "2026-12-05"));
+  });
+
+  it("includes return flight when the trip ends abroad without a home travel split", () => {
+    const state = japanOutboundState();
+    state.dayPlacesByGroupId.main = [
+      {
+        date: "2026-12-05",
+        primaryCity: "Christchurch",
+        secondaryCity: "Tokyo, Japan",
+        primaryShare: 0.5,
+        dayType: "travel",
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-18",
+        primaryCity: "Kyoto",
+        secondaryCity: "Tokyo",
+        primaryShare: 0.5,
+        dayType: "travel",
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-21",
+        primaryCity: "Tokyo",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip",
+        includeBuffer: false,
+      },
+    ];
+    const graph = setupStateToGraph("trip-1", state);
+    const pending = pendingTransportNeedsFromCalendar(graph, "main");
+    const returnNeed = pending.find((need) => need.kind === "return_flight");
+    assert.ok(returnNeed);
+    assert.match(returnNeed.fromCity, /Tokyo/i);
+    assert.match(returnNeed.toCity, /Christchurch/i);
+    assert.equal(returnNeed.date, "2026-12-21");
   });
 
   it("still flags Christchurch to Tokyo outbound when departure city is wrong", () => {
@@ -188,7 +283,9 @@ describe("pendingTransportNeedsFromCalendar", () => {
       },
     ];
     const graph = setupStateToGraph("trip-1", state);
-    assert.equal(pendingTransportNeedsFromCalendar(graph, "main").length, 0);
+    const pending = pendingTransportNeedsFromCalendar(graph, "main");
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0]?.kind, "return_flight");
   });
 
   it("clears outbound flight when matching outbound leg exists", () => {

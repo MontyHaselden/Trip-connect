@@ -444,6 +444,18 @@ export async function syncIntercityLegsForGroups(
   }
 }
 
+/** Persist day places for every group in a batch (party fan-out, not just activeGroupId). */
+export async function syncGroupDayPlacesForGroups(
+  tripId: string,
+  state: TripSetupState,
+  groupIds: Iterable<string>,
+): Promise<void> {
+  for (const groupId of groupIds) {
+    const days = state.dayPlacesByGroupId[groupId] ?? [];
+    await syncGroupDayPlaces(tripId, groupId, days);
+  }
+}
+
 /** Drop a subgroup/personal plan's overrides in DB without touching main group data. */
 export async function persistResetGroupFromMain(
   tripId: string,

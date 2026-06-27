@@ -2,8 +2,6 @@ import { stayDatesForSelection } from "@/lib/host/setup/day-selection-setup";
 import type { NightPairSelection } from "@/lib/host/setup/night-pair-selection";
 import {
   clearStayCityFromDay,
-  inferDayPlacesFromStay,
-  normalizeInteriorStayDays,
 } from "@/lib/host/setup-inference";
 import {
   addDays,
@@ -14,7 +12,7 @@ import {
 } from "@/lib/host/wizard/location-stays";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
-import { protectTravelSplitDays } from "./paint-location-preflight";
+import { protectTravelSplitDays, isTravelSplitDay } from "./paint-location-preflight";
 
 function emptyDay(date: string): DayPlaceDraft {
   return {
@@ -350,6 +348,126 @@ function paintLocationSingleDay(
   return applyHalfDayPaint(result, rangeStart, end, loc, startHalf, endHalf);
 }
 
+function paintDayForRangeEdge(
+  day: DayPlaceDraft,
+  location: string,
+  half: HalfSide | "full",
+  context?: {
+    edge: "start" | "end";
+    startHalf: HalfSide | "full";
+    endHalf: HalfSide | "full";
+  },
+): DayPlaceDraft {
+  const loc = location.trim();
+  if (half === "full") {
+    return {
+      ...day,
+      primaryCity: loc,
+      secondaryCity: null,
+      primaryShare: 1,
+      dayType: day.dayType === "buffer" ? "buffer" : "trip",
+    };
+  }
+
+  let prepped = day;
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+
+  const preserveTravelArrival =
+    context?.edge === "end" &&
+    context.endHalf === "left" &&
+    context.startHalf === "right" &&
+    isTravelSplitDay(day) &&
+    Boolean(secondary && !locationsMatch(secondary, loc));
+
+  if (half === "left" && secondary && !locationsMatch(secondary, loc) && !preserveTravelArrival) {
+    prepped = {
+      ...day,
+      secondaryCity: null,
+      primaryShare: primary ? (day.primaryShare ?? DEFAULT_HALF_SHARE) : 1,
+    };
+  }
+
+  if (half === "right" && primary && !locationsMatch(primary, loc)) {
+    prepped = {
+      ...day,
+      primaryShare: day.primaryShare ?? DEFAULT_HALF_SHARE,
+    };
+  }
+
+  const painted = paintHalf(prepped, loc, half);
+
+  if (preserveTravelArrival && half === "left") {
+    return {
+      ...painted,
+      primaryCity: primary || painted.primaryCity,
+      secondaryCity: secondary,
+      primaryShare: day.primaryShare ?? DEFAULT_HALF_SHARE,
+      dayType: day.dayType === "buffer" ? "buffer" : "travel",
+    };
+  }
+
+  return painted;
+}
+
+/** Paint only the selected calendar slices on range edges; full days between. */
+function paintLocationHalfAwareCalendarRange(
+  days: DayPlaceDraft[],
+  rangeStart: string,
+  rangeEnd: string,
+  location: string,
+  startHalf: HalfSide | "full",
+  endHalf: HalfSide | "full",
+): DayPlaceDraft[] {
+  const loc = location.trim();
+  const end = rangeEnd || rangeStart;
+  let result = ensureDaysInPaintRange(days, rangeStart, end);
+  const edgeContext = { startHalf, endHalf };
+
+  result = result.map((day) => {
+    if (day.date < rangeStart || day.date > end) return day;
+
+    if (day.date === rangeStart) {
+      return paintDayForRangeEdge(day, loc, startHalf, { edge: "start", ...edgeContext });
+    }
+    if (day.date === end) {
+      return paintDayForRangeEdge(day, loc, endHalf, { edge: "end", ...edgeContext });
+    }
+    return {
+      ...day,
+      primaryCity: loc,
+      secondaryCity: null,
+      primaryShare: 1,
+      dayType: day.dayType === "buffer" ? "buffer" : "trip",
+    };
+  });
+
+  return result.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim());
+}
+
+/** Paint every selected calendar day as a full single-city day (inclusive day selection). */
+function paintLocationFullCalendarDays(
+  days: DayPlaceDraft[],
+  rangeStart: string,
+  rangeEnd: string,
+  location: string,
+): DayPlaceDraft[] {
+  const loc = location.trim();
+  const end = rangeEnd || rangeStart;
+  let result = ensureDaysInPaintRange(days, rangeStart, end);
+  result = result.map((day) => {
+    if (day.date < rangeStart || day.date > end) return day;
+    return {
+      ...day,
+      primaryCity: loc,
+      secondaryCity: null,
+      primaryShare: 1,
+      dayType: day.dayType === "buffer" ? "buffer" : "trip",
+    };
+  });
+  return result.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim());
+}
+
 /** Paint location on a calendar range without clearing the rest of the trip. */
 export function paintLocationDayRange(
   days: DayPlaceDraft[],
@@ -366,44 +484,27 @@ export function paintLocationDayRange(
     return paintLocationSingleDay(days, rangeStart, end, loc, startHalf, endHalf);
   }
 
-  const { checkIn, checkOut } = stayDatesForSelection({
-    rangeStart,
-    rangeEnd: end,
-    startHalf,
-    endHalf,
-  });
-
-  const syntheticStay = {
-    cityLabel: loc,
-    checkInDate: checkIn,
-    checkOutDate: checkOut,
-    name: "__location_paint__",
-  };
-
-  const originals = new Map(days.map((d) => [d.date, d]));
-  let result = clearLocationSpillAfterCheckout(days, checkOut, loc);
-  result = inferDayPlacesFromStay(result, syntheticStay);
-  result = normalizeInteriorStayDays(result, [syntheticStay]);
-  result = applyHalfDayPaint(result, rangeStart, end, loc, startHalf, endHalf);
-
-  if (startHalf === "right") {
-    const departure = originals.get(rangeStart)?.primaryCity.trim();
-    if (departure && !locationsMatch(departure, loc)) {
-      result = result.map((day) =>
-        day.date === rangeStart
-          ? {
-              ...day,
-              primaryCity: departure,
-              secondaryCity: day.secondaryCity?.trim() || loc,
-              primaryShare: DEFAULT_HALF_SHARE,
-              dayType: originals.get(rangeStart)?.dayType ?? day.dayType,
-            }
-          : day,
-      );
-    }
+  if (startHalf === "full" && endHalf === "full") {
+    return clearLocationSpillAfterCheckout(
+      paintLocationFullCalendarDays(days, rangeStart, end, loc),
+      end,
+      loc,
+    );
   }
 
-  return result.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim());
+  const spillAfterCheckout = endHalf === "right" ? addDays(end, 1) : end;
+  return clearLocationSpillAfterCheckout(
+    paintLocationHalfAwareCalendarRange(
+      days,
+      rangeStart,
+      end,
+      loc,
+      startHalf,
+      endHalf,
+    ),
+    spillAfterCheckout,
+    loc,
+  );
 }
 
 /** Paint location on a calendar range, preserving travel split days at range edges. */

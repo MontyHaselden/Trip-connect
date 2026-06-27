@@ -133,6 +133,58 @@ function classifyMoveKind(move: CityMove, graph: TripEntityGraph): PendingTransp
   return "intercity";
 }
 
+function endingCityOnDay(day: DayPlaceDraft): string {
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const primary = day.primaryCity.trim();
+  if (secondary) return secondary;
+  return primary;
+}
+
+/** Return international flight when the last trip day heads home but no leg exists yet. */
+export function detectMissingReturnFlight(
+  dayPlaces: DayPlaceDraft[],
+  basics: TripEntityGraph["basics"],
+): CityMove | null {
+  const endDate = basics.endDate.trim();
+  const home = homeCityLabel(basics);
+  if (!endDate || !home) return null;
+
+  const sorted = sortedTripDays(dayPlaces);
+  if (!sorted.length) return null;
+  const byDate = new Map(sorted.map((day) => [day.date, day]));
+
+  let returnDay: DayPlaceDraft | null = null;
+  for (let cursor = endDate; ; cursor = addDays(cursor, -1)) {
+    const day = byDate.get(cursor);
+    if (day && (day.primaryCity.trim() || day.secondaryCity?.trim())) {
+      returnDay = day;
+      break;
+    }
+    const earliest = sorted[0]!.date;
+    if (cursor <= earliest) break;
+  }
+  if (!returnDay) return null;
+
+  const primary = returnDay.primaryCity.trim();
+  const secondary = returnDay.secondaryCity?.trim() ?? "";
+  const primaryIsHome = primary ? isHomeCity(primary, basics) : false;
+  const secondaryIsHome = secondary ? isHomeCity(secondary, basics) : false;
+
+  if (primaryIsHome && !secondary) return null;
+
+  // Travel split: abroad on the left, home on the right.
+  if (secondary && secondaryIsHome && primary && !primaryIsHome) {
+    return { fromCity: primary, toCity: secondary || home, date: returnDay.date };
+  }
+
+  const endingAbroad = endingCityOnDay(returnDay);
+  if (endingAbroad && !isHomeCity(endingAbroad, basics)) {
+    return { fromCity: endingAbroad, toCity: home, date: returnDay.date };
+  }
+
+  return null;
+}
+
 /** Outbound international flight when the first trip day leaves home but no leg exists yet. */
 export function detectMissingOutboundFlight(
   dayPlaces: DayPlaceDraft[],
@@ -225,6 +277,11 @@ export function pendingTransportNeedsFromCalendar(
   const outbound = detectMissingOutboundFlight(dayPlaces, graph.basics);
   if (outbound && !moves.some((move) => sameMove(move, outbound))) {
     moves.unshift(outbound);
+  }
+
+  const returnFlight = detectMissingReturnFlight(dayPlaces, graph.basics);
+  if (returnFlight && !moves.some((move) => sameMove(move, returnFlight))) {
+    moves.push(returnFlight);
   }
 
   const legs = scopedTransportLegs(graph, groupId);
