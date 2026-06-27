@@ -9,7 +9,7 @@ import {
 } from "@/lib/host/wizard/location-stays";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import { projectCalendar, type ProjectCalendarOptions } from "./project-calendar";
-import { participantInheritsMainCalendar, participantUsesLocationOverlayProjection, activitiesForCalendarView } from "./person-lens";
+import { participantInheritsMainCalendar, participantUsesLocationOverlayProjection, activitiesForCalendarView, staysForCalendarView } from "./person-lens";
 import { dayPlacesForGroup, namedStays, calendarContentScopeForGroup } from "./selectors";
 import type {
   ActivityMarker,
@@ -128,7 +128,7 @@ export function buildCalendarRenderModel(
     accommodationByDate: projection.accommodationByDate,
     accommodationStays: usesMainGroupCalendarContent(graph, groupId)
       ? namedStays(graph, graph.mainGroupId)
-      : namedStays(graph, groupId),
+      : staysForCalendarView(graph, groupId).filter((s) => s.name?.trim()),
     boundaries: projection.boundaries,
     activitiesByDate: buildActivitiesByDate(graph, allDates, groupId),
     projectedDays: projection.days,

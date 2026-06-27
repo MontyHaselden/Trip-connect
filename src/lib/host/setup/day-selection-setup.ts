@@ -152,6 +152,30 @@ export function stayDateBoundsForSelection(selection: NightPairSelection): {
   return { checkIn, checkOut };
 }
 
+/** Map hotel check-in/out back to a full-day calendar range while editing a stay. */
+export function calendarSelectionForStayDates(
+  checkIn: string,
+  checkOut: string,
+): NightPairSelection | null {
+  if (!checkIn || !checkOut || checkOut <= checkIn) return null;
+
+  if (addDays(checkIn, 1) === checkOut) {
+    return {
+      rangeStart: checkIn,
+      rangeEnd: checkIn,
+      startHalf: "full",
+      endHalf: "full",
+    };
+  }
+
+  return {
+    rangeStart: checkIn,
+    rangeEnd: checkOut,
+    startHalf: "full",
+    endHalf: "full",
+  };
+}
+
 function clampStayDatesToBounds(
   bounds: { checkIn: string; checkOut: string },
   existing?: { checkIn: string; checkOut: string } | null,

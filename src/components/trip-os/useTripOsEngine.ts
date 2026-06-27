@@ -9,6 +9,7 @@ import {
   clearTripLocalDraft,
   type TripLocalDraft,
 } from "@/lib/trip-os/local-draft";
+import { coalescePendingCommands } from "@/lib/trip-os/coalesce-pending-commands";
 import {
   enqueueTripPersist,
   tripPersistInFlight,
@@ -100,8 +101,8 @@ export type TripLoadStatus = {
 };
 
 /** Debounce before background server sync — local draft is written immediately. */
-const PERSIST_DEBOUNCE_MS = 400;
-const PERSIST_RETRY_MS = 8000;
+const PERSIST_DEBOUNCE_MS = 500;
+const PERSIST_RETRY_MS = 3000;
 const SETUP_FETCH_TIMEOUT_MS = 30_000;
 
 const READY_LOAD_STATUS: TripLoadStatus = {
@@ -176,6 +177,7 @@ export function useTripOsEngine(tripId: string) {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<TripSaveStatus>("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<SetupSectionId>("overview");
   const [activeGroupId, setActiveGroupId] = useState<string>("");
@@ -189,9 +191,7 @@ export function useTripOsEngine(tripId: string) {
   const pendingGroupIdRef = useRef<string>("");
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const runPersistRef = useRef<
-    (commands: TripCommand[], persistGroupId: string) => Promise<boolean>
-  >(async () => true);
+  const queuePersistRef = useRef<() => Promise<boolean>>(async () => true);
   const financePatchInFlightRef = useRef(0);
   const optimisticLineMapRef = useRef(new Map<string, string>());
   const refreshCostLedgerRef = useRef<
@@ -642,140 +642,161 @@ export function useTripOsEngine(tripId: string) {
     }, PERSIST_RETRY_MS);
   }, []);
 
-  const runPersist = useCallback(
-    async (commands: TripCommand[], persistGroupId: string) => {
-      return enqueueTripPersist(tripId, async () => {
-        try {
-          const res = await fetch(`/api/trips/${tripId}/setup/commands`, {
-            method: "PATCH",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ commands, groupId: persistGroupId }),
-          });
-          const body = (await res.json().catch(() => ({}))) as {
-            error?: string;
-            syncOnly?: boolean;
-            activitySync?: boolean;
-            warnings?: EngineWarning[];
-            conflicts?: EngineConflict[];
-            costLedger?: CostLedgerProjection | null;
-          } & Partial<SetupEngineResponse>;
-          if (!res.ok) throw new Error(body.error || "Command failed");
+  const persistPendingBatch = useCallback(async (): Promise<boolean> => {
+    const commands = coalescePendingCommands([...pendingCommandsRef.current]);
+    if (!commands.length) return true;
 
-          if (body.syncOnly) {
-            setData((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    warnings: body.warnings ?? prev.warnings,
-                    conflicts: body.conflicts ?? prev.conflicts,
-                  }
-                : prev,
-            );
-            if (dataRef.current) {
-              persistLocalSnapshot(dataRef.current.graph, {
-                pendingCommands: [],
-                pendingGroupId: "",
-              });
-            }
-          } else if (body.activitySync && dataRef.current) {
-            const graph = dataRef.current.graph;
-            setData((prev) => {
-              if (!prev) return prev;
-              const costLedger =
-                body.costLedger !== undefined
-                  ? mergeCostLedgerForGraph(prev.costLedger, body.costLedger, prev.graph, {
-                      forceKeepLocal: financePatchInFlightRef.current > 0,
-                    })
-                  : pruneCostLedgerLinkedOrphans(prev.costLedger, prev.graph);
-              const readiness =
-                body.costLedger !== undefined
-                  ? computeReadiness(prev.graph, prev.calendarProjection, costLedger ?? null)
-                  : prev.readiness;
-              return {
+    pendingCommandsRef.current = [];
+    const persistGroupId =
+      pendingGroupIdRef.current ||
+      activeGroupIdRef.current ||
+      dataRef.current?.graph.mainGroupId ||
+      "";
+
+    setSaveStatus("syncing");
+
+    try {
+      const res = await fetch(`/api/trips/${tripId}/setup/commands`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ commands, groupId: persistGroupId }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        syncOnly?: boolean;
+        activitySync?: boolean;
+        warnings?: EngineWarning[];
+        conflicts?: EngineConflict[];
+        costLedger?: CostLedgerProjection | null;
+      } & Partial<SetupEngineResponse>;
+      if (!res.ok) throw new Error(body.error || "Command failed");
+
+      setSaveError(null);
+
+      if (body.syncOnly) {
+        setData((prev) =>
+          prev
+            ? {
                 ...prev,
-                costLedger: costLedger ?? prev.costLedger,
-                readiness,
                 warnings: body.warnings ?? prev.warnings,
                 conflicts: body.conflicts ?? prev.conflicts,
-              };
-            });
-            const mergedCostLedger =
-              body.costLedger !== undefined
-                ? mergeCostLedgerForGraph(
-                    dataRef.current.costLedger,
-                    body.costLedger,
-                    graph,
-                    {
-                      forceKeepLocal: financePatchInFlightRef.current > 0,
-                    },
-                  )
-                : pruneCostLedgerLinkedOrphans(dataRef.current.costLedger, graph);
-            persistLocalSnapshot(dataRef.current.graph, {
-              pendingCommands: [],
-              pendingGroupId: "",
-              costLedger: mergedCostLedger,
-            });
-          } else if (body.graph) {
-            applyResponse(body as SetupEngineResponse, {
-              viewGroupId: activeGroupIdRef.current || persistGroupId,
-              rebuildView: false,
-            });
-          } else {
-            await fetchServerMetadata(loadGenerationRef.current, activeGroupIdRef.current, {
-              keepLocalGraph:
-                financePatchInFlightRef.current > 0 ||
-                localCostLedgerIsAhead(
-                  dataRef.current?.costLedger,
-                  undefined,
-                  dataRef.current?.graph,
-                ),
-            });
-          }
-          setSaveStatus("idle");
-          if (retryTimerRef.current) {
-            clearTimeout(retryTimerRef.current);
-            retryTimerRef.current = null;
-          }
-          return true;
-        } catch {
-          setSaveStatus("sync_error");
-          scheduleRetry();
-          return false;
+              }
+            : prev,
+        );
+        if (dataRef.current) {
+          persistLocalSnapshot(dataRef.current.graph, {
+            pendingCommands: pendingCommandsRef.current,
+            pendingGroupId: pendingCommandsRef.current.length ? persistGroupId : "",
+          });
         }
-      });
-    },
-    [tripId, applyResponse, fetchServerMetadata, persistLocalSnapshot, scheduleRetry],
-  );
+      } else if (body.activitySync && dataRef.current) {
+        const graph = dataRef.current.graph;
+        setData((prev) => {
+          if (!prev) return prev;
+          const costLedger =
+            body.costLedger !== undefined
+              ? mergeCostLedgerForGraph(prev.costLedger, body.costLedger, prev.graph, {
+                  forceKeepLocal: financePatchInFlightRef.current > 0,
+                })
+              : pruneCostLedgerLinkedOrphans(prev.costLedger, prev.graph);
+          const readiness =
+            body.costLedger !== undefined
+              ? computeReadiness(prev.graph, prev.calendarProjection, costLedger ?? null)
+              : prev.readiness;
+          return {
+            ...prev,
+            costLedger: costLedger ?? prev.costLedger,
+            readiness,
+            warnings: body.warnings ?? prev.warnings,
+            conflicts: body.conflicts ?? prev.conflicts,
+          };
+        });
+        const mergedCostLedger =
+          body.costLedger !== undefined
+            ? mergeCostLedgerForGraph(
+                dataRef.current.costLedger,
+                body.costLedger,
+                graph,
+                {
+                  forceKeepLocal: financePatchInFlightRef.current > 0,
+                },
+              )
+            : pruneCostLedgerLinkedOrphans(dataRef.current.costLedger, graph);
+        persistLocalSnapshot(dataRef.current.graph, {
+          pendingCommands: pendingCommandsRef.current,
+          pendingGroupId: pendingCommandsRef.current.length ? persistGroupId : "",
+          costLedger: mergedCostLedger,
+        });
+      } else if (body.graph) {
+        applyResponse(body as SetupEngineResponse, {
+          viewGroupId: activeGroupIdRef.current || persistGroupId,
+          rebuildView: false,
+        });
+      } else {
+        await fetchServerMetadata(loadGenerationRef.current, activeGroupIdRef.current, {
+          keepLocalGraph:
+            financePatchInFlightRef.current > 0 ||
+            localCostLedgerIsAhead(
+              dataRef.current?.costLedger,
+              undefined,
+              dataRef.current?.graph,
+            ),
+        });
+      }
+      setSaveStatus("idle");
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      return true;
+    } catch (err) {
+      pendingCommandsRef.current = [...commands, ...pendingCommandsRef.current];
+      if (dataRef.current) {
+        persistLocalSnapshot(dataRef.current.graph, {
+          pendingCommands: pendingCommandsRef.current,
+          pendingGroupId: persistGroupId,
+        });
+      }
+      const message =
+        err instanceof Error ? err.message : "Could not save changes.";
+      console.error("[trip-os] persist failed:", message);
+      setSaveError(message);
+      setSaveStatus("sync_error");
+      scheduleRetry();
+      return false;
+    }
+  }, [
+    tripId,
+    applyResponse,
+    fetchServerMetadata,
+    persistLocalSnapshot,
+    scheduleRetry,
+  ]);
+
+  const queuePersist = useCallback(() => {
+    return enqueueTripPersist(tripId, () => persistPendingBatch()).then((ok) => {
+      if (!ok) {
+        return false;
+      }
+      if (pendingCommandsRef.current.length > 0) {
+        return queuePersistRef.current();
+      }
+      return true;
+    });
+  }, [tripId, persistPendingBatch]);
 
   useEffect(() => {
-    runPersistRef.current = runPersist;
-  }, [runPersist]);
+    queuePersistRef.current = queuePersist;
+  }, [queuePersist]);
 
   const flushPending = useCallback(() => {
     if (flushTimerRef.current) {
       clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
     }
-    const commands = pendingCommandsRef.current;
-    pendingCommandsRef.current = [];
-    if (!commands.length) return;
-    const persistGroupId =
-      pendingGroupIdRef.current ||
-      activeGroupIdRef.current ||
-      dataRef.current?.graph.mainGroupId ||
-      "";
-    void runPersistRef.current(commands, persistGroupId).then((ok) => {
-      if (!ok) {
-        pendingCommandsRef.current.push(...commands);
-        if (dataRef.current) {
-          persistLocalSnapshot(dataRef.current.graph, {
-            pendingCommands: pendingCommandsRef.current,
-            pendingGroupId: persistGroupId,
-          });
-        }
-      }
-    });
-  }, [persistLocalSnapshot]);
+    if (!pendingCommandsRef.current.length) return;
+    void queuePersist();
+  }, [queuePersist]);
 
   const flushPendingRef = useRef(flushPending);
   flushPendingRef.current = flushPending;
@@ -784,9 +805,9 @@ export function useTripOsEngine(tripId: string) {
     if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
     flushTimerRef.current = setTimeout(() => {
       flushTimerRef.current = null;
-      flushPending();
+      void queuePersist();
     }, PERSIST_DEBOUNCE_MS);
-  }, [flushPending]);
+  }, [queuePersist]);
 
   const scheduleFlushRef = useRef(scheduleFlush);
   scheduleFlushRef.current = scheduleFlush;
@@ -1359,6 +1380,7 @@ export function useTripOsEngine(tripId: string) {
     refreshing,
     saving,
     saveStatus,
+    saveError,
     error,
     activeSection,
     setActiveSection,

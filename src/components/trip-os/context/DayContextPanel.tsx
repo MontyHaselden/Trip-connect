@@ -36,10 +36,12 @@ import {
 import { shortCityName } from "@/lib/host/setup/location-range-display";
 import { dayPlacesForGroup, staysForGroup } from "@/lib/trip-engine/selectors";
 import {
+  borrowMainStayOverlayOp,
   canAdoptMainGroupStayForParticipant,
+  findBorrowMainStayOp,
   findMatchingMainStay,
   formatStayNightSpan,
-  mergePersonalDayPlacesFromMain,
+  stayNamesMatch,
   suggestedMainStaysForParticipantEdit,
   type MainStayMatch,
 } from "@/lib/trip-engine/match-main-accommodation-stay";
@@ -308,6 +310,7 @@ export function DayContextPanel(props: {
   saving?: boolean;
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
   onClearSelection: () => void;
+  onSelectStayDateRange?: (checkIn: string, checkOut: string) => void;
   onReload?: () => void;
   error?: string | null;
 }) {
@@ -733,24 +736,29 @@ export function DayContextPanel(props: {
 
   async function adoptMainGroupStay(mainStay: AccommodationStayDraft) {
     setActionError(null);
-    const personalDays = dayPlacesForGroup(graph, groupId);
-    const mainDays = dayPlacesForGroup(graph, graph.mainGroupId);
-    const merged = mergePersonalDayPlacesFromMain(personalDays, mainDays, mainStay);
 
-    const overlappingPersonalStays = staysForGroup(graph, groupId).filter(
+    const overlappingSameHotel = staysForGroup(graph, groupId).filter(
       (stay) =>
+        stayNamesMatch(stay.name ?? "", mainStay.name ?? "") &&
         stay.checkInDate < mainStay.checkOutDate &&
         mainStay.checkInDate < stay.checkOutDate,
     );
 
     const commands: TripCommand[] = [
-      { type: "setDayPlaces", groupId, days: merged },
-      ...overlappingPersonalStays.map((stay) => ({
+      ...overlappingSameHotel.map((stay) => ({
         type: "removeStay" as const,
         groupId,
         stayId: stay.id,
       })),
     ];
+
+    if (!findBorrowMainStayOp(graph, groupId, mainStay.id)) {
+      commands.push({
+        type: "addGroupDayOverride",
+        groupId,
+        op: borrowMainStayOverlayOp(groupId, mainStay.id),
+      });
+    }
 
     const ok = await props.onDispatch(commands);
     if (ok) {
@@ -1401,7 +1409,8 @@ export function DayContextPanel(props: {
                     mainStayMatch!.mainStay.checkInDate,
                     mainStayMatch!.mainStay.checkOutDate,
                   )}
-                  ). {participantLabel} can follow that stay instead of duplicating it.
+                  ). {participantLabel} can use that hotel without a duplicate row — personal
+                  locations on the calendar stay as they are.
                 </p>
                 <button
                   type="button"
@@ -1485,7 +1494,13 @@ export function DayContextPanel(props: {
                 <span className="text-xs text-zinc-500">Check-in</span>
                 <TripDateInput
                   value={stayDraft.checkIn}
-                  onChange={(checkIn) => setStayDraft({ ...stayDraft, checkIn })}
+                  onChange={(checkIn) => {
+                    const next = { ...stayDraft, checkIn };
+                    setStayDraft(next);
+                    if (!isSingleHalfDay) {
+                      props.onSelectStayDateRange?.(checkIn, next.checkOut);
+                    }
+                  }}
                   tripStart={datePicker.tripStart}
                   tripEnd={datePicker.tripEnd}
                   anchorDate={datePicker.anchorDate}
@@ -1496,7 +1511,13 @@ export function DayContextPanel(props: {
                 <span className="text-xs text-zinc-500">Check-out (morning after last night)</span>
                 <TripDateInput
                   value={stayDraft.checkOut}
-                  onChange={(checkOut) => setStayDraft({ ...stayDraft, checkOut })}
+                  onChange={(checkOut) => {
+                    const next = { ...stayDraft, checkOut };
+                    setStayDraft(next);
+                    if (!isSingleHalfDay) {
+                      props.onSelectStayDateRange?.(next.checkIn, checkOut);
+                    }
+                  }}
                   tripStart={datePicker.tripStart}
                   tripEnd={datePicker.tripEnd}
                   anchorDate={datePicker.anchorDate}
@@ -1519,7 +1540,7 @@ export function DayContextPanel(props: {
             ) : null}
             <p className="text-xs text-zinc-500">
               {canFollowMainGroupStay
-                ? `Apply will follow the main group stay for ${participantLabel} — no duplicate row.`
+                ? `Apply will use the main group hotel for ${participantLabel} — your painted locations stay unchanged.`
                 : linkedStayIsInherited
                 ? "Saving creates a personal stay for this participant — the main group homestay is unchanged."
                 : linkedStay && linkedStay.checkInDate > rangeStart

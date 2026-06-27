@@ -473,6 +473,18 @@ export async function persistCommands(
     graph,
   );
 
+  for (const command of normalized) {
+    const commandGroupId = groupIdFromCommand(command);
+    if (
+      commandGroupId &&
+      !graph.groups.some((group) => group.id === commandGroupId)
+    ) {
+      throw new Error(
+        "Calendar command references an unknown group. Refresh the page and try again.",
+      );
+    }
+  }
+
   const dbActivities = await loadActivitiesForTrip(tripId);
   const activityAdds = normalized
     .filter((command) => command.type === "addActivity")

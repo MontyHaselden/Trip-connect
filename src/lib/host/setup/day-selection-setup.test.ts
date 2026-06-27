@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 import {
   accommodationCityForSelection,
   accommodationLocationConflictMessage,
+  calendarSelectionForStayDates,
   detectAccommodationLocationConflicts,
   halfForDateInSelection,
   locationLabelForSelectedHalf,
   selectionNeedsSetup,
+  stayDateBoundsForSelection,
   stayDatesForExpandedSelection,
   stayDatesForRangeApply,
   stayDatesForSelection,
@@ -133,6 +135,28 @@ describe("stayDatesForSelection", () => {
       ),
       { checkIn: "2026-12-15", checkOut: "2026-12-19" },
     );
+  });
+});
+
+describe("calendarSelectionForStayDates", () => {
+  it("round-trips full-day multi-night stays with stayDateBoundsForSelection", () => {
+    const selection = {
+      rangeStart: "2026-12-18",
+      rangeEnd: "2026-12-21",
+      startHalf: "full" as const,
+      endHalf: "full" as const,
+    };
+    const dates = stayDateBoundsForSelection(selection);
+    assert.deepEqual(calendarSelectionForStayDates(dates.checkIn, dates.checkOut), selection);
+  });
+
+  it("maps a shortened check-in to a smaller calendar range", () => {
+    assert.deepEqual(calendarSelectionForStayDates("2026-12-19", "2026-12-21"), {
+      rangeStart: "2026-12-19",
+      rangeEnd: "2026-12-21",
+      startHalf: "full",
+      endHalf: "full",
+    });
   });
 });
 

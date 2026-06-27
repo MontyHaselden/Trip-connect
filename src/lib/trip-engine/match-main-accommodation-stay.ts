@@ -1,6 +1,8 @@
 import { stayCityLabel } from "@/lib/host/setup/accommodation-calendar";
 import { addDays, enumerateDates, locationsMatch } from "@/lib/host/wizard/location-stays";
+import type { GroupOverlayOpDraft } from "@/lib/host/setup/types";
 import type { AccommodationStayDraft, ActivityDraft, DayPlaceDraft } from "@/lib/host/wizard/types";
+import { newId } from "@/lib/host/wizard/types";
 
 import { activitiesForGroup, dayPlacesForGroup, staysForGroup } from "./selectors";
 import { personalGroupForGroupId } from "./person-lens";
@@ -122,6 +124,56 @@ export function findMatchingMainStay(
   return { kind: "name_only", mainStay: byCity ?? candidates[0]! };
 }
 
+/** Self-replace overlay op — explicit “borrow this main-group stay” without copying locations. */
+export function isBorrowMainStayOp(op: GroupOverlayOpDraft): boolean {
+  return (
+    op.entityType === "accommodation_stay" &&
+    op.op === "replace" &&
+    op.replacementEntityId !== null &&
+    op.baseEntityId === op.replacementEntityId
+  );
+}
+
+export function borrowedMainStayIdsForGroup(
+  graph: TripEntityGraph,
+  groupId: string,
+): Set<string> {
+  return new Set(
+    graph.overlayOps
+      .filter((op) => op.groupId === groupId && isBorrowMainStayOp(op))
+      .map((op) => op.baseEntityId),
+  );
+}
+
+export function findBorrowMainStayOp(
+  graph: TripEntityGraph,
+  groupId: string,
+  mainStayId: string,
+): GroupOverlayOpDraft | null {
+  return (
+    graph.overlayOps.find(
+      (op) => op.groupId === groupId && isBorrowMainStayOp(op) && op.baseEntityId === mainStayId,
+    ) ?? null
+  );
+}
+
+export function borrowMainStayOverlayOp(
+  groupId: string,
+  mainStayId: string,
+  opId?: string,
+): GroupOverlayOpDraft {
+  return {
+    id: opId ?? newId(),
+    groupId,
+    entityType: "accommodation_stay",
+    baseEntityId: mainStayId,
+    op: "replace",
+    replacementEntityId: mainStayId,
+    effectiveFrom: null,
+    effectiveTo: null,
+  };
+}
+
 function dayPlacesMatch(a: DayPlaceDraft | undefined, b: DayPlaceDraft | undefined): boolean {
   if (!a || !b) return false;
   if (!a.primaryCity.trim() || !b.primaryCity.trim()) return false;
@@ -164,6 +216,7 @@ export function borrowedMainStaysForParticipant(
   }
 
   const own = staysForGroup(graph, groupId).filter((s) => s.name?.trim());
+  const explicitBorrowIds = borrowedMainStayIdsForGroup(graph, groupId);
   return mainNamedStays(graph).filter((mainStay) => {
     const hasOwnOverlap = own.some(
       (stay) =>
@@ -172,6 +225,7 @@ export function borrowedMainStaysForParticipant(
         mainStay.checkInDate < stay.checkOutDate,
     );
     if (hasOwnOverlap) return false;
+    if (explicitBorrowIds.has(mainStay.id)) return true;
     return participantLocationsAlignWithMainStay(graph, groupId, mainStay);
   });
 }
@@ -185,18 +239,14 @@ export function canAdoptMainGroupStayForParticipant(
 ): boolean {
   if (groupId === graph.mainGroupId) return false;
   if (!stayDateRangesEqual(mainStay, participantDates)) return false;
+  if (borrowedMainStayIdsForGroup(graph, groupId).has(mainStay.id)) return false;
 
-  const personalDays = dayPlacesForGroup(graph, groupId);
-  const mainDays = dayPlacesForGroup(graph, graph.mainGroupId);
-  const merged = mergePersonalDayPlacesFromMain(personalDays, mainDays, mainStay);
-  const nights = stayNightDates(mainStay.checkInDate, mainStay.checkOutDate);
-  if (!nights.length) return false;
-
-  return nights.every((date) => {
-    const personal = merged.find((d) => d.date === date);
-    const main = mainDays.find((d) => d.date === date);
-    return dayPlacesMatch(personal, main);
-  });
+  const own = staysForGroup(graph, groupId).filter((s) => s.name?.trim());
+  return !own.some(
+    (stay) =>
+      stayNamesMatch(stay.name ?? "", mainStay.name ?? "") &&
+      stayRangesOverlap(stay, mainStay),
+  );
 }
 
 export function mergePersonalDayPlacesFromMain(
@@ -238,10 +288,7 @@ export function participantSharesMainContextOnDate(
   groupId: string,
   date: string,
 ): boolean {
-  if (participantAlignedWithMainOnDate(graph, groupId, date)) return true;
-  return borrowedMainStaysForParticipant(graph, groupId).some(
-    (stay) => date >= stay.checkInDate && date < stay.checkOutDate,
-  );
+  return participantAlignedWithMainOnDate(graph, groupId, date);
 }
 
 function isMainGroupSharedActivity(activity: ActivityDraft, graph: TripEntityGraph): boolean {

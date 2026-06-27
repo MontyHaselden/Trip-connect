@@ -30,7 +30,9 @@ export function calendarContentScopeForGroup(
     groupId === graph.mainGroupId
       ? ownStays
       : personal?.inheritMode === "independent"
-        ? ownStays
+        ? borrowed.length
+          ? [...ownStays, ...borrowed]
+          : ownStays
         : borrowed.length
           ? [...ownStays, ...borrowed]
           : ownStays;

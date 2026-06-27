@@ -40,6 +40,7 @@ import {
 import {
   groupPersonalTransportScopesForDisplay,
   type TransportLegDisplayScope,
+  type TransportLegGroupedTarget,
 } from "@/lib/trip-engine/group-transport-legs-for-display";
 import {
   pendingNeedLabel,
@@ -316,6 +317,7 @@ export function TransportSection(props: {
   const [editingLeg, setEditingLeg] = useState<{
     leg: TransportLegDraft | IntercityLegDraft;
     bucket: LegBucket;
+    groupedLegTargets?: TransportLegGroupedTarget[];
   } | null>(null);
   const [editingProduct, setEditingProduct] = useState<TransportProductDraft | null>(null);
   const [hiddenOpen, setHiddenOpen] = useState(false);
@@ -757,6 +759,19 @@ export function TransportSection(props: {
       return compareTransportLegsChronologically(firstA, firstB);
     });
 
+    const canEditLeg =
+      isActiveScope ||
+      isGroupedPersonal ||
+      Boolean(scope.groupedLegTargets?.length);
+
+    function openLegEditor(leg: ScopedTransportLeg) {
+      setEditingLeg({
+        leg,
+        bucket: legBucket(leg.id),
+        groupedLegTargets: scope.groupedLegTargets,
+      });
+    }
+
     function legFinanceActions(leg: ScopedTransportLeg) {
       const financeStatus = isGroupedPersonal
         ? groupedTransportLegFinanceDisplayStatus(groupedLegs, props.costLedger)
@@ -901,11 +916,7 @@ export function TransportSection(props: {
                           props.costLedger,
                         )}
                         onOpenFinance={() => openLegFinance(leg)}
-                        onEdit={
-                          isActiveScope
-                            ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
-                            : undefined
-                        }
+                        onEdit={canEditLeg ? () => openLegEditor(leg) : undefined}
                         onDelete={() =>
                           void deleteLeg(
                             leg,
@@ -948,11 +959,7 @@ export function TransportSection(props: {
                         : transportLegFinanceAttentionReason(leg, props.costLedger)
                     }
                     onOpenFinance={() => openLegFinance(leg)}
-                    onEdit={
-                      isActiveScope
-                        ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
-                        : undefined
-                    }
+                    onEdit={canEditLeg ? () => openLegEditor(leg) : undefined}
                     onDelete={() =>
                       void deleteLeg(
                         leg,
@@ -1049,6 +1056,7 @@ export function TransportSection(props: {
         bucket={editingLeg?.bucket ?? null}
         graph={props.graph}
         groupId={editGroupId}
+        groupedLegTargets={editingLeg?.groupedLegTargets}
         rosterSummary={props.rosterSummary}
         saving={props.saving}
         onClose={() => setEditingLeg(null)}

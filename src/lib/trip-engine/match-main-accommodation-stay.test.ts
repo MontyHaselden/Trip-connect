@@ -4,10 +4,12 @@ import { describe, it } from "node:test";
 import { setupStateToGraph } from "./adapters";
 import { applyCommands } from "./apply-commands";
 import {
+  borrowMainStayOverlayOp,
   borrowedMainActivitiesForParticipant,
   borrowedMainStaysForParticipant,
   canAdoptMainGroupStayForParticipant,
   findMatchingMainStay,
+  isBorrowMainStayOp,
   mainStaysOverlappingRange,
   mergePersonalDayPlacesFromMain,
   participantLocationsAlignWithMainStay,
@@ -232,7 +234,7 @@ describe("match-main-accommodation-stay", () => {
     );
   });
 
-  it("canAdoptMainGroupStayForParticipant requires matching dates and aligned cities", () => {
+  it("canAdoptMainGroupStayForParticipant requires matching dates and no same-name personal row", () => {
     const graph = setupStateToGraph("trip-1", macyIndependentFixture());
     const mainStay = graph.accommodationStays[0]!;
     assert.ok(
@@ -247,6 +249,98 @@ describe("match-main-accommodation-stay", () => {
         checkOutDate: "2026-12-17",
       }),
       false,
+    );
+  });
+
+  it("isBorrowMainStayOp detects self-replace borrow markers", () => {
+    const op = borrowMainStayOverlayOp("g-macy", "stay-yaeno");
+    assert.ok(isBorrowMainStayOp(op));
+  });
+
+  it("borrowMainStayOverlayOp adopts one main hotel without copying locations", () => {
+    const base = macyIndependentFixture();
+    const tokyoNights = ["2026-12-18", "2026-12-19", "2026-12-20"] as const;
+    base.dayPlacesByGroupId["g-main"] = [
+      ...(base.dayPlacesByGroupId["g-main"] ?? []),
+      ...tokyoNights.map((date) => ({
+        date,
+        primaryCity: "Tokyo, Japan",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      })),
+    ];
+    base.dayPlacesByGroupId["g-macy"] = [
+      ...(base.dayPlacesByGroupId["g-macy"] ?? []),
+      {
+        date: "2026-12-18",
+        primaryCity: "Kyoto",
+        secondaryCity: "Tokyo",
+        primaryShare: 0.5,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+      { date: "2026-12-19", primaryCity: "Osaka", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+      { date: "2026-12-20", primaryCity: "Osaka", secondaryCity: null, primaryShare: 1, dayType: "trip", includeBuffer: false },
+    ];
+    base.accommodationStays.push({
+      id: "stay-yaeno",
+      cityLabel: "Tokyo, Japan",
+      stayType: "hotel",
+      name: "Hotel Yaenomidori Tokyo",
+      url: null,
+      address: null,
+      phone: null,
+      checkInDate: "2026-12-18",
+      checkOutDate: "2026-12-21",
+      notes: null,
+      isHomestayGroup: false,
+      multipleInCity: false,
+    });
+    base.activities = [
+      {
+        id: "act-tower",
+        title: "Tokyo tower",
+        date: "2026-12-19",
+        endDate: null,
+        startTime: "10:00",
+        endTime: null,
+        isTimeTbc: false,
+        category: "activity",
+        locationName: null,
+        address: null,
+        isLocationTbc: true,
+        transportNote: null,
+        leaveByTime: null,
+        bringNote: null,
+        description: null,
+        audienceType: "everyone",
+        audienceId: null,
+        bookingStatus: "not_booked",
+      },
+    ];
+
+    const graph = setupStateToGraph("trip-1", base);
+    const mainStay = graph.accommodationStays.find((stay) => stay.id === "stay-yaeno")!;
+    const adopted = applyCommands(graph, [
+      {
+        type: "addGroupDayOverride",
+        groupId: "g-macy",
+        op: borrowMainStayOverlayOp("g-macy", mainStay.id),
+      },
+    ]).graph;
+
+    assert.equal(
+      adopted.dayPlacesByGroupId["g-macy"]?.find((d) => d.date === "2026-12-18")?.primaryCity,
+      "Kyoto",
+    );
+    assert.ok(
+      borrowedMainStaysForParticipant(adopted, "g-macy").some((stay) => stay.id === mainStay.id),
+    );
+    assert.equal(borrowedMainActivitiesForParticipant(adopted, "g-macy").length, 0);
+    assert.ok(
+      staysForCalendarView(adopted, "g-macy").some((stay) => stay.id === mainStay.id),
     );
   });
 

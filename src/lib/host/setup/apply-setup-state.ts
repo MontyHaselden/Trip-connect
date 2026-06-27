@@ -23,7 +23,9 @@ import {
   syncTransportLegsTable,
 } from "@/lib/host/locations/apply-location-state";
 import { syncTransportProductsTable } from "@/lib/host/locations/transport-products";
+import { purgeTransportItineraryForRemovedLeg } from "@/lib/host/import/transport-itinerary-reconcile";
 import { reconcileImportedAccommodationStays } from "@/lib/host/import/reconcile-accommodation-stays";
+import { deleteCostLinesForTransportLeg } from "@/lib/trip-engine/cost-ledger/cost-line-cascade";
 import { toDbBookingStatus, toDbTransportType } from "@/lib/host/wizard/db-enums";
 import { resolveItemVisibility, persistEntityVisibility } from "@/lib/visibility/item-visibility";
 import type {
@@ -212,6 +214,8 @@ async function syncGroupIntercityLegs(
 
   for (const row of existing) {
     if (!incomingIds.has(row.id)) {
+      await purgeTransportItineraryForRemovedLeg(tripId, row.id);
+      await deleteCostLinesForTransportLeg(tripId, row.id);
       await db.delete(tripTransportLegs).where(eq(tripTransportLegs.id, row.id));
     }
   }

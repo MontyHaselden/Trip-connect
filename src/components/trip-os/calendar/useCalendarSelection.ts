@@ -8,6 +8,7 @@ import {
   nextCalendarRangeSelection,
   type CalendarRangeSelection,
 } from "@/lib/host/setup/calendar-range-selection";
+import { calendarSelectionForStayDates } from "@/lib/host/setup/day-selection-setup";
 import {
   formatCalendarSelectionLabel,
 } from "@/lib/host/setup/night-pair-selection";
@@ -201,6 +202,19 @@ export function useCalendarSelection(props: {
     [props],
   );
 
+  const selectStayDateRange = useCallback(
+    (checkIn: string, checkOut: string) => {
+      const next = calendarSelectionForStayDates(checkIn, checkOut);
+      if (!next) return;
+      props.saveScrollPosition();
+      setSelection((prev) => ({
+        ...next,
+        intent: prev.intent ?? "stay",
+      }));
+    },
+    [props],
+  );
+
   const statusLine = selection.rangeStart
     ? `Selected ${formatCalendarSelectionLabel(selection)}`
     : props.renderModel?.datesUnset
@@ -212,6 +226,7 @@ export function useCalendarSelection(props: {
     clearSelection,
     onDayClick,
     selectTransferDay,
+    selectStayDateRange,
     highlightDayFromMap,
     goToDateFromMap,
     pendingFillHalf,

@@ -12,6 +12,9 @@ import {
   legRouteLabel,
   findLegPlacement,
 } from "@/lib/trip-engine/flight-package-pairs";
+import { buildGroupedTransportLegCommands } from "@/lib/trip-engine/grouped-transport-leg-commands";
+import type { TransportLegGroupedTarget } from "@/lib/trip-engine/group-transport-legs-for-display";
+import { personalGroupIdForParticipant } from "@/lib/trip-engine/person-lens";
 import type { TripEntityGraph, RosterSummary } from "@/lib/trip-engine/types";
 import { transportProductKindLabel } from "@/lib/trip-engine/transport-product-defaults";
 import {
@@ -50,6 +53,7 @@ export function EditTransportLegModal(props: {
   bucket: LegBucket | null;
   graph: TripEntityGraph;
   groupId: string;
+  groupedLegTargets?: TransportLegGroupedTarget[];
   rosterSummary?: RosterSummary;
   saving?: boolean;
   onClose: () => void;
@@ -57,7 +61,8 @@ export function EditTransportLegModal(props: {
 }) {
   const roster = props.rosterSummary ?? { participants: [], groups: [], rooms: [] };
   const products = props.graph.transportProducts ?? [];
-  const isMainGroup = props.groupId === props.graph.mainGroupId;
+  const isGrouped = Boolean(props.groupedLegTargets?.length);
+  const isMainGroup = props.groupId === props.graph.mainGroupId && !isGrouped;
 
   const [draft, setDraft] = useState<TransportLegDraft | IntercityLegDraft | null>(null);
   const [flightRole, setFlightRole] = useState<LegBucket>("intercity");
@@ -66,6 +71,21 @@ export function EditTransportLegModal(props: {
   const [packageTarget, setPackageTarget] = useState<"new" | string>("new");
   const [pairedLegId, setPairedLegId] = useState("");
   const [newProductName, setNewProductName] = useState("Return flights");
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+
+  const travellerOptions = useMemo(
+    () =>
+      roster.participants
+        .map((participant) => {
+          const groupId = personalGroupIdForParticipant(props.graph, participant.id);
+          if (!groupId) return null;
+          return { participantId: participant.id, groupId, name: participant.fullName };
+        })
+        .filter((row): row is { participantId: string; groupId: string; name: string } =>
+          Boolean(row),
+        ),
+    [props.graph, roster.participants],
+  );
 
   const isPlane = draft?.transportType === "plane";
   const showFlightRole = Boolean(isPlane && isMainGroup);
@@ -88,6 +108,10 @@ export function EditTransportLegModal(props: {
     if (!props.open || !props.leg || !props.bucket) return;
     setDraft({ ...props.leg });
     setFlightRole(props.bucket);
+    setSelectedGroupIds(
+      props.groupedLegTargets?.map((target) => target.groupId) ??
+        [props.groupId],
+    );
     const kind = defaultProductKind(props.leg);
     setNewProductName(
       kind === "flight_package" ? "Return flights" : transportProductKindLabel(kind),
@@ -114,12 +138,20 @@ export function EditTransportLegModal(props: {
       setPackageTarget(flightPackages[0]?.id ?? "new");
       setPairedLegId(defaultPairedLegId(props.graph, props.leg));
     }
-  }, [props.open, props.leg, props.bucket, props.graph, products, flightPackages]);
+  }, [props.open, props.leg, props.bucket, props.graph, products, flightPackages, props.groupId, props.groupedLegTargets]);
 
   if (!props.open || !draft || !props.bucket) return null;
 
   const tripLookup = { state: graphToSetupState(props.graph) };
   const routeTitle = legRouteLabel(draft, props.graph);
+
+  function toggleTraveller(groupId: string) {
+    setSelectedGroupIds((current) =>
+      current.includes(groupId)
+        ? current.filter((id) => id !== groupId)
+        : [...current, groupId],
+    );
+  }
 
   function selectFlightPackage() {
     setBillingChoice("package");
@@ -134,26 +166,53 @@ export function EditTransportLegModal(props: {
   async function removeLeg() {
     if (!draft || !props.bucket) return;
     const route = legRouteLabel(draft, props.graph);
-    if (
-      !window.confirm(
-        `Remove ${route}? It will reappear in "From your calendar" so you can add it again.`,
-      )
-    ) {
+    const targetCount = props.groupedLegTargets?.length ?? 1;
+    const prompt =
+      targetCount > 1
+        ? `Remove ${route} for ${targetCount} travellers? They will reappear in "From your calendar".`
+        : `Remove ${route}? It will reappear in "From your calendar" so you can add it again.`;
+    if (!window.confirm(prompt)) {
       return;
     }
-    const ok = await props.onDispatch([
-      {
-        type: "removeTransportLeg",
-        groupId: props.groupId,
-        bucket: props.bucket,
-        legId: draft.id,
-      },
-    ]);
+    const commands: TripCommand[] = props.groupedLegTargets?.length
+      ? props.groupedLegTargets.map((target) => ({
+          type: "removeTransportLeg" as const,
+          groupId: target.groupId,
+          bucket: props.bucket!,
+          legId: target.legId,
+        }))
+      : [
+          {
+            type: "removeTransportLeg",
+            groupId: props.groupId,
+            bucket: props.bucket,
+            legId: draft.id,
+          },
+        ];
+    const ok = await props.onDispatch(commands);
     if (ok) props.onClose();
   }
 
   async function save() {
     if (!draft || !props.bucket) return;
+
+    if (isGrouped && props.groupedLegTargets?.length) {
+      if (!selectedGroupIds.length) {
+        window.alert("Choose at least one traveller for this leg.");
+        return;
+      }
+      const ok = await props.onDispatch(
+        buildGroupedTransportLegCommands({
+          draft,
+          bucket: props.bucket,
+          groupedLegTargets: props.groupedLegTargets,
+          selectedGroupIds,
+        }),
+      );
+      if (ok) props.onClose();
+      return;
+    }
+
     const commands: TripCommand[] = [];
     let nextProductId: string | null = null;
     let billingMode: "single" | "product" = "single";
@@ -237,6 +296,7 @@ export function EditTransportLegModal(props: {
   const packageNeedsPair = billingChoice === "package" && isPlane && packageTarget === "new";
   const saveDisabled =
     props.saving ||
+    (isGrouped && !selectedGroupIds.length) ||
     (billingChoice === "existing" && !productId) ||
     (packageNeedsPair && !pairedLegId);
 
@@ -250,7 +310,9 @@ export function EditTransportLegModal(props: {
         <div className="flex items-start justify-between gap-3 border-b border-zinc-100 pb-3">
           <div className="min-w-0">
             <h3 className="truncate text-base font-semibold text-zinc-900">{routeTitle}</h3>
-            <p className="text-xs text-zinc-500">Edit transport</p>
+            <p className="text-xs text-zinc-500">
+              {isGrouped ? "Edit route and travellers" : "Edit transport"}
+            </p>
           </div>
           <button
             type="button"
@@ -262,7 +324,33 @@ export function EditTransportLegModal(props: {
         </div>
 
         <div className="mt-3 space-y-3">
-          {showFlightRole || isPlane ? (
+          {isGrouped ? (
+            <div className="rounded-xl bg-violet-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-800">
+                Travellers on this leg
+              </p>
+              <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+                {travellerOptions.map((traveller) => (
+                  <li key={traveller.groupId}>
+                    <label className="flex items-center gap-2 text-sm text-zinc-800">
+                      <input
+                        type="checkbox"
+                        checked={selectedGroupIds.includes(traveller.groupId)}
+                        onChange={() => toggleTraveller(traveller.groupId)}
+                      />
+                      {traveller.name}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-violet-900/80">
+                Tick everyone who shares this booking. Unticking removes their personal copy of
+                the leg.
+              </p>
+            </div>
+          ) : null}
+
+          {!isGrouped && (showFlightRole || isPlane) ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               {showFlightRole ? (
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -339,7 +427,7 @@ export function EditTransportLegModal(props: {
             </div>
           ) : null}
 
-          {billingChoice === "package" && isPlane ? (
+          {!isGrouped && billingChoice === "package" && isPlane ? (
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="block text-xs text-zinc-600">
                 <span className="mb-1 block font-medium text-zinc-800">With flight</span>
@@ -386,7 +474,7 @@ export function EditTransportLegModal(props: {
             </div>
           ) : null}
 
-          {billingChoice === "package" && isPlane && flightPackages.length && packageTarget === "new" ? (
+          {!isGrouped && billingChoice === "package" && isPlane && flightPackages.length && packageTarget === "new" ? (
             <label className="block text-xs text-zinc-600">
               <span className="mb-1 block font-medium text-zinc-800">Finance name</span>
               <input
@@ -398,7 +486,7 @@ export function EditTransportLegModal(props: {
             </label>
           ) : null}
 
-          {billingChoice === "existing" && !isPlane ? (
+          {!isGrouped && billingChoice === "existing" && !isPlane ? (
             <select
               value={productId}
               onChange={(e) => setProductId(e.target.value)}
@@ -413,7 +501,7 @@ export function EditTransportLegModal(props: {
             </select>
           ) : null}
 
-          {billingChoice === "new" && !isPlane ? (
+          {!isGrouped && billingChoice === "new" && !isPlane ? (
             <input
               value={newProductName}
               onChange={(e) => setNewProductName(e.target.value)}

@@ -50,7 +50,14 @@ function sanitizeHostApiErrorMessage(raw: string, fallback: string) {
     if (/cost_allocation_overrides/i.test(msg)) {
       return "Could not save per-person prices for this row. Try again.";
     }
+    if (/group_day_places/i.test(msg)) {
+      return "Could not save calendar paint for that day. Refresh and try again.";
+    }
     return "That value is already in use.";
+  }
+
+  if (/group_day_places_group_id_groups_id_fk/i.test(msg)) {
+    return "Personal group is not ready yet. Refresh the page and try again.";
   }
 
   if (/column "[^"]+" does not exist/i.test(msg)) {

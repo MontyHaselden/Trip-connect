@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { setupStateToGraph } from "./adapters";
 import { applyCommands } from "./apply-commands";
 import { expandCommandsForCalendarLens } from "./calendar-lens-dispatch";
+import { persistCommands } from "./persist-command";
 import { pruneStalePersonalTransportLegs } from "./prune-stale-personal-transport-legs";
 import type { RosterSummary, TripEntityGraph } from "./types";
 
@@ -177,6 +178,23 @@ describe("party batch calendar persist", () => {
       );
       assert.equal(dec7?.primaryCity, "Tottori", `expected full Tottori on Dec 7 for ${groupId}`);
     }
+  });
+
+  it("rejects party paint when a command references a missing personal group", async () => {
+    const graph = partyGraph();
+    await assert.rejects(
+      () =>
+        persistCommands(graph.tripId, graph, [
+          {
+            type: "paintDayRange",
+            groupId: "missing-personal-group",
+            rangeStart: "2026-12-06",
+            rangeEnd: "2026-12-07",
+            location: "Tottori",
+          },
+        ]),
+      /unknown group/i,
+    );
   });
 });
 

@@ -104,7 +104,9 @@ export function TripOsBoard(props: { tripId: string }) {
 
   const saveStatusLine =
     engine.saveStatus === "sync_error"
-      ? "Sync pending — your edits are saved on this device"
+      ? engine.saveError
+        ? `Sync pending — ${engine.saveError}`
+        : "Sync pending — your edits are saved on this device"
       : null;
 
   useEffect(() => {
@@ -405,6 +407,7 @@ export function TripOsBoard(props: { tripId: string }) {
               error={engine.error}
               onDispatch={dispatchWithPreviewRefresh}
               onClearSelection={calendar.clearSelection}
+              onSelectStayDateRange={calendar.selectStayDateRange}
               onReload={() => void engine.load(undefined, { silent: true })}
             />
           ) : adminProjection && calendarEditContext ? (
