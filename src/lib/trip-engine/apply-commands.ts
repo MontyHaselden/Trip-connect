@@ -567,9 +567,9 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
             },
           });
           return ok(
-            mergeGraphState(
-              graph,
-              applyPersonalCalendarSideEffects(next, command.groupId),
+            applyPersonalCalendarSideEffects(
+              mergeGraphState(graph, next),
+              command.groupId,
             ),
             warnings,
           );
