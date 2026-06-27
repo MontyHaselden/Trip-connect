@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { hostJson } from "@/components/host/shared/host-fetch";
 import type { AccommodationStayDraft } from "@/lib/host/wizard/types";
@@ -53,6 +53,7 @@ export function AddRoomsModal(props: {
   const [data, setData] = useState<AccommodationPayload | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const wasOpenRef = useRef(false);
 
   const selectedStay = props.hotelStays.find((s) => s.id === stayId) ?? props.hotelStays[0];
 
@@ -62,7 +63,15 @@ export function AddRoomsModal(props: {
   }, [props.tripId]);
 
   useEffect(() => {
-    if (!props.open) return;
+    if (!props.open) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    const opening = !wasOpenRef.current;
+    wasOpenRef.current = true;
+    if (!opening) return;
+
     setRows([emptyRow()]);
     setError(null);
     const preferred =
@@ -156,25 +165,54 @@ export function AddRoomsModal(props: {
 
     setBusy(true);
     setError(null);
+    const savedRowKeys = new Set<string>();
+    const failures: string[] = [];
+
     try {
       for (const row of valid) {
-        const created = await hostJson<{ id: string }>(`${api}/rooms`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            roomName: row.roomName.trim(),
-            hotelName: selectedStay.name.trim(),
-            hotelAddress: selectedStay.address ?? null,
-          }),
-        });
-        for (const participantId of row.participantIds) {
-          await hostJson(`${api}/participants/${participantId}`, {
-            method: "PATCH",
+        try {
+          const created = await hostJson<{ id: string }>(`${api}/rooms`, {
+            method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ roomId: created.id }),
+            body: JSON.stringify({
+              roomName: row.roomName.trim(),
+              hotelName: selectedStay.name.trim(),
+              hotelAddress: selectedStay.address ?? null,
+            }),
           });
+          for (const participantId of row.participantIds) {
+            await hostJson(`${api}/participants/${participantId}`, {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ roomId: created.id }),
+            });
+          }
+          savedRowKeys.add(row.key);
+        } catch (err) {
+          failures.push(
+            `${row.roomName.trim()}: ${err instanceof Error ? err.message : "Could not save"}`,
+          );
         }
       }
+
+      if (savedRowKeys.size) {
+        await load().catch(() => undefined);
+        setRows((prev) => {
+          const remaining = prev.filter((row) => !savedRowKeys.has(row.key));
+          return remaining.length ? remaining : [emptyRow()];
+        });
+      }
+
+      if (!savedRowKeys.size) {
+        throw new Error(failures[0] ?? "Could not save rooms");
+      }
+
+      if (failures.length) {
+        setError(`Some rooms saved. Fix and retry:\n${failures.join("\n")}`);
+        props.onSaved?.();
+        return;
+      }
+
       props.onSaved?.();
       props.onClose();
     } catch (err) {
@@ -361,7 +399,7 @@ export function AddRoomsModal(props: {
         </div>
 
         <div className="shrink-0 border-t border-zinc-100 bg-zinc-50/80 px-6 py-4">
-          {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="mb-3 whitespace-pre-line text-sm text-red-600">{error}</p> : null}
           <div className="flex flex-wrap justify-end gap-2">
             <button
               type="button"

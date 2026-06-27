@@ -22,6 +22,7 @@ import {
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 import { paintDayRangeForGroup, setDayPlacesForGroup } from "@/lib/calendar-core/graph-bridge";
 import { personalGroupForGroupId } from "./person-lens";
+import { normalizeGraphActivities } from "./merge-graph-activities";
 import { pruneStalePersonalTransportLegs } from "./prune-stale-personal-transport-legs";
 import { normalizeCommand, type TripCommand } from "./commands";
 import { graphToSetupState } from "./adapters";
@@ -563,8 +564,18 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         ...command.activity,
         originGroupId: command.activity.originGroupId ?? command.groupId,
       };
+      const existingIndex = graph.activities.findIndex((row) => row.id === activity.id);
+      if (existingIndex >= 0) {
+        const activities = graph.activities.map((row, index) =>
+          index === existingIndex ? { ...row, ...activity } : row,
+        );
+        return ok({ ...graph, activities: normalizeGraphActivities(activities) }, warnings);
+      }
       return ok(
-        { ...graph, activities: [...graph.activities, activity] },
+        {
+          ...graph,
+          activities: normalizeGraphActivities([...graph.activities, activity]),
+        },
         warnings,
       );
     }
@@ -575,8 +586,8 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         warnings.push(warn("activity-missing", `Activity ${command.activityId} not found`, "activities"));
         return { graph, warnings, conflicts };
       }
-      const activities = graph.activities.map((a, i) =>
-        i === idx ? { ...a, ...command.patch } : a,
+      const activities = normalizeGraphActivities(
+        graph.activities.map((a, i) => (i === idx ? { ...a, ...command.patch } : a)),
       );
       return ok({ ...graph, activities }, warnings);
     }

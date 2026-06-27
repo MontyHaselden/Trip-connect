@@ -152,4 +152,89 @@ describe("coalescePendingCommands", () => {
       assert.equal(out[0].legs[0]?.id, "leg-2");
     }
   });
+
+  it("keeps the last addActivity for the same id or content", () => {
+    const base = {
+      date: "2026-12-10",
+      endDate: null,
+      startTime: "09:00",
+      endTime: null,
+      isTimeTbc: false,
+      category: "other" as const,
+      locationName: null,
+      address: null,
+      isLocationTbc: false,
+      transportNote: null,
+      leaveByTime: null,
+      bringNote: null,
+      description: null,
+      audienceType: "everyone" as const,
+      audienceId: null,
+      originGroupId: "main-group",
+      bookingStatus: "not_booked" as const,
+    };
+    const out = coalescePendingCommands([
+      {
+        type: "addActivity",
+        groupId: "main-group",
+        activity: { ...base, id: "act-1", title: "Tokyo tower" },
+      },
+      {
+        type: "addActivity",
+        groupId: "main-group",
+        activity: { ...base, id: "act-2", title: "Tokyo tower" },
+      },
+      {
+        type: "addActivity",
+        groupId: "main-group",
+        activity: { ...base, id: "act-1", title: "Tokyo tower", startTime: "10:00" },
+      },
+    ]);
+
+    assert.equal(out.length, 1);
+    if (out[0]?.type === "addActivity") {
+      assert.equal(out[0].activity.id, "act-1");
+      assert.equal(out[0].activity.startTime, "10:00");
+    }
+  });
+
+  it("merges updateActivity patches into a pending addActivity", () => {
+    const base = {
+      date: "2026-12-10",
+      endDate: null,
+      startTime: "09:00",
+      endTime: null,
+      isTimeTbc: false,
+      category: "other" as const,
+      locationName: null,
+      address: null,
+      isLocationTbc: false,
+      transportNote: null,
+      leaveByTime: null,
+      bringNote: null,
+      description: null,
+      audienceType: "everyone" as const,
+      audienceId: null,
+      originGroupId: "main-group",
+      bookingStatus: "not_booked" as const,
+    };
+    const out = coalescePendingCommands([
+      {
+        type: "addActivity",
+        groupId: "main-group",
+        activity: { ...base, id: "act-1", title: "Shibuya" },
+      },
+      {
+        type: "updateActivity",
+        groupId: "main-group",
+        activityId: "act-1",
+        patch: { startTime: "14:00" },
+      },
+    ]);
+
+    assert.equal(out.length, 1);
+    if (out[0]?.type === "addActivity") {
+      assert.equal(out[0].activity.startTime, "14:00");
+    }
+  });
 });

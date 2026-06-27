@@ -1,4 +1,5 @@
 import type { TripEntityGraph } from "../types";
+import { normalizeGraphActivities } from "../merge-graph-activities";
 import { transportLegFinanceDescription } from "../transport-route-label";
 
 import { countStayNights } from "./accommodation-nights";
@@ -97,7 +98,7 @@ export function buildSeedLineItems(graph: TripEntityGraph): Omit<CostLineItemDra
     items.push(seedLeg(leg, graph, sortOrder++));
   }
 
-  for (const activity of graph.activities) {
+  for (const activity of normalizeGraphActivities(graph.activities)) {
     const seed = seedActivity(activity, sortOrder++);
     if (seed) items.push(seed);
   }

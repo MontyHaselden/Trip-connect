@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import type { ActivityDraft } from "@/lib/host/wizard/types";
 
-import { mergeActivitiesById, mergeClientActivitiesIntoGraph } from "./merge-graph-activities";
+import { mergeActivitiesById, mergeClientActivitiesIntoGraph, normalizeGraphActivities, duplicateActivityIdsForFinance } from "./merge-graph-activities";
 import { setupStateToGraph } from "./adapters";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
@@ -88,5 +88,25 @@ describe("mergeClientActivitiesIntoGraph", () => {
       activity("client-2", "Disneyland"),
     ]);
     assert.equal(merged.activities.length, 3);
+  });
+});
+
+describe("normalizeGraphActivities", () => {
+  it("keeps one row per title/day/scope", () => {
+    const normalized = normalizeGraphActivities([
+      activity("b-tokyo-tower", "Tokyo tower"),
+      activity("a-tokyo-tower", "Tokyo tower"),
+    ]);
+    assert.equal(normalized.length, 1);
+    assert.equal(normalized[0]?.id, "a-tokyo-tower");
+  });
+
+  it("maps duplicate ids for finance cleanup", () => {
+    const remap = duplicateActivityIdsForFinance([
+      activity("canonical", "Team labs"),
+      activity("duplicate", "Team labs"),
+    ]);
+    assert.equal(remap.get("duplicate"), "canonical");
+    assert.equal(remap.has("canonical"), false);
   });
 });

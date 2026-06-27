@@ -16,7 +16,7 @@ import { graphToSetupState } from "./adapters";
 import { applyCommands } from "./apply-commands";
 import { allGroupIdsFromCommands, groupIdFromCommands } from "./command-group-ids";
 import { syncActivitiesForTrip, loadActivitiesForTrip } from "./activities-persistence";
-import { mergeActivitiesById } from "./merge-graph-activities";
+import { mergeActivitiesById, normalizeGraphActivities } from "./merge-graph-activities";
 import { linkCostLineToActivity } from "./cost-ledger/link-cost-line-to-entity";
 import {
   hidePendingTransportNeed,
@@ -491,7 +491,9 @@ export async function persistCommands(
     .map((command) => command.activity);
   const workingGraph: TripEntityGraph = {
     ...graph,
-    activities: mergeActivitiesById(dbActivities, graph.activities, activityAdds),
+    activities: normalizeGraphActivities(
+      mergeActivitiesById(dbActivities, graph.activities, activityAdds),
+    ),
   };
 
   for (const command of normalized) {

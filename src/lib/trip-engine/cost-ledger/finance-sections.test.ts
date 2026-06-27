@@ -8,6 +8,7 @@ import {
   groupLinesByFinanceSection,
   isFinanceCalendarSection,
   isVisibleTransportFinanceLine,
+  isVisibleActivityFinanceLine,
   supportsManualExpenseLines,
 } from "./finance-sections";
 import { buildParticipantPresenceMap } from "./presence";
@@ -267,6 +268,32 @@ describe("groupLinesByFinanceSection", () => {
       grouped.get("transport")?.map((row) => row.id),
       ["line-canonical", "line-jr-product"],
     );
+  });
+
+  it("hides duplicate activity finance rows", () => {
+    const graph = {
+      activities: [
+        { id: "act-canonical", title: "Tokyo tower", date: "2026-12-10", originGroupId: "main-group" },
+        { id: "act-duplicate", title: "Tokyo tower", date: "2026-12-10", originGroupId: "main-group" },
+      ],
+    } as TripEntityGraph;
+
+    const canonicalLine = line({
+      id: "line-canonical",
+      category: "activities",
+      linkedActivityId: "act-canonical",
+    });
+    const duplicateLine = line({
+      id: "line-duplicate",
+      category: "activities",
+      linkedActivityId: "act-duplicate",
+    });
+
+    assert.equal(isVisibleActivityFinanceLine(canonicalLine, graph), true);
+    assert.equal(isVisibleActivityFinanceLine(duplicateLine, graph), false);
+
+    const grouped = groupLinesByFinanceSection([canonicalLine, duplicateLine], graph);
+    assert.deepEqual(grouped.get("activities")?.map((row) => row.id), ["line-canonical"]);
   });
 });
 

@@ -185,7 +185,10 @@ export function AccommodationSection(props: {
     homestayPeriodStays(actionScope.items),
     props.selectedDate,
   );
-  const hotelStaysForRooms = nonHomestayStays(actionScope.items).filter((s) => s.name?.trim());
+  const hotelStaysForRooms = useMemo(
+    () => nonHomestayStays(actionScope.items).filter((s) => s.name?.trim()),
+    [actionScope.items],
+  );
   const hasAnyStays = allScopes.some((scope) => scope.items.length > 0);
 
   function openStayFinance(stayId: string) {

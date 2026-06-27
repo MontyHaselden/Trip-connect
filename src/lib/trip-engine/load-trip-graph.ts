@@ -11,7 +11,8 @@ import { loadTripSetupState } from "@/lib/host/setup/load-setup-state";
 import { loadHiddenPendingTransportNeedKeys } from "./hidden-pending-transport";
 import { setupStateToGraph } from "./adapters";
 import { repairTransportGraphSync } from "./repair-transport-graph";
-import { loadActivitiesForTrip } from "./activities-persistence";
+import { loadActivitiesForTrip, syncActivitiesForTrip } from "./activities-persistence";
+import { normalizeGraphActivities } from "./merge-graph-activities";
 import type { TripEntityGraph } from "./types";
 
 export async function loadTripGraph(
@@ -48,7 +49,14 @@ export async function loadTripGraph(
       .then((rows) => rows.length),
   ]);
 
-  const base = repairTransportGraphSync(setupStateToGraph(tripId, { ...state, activities }));
+  const normalizedActivities = normalizeGraphActivities(activities);
+  if (normalizedActivities.length !== activities.length) {
+    await syncActivitiesForTrip(tripId, normalizedActivities);
+  }
+
+  const base = repairTransportGraphSync(
+    setupStateToGraph(tripId, { ...state, activities: normalizedActivities }),
+  );
   const hiddenPendingTransportNeedKeys = await loadHiddenPendingTransportNeedKeys(tripId);
 
   return {

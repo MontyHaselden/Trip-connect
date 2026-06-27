@@ -3,7 +3,8 @@ import { costLineItems } from "@/lib/db/schema";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
 import { loadCostLedgerRaw } from "./load-cost-ledger";
-import { purgeLocationPlaceholderStayLines, purgeOrphanCostLines, purgeDuplicatePersonalStayFinanceLines, purgeDuplicatePersonalTransportFinanceLines, purgeStaleTransportLegFinanceLines, graphEntityIdSets } from "./cost-line-cascade";
+import { purgeLocationPlaceholderStayLines, purgeOrphanCostLines, purgeDuplicatePersonalStayFinanceLines, purgeDuplicatePersonalTransportFinanceLines, purgeStaleTransportLegFinanceLines, purgeDuplicateActivityFinanceLines, graphEntityIdSets } from "./cost-line-cascade";
+import { normalizeGraphActivities } from "../merge-graph-activities";
 import { repairTransportProductFinanceLinks } from "./repair-transport-product-finance-links";
 import { buildSeedLineItems, seedItemsNotYetPresent } from "./seed-from-graph";
 import { syncLinkedCostLineMetadata } from "./sync-linked-cost-line-metadata";
@@ -14,12 +15,18 @@ export async function syncCostLedgerFromGraph(
   graph: TripEntityGraph,
   dismissedKeys: Set<string> = new Set(),
 ): Promise<number> {
-  await purgeLocationPlaceholderStayLines(tripId, graph);
-  await purgeDuplicatePersonalStayFinanceLines(tripId, graph);
-  await purgeDuplicatePersonalTransportFinanceLines(tripId, graph);
-  await purgeStaleTransportLegFinanceLines(tripId, graph);
-  await repairTransportProductFinanceLinks(tripId, graph);
-  const entityIds = graphEntityIdSets(graph);
+  const normalizedGraph: TripEntityGraph = {
+    ...graph,
+    activities: normalizeGraphActivities(graph.activities),
+  };
+
+  await purgeLocationPlaceholderStayLines(tripId, normalizedGraph);
+  await purgeDuplicatePersonalStayFinanceLines(tripId, normalizedGraph);
+  await purgeDuplicatePersonalTransportFinanceLines(tripId, normalizedGraph);
+  await purgeStaleTransportLegFinanceLines(tripId, normalizedGraph);
+  await purgeDuplicateActivityFinanceLines(tripId, normalizedGraph);
+  await repairTransportProductFinanceLinks(tripId, normalizedGraph);
+  const entityIds = graphEntityIdSets(normalizedGraph);
   await purgeOrphanCostLines(
     tripId,
     entityIds.stayIds,
@@ -27,11 +34,11 @@ export async function syncCostLedgerFromGraph(
     entityIds.activityIds,
     entityIds.productIds,
   );
-  await syncLinkedCostLineMetadata(tripId, graph);
+  await syncLinkedCostLineMetadata(tripId, normalizedGraph);
   const raw = await loadCostLedgerRaw(tripId);
   const seeds = seedItemsNotYetPresent(
     raw.lineItems,
-    buildSeedLineItems(graph),
+    buildSeedLineItems(normalizedGraph),
     dismissedKeys,
   );
   if (!seeds.length) return 0;

@@ -15,6 +15,7 @@ import {
   financeSeedTransportLegs,
   allTransportLegs,
 } from "./transport-finance-product";
+import { duplicateActivityIdsForFinance } from "../merge-graph-activities";
 
 export async function deleteCostLinesForStay(tripId: string, stayId: string): Promise<void> {
   await db
@@ -248,6 +249,72 @@ export async function purgeStaleTransportLegFinanceLines(
       await db.delete(costLineItems).where(eq(costLineItems.id, line.id));
       changes++;
     }
+  }
+
+  return changes;
+}
+
+/** Remove or relink finance rows for duplicate calendar activities (same title/day/scope). */
+export async function purgeDuplicateActivityFinanceLines(
+  tripId: string,
+  graph: TripEntityGraph,
+): Promise<number> {
+  const duplicateActivityIds = duplicateActivityIdsForFinance(graph.activities);
+  if (!duplicateActivityIds.size) return 0;
+
+  const lines = await db
+    .select({
+      id: costLineItems.id,
+      linkedActivityId: costLineItems.linkedActivityId,
+      totalAmountCents: costLineItems.totalAmountCents,
+    })
+    .from(costLineItems)
+    .where(eq(costLineItems.tripId, tripId));
+
+  const lineByActivityId = new Map(
+    lines
+      .filter((line) => line.linkedActivityId)
+      .map((line) => [line.linkedActivityId!, line]),
+  );
+
+  let changes = 0;
+  for (const line of lines) {
+    const activityId = line.linkedActivityId;
+    if (!activityId || !duplicateActivityIds.has(activityId)) continue;
+
+    const canonicalActivityId = duplicateActivityIds.get(activityId)!;
+    if (canonicalActivityId === activityId) continue;
+
+    const canonicalLine = lineByActivityId.get(canonicalActivityId);
+    if (canonicalLine) {
+      const canonicalTotal = canonicalLine.totalAmountCents ?? 0;
+      const duplicateTotal = line.totalAmountCents ?? 0;
+      if (canonicalTotal <= 0 && duplicateTotal > 0) {
+        await db.delete(costLineItems).where(eq(costLineItems.id, canonicalLine.id));
+        await db
+          .update(costLineItems)
+          .set({ linkedActivityId: canonicalActivityId, updatedAt: new Date() })
+          .where(eq(costLineItems.id, line.id));
+        lineByActivityId.delete(canonicalActivityId);
+        lineByActivityId.set(canonicalActivityId, { ...line, linkedActivityId: canonicalActivityId });
+        lineByActivityId.delete(activityId);
+        changes += 2;
+        continue;
+      }
+
+      await db.delete(costLineItems).where(eq(costLineItems.id, line.id));
+      lineByActivityId.delete(activityId);
+      changes++;
+      continue;
+    }
+
+    await db
+      .update(costLineItems)
+      .set({ linkedActivityId: canonicalActivityId, updatedAt: new Date() })
+      .where(eq(costLineItems.id, line.id));
+    lineByActivityId.set(canonicalActivityId, { ...line, linkedActivityId: canonicalActivityId });
+    lineByActivityId.delete(activityId);
+    changes++;
   }
 
   return changes;

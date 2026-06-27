@@ -1,4 +1,5 @@
 import type { RosterSummary, TripEntityGraph } from "../types";
+import { normalizeGraphActivities } from "../merge-graph-activities";
 
 import { emptyCostLedgerProjection } from "./empty-projection";
 import { projectionToRaw } from "./projection-to-raw";
@@ -21,10 +22,25 @@ export function mergeOptimisticSeedsIntoCostLedger(
   roster: RosterSummary,
 ): CostLedgerProjection {
   const base = ledger ?? emptyCostLedgerProjection();
-  const seeds = seedItemsNotYetPresent(base.lineItems, buildSeedLineItems(graph));
+  const normalizedGraph: TripEntityGraph = {
+    ...graph,
+    activities: normalizeGraphActivities(graph.activities),
+  };
+  const seeds = seedItemsNotYetPresent(base.lineItems, buildSeedLineItems(normalizedGraph));
   if (!seeds.length) return base;
 
-  const optimisticLines: CostLineItemDraft[] = seeds.map((seed, index) => ({
+  const existingActivityIds = new Set(
+    base.lineItems.map((line) => line.linkedActivityId).filter(Boolean),
+  );
+  const dedupedSeeds = seeds.filter((seed) => {
+    if (!seed.linkedActivityId) return true;
+    if (existingActivityIds.has(seed.linkedActivityId)) return false;
+    existingActivityIds.add(seed.linkedActivityId);
+    return true;
+  });
+  if (!dedupedSeeds.length) return base;
+
+  const optimisticLines: CostLineItemDraft[] = dedupedSeeds.map((seed, index) => ({
     ...seed,
     id: optimisticIdForSeed(seed, index),
     sortOrder: base.lineItems.length + index,
@@ -32,5 +48,5 @@ export function mergeOptimisticSeedsIntoCostLedger(
 
   const raw = projectionToRaw(base);
   raw.lineItems = [...raw.lineItems, ...optimisticLines];
-  return projectCostLedger(raw, roster, graph);
+  return projectCostLedger(raw, roster, normalizedGraph);
 }

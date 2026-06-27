@@ -5,6 +5,7 @@ import { itineraryItems, tripDays } from "@/lib/db/schema";
 import { nextItemSortOrder } from "@/lib/host/itinerary-queries";
 import { toDbBookingStatus } from "@/lib/host/wizard/db-enums";
 import type { ActivityDraft } from "@/lib/host/wizard/types";
+import { normalizeGraphActivities } from "./merge-graph-activities";
 import { normalizeStoredTime } from "@/lib/utils/ai-time";
 
 function defaultTime(t: string | null, fallback: string): string {
@@ -100,6 +101,7 @@ export async function syncActivitiesForTrip(
   tripId: string,
   activities: ActivityDraft[],
 ): Promise<void> {
+  const normalized = normalizeGraphActivities(activities);
   const dayRows = await db
     .select({ id: tripDays.id, date: tripDays.date })
     .from(tripDays)
@@ -113,7 +115,7 @@ export async function syncActivitiesForTrip(
       and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.wizardSource, "activity")),
     );
 
-  for (const act of activities) {
+  for (const act of normalized) {
     const dayId = dayIdByDate.get(act.date);
     if (!dayId) continue;
     const sortOrder = await nextItemSortOrder(dayId);

@@ -4,6 +4,16 @@ import {
   sanitizeDayPlaceDraft,
 } from "@/lib/trip-engine/sanitize-day-place";
 
+function addActivityContentKey(
+  command: Extract<TripCommand, { type: "addActivity" }>,
+): string {
+  return [
+    command.activity.date,
+    command.activity.title.trim().toLowerCase(),
+    command.activity.originGroupId ?? command.groupId,
+  ].join("|");
+}
+
 function legEndpointCities(leg: TransportLegDraft | IntercityLegDraft): {
   fromCity: string;
   toCity: string;
@@ -93,6 +103,9 @@ export function coalescePendingCommands(commands: TripCommand[]): TripCommand[] 
   const classifiedLegIndex = new Map<string, number>();
   const updateLegIndex = new Map<string, number>();
   const dayPlacesIndex = new Map<string, number>();
+  const addActivityByIdIndex = new Map<string, number>();
+  const addActivityByContentIndex = new Map<string, number>();
+  const updateActivityIndex = new Map<string, number>();
 
   for (const command of commands) {
     if (command.type === "paintDayRange") {
@@ -181,6 +194,71 @@ export function coalescePendingCommands(commands: TripCommand[]): TripCommand[] 
         }
       } else {
         dayPlacesIndex.set(key, result.length);
+        result.push(command);
+      }
+      continue;
+    }
+
+    if (command.type === "addActivity") {
+      const idKey = command.activity.id;
+      const contentKey = addActivityContentKey(command);
+      updateActivityIndex.delete(idKey);
+
+      const contentExisting = addActivityByContentIndex.get(contentKey);
+      if (contentExisting !== undefined) {
+        const prev = result[contentExisting];
+        if (prev?.type === "addActivity") {
+          addActivityByIdIndex.delete(prev.activity.id);
+        }
+        result[contentExisting] = command;
+        addActivityByIdIndex.set(idKey, contentExisting);
+        addActivityByContentIndex.set(contentKey, contentExisting);
+        continue;
+      }
+
+      const idExisting = addActivityByIdIndex.get(idKey);
+      if (idExisting !== undefined) {
+        const prev = result[idExisting];
+        if (prev?.type === "addActivity") {
+          addActivityByContentIndex.delete(addActivityContentKey(prev));
+        }
+        result[idExisting] = command;
+        addActivityByContentIndex.set(contentKey, idExisting);
+      } else {
+        addActivityByIdIndex.set(idKey, result.length);
+        addActivityByContentIndex.set(contentKey, result.length);
+        result.push(command);
+      }
+      continue;
+    }
+
+    if (command.type === "updateActivity") {
+      const key = command.activityId;
+      const addIdx = addActivityByIdIndex.get(key);
+      if (addIdx !== undefined) {
+        const prev = result[addIdx];
+        if (prev?.type === "addActivity") {
+          result[addIdx] = {
+            ...prev,
+            activity: { ...prev.activity, ...command.patch },
+          };
+          continue;
+        }
+      }
+
+      const existing = updateActivityIndex.get(key);
+      if (existing !== undefined) {
+        const prev = result[existing];
+        if (prev?.type === "updateActivity") {
+          result[existing] = {
+            ...command,
+            patch: { ...prev.patch, ...command.patch },
+          };
+        } else {
+          result.push(command);
+        }
+      } else {
+        updateActivityIndex.set(key, result.length);
         result.push(command);
       }
       continue;
