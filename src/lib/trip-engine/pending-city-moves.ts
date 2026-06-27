@@ -10,7 +10,6 @@ import {
 } from "./hidden-pending-transport";
 import { personalGroupForGroupId } from "./person-lens";
 import { projectCalendar } from "./project-calendar";
-import { dayPlacesForGroup } from "./selectors";
 import type { TripEntityGraph } from "./types";
 
 export type PendingTransportKind = "outbound_flight" | "return_flight" | "intercity";
@@ -118,16 +117,9 @@ function projectedDayToDraft(day: {
   };
 }
 
-/** Same calendar the host sees when checking gaps for a group. */
+/** Same projected calendar the host sees when checking gaps for a group. */
 function dayPlacesForPendingTransport(graph: TripEntityGraph, groupId: string): DayPlaceDraft[] {
-  if (groupId === graph.mainGroupId) {
-    return dayPlacesForGroup(graph, groupId);
-  }
-  const personal = personalGroupForGroupId(graph, groupId);
-  if (personal?.inheritMode === "overlay") {
-    return projectCalendar(graph, { groupId }).days.map(projectedDayToDraft);
-  }
-  return dayPlacesForGroup(graph, groupId);
+  return projectCalendar(graph, { groupId }).days.map(projectedDayToDraft);
 }
 
 function isHomeCity(city: string, basics: TripEntityGraph["basics"]): boolean {

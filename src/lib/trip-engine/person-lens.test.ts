@@ -4,12 +4,10 @@ import { describe, it } from "node:test";
 import type { RosterSummary, TripEntityGraph } from "./types";
 
 import {
-  calendarLensScopeGroupIds,
   editGroupIdForLens,
   lensDisplayLabel,
   normalizeCalendarLens,
   partyPersonalGroupIds,
-  transportViewGroupIdForLens,
 } from "./person-lens";
 
 function graph(): TripEntityGraph {
@@ -101,7 +99,6 @@ describe("calendar lens helpers", () => {
   it("uses subgroup id for subgroup lens", () => {
     const lens = { kind: "subgroup" as const, groupId: "g-tottori" };
     assert.equal(editGroupIdForLens(graph(), lens, roster()), "g-tottori");
-    assert.deepEqual(calendarLensScopeGroupIds(lens, graph(), roster()), ["g-tottori"]);
   });
 
   it("uses first party personal group for calendar edit id", () => {
@@ -122,7 +119,6 @@ describe("calendar lens helpers", () => {
       "g-amanda",
       "g-kaleb",
     ]);
-    assert.equal(transportViewGroupIdForLens(g, lens, roster()), "main");
   });
 
   it("labels party lens with Oxford comma", () => {

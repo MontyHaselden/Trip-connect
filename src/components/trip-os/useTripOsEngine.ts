@@ -19,6 +19,7 @@ import {
   deriveEngineViewFromGraph,
   hydrateSetupEngineResponse,
 } from "@/lib/trip-engine/build-setup-response";
+import { buildTripAdminProjection } from "@/lib/trip-admin/build-admin-projection";
 import {
   fastStubEngineCalendarView,
   setupResponseIncludesCalendarView,
@@ -65,11 +66,13 @@ import type {
   SetupEngineResponse,
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
+import type { TripAdminProjection } from "@/lib/trip-admin/types";
 
 type EngineState = {
   graph: TripEntityGraph;
   calendarProjection: CalendarProjection;
   calendarRenderModel: CalendarRenderModel;
+  adminProjection: TripAdminProjection | null;
   readiness: EngineSectionReadiness[];
   warnings: EngineWarning[];
   conflicts: EngineConflict[];
@@ -207,6 +210,8 @@ export function useTripOsEngine(tripId: string) {
         prev?: EngineState | null;
       },
     ): EngineState => {
+      const roster =
+        context.rosterSummary ?? context.prev?.rosterSummary ?? EMPTY_ROSTER;
       const view = deriveEngineViewFromGraph(graph, {
         groupId: context.viewGroupId,
         costLedger: context.costLedger ?? context.prev?.costLedger ?? null,
@@ -215,6 +220,7 @@ export function useTripOsEngine(tripId: string) {
         graph: view.graph,
         calendarProjection: view.calendarProjection,
         calendarRenderModel: view.calendarRenderModel,
+        adminProjection: buildTripAdminProjection(view.graph, roster),
         readiness: view.readiness,
         warnings: context.warnings ?? context.prev?.warnings ?? [],
         conflicts: view.conflicts,
@@ -272,12 +278,15 @@ export function useTripOsEngine(tripId: string) {
           forceKeepLocal: financePatchInFlightRef.current > 0,
         },
       );
+      const roster = body.rosterSummary ?? EMPTY_ROSTER;
       const stub = stubEngineCalendarView(graph, viewGroupId);
       setActiveGroupId(viewGroupId);
       setData({
         graph,
         calendarProjection: stub.calendarProjection,
         calendarRenderModel: stub.calendarRenderModel,
+        adminProjection:
+          body.adminProjection ?? buildTripAdminProjection(graph, roster),
         readiness: body.readiness ?? [],
         warnings: body.warnings ?? [],
         conflicts: body.conflicts ?? [],
@@ -384,6 +393,8 @@ export function useTripOsEngine(tripId: string) {
         graph: view.graph,
         calendarProjection: view.calendarProjection,
         calendarRenderModel: view.calendarRenderModel,
+        adminProjection:
+          hydrated.adminProjection ?? buildTripAdminProjection(view.graph, roster),
         readiness: view.readiness,
         warnings: hydrated.warnings ?? dataRef.current?.warnings ?? [],
         conflicts: view.conflicts,
@@ -545,16 +556,19 @@ export function useTripOsEngine(tripId: string) {
         const graph = body.graph;
         const stub = fastStubEngineCalendarView(graph, viewGroupId);
         setActiveGroupId(viewGroupId);
+        const roster = body.rosterSummary ?? EMPTY_ROSTER;
         startTransition(() => {
           setData({
             graph,
             calendarProjection: stub.calendarProjection,
             calendarRenderModel: stub.calendarRenderModel,
+            adminProjection:
+              body.adminProjection ?? buildTripAdminProjection(graph, roster),
             readiness: body.readiness ?? [],
             warnings: body.warnings ?? [],
             conflicts: body.conflicts ?? [],
             inviteCode: body.inviteCode ?? "",
-            rosterSummary: body.rosterSummary ?? EMPTY_ROSTER,
+            rosterSummary: roster,
             costLedger: body.costLedger ?? dataRef.current?.costLedger ?? null,
           });
         });

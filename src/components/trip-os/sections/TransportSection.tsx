@@ -17,9 +17,16 @@ import {
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import type { FinanceBuiltInSection } from "@/lib/trip-engine/cost-ledger/finance-sections";
 import {
-  transportLegsListedByScope,
-  pendingTransportNeedsListedByScope,
-  hiddenPendingTransportNeedsListedByScope,
+  hiddenPendingTransportListedFromProjection,
+  pendingTransportListedFromProjection,
+  transportLegsListedFromProjection,
+} from "@/lib/trip-admin/list-adapters";
+import {
+  isScopeEditable,
+  scopeEditHint as adminScopeEditHint,
+} from "@/lib/trip-admin/edit-affordances";
+import type { CalendarEditContext, TripAdminProjection } from "@/lib/trip-admin/types";
+import {
   pendingNeedScopeLabel,
   type ScopedTransportLeg,
   type TripScopeSection,
@@ -102,16 +109,6 @@ function orphanTransportProducts(
     scopedLegs.map((leg) => leg.transportProductId).filter((id): id is string => Boolean(id)),
   );
   return products.filter((product) => !linked.has(product.id));
-}
-
-function scopeEditHint(
-  graph: TripEntityGraph,
-  viewGroupId: string,
-  scope: TripScopeSection<ScopedTransportLeg>,
-): string | null {
-  if (scope.groupId === graph.mainGroupId) return null;
-  if (viewGroupId === scope.groupId) return null;
-  return `Edit on ${scope.title}'s calendar`;
 }
 
 function isReturnFlightPackage(
@@ -296,10 +293,8 @@ function LegRow(props: {
 
 export function TransportSection(props: {
   graph: TripEntityGraph;
-  /** Scope used to list whole-group + personal/subgroup rows (usually main group). */
-  listGroupId: string;
-  /** Active calendar lens group — controls edit/highlight affordances only. */
-  calendarEditGroupId: string;
+  adminProjection: TripAdminProjection;
+  calendarEditContext: CalendarEditContext;
   selectedDate?: string | null;
   saving?: boolean;
   rosterSummary?: RosterSummary;
@@ -311,10 +306,11 @@ export function TransportSection(props: {
 }) {
   const roster = props.rosterSummary ?? { participants: [], groups: [], rooms: [] };
   const products = props.graph.transportProducts ?? [];
+  const editGroupId = props.calendarEditContext.editGroupId;
 
   const [addOpen, setAddOpen] = useState(false);
   const [prefillNeed, setPrefillNeed] = useState<PendingTransportNeed | null>(null);
-  const [addGroupId, setAddGroupId] = useState(props.calendarEditGroupId);
+  const [addGroupId, setAddGroupId] = useState(editGroupId);
   const [addTargetGroupIds, setAddTargetGroupIds] = useState<string[] | null>(null);
   const [separatedRouteKeys, setSeparatedRouteKeys] = useState<Set<string>>(() => new Set());
   const [editingLeg, setEditingLeg] = useState<{
@@ -325,13 +321,13 @@ export function TransportSection(props: {
   const [hiddenOpen, setHiddenOpen] = useState(false);
 
   const pendingScopes = useMemo(
-    () => pendingTransportNeedsListedByScope(props.graph, roster, props.listGroupId),
-    [props.graph, roster, props.listGroupId],
+    () => pendingTransportListedFromProjection(props.adminProjection),
+    [props.adminProjection],
   );
 
   const hiddenScopes = useMemo(
-    () => hiddenPendingTransportNeedsListedByScope(props.graph, roster, props.listGroupId),
-    [props.graph, roster, props.listGroupId],
+    () => hiddenPendingTransportListedFromProjection(props.adminProjection),
+    [props.adminProjection],
   );
 
   const pendingScopeSections = useMemo(
@@ -376,8 +372,8 @@ export function TransportSection(props: {
   );
 
   const scopedLegs = useMemo(
-    () => transportLegsListedByScope(props.graph, roster, props.listGroupId),
-    [props.graph, roster, props.listGroupId],
+    () => transportLegsListedFromProjection(props.adminProjection),
+    [props.adminProjection],
   );
 
   const allScopes = useMemo((): TransportLegDisplayScope[] => {
@@ -449,7 +445,7 @@ export function TransportSection(props: {
   }
 
   function openAdd(need: PendingTransportNeed, groupId: string, targetGroupIds?: string[]) {
-    if (groupId !== props.calendarEditGroupId) {
+    if (!isScopeEditable(groupId, props.calendarEditContext, props.graph)) {
       props.onSwitchGroup?.(groupId);
     }
     setPrefillNeed(need);
@@ -518,7 +514,9 @@ export function TransportSection(props: {
     const travellerLabel = formatGroupedTravellerLabel(scopes);
     const primaryGroupId = scopes[0]!.groupId;
     const groupIds = scopes.map((scope) => scope.groupId);
-    const isActiveScope = scopes.some((scope) => scope.groupId === props.calendarEditGroupId);
+    const isActiveScope = scopes.some((scope) =>
+      isScopeEditable(scope.groupId, props.calendarEditContext, props.graph),
+    );
 
     return (
       <li
@@ -619,7 +617,11 @@ export function TransportSection(props: {
     mode: "visible" | "hidden",
   ) {
     const scopeLabel = pendingNeedScopeLabel(props.graph, scope);
-    const isActiveScope = scope.groupId === props.calendarEditGroupId;
+    const isActiveScope = isScopeEditable(
+      scope.groupId,
+      props.calendarEditContext,
+      props.graph,
+    );
 
     return (
       <li
@@ -723,12 +725,19 @@ export function TransportSection(props: {
     const isWholeGroup = scope.groupId === props.graph.mainGroupId;
     const isGroupedPersonal = Boolean(scope.groupedLegTargets?.length);
     const isActiveScope =
-      scope.groupId === props.calendarEditGroupId ||
+      isScopeEditable(scope.groupId, props.calendarEditContext, props.graph) ||
       (isGroupedPersonal &&
-        scope.groupedLegTargets?.some((target) => target.groupId === props.calendarEditGroupId));
+        scope.groupedLegTargets?.some((target) =>
+          isScopeEditable(target.groupId, props.calendarEditContext, props.graph),
+        ));
     const scopeHint = isGroupedPersonal
       ? null
-      : scopeEditHint(props.graph, props.calendarEditGroupId, scope);
+      : adminScopeEditHint(
+          scope.groupId,
+          scope.title,
+          props.calendarEditContext,
+          props.graph,
+        );
     const groupedLegs = isGroupedPersonal
       ? (scope.groupedLegTargets ?? [])
           .map((target) => props.graph.intercityLegs.find((leg) => leg.id === target.legId))
@@ -1020,7 +1029,7 @@ export function TransportSection(props: {
         onClose={() => {
           setAddOpen(false);
           setPrefillNeed(null);
-          setAddGroupId(props.calendarEditGroupId);
+          setAddGroupId(editGroupId);
           setAddTargetGroupIds(null);
         }}
         graph={props.graph}
@@ -1039,7 +1048,7 @@ export function TransportSection(props: {
         leg={editingLeg?.leg ?? null}
         bucket={editingLeg?.bucket ?? null}
         graph={props.graph}
-        groupId={props.calendarEditGroupId}
+        groupId={editGroupId}
         rosterSummary={props.rosterSummary}
         saving={props.saving}
         onClose={() => setEditingLeg(null)}

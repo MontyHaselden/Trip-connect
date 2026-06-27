@@ -69,8 +69,7 @@ function collectOtherScopeGroupIds(
   if (viewGroupId !== graph.mainGroupId) ids.add(viewGroupId);
 
   const list = [...ids];
-  if (viewGroupId === graph.mainGroupId) return list;
-  return list.filter((gid) => gid === viewGroupId);
+  return list;
 }
 
 function buildScopedLists<T>(
@@ -237,8 +236,7 @@ function collectPendingNeedScopeGroupIds(
     }
   }
   const list = [...ids];
-  if (viewGroupId === graph.mainGroupId) return list;
-  return list.filter((groupId) => groupId === viewGroupId);
+  return list;
 }
 
 /** Calendar gaps that still need transport, grouped like transport legs (whole group + personal). */

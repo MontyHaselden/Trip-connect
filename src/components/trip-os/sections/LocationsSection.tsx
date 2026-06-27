@@ -9,7 +9,8 @@ import {
 import { effectiveTripBoundsFromState } from "@/lib/host/setup/sync-trip-bounds";
 import { hasScheduledReturnTransport } from "@/lib/host/wizard/transport-day-placement";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
-import { projectCalendar } from "@/lib/trip-engine/project-calendar";
+import { calendarScopeFromProjection } from "@/lib/trip-admin/list-adapters";
+import type { CalendarEditContext, TripAdminProjection } from "@/lib/trip-admin/types";
 import { calendarContentScopeForGroup } from "@/lib/trip-engine/selectors";
 import type { ProjectedDay, TripEntityGraph } from "@/lib/trip-engine/types";
 
@@ -28,16 +29,21 @@ function projectedToDayPlace(day: ProjectedDay): DayPlaceDraft {
 
 export function LocationsSection(props: {
   graph: TripEntityGraph;
-  groupId: string;
+  adminProjection: TripAdminProjection;
+  calendarEditContext: CalendarEditContext;
   selectedDate?: string | null;
 }) {
-
+  const editGroupId = props.calendarEditContext.editGroupId;
   const bounds = effectiveTripBoundsFromState(props.graph);
-  const scope = calendarContentScopeForGroup(props.graph, props.groupId);
+  const scope = calendarContentScopeForGroup(props.graph, editGroupId);
 
   const locationRanges = useMemo(() => {
-    const projection = projectCalendar(props.graph, { groupId: props.groupId });
-    const days = projection.days.map(projectedToDayPlace);
+    const adminScope = calendarScopeFromProjection(
+      props.adminProjection,
+      editGroupId,
+      props.graph.mainGroupId,
+    );
+    const days = adminScope.calendar.days.map(projectedToDayPlace);
 
     return locationRangesFromContent({
       days,
@@ -54,7 +60,7 @@ export function LocationsSection(props: {
       returnLegs: scope.returnLegs,
       intercityLegs: scope.intercityLegs,
     });
-  }, [props.graph, props.groupId, bounds.startDate, bounds.endDate, scope]);
+  }, [props.adminProjection, props.graph, editGroupId, bounds.startDate, bounds.endDate, scope]);
 
   return (
     <TripSectionShell

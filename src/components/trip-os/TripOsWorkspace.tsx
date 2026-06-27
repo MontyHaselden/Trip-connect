@@ -16,6 +16,7 @@ import type {
 } from "@/lib/trip-engine/types";
 
 import type { CalendarLens } from "@/lib/trip-engine/person-lens";
+import type { CalendarEditContext, TripAdminProjection } from "@/lib/trip-admin/types";
 
 import type { CalendarSelection } from "./calendar/useCalendarSelection";
 import { EMPTY_CALENDAR_SELECTION } from "@/lib/host/setup/calendar-range-selection";
@@ -52,6 +53,8 @@ export function TripOsWorkspace(props: {
   graph: TripEntityGraph;
   groupId: string;
   calendarLens?: CalendarLens;
+  adminProjection: TripAdminProjection;
+  calendarEditContext: CalendarEditContext;
   tripId: string;
   inviteCode: string;
   readiness: EngineSectionReadiness[];
@@ -128,14 +131,19 @@ export function TripOsWorkspace(props: {
       );
     case "locations":
       return (
-        <LocationsSection graph={graph} groupId={groupId} selectedDate={props.selectedDay?.date ?? null} />
+        <LocationsSection
+          graph={graph}
+          adminProjection={props.adminProjection}
+          calendarEditContext={props.calendarEditContext}
+          selectedDate={props.selectedDay?.date ?? null}
+        />
       );
     case "transport":
       return (
         <TransportSection
           graph={graph}
-          listGroupId={graph.mainGroupId}
-          calendarEditGroupId={groupId}
+          adminProjection={props.adminProjection}
+          calendarEditContext={props.calendarEditContext}
           selectedDate={props.selectedDay?.date ?? null}
           saving={saving}
           onDispatch={onDispatch}
@@ -150,7 +158,8 @@ export function TripOsWorkspace(props: {
       return (
         <AccommodationSection
           graph={graph}
-          groupId={groupId}
+          adminProjection={props.adminProjection}
+          calendarEditContext={props.calendarEditContext}
           tripId={tripId}
           inviteCode={inviteCode}
           rosterSummary={props.rosterSummary}
@@ -167,7 +176,9 @@ export function TripOsWorkspace(props: {
       return (
         <ActivitiesSection
           graph={graph}
-          groupId={groupId}
+          adminProjection={props.adminProjection}
+          calendarEditContext={props.calendarEditContext}
+          rosterSummary={props.rosterSummary}
           saving={saving}
           onDispatch={onDispatch}
           costLedger={props.costLedger ?? null}

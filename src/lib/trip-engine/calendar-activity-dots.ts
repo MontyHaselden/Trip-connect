@@ -23,10 +23,10 @@ export type CalendarDotActivityInput = {
 };
 
 export function isCalendarDotActivity(activity: CalendarDotActivityInput): boolean {
-  const category = activity.category.trim().toLowerCase();
+  const category = (activity.category ?? "").trim().toLowerCase();
   if (EXCLUDED_CATEGORIES.has(category as ActivityCategory)) return false;
 
-  const title = activity.title.trim();
+  const title = (activity.title ?? "").trim();
   if (!title) return false;
   if (ROUTINE_TITLE.test(title)) return false;
 

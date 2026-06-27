@@ -137,7 +137,7 @@ describe("section scope lists", () => {
     assert.equal(lists.otherScopes[0]?.items[0]?.name, "Macy's home");
   });
 
-  it("limits personal scope when viewing a participant calendar", () => {
+  it("still lists all personal scopes when viewing a participant calendar", () => {
     const graph = applyCommands(setupStateToGraph("trip-1", baseFixture()), [
       {
         type: "addStay",
@@ -274,6 +274,13 @@ describe("section scope lists", () => {
   it("lists personal pending transport under participant scope on whole group view", () => {
     const graph = applyCommands(setupStateToGraph("trip-1", baseFixture()), [
       {
+        type: "paintDayRange",
+        groupId: "g-main",
+        rangeStart: "2026-12-05",
+        rangeEnd: "2026-12-21",
+        location: "Tokyo",
+      },
+      {
         type: "setDayPlaces",
         groupId: "g-macy",
         days: [
@@ -307,11 +314,11 @@ describe("section scope lists", () => {
 
     const lists = pendingTransportNeedsListedByScope(graph, roster(), graph.mainGroupId);
 
-    assert.equal(lists.wholeGroup.items.length, 0);
     assert.equal(lists.otherScopes.length, 1);
     assert.match(lists.otherScopes[0]?.title ?? "", /Macy/i);
-    assert.equal(lists.otherScopes[0]?.items.length, 1);
-    assert.match(lists.otherScopes[0]?.items[0]?.fromCity ?? "", /Macys home/i);
-    assert.match(lists.otherScopes[0]?.items[0]?.toCity ?? "", /Kagoshima/i);
+    const intercityNeed = lists.otherScopes[0]?.items.find((item) => item.kind === "intercity");
+    assert.ok(intercityNeed);
+    assert.match(intercityNeed.fromCity ?? "", /Macys home/i);
+    assert.match(intercityNeed.toCity ?? "", /Kagoshima/i);
   });
 });

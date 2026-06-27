@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { buildTripAdminProjection } from "@/lib/trip-admin/build-admin-projection";
+import { buildCalendarEditContext } from "@/lib/trip-admin/list-adapters";
 import {
   editGroupIdForLens,
   normalizeCalendarLens,
@@ -169,6 +171,16 @@ export function TripOsBoard(props: { tripId: string }) {
       costLedger: engine.data.costLedger,
     });
   }, [engine.data, graph, editGroupId]);
+
+  const adminProjection = useMemo(() => {
+    if (!graph || !rosterSummary) return null;
+    return engine.data?.adminProjection ?? buildTripAdminProjection(graph, rosterSummary);
+  }, [engine.data?.adminProjection, graph, rosterSummary]);
+
+  const calendarEditContext = useMemo(() => {
+    if (!graph || !rosterSummary) return null;
+    return buildCalendarEditContext(graph, calendarLens, rosterSummary);
+  }, [graph, rosterSummary, calendarLens]);
 
   useEffect(() => {
     if (!graph || !editGroupId) return;
@@ -395,12 +407,14 @@ export function TripOsBoard(props: { tripId: string }) {
               onClearSelection={calendar.clearSelection}
               onReload={() => void engine.load(undefined, { silent: true })}
             />
-          ) : (
+          ) : adminProjection && calendarEditContext ? (
             <TripOsWorkspace
               section={activeSection}
               graph={tripGraph}
               groupId={activeGroupId}
               calendarLens={calendarLens}
+              adminProjection={adminProjection}
+              calendarEditContext={calendarEditContext}
               tripId={props.tripId}
               inviteCode={engine.data.inviteCode}
               readiness={readiness}
@@ -426,6 +440,8 @@ export function TripOsBoard(props: { tripId: string }) {
               onHighlightDayFromMap={calendar.highlightDayFromMap}
               onGoToDateFromMap={calendar.goToDateFromMap}
             />
+          ) : (
+            <p className="px-2 py-8 text-center text-sm text-zinc-500">Preparing trip view…</p>
           )}
         </main>
         {!hideCalendar ? (

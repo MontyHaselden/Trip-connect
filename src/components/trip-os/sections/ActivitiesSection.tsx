@@ -12,10 +12,13 @@ import {
 } from "@/lib/trip-engine/cost-ledger/finance-section-readiness";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import type { FinanceBuiltInSection } from "@/lib/trip-engine/cost-ledger/finance-sections";
+import { activitiesListedFromProjection } from "@/lib/trip-admin/list-adapters";
 import {
-  activitiesListedByScope,
-  type TripScopeSection,
-} from "@/lib/trip-engine/section-scope-lists";
+  isScopeEditable,
+  scopeEditHint as adminScopeEditHint,
+} from "@/lib/trip-admin/edit-affordances";
+import type { CalendarEditContext, TripAdminProjection } from "@/lib/trip-admin/types";
+import { type TripScopeSection } from "@/lib/trip-engine/section-scope-lists";
 import type { TripEntityGraph, RosterSummary } from "@/lib/trip-engine/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 
@@ -41,19 +44,10 @@ function formatActivityLine(a: ActivityDraft): string {
   return parts.join(" · ");
 }
 
-function scopeEditHint(
-  graph: TripEntityGraph,
-  viewGroupId: string,
-  scope: TripScopeSection<ActivityDraft>,
-): string | null {
-  if (scope.groupId === graph.mainGroupId) return null;
-  if (viewGroupId === scope.groupId) return null;
-  return `Edit on ${scope.title}'s calendar`;
-}
-
 export function ActivitiesSection(props: {
   graph: TripEntityGraph;
-  groupId: string;
+  adminProjection: TripAdminProjection;
+  calendarEditContext: CalendarEditContext;
   rosterSummary?: RosterSummary;
   saving?: boolean;
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
@@ -64,8 +58,8 @@ export function ActivitiesSection(props: {
   const roster = props.rosterSummary ?? { participants: [], groups: [], rooms: [] };
 
   const scopedActivities = useMemo(
-    () => activitiesListedByScope(props.graph, roster, props.groupId),
-    [props.graph, roster, props.groupId],
+    () => activitiesListedFromProjection(props.adminProjection),
+    [props.adminProjection],
   );
 
   const allScopes = useMemo(() => {
@@ -135,7 +129,12 @@ export function ActivitiesSection(props: {
             {allScopes.map((scope) => {
               if (!scope.items.length) return null;
               const isWholeGroup = scope.groupId === props.graph.mainGroupId;
-              const scopeHint = scopeEditHint(props.graph, props.groupId, scope);
+              const scopeHint = adminScopeEditHint(
+                scope.groupId,
+                scope.title,
+                props.calendarEditContext,
+                props.graph,
+              );
 
               return (
                 <div key={scope.groupId}>

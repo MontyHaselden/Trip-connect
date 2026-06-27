@@ -903,7 +903,20 @@ Expected:
 
 ---
 
-# 25. Final reminder
+# 26. Trip admin view vs calendar lens
+
+Senior sections (Transport, Accommodation, Activities) always list the **full trip** via `TripAdminProjection` — no lens input. The calendar person lens only sets `CalendarEditContext` (who you paint locations for, default Add scope, row highlights).
+
+Rules:
+
+* `buildTripAdminProjection(graph, roster)` → `wholeGroup` + `personalScopes[]`
+* Pending transport per scope: `projectCalendar` then `pendingTransportNeedsFromCalendar`
+* Switching Kaleb ↔ Everyone must not change section row coverage
+* Spec: `docs/TRIP_ADMIN_VIEW_SPEC.md`
+
+---
+
+# 27. Final reminder
 
 The product is not "forms plus a calendar."
 

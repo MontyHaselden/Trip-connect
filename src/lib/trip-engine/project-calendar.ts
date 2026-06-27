@@ -1,5 +1,6 @@
 import { deriveCalendarState } from "@/lib/host/setup/derive-calendar";
 import { effectiveTripBoundsFromState } from "@/lib/host/setup/sync-trip-bounds";
+import { tripDatesAreUnset } from "@/lib/host/trip-date-display";
 import {
   dayPlacesToSlices,
   mergeOverrides,
@@ -115,10 +116,39 @@ export function projectCalendar(
 ): CalendarProjection {
   const groupId = options?.groupId ?? graph.mainGroupId;
   const bounds = effectiveTripBoundsFromState(graph);
-  const gridStart = options?.gridStart ?? bounds.startDate;
-  const gridEnd = options?.gridEnd ?? bounds.endDate;
+  let gridStart = options?.gridStart ?? bounds.startDate;
+  let gridEnd = options?.gridEnd ?? bounds.endDate;
+  if (tripDatesAreUnset(gridStart, gridEnd)) {
+    const basicsStart = graph.basics.startDate.trim();
+    const basicsEnd = graph.basics.endDate.trim();
+    if (!tripDatesAreUnset(basicsStart, basicsEnd)) {
+      gridStart = basicsStart;
+      gridEnd = basicsEnd;
+    }
+  }
 
   const storedDays = storedDaysForGroup(graph, groupId);
+  const paintedDates = storedDays
+    .filter((day) => day.primaryCity.trim() || day.secondaryCity?.trim())
+    .map((day) => day.date);
+  if (paintedDates.length) {
+    const minPaint = paintedDates.reduce((a, b) => (a < b ? a : b));
+    const maxPaint = paintedDates.reduce((a, b) => (a > b ? a : b));
+    if (!tripDatesAreUnset(gridStart, gridEnd)) {
+      if (minPaint < gridStart) gridStart = minPaint;
+      if (maxPaint > gridEnd) gridEnd = maxPaint;
+    } else {
+      gridStart = minPaint;
+      gridEnd = maxPaint;
+    }
+  }
+
+  const basicsStart = graph.basics.startDate.trim();
+  const basicsEnd = graph.basics.endDate.trim();
+  if (!tripDatesAreUnset(basicsStart, basicsEnd) && !tripDatesAreUnset(gridStart, gridEnd)) {
+    if (basicsStart < gridStart) gridStart = basicsStart;
+    if (basicsEnd > gridEnd) gridEnd = basicsEnd;
+  }
   const scope = calendarContentScopeForGroup(graph, groupId);
 
   const derived = deriveCalendarState({

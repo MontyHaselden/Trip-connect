@@ -138,34 +138,6 @@ export function lensDisplayLabel(
   return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 }
 
-/** Group ids whose personal/subgroup transport rows belong to this lens (null = show all). */
-export function calendarLensScopeGroupIds(
-  lens: CalendarLens,
-  graph: TripEntityGraph,
-  roster: RosterSummary,
-): string[] | null {
-  if (lens.kind === "whole_group") return null;
-  if (lens.kind === "subgroup") return [lens.groupId];
-  if (lens.kind === "person") {
-    const groupId = editGroupIdForLens(graph, lens, roster);
-    return groupId !== graph.mainGroupId ? [groupId] : null;
-  }
-  if (lens.kind === "party") {
-    const ids = partyPersonalGroupIds(graph, lens.participantIds);
-    return ids.length ? ids : null;
-  }
-  return null;
-}
-
-export function transportViewGroupIdForLens(
-  graph: TripEntityGraph,
-  lens: CalendarLens,
-  roster: RosterSummary,
-): string {
-  if (lens.kind === "party") return graph.mainGroupId;
-  return editGroupIdForLens(graph, lens, roster);
-}
-
 export function editGroupIdForLens(
   graph: TripEntityGraph,
   lens: CalendarLens,

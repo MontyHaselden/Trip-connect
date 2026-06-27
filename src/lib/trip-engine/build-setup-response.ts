@@ -1,3 +1,5 @@
+import { buildTripAdminProjection } from "@/lib/trip-admin/build-admin-projection";
+
 import { graphToSetupState, setupStateToGraph } from "./adapters";
 import { buildCalendarRenderModel } from "./calendar-render-model";
 import { detectGraphConflicts } from "./conflicts";
@@ -65,15 +67,22 @@ export function buildSetupEngineResponse(
     costLedger: options?.costLedger,
   });
 
+  const rosterSummary = options?.rosterSummary;
+  const adminProjection =
+    rosterSummary ?
+      buildTripAdminProjection(view.graph, rosterSummary)
+    : undefined;
+
   return {
     graph: view.graph,
     calendarProjection: view.calendarProjection,
     calendarRenderModel: view.calendarRenderModel,
+    adminProjection,
     readiness: view.readiness,
     warnings: [],
     conflicts: view.conflicts,
     inviteCode: options?.inviteCode,
-    rosterSummary: options?.rosterSummary,
+    rosterSummary,
     costLedger: options?.costLedger ?? undefined,
   };
 }

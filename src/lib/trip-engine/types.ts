@@ -178,6 +178,7 @@ export type SetupEngineResponse = {
   graph: TripEntityGraph;
   calendarProjection?: CalendarProjection;
   calendarRenderModel?: CalendarRenderModel;
+  adminProjection?: import("@/lib/trip-admin/types").TripAdminProjection;
   readiness: EngineSectionReadiness[];
   warnings: EngineWarning[];
   conflicts: EngineConflict[];

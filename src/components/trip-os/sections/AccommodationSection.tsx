@@ -14,7 +14,13 @@ import {
 } from "@/lib/trip-engine/cost-ledger/finance-section-readiness";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import type { FinanceBuiltInSection } from "@/lib/trip-engine/cost-ledger/finance-sections";
-import { staysListedByScope, type TripScopeSection } from "@/lib/trip-engine/section-scope-lists";
+import { staysListedFromProjection } from "@/lib/trip-admin/list-adapters";
+import {
+  isScopeEditable,
+  scopeEditHint as adminScopeEditHint,
+} from "@/lib/trip-admin/edit-affordances";
+import type { CalendarEditContext, TripAdminProjection } from "@/lib/trip-admin/types";
+import { type TripScopeSection } from "@/lib/trip-engine/section-scope-lists";
 import type { TripEntityGraph, RosterSummary } from "@/lib/trip-engine/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 
@@ -121,19 +127,10 @@ function homestayPeriodForAction(
   return periods[0] ?? null;
 }
 
-function scopeEditHint(
-  graph: TripEntityGraph,
-  viewGroupId: string,
-  scope: TripScopeSection<AccommodationStayDraft>,
-): string | null {
-  if (scope.groupId === graph.mainGroupId) return null;
-  if (viewGroupId === scope.groupId) return null;
-  return `Edit on ${scope.title}'s calendar`;
-}
-
 export function AccommodationSection(props: {
   graph: TripEntityGraph;
-  groupId: string;
+  adminProjection: TripAdminProjection;
+  calendarEditContext: CalendarEditContext;
   tripId: string;
   inviteCode: string;
   rosterSummary?: RosterSummary;
@@ -145,6 +142,7 @@ export function AccommodationSection(props: {
   onOpenFinanceSection?: (section: FinanceBuiltInSection, lineId?: string) => void;
   onCostsAction?: (payload: Record<string, unknown>) => Promise<CostsPatchResult>;
 }) {
+  const editGroupId = props.calendarEditContext.editGroupId;
   const [roomsModalOpen, setRoomsModalOpen] = useState(false);
   const [roomsModalStayId, setRoomsModalStayId] = useState<string | null>(null);
   const [homestaysModalOpen, setHomestaysModalOpen] = useState(false);
@@ -157,8 +155,8 @@ export function AccommodationSection(props: {
   );
 
   const scopedStays = useMemo(
-    () => staysListedByScope(props.graph, roster, props.groupId),
-    [props.graph, roster, props.groupId],
+    () => staysListedFromProjection(props.adminProjection),
+    [props.adminProjection],
   );
 
   const stayFinanceAttention = useMemo(
@@ -172,18 +170,22 @@ export function AccommodationSection(props: {
   );
 
   const actionScope =
-    allScopes.find((scope) => scope.groupId === (actionScopeId ?? props.groupId)) ??
+    allScopes.find((scope) => scope.groupId === (actionScopeId ?? editGroupId)) ??
     scopedStays.wholeGroup;
 
-  const viewScope = allScopes.find((scope) => scope.groupId === props.groupId);
-  const viewStays = viewScope?.items ?? [];
-  const hotelStaysForRooms = nonHomestayStays(actionScope.items).filter((s) => s.name?.trim());
-
-  const homestayPeriods = homestayPeriodStays(viewStays);
+  const allHomestayStays = useMemo(
+    () =>
+      [props.adminProjection.wholeGroup, ...props.adminProjection.personalScopes].flatMap(
+        (scope) => scope.stays.filter((s) => s.stayType === "homestay" && s.isHomestayGroup),
+      ),
+    [props.adminProjection],
+  );
+  const homestayPeriods = homestayPeriodStays(allHomestayStays);
   const homestayTarget = homestayPeriodForAction(
     homestayPeriodStays(actionScope.items),
     props.selectedDate,
   );
+  const hotelStaysForRooms = nonHomestayStays(actionScope.items).filter((s) => s.name?.trim());
   const hasAnyStays = allScopes.some((scope) => scope.items.length > 0);
 
   function openStayFinance(stayId: string) {
@@ -211,7 +213,11 @@ export function AccommodationSection(props: {
   }
 
   function scopeHeaderAction(scope: TripScopeSection<AccommodationStayDraft>) {
-    const isActiveScope = scope.groupId === props.groupId;
+    const isActiveScope = isScopeEditable(
+      scope.groupId,
+      props.calendarEditContext,
+      props.graph,
+    );
     if (!isActiveScope) return undefined;
 
     const hasHomestayPeriods = homestayPeriodStays(scope.items).length > 0;
@@ -239,9 +245,18 @@ export function AccommodationSection(props: {
     if (!scope.items.length) return null;
 
     const isWholeGroup = scope.groupId === props.graph.mainGroupId;
-    const scopeHint = scopeEditHint(props.graph, props.groupId, scope);
+    const scopeHint = adminScopeEditHint(
+      scope.groupId,
+      scope.title,
+      props.calendarEditContext,
+      props.graph,
+    );
 
-    const isActiveScope = scope.groupId === props.groupId;
+    const isActiveScope = isScopeEditable(
+      scope.groupId,
+      props.calendarEditContext,
+      props.graph,
+    );
 
     return (
       <div key={scope.groupId} className={isWholeGroup ? undefined : "mt-8"}>
@@ -303,9 +318,9 @@ export function AccommodationSection(props: {
         <div className="mt-6">
           <HomestaysPanel
             tripId={props.tripId}
-            groupId={props.groupId}
+            groupId={editGroupId}
             graph={props.graph}
-            stays={viewStays}
+            stays={allHomestayStays}
             roster={roster}
             selectedDate={props.selectedDate}
             saving={props.saving}
