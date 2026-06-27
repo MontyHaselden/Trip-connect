@@ -135,6 +135,59 @@ describe("classifyImportedFlightChain", () => {
     assert.equal(classified.return.length, 0);
     assert.equal(classified.intercity.length, 0);
   });
+
+  it("splits a home return package across outbound and return buckets", () => {
+    const legs = [
+      {
+        id: newId(),
+        transportType: "plane" as const,
+        bookingStatus: "placeholder" as const,
+        travelDate: "2026-12-05",
+        arrivalDate: "2026-12-05",
+        departureTime: null,
+        arrivalTime: null,
+        fromCity: "Christchurch",
+        toCity: "Tokyo",
+        fromStation: null,
+        toStation: null,
+        operator: null,
+        referenceNumber: null,
+        flightNumber: null,
+        notes: null,
+      },
+      {
+        id: newId(),
+        transportType: "plane" as const,
+        bookingStatus: "placeholder" as const,
+        travelDate: "2026-12-21",
+        arrivalDate: "2026-12-21",
+        departureTime: null,
+        arrivalTime: null,
+        fromCity: "Tokyo",
+        toCity: "Christchurch",
+        fromStation: null,
+        toStation: null,
+        operator: null,
+        referenceNumber: null,
+        flightNumber: null,
+        notes: null,
+      },
+    ];
+    const state = baseState({
+      basics: {
+        ...baseState().basics,
+        startDate: "2026-12-05",
+        endDate: "2026-12-21",
+        departureCity: "Christchurch",
+        returnCity: "Christchurch",
+      },
+      accommodationStays: [],
+    });
+    const classified = classifyImportedFlightChain(legs, state);
+    assert.equal(classified.outbound.length, 1);
+    assert.equal(classified.return.length, 1);
+    assert.equal(classified.intercity.length, 0);
+  });
 });
 
 describe("mergeClassifiedLegsIntoState", () => {

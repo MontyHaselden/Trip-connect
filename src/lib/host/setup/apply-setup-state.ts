@@ -430,6 +430,20 @@ export async function applyTripSetupState(
   return { dayCount: activeDays.length };
 }
 
+/** Persist intercity legs for every personal group in the batch (not just activeGroupId). */
+export async function syncIntercityLegsForGroups(
+  tripId: string,
+  state: TripSetupState,
+  groupIds: Iterable<string>,
+): Promise<void> {
+  const mainGroupId = state.mainGroupId;
+  for (const groupId of groupIds) {
+    if (groupId === mainGroupId) continue;
+    const groupLegs = state.intercityLegs.filter((l) => l.originGroupId === groupId);
+    await syncGroupIntercityLegs(tripId, groupId, groupLegs);
+  }
+}
+
 /** Drop a subgroup/personal plan's overrides in DB without touching main group data. */
 export async function persistResetGroupFromMain(
   tripId: string,

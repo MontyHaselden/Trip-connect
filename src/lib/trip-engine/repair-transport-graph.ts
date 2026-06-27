@@ -1,4 +1,5 @@
 import { legsForTransportProduct } from "@/lib/host/locations/transport-products";
+import { classifyFlightLeg } from "@/lib/host/setup/classify-flight-legs";
 import { inferLegArrivalDate } from "@/lib/host/setup/repair-transport-legs";
 import type {
   IntercityLegDraft,
@@ -8,6 +9,7 @@ import type {
 } from "@/lib/host/wizard/types";
 
 import { isReverseFlightPair } from "./flight-package-pairs";
+import { graphToSetupState } from "./adapters";
 import type { TripEntityGraph } from "./types";
 
 type TransportLeg = TransportLegDraft | IntercityLegDraft;
@@ -206,6 +208,49 @@ function linkOrphanFlightPackages(
   return { outboundLegs, returnLegs };
 }
 
+/** Move flight-package legs into outbound vs return when both were dumped into one bucket. */
+function rebucketFlightPackageLegs(
+  graph: TripEntityGraph,
+  outboundLegs: TransportLegDraft[],
+  returnLegs: TransportLegDraft[],
+): { outboundLegs: TransportLegDraft[]; returnLegs: TransportLegDraft[] } {
+  const flightPackages = new Set(
+    (graph.transportProducts ?? [])
+      .filter((product) => product.kind === "flight_package")
+      .map((product) => product.id),
+  );
+  if (!flightPackages.size) {
+    return { outboundLegs, returnLegs };
+  }
+
+  const state = graphToSetupState({
+    ...graph,
+    outboundLegs,
+    returnLegs,
+  });
+
+  let outbound = [...outboundLegs];
+  let returns = [...returnLegs];
+  const moveToReturn: TransportLegDraft[] = [];
+
+  outbound = outbound.filter((leg) => {
+    if (leg.transportType !== "plane") return true;
+    if (!leg.transportProductId || !flightPackages.has(leg.transportProductId)) {
+      return true;
+    }
+    if (classifyFlightLeg(leg, state) !== "return") return true;
+    moveToReturn.push(leg);
+    return false;
+  });
+
+  if (!moveToReturn.length) {
+    return { outboundLegs, returnLegs };
+  }
+
+  returns = [...returns, ...moveToReturn];
+  return { outboundLegs: outbound, returnLegs: returns };
+}
+
 /** Normalize transport products and legs after load or before display. */
 export function repairTransportGraphSync<T extends TripEntityGraph>(graph: T): T {
   const products = graph.transportProducts ?? [];
@@ -235,7 +280,15 @@ export function repairTransportGraphSync<T extends TripEntityGraph>(graph: T): T
     returnLegs,
   });
 
+  const rebucketed = rebucketFlightPackageLegs(
+    { ...graph, transportProducts: deduped.products },
+    linked.outboundLegs,
+    linked.returnLegs,
+  );
+
   const changed =
+    rebucketed.outboundLegs !== graph.outboundLegs ||
+    rebucketed.returnLegs !== graph.returnLegs ||
     linked.outboundLegs !== graph.outboundLegs ||
     linked.returnLegs !== graph.returnLegs ||
     outboundLegs !== graph.outboundLegs ||
@@ -248,8 +301,8 @@ export function repairTransportGraphSync<T extends TripEntityGraph>(graph: T): T
   return {
     ...graph,
     transportProducts: deduped.products,
-    outboundLegs: linked.outboundLegs,
-    returnLegs: linked.returnLegs,
+    outboundLegs: rebucketed.outboundLegs,
+    returnLegs: rebucketed.returnLegs,
     intercityLegs,
   };
 }

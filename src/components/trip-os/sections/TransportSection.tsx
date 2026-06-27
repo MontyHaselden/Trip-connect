@@ -43,6 +43,7 @@ import { legRouteLabel } from "@/lib/trip-engine/flight-package-pairs";
 import { legScheduleSummary, legTransportTypeLabel } from "@/lib/host/setup/repair-transport-legs";
 import { findTransportProduct } from "@/lib/host/locations/transport-products";
 import type { IntercityLegDraft, TransportLegDraft, TransportProductDraft } from "@/lib/host/wizard/types";
+import { returnFlightPackageSummaryFromLegs } from "@/lib/trip-engine/return-flight-pair";
 
 import { FinanceLineStatusBadge } from "../shared/FinanceLineStatusBadge";
 import { FinanceEntityQuickActions } from "../shared/FinanceEntityQuickActions";
@@ -109,6 +110,101 @@ function scopeEditHint(
   if (scope.groupId === graph.mainGroupId) return null;
   if (viewGroupId === scope.groupId) return null;
   return `Edit on ${scope.title}'s calendar`;
+}
+
+function isReturnFlightPackage(
+  product: TransportProductDraft | null | undefined,
+  legs: ScopedTransportLeg[],
+): boolean {
+  return (
+    product?.kind === "flight_package" &&
+    legs.length === 2 &&
+    legs.every((leg) => leg.transportType === "plane")
+  );
+}
+
+function FlightReturnPackageRow(props: {
+  product: TransportProductDraft;
+  legs: ScopedTransportLeg[];
+  scopeHint?: string | null;
+  financeStatus: EntityFinanceDisplayStatus;
+  financeAttentionReason?: string | null;
+  onOpenFinance?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  showFinanceActions?: boolean;
+  saving?: boolean;
+  onMarkTbc?: () => void;
+}) {
+  const sorted = [...props.legs].sort(compareTransportLegsChronologically);
+  const outbound = sorted[0]!;
+  const returnLeg = sorted[1]!;
+  const summary = returnFlightPackageSummaryFromLegs(outbound, returnLeg);
+
+  return (
+    <li className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800">
+              Return package
+            </span>
+            <p className="font-medium text-zinc-900">{summary.packageTitle}</p>
+          </div>
+          <div className="mt-2 space-y-1 text-sm">
+            <p className="flex flex-wrap items-baseline gap-x-2 text-zinc-800">
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
+                Outbound
+              </span>
+              <span className="text-xs text-zinc-500">{summary.outboundDate}</span>
+              <span className="font-medium tracking-wide">{summary.outboundRoute}</span>
+            </p>
+            <p className="flex flex-wrap items-baseline gap-x-2 text-zinc-800">
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800">
+                Return
+              </span>
+              <span className="text-xs text-zinc-500">{summary.returnDate}</span>
+              <span className="font-medium tracking-wide">{summary.returnRoute}</span>
+            </p>
+          </div>
+          {props.scopeHint ? (
+            <p className="mt-1 text-xs text-violet-700">{props.scopeHint}</p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <FinanceEntityQuickActions
+            show={Boolean(props.showFinanceActions)}
+            saving={props.saving}
+            onTbc={props.onMarkTbc}
+          />
+          <FinanceLineStatusBadge
+            status={props.financeStatus}
+            attentionReason={props.financeAttentionReason}
+            onNeedsAttention={props.onOpenFinance}
+          />
+          {props.onEdit ? (
+            <button
+              type="button"
+              onClick={props.onEdit}
+              className="text-sm font-medium text-violet-700 hover:text-violet-900"
+            >
+              Edit
+            </button>
+          ) : null}
+          {props.onDelete ? (
+            <button
+              type="button"
+              onClick={props.onDelete}
+              disabled={props.saving}
+              className="text-sm font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+            >
+              Delete
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </li>
+  );
 }
 
 function LegRow(props: {
@@ -683,52 +779,126 @@ export function TransportSection(props: {
           {productSections.map(([productId, productLegs]) => {
             const product = findTransportProduct(products, productId);
             if (!product) return null;
+            const showAsReturnPackage = isReturnFlightPackage(product, productLegs);
+            const packageFinanceStatus = (() => {
+              if (!showAsReturnPackage) return "complete" as EntityFinanceDisplayStatus;
+              const statuses = productLegs.map((leg) =>
+                transportLegFinanceDisplayStatus(leg, props.costLedger),
+              );
+              if (statuses.some((s) => s === "needs_attention")) return "needs_attention";
+              if (statuses.some((s) => s === "tbc")) return "tbc";
+              return statuses[0] ?? "complete";
+            })();
+            const packageFinanceReason = showAsReturnPackage
+              ? productLegs
+                  .map((leg) => transportLegFinanceAttentionReason(leg, props.costLedger))
+                  .find(Boolean) ?? null
+              : null;
+
             return (
               <div key={productId}>
-                <div className="mb-2 flex items-baseline gap-2">
-                  <h4 className="text-sm font-semibold text-zinc-800">{product.name}</h4>
-                  {isActiveScope ? (
-                    <button
-                      type="button"
-                      onClick={() => setEditingProduct(product)}
-                      className="text-xs font-medium text-violet-700 hover:text-violet-900"
-                    >
-                      Edit
-                    </button>
-                  ) : null}
-                </div>
+                {!showAsReturnPackage ? (
+                  <div className="mb-2 flex items-baseline gap-2">
+                    <h4 className="text-sm font-semibold text-zinc-800">{product.name}</h4>
+                    {isActiveScope ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingProduct(product)}
+                        className="text-xs font-medium text-violet-700 hover:text-violet-900"
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
                 <ul className="space-y-2">
-                  {productLegs.map((leg) => (
-                    <LegRow
-                      key={leg.id}
-                      leg={leg}
-                      graph={props.graph}
-                      bucket={legBucket(leg.id)}
-                      productLabel={product.name}
+                  {showAsReturnPackage ? (
+                    <FlightReturnPackageRow
+                      product={product}
+                      legs={productLegs}
                       scopeHint={scopeHint}
-                      financeStatus={transportLegFinanceDisplayStatus(leg, props.costLedger)}
-                      financeAttentionReason={transportLegFinanceAttentionReason(
-                        leg,
-                        props.costLedger,
-                      )}
-                      onOpenFinance={() => openLegFinance(leg)}
-                      onEdit={
-                        isActiveScope
-                          ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
-                          : undefined
-                      }
+                      financeStatus={packageFinanceStatus}
+                      financeAttentionReason={packageFinanceReason}
+                      onOpenFinance={() => {
+                        const leg = productLegs.find(
+                          (row) =>
+                            transportLegFinanceDisplayStatus(row, props.costLedger) ===
+                            "needs_attention",
+                        );
+                        if (leg) openLegFinance(leg);
+                      }}
+                      onEdit={isActiveScope ? () => setEditingProduct(product) : undefined}
                       onDelete={() =>
-                        void deleteLeg(
-                          leg,
-                          legBucket(leg.id),
-                          scope.groupId,
-                          scope.groupedLegTargets,
-                        )
+                        void (async () => {
+                          const sorted = [...productLegs].sort(compareTransportLegsChronologically);
+                          const route = returnFlightPackageSummaryFromLegs(
+                            sorted[0]!,
+                            sorted[1]!,
+                          ).packageTitle;
+                          if (
+                            !window.confirm(
+                              `Remove ${route}? Both flights will reappear in "From your calendar".`,
+                            )
+                          ) {
+                            return;
+                          }
+                          await props.onDispatch(
+                            productLegs.map((leg) => ({
+                              type: "removeTransportLeg" as const,
+                              groupId: scope.groupId,
+                              bucket: legBucket(leg.id),
+                              legId: leg.id,
+                            })),
+                          );
+                        })()
                       }
                       saving={props.saving}
-                      {...legFinanceActions(leg)}
+                      showFinanceActions={
+                        packageFinanceStatus === "needs_attention" &&
+                        Boolean(props.onCostsAction)
+                      }
+                      onMarkTbc={() => {
+                        const leg = productLegs.find(
+                          (row) =>
+                            transportLegFinanceDisplayStatus(row, props.costLedger) ===
+                            "needs_attention",
+                        );
+                        if (leg) void markLegTbc(leg);
+                      }}
                     />
-                  ))}
+                  ) : (
+                    productLegs.map((leg) => (
+                      <LegRow
+                        key={leg.id}
+                        leg={leg}
+                        graph={props.graph}
+                        bucket={legBucket(leg.id)}
+                        productLabel={product.name}
+                        scopeHint={scopeHint}
+                        financeStatus={transportLegFinanceDisplayStatus(leg, props.costLedger)}
+                        financeAttentionReason={transportLegFinanceAttentionReason(
+                          leg,
+                          props.costLedger,
+                        )}
+                        onOpenFinance={() => openLegFinance(leg)}
+                        onEdit={
+                          isActiveScope
+                            ? () => setEditingLeg({ leg, bucket: legBucket(leg.id) })
+                            : undefined
+                        }
+                        onDelete={() =>
+                          void deleteLeg(
+                            leg,
+                            legBucket(leg.id),
+                            scope.groupId,
+                            scope.groupedLegTargets,
+                          )
+                        }
+                        saving={props.saving}
+                        {...legFinanceActions(leg)}
+                      />
+                    ))
+                  )}
                 </ul>
               </div>
             );

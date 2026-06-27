@@ -99,6 +99,39 @@ describe("repairTransportGraphSync", () => {
     assert.equal(graph.returnLegs[0]?.transportProductId, graph.transportProducts?.[0]?.id);
   });
 
+  it("moves mis-bucketed return package legs out of outbound", () => {
+    const state = baseState();
+    const productId = state.transportProducts![0]!.id;
+    const returnLeg = {
+      id: "ret-1",
+      transportType: "plane" as const,
+      bookingStatus: "not_booked" as const,
+      travelDate: "2026-12-21",
+      arrivalDate: "2026-12-21",
+      departureTime: null,
+      arrivalTime: null,
+      fromCity: "Tokyo",
+      toCity: "Christchurch",
+      fromStation: null,
+      toStation: null,
+      operator: null,
+      referenceNumber: null,
+      flightNumber: "NZ100",
+      notes: null,
+    };
+    state.returnLegs = [];
+    state.outboundLegs = [
+      { ...state.outboundLegs[0]!, transportProductId: productId },
+      { ...returnLeg, transportProductId: productId },
+    ];
+
+    const graph = repairTransportGraphSync(setupStateToGraph("trip-1", state));
+    assert.equal(graph.outboundLegs.length, 1);
+    assert.equal(graph.returnLegs.length, 1);
+    assert.equal(graph.outboundLegs[0]?.fromCity, "Christchurch");
+    assert.equal(graph.returnLegs[0]?.fromCity, "Tokyo");
+  });
+
   it("unlinks misassigned products and repairs reversed leg dates", () => {
     const state = baseState();
     const productId = state.transportProducts![0]!.id;

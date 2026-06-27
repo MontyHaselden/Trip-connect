@@ -5,6 +5,7 @@ import { shortCityName } from "@/lib/host/setup/location-range-display";
 import { locationsMatch } from "@/lib/host/wizard/location-stays";
 import type { CityMove } from "@/lib/host/wizard/detect-city-moves";
 import type { PendingTransportNeed } from "./pending-city-moves";
+import type { TransportLegDraft } from "@/lib/host/wizard/types";
 import { pendingTransportNeedsFromCalendar } from "./pending-city-moves";
 import type { TripEntityGraph } from "./types";
 import {
@@ -171,6 +172,27 @@ export function returnFlightPairSummary(pair: ReturnFlightPair): {
     returnDate: formatLegDate(returnLeg.date),
     returnRoute: returnRouteLabel(returnLeg.fromCity, returnLeg.toCity),
   };
+}
+
+export function returnFlightPackageSummaryFromLegs(
+  outbound: Pick<TransportLegDraft, "fromCity" | "toCity" | "travelDate">,
+  returnLeg: Pick<TransportLegDraft, "fromCity" | "toCity" | "travelDate">,
+): ReturnType<typeof returnFlightPairSummary> {
+  return returnFlightPairSummary({
+    kind: "pending",
+    outbound: {
+      kind: "outbound_flight",
+      fromCity: outbound.fromCity,
+      toCity: outbound.toCity,
+      date: outbound.travelDate,
+    },
+    return: {
+      kind: "return_flight",
+      fromCity: returnLeg.fromCity,
+      toCity: returnLeg.toCity,
+      date: returnLeg.travelDate,
+    },
+  });
 }
 
 export function pairedLegId(pair: ReturnFlightPair): string | null {

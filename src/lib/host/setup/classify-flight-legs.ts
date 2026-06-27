@@ -111,20 +111,29 @@ export function classifyImportedFlightChain(
 
   if (!legs.length) return buckets;
 
+  if (legs.length === 1) {
+    buckets[classifyFlightLeg(legs[0]!, state)].push(legs[0]!);
+    return buckets;
+  }
+
   const chainBucket = classifyFlightLeg(legs[0]!, state);
   const lastBucket = classifyFlightLeg(legs[legs.length - 1]!, state);
-  const bucket =
-    chainBucket === lastBucket ? chainBucket : classifyFlightLeg(legs[0]!, state);
 
-  if (bucket === "intercity") {
+  if (chainBucket !== lastBucket) {
     for (const leg of legs) {
-      const legBucket = classifyFlightLeg(leg, state);
-      buckets[legBucket].push(leg);
+      buckets[classifyFlightLeg(leg, state)].push(leg);
     }
     return buckets;
   }
 
-  buckets[bucket].push(...legs);
+  if (chainBucket === "intercity") {
+    for (const leg of legs) {
+      buckets[classifyFlightLeg(leg, state)].push(leg);
+    }
+    return buckets;
+  }
+
+  buckets[chainBucket].push(...legs);
   return buckets;
 }
 

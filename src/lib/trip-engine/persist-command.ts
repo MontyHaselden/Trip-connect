@@ -2,12 +2,17 @@ import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { entityBookingDetails, groups, trips } from "@/lib/db/schema";
-import { applyTripSetupState, persistResetGroupFromMain } from "@/lib/host/setup/apply-setup-state";
+import {
+  applyTripSetupState,
+  persistResetGroupFromMain,
+  syncIntercityLegsForGroups,
+} from "@/lib/host/setup/apply-setup-state";
 import { syncTransportLegsTable } from "@/lib/host/locations/apply-location-state";
 import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import { purgeTransportItineraryForRemovedLeg, reconcileTransportItineraryItems } from "@/lib/host/import/transport-itinerary-reconcile";
 import { graphToSetupState } from "./adapters";
 import { applyCommands } from "./apply-commands";
+import { allGroupIdsFromCommands, groupIdFromCommands } from "./command-group-ids";
 import { syncActivitiesForTrip, loadActivitiesForTrip } from "./activities-persistence";
 import { mergeActivitiesById } from "./merge-graph-activities";
 import { linkCostLineToActivity } from "./cost-ledger/link-cost-line-to-entity";
@@ -254,13 +259,7 @@ function groupIdFromCommand(command: TripCommand): string | undefined {
   return undefined;
 }
 
-export function groupIdFromCommands(commands: TripCommand[]): string | undefined {
-  for (const command of commands) {
-    const groupId = groupIdFromCommand(command);
-    if (groupId) return groupId;
-  }
-  return undefined;
-}
+export { groupIdFromCommands, allGroupIdsFromCommands } from "./command-group-ids";
 
 function isAccommodationCalendarCommand(command: TripCommand): boolean {
   return (
@@ -563,12 +562,20 @@ export async function persistCommands(
       );
     } else {
       const syncTransportItems = commandsNeedTransportItinerarySync(stateCommands);
-      await applyTripSetupState(tripId, graphToSetupState(result.graph), {
+      const setupState = graphToSetupState(result.graph);
+      await applyTripSetupState(tripId, setupState, {
         activeGroupId,
         skipWizardItineraryItems: true,
         syncTransportItems,
         syncAccommodationItems: false,
       });
+      if (syncTransportItems) {
+        await syncIntercityLegsForGroups(
+          tripId,
+          setupState,
+          allGroupIdsFromCommands(stateCommands),
+        );
+      }
       await syncActivitiesForTrip(tripId, result.graph.activities);
       await reconcileTransportItineraryItems(tripId, {
         outboundLegs: result.graph.outboundLegs,
