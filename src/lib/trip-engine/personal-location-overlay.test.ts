@@ -120,7 +120,7 @@ function japanAmandaFixture(): TripSetupState {
 }
 
 describe("personal location overlay", () => {
-  it("independent personal plan stores full location paint for every selected day", () => {
+  it("independent personal plan stores stay-aligned location paint for selected days", () => {
     const graph = setupStateToGraph("trip-1", {
       ...japanAmandaFixture(),
       groups: [
@@ -150,16 +150,16 @@ describe("personal location overlay", () => {
     const dec5 = stored.find((d) => d.date === "2026-12-05");
     const dec6 = stored.find((d) => d.date === "2026-12-06");
     const dec7 = stored.find((d) => d.date === "2026-12-07");
-    assert.equal(dec5?.primaryCity, "Kagoshima");
-    assert.equal(dec5?.primaryShare, 1);
+    assert.equal(dec5?.secondaryCity, "Kagoshima");
+    assert.ok((dec5?.primaryShare ?? 1) < 0.99);
     assert.equal(dec6?.primaryCity, "Kagoshima");
     assert.equal(dec6?.primaryShare, 1);
     assert.equal(dec7?.primaryCity, "Kagoshima");
-    assert.equal(dec7?.primaryShare, 1);
+    assert.ok((dec7?.primaryShare ?? 1) < 0.99);
 
     const projected = projectCalendar(result.graph, { groupId: "g-macy" });
     assert.equal(projected.days.find((d) => d.date === "2026-12-06")?.primaryCity, "Kagoshima");
-    assert.equal(projected.days.find((d) => d.date === "2026-12-05")?.primaryCity, "Kagoshima");
+    assert.equal(projected.days.find((d) => d.date === "2026-12-05")?.secondaryCity, "Kagoshima");
   });
 
   it("multi-day personal paint keeps half-day edges against main calendar context", () => {

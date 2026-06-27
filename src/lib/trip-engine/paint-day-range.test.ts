@@ -52,7 +52,7 @@ describe("applyHalfDayPaint", () => {
     assert.equal(out.find((d) => d.date === "2026-07-17"), undefined);
   });
 
-  it("paints every selected calendar day for full/full multi-day location paint", () => {
+  it("paints stay-aligned halves for full/full multi-day location paint on empty calendar", () => {
     const out = paintLocationDayRange(
       [],
       "2026-12-05",
@@ -61,12 +61,37 @@ describe("applyHalfDayPaint", () => {
       "full",
       "full",
     );
-    for (const date of ["2026-12-05", "2026-12-06", "2026-12-07", "2026-12-08"]) {
-      const day = out.find((d) => d.date === date);
-      assert.equal(day?.primaryCity, "Kagoshima");
-      assert.equal(day?.primaryShare, 1);
-      assert.equal(day?.secondaryCity, null);
-    }
+    const dec5 = out.find((d) => d.date === "2026-12-05");
+    const dec6 = out.find((d) => d.date === "2026-12-06");
+    const dec7 = out.find((d) => d.date === "2026-12-07");
+    const dec8 = out.find((d) => d.date === "2026-12-08");
+    assert.equal(dec5?.secondaryCity, "Kagoshima");
+    assert.ok((dec5?.primaryShare ?? 1) < 0.99);
+    assert.equal(dec6?.primaryCity, "Kagoshima");
+    assert.equal(dec6?.primaryShare, 1);
+    assert.equal(dec7?.primaryCity, "Kagoshima");
+    assert.equal(dec7?.primaryShare, 1);
+    assert.equal(dec8?.primaryCity, "Kagoshima");
+    assert.ok((dec8?.primaryShare ?? 1) < 0.99);
+  });
+
+  it("paints arrival and checkout halves for a two-day Tokyo selection", () => {
+    const out = paintLocationDayRange(
+      [],
+      "2026-12-05",
+      "2026-12-06",
+      "Tokyo",
+      "full",
+      "full",
+    );
+    const dec5 = out.find((d) => d.date === "2026-12-05");
+    const dec6 = out.find((d) => d.date === "2026-12-06");
+    assert.equal(dec5?.secondaryCity, "Tokyo");
+    assert.equal(dec5?.primaryCity, "");
+    assert.equal(dec6?.primaryCity, "Tokyo");
+    assert.equal(dec6?.secondaryCity, null);
+    assert.ok((dec5?.primaryShare ?? 1) < 0.99);
+    assert.ok((dec6?.primaryShare ?? 1) < 0.99);
   });
 
   it("paints arrival half-day when full/full range starts after a different city", () => {
@@ -125,7 +150,7 @@ describe("applyHalfDayPaint", () => {
     assert.equal(dec13?.secondaryCity, "Hiroshima");
     assert.equal(dec13?.primaryShare, 0.5);
     assert.equal(dec15?.primaryCity, "Hiroshima");
-    assert.equal(dec15?.primaryShare, 1);
+    assert.ok((dec15?.primaryShare ?? 1) < 0.99);
   });
 
   it("clears an erroneous evening city when repainting morning halves only", () => {

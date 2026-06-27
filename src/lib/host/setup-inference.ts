@@ -3,6 +3,7 @@ import { TRANSPORT_CORRIDOR_LEFT_SHARE } from "@/lib/host/setup/transport-corrid
 import {
   DEFAULT_HALF_SHARE,
   addDays,
+  enumerateDates,
   getEmptyHalf,
   type HalfSide,
 } from "@/lib/host/wizard/location-stays";
@@ -239,6 +240,53 @@ export function inferDayPlacesFromStay(
   }
 
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Paint location labels using the same half-day rules as accommodation stays. */
+export function applyStayAlignedCityPaint(
+  existing: DayPlaceDraft[],
+  city: string,
+  checkIn: string,
+  checkOut: string,
+  clip?: { from: string; to: string },
+): DayPlaceDraft[] {
+  const loc = city.trim();
+  if (!loc || checkIn >= checkOut) return existing;
+
+  const byDate = new Map(existing.map((d) => [d.date, d]));
+  const clipFrom = clip?.from ?? checkIn;
+  const clipTo = clip?.to ?? addDays(checkOut, -1);
+
+  for (const iso of enumerateDates(clipFrom, clipTo)) {
+    const current = byDate.get(iso);
+    if (!current) continue;
+    const cleared = clearStayCityFromDay(current, loc);
+    if (!cleared.primaryCity.trim() && !cleared.secondaryCity?.trim()) {
+      byDate.delete(iso);
+    } else {
+      byDate.set(iso, cleared);
+    }
+  }
+
+  let cursor = checkIn;
+  while (cursor < checkOut) {
+    const nightDate = cursor;
+    const morningDate = addDays(cursor, 1);
+
+    if (nightDate >= clipFrom && nightDate <= clipTo) {
+      const eveningDay = byDate.get(nightDate) ?? emptyDay(nightDate);
+      byDate.set(nightDate, paintStayEveningHalf(eveningDay, loc));
+    }
+    if (morningDate >= clipFrom && morningDate <= clipTo) {
+      const morningDay = byDate.get(morningDate) ?? emptyDay(morningDate);
+      byDate.set(morningDate, paintStayMorningHalf(morningDay, loc));
+    }
+    cursor = addDays(cursor, 1);
+  }
+
+  return [...byDate.values()]
+    .filter((day) => day.primaryCity.trim() || day.secondaryCity?.trim())
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function addDaysIso(iso: string, delta: number): string {

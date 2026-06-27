@@ -1,4 +1,8 @@
-import { stayDatesForSelection } from "@/lib/host/setup/day-selection-setup";
+import {
+  stayDateBoundsForSelection,
+  stayDatesForSelection,
+} from "@/lib/host/setup/day-selection-setup";
+import { applyStayAlignedCityPaint } from "@/lib/host/setup-inference";
 import type { NightPairSelection } from "@/lib/host/setup/night-pair-selection";
 import {
   clearStayCityFromDay,
@@ -615,12 +619,14 @@ function paintArrivalTransitionDay(
   };
 }
 
-/** Paint every selected calendar day as full single-city, with a travel split on range start when needed. */
+/** Paint every selected calendar day using stay-aligned halves, with travel splits on range edges when needed. */
 function paintLocationFullCalendarDays(
   days: DayPlaceDraft[],
   rangeStart: string,
   rangeEnd: string,
   location: string,
+  startHalf: HalfSide | "full",
+  endHalf: HalfSide | "full",
   transitionContextDays?: DayPlaceDraft[],
 ): DayPlaceDraft[] {
   const loc = location.trim();
@@ -641,29 +647,39 @@ function paintLocationFullCalendarDays(
     return result.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim());
   }
 
+  const bounds = stayDateBoundsForSelection({
+    rangeStart,
+    rangeEnd: end,
+    startHalf,
+    endHalf,
+  });
+  result = applyStayAlignedCityPaint(days, loc, bounds.checkIn, bounds.checkOut, {
+    from: rangeStart,
+    to: end,
+  });
+
   const departCity = priorDepartCityForRangeStart(result, rangeStart, loc, transitionContextDays);
   const arrivalCity = nextArrivalCityForRangeEnd(result, end, loc, transitionContextDays);
+  const byDate = new Map(result.map((day) => [day.date, day]));
 
-  result = result.map((day) => {
-    if (day.date < rangeStart || day.date > end) return day;
+  if (departCity) {
+    byDate.set(
+      rangeStart,
+      paintArrivalTransitionDay(byDate.get(rangeStart) ?? emptyDay(rangeStart), loc, departCity),
+    );
+  }
 
-    if (day.date === rangeStart && departCity) {
-      return paintArrivalTransitionDay(day, loc, departCity);
-    }
+  if (arrivalCity && end !== rangeStart) {
+    byDate.set(
+      end,
+      paintDepartureTransitionDay(byDate.get(end) ?? emptyDay(end), loc, arrivalCity),
+    );
+  }
 
-    if (day.date === end && end !== rangeStart && arrivalCity) {
-      return paintDepartureTransitionDay(day, loc, arrivalCity);
-    }
-
-    return {
-      ...day,
-      primaryCity: loc,
-      secondaryCity: null,
-      primaryShare: 1,
-      dayType: day.dayType === "buffer" ? "buffer" : "trip",
-    };
-  });
-  return result.filter((d) => d.primaryCity.trim() || d.secondaryCity?.trim());
+  result = [...byDate.values()]
+    .filter((day) => day.primaryCity.trim() || day.secondaryCity?.trim())
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return result;
 }
 
 /** Paint location on a calendar range without clearing the rest of the trip. */
@@ -686,7 +702,15 @@ export function paintLocationDayRange(
 
   if (startHalf === "full" && endHalf === "full") {
     return clearLocationSpillAfterCheckout(
-      paintLocationFullCalendarDays(days, rangeStart, end, loc, transitionContextDays),
+      paintLocationFullCalendarDays(
+        days,
+        rangeStart,
+        end,
+        loc,
+        startHalf,
+        endHalf,
+        transitionContextDays,
+      ),
       end,
       loc,
     );
