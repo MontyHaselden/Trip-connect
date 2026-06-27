@@ -893,4 +893,138 @@ describe("presence eligibility", () => {
     const eligible = eligibleParticipantIdsForLine(line, graph, roster, presence);
     assert.deepEqual(eligible.sort(), ["p-amanda", "p-kaleb"]);
   });
+
+  it("includes trip participants on home outbound/return flights without painting home city on calendar", async () => {
+    const { buildParticipantPresenceMap, eligibleParticipantIdsForLine } = await import(
+      "./presence"
+    );
+    const graph = {
+      ...miniGraph(),
+      basics: {
+        ...miniGraph().basics,
+        startDate: "2026-12-05",
+        endDate: "2026-12-21",
+        departureCity: "Christchurch",
+        returnCity: "Christchurch",
+      },
+      dayPlacesByGroupId: {
+        main: [
+          {
+            date: "2026-12-05",
+            primaryCity: "Tokyo, Japan",
+            secondaryCity: null,
+            primaryShare: 1,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+          {
+            date: "2026-12-21",
+            primaryCity: "Tokyo, Japan",
+            secondaryCity: null,
+            primaryShare: 1,
+            dayType: "trip",
+            includeBuffer: false,
+          },
+        ],
+      },
+      outboundLegs: [
+        {
+          id: "leg-out",
+          transportType: "plane",
+          bookingStatus: "planned",
+          travelDate: "2026-12-05",
+          arrivalDate: "2026-12-05",
+          departureTime: null,
+          arrivalTime: null,
+          fromCity: "Christchurch, New Zealand",
+          toCity: "Tokyo, Japan",
+          fromStation: null,
+          toStation: null,
+          operator: null,
+          referenceNumber: null,
+          flightNumber: null,
+          notes: null,
+          originGroupId: "main",
+          transportProductId: "product-chc-tokyo",
+          billingMode: "product",
+        },
+      ],
+      returnLegs: [
+        {
+          id: "leg-ret",
+          transportType: "plane",
+          bookingStatus: "planned",
+          travelDate: "2026-12-21",
+          arrivalDate: "2026-12-21",
+          departureTime: null,
+          arrivalTime: null,
+          fromCity: "Tokyo, Japan",
+          toCity: "Christchurch, New Zealand",
+          fromStation: null,
+          toStation: null,
+          operator: null,
+          referenceNumber: null,
+          flightNumber: null,
+          notes: null,
+          originGroupId: "main",
+          transportProductId: "product-chc-tokyo",
+          billingMode: "product",
+        },
+      ],
+      transportProducts: [
+        {
+          id: "product-chc-tokyo",
+          kind: "flight_package",
+          name: "CHC to Tokyo return",
+          participantIds: [],
+          notes: null,
+        },
+      ],
+      intercityLegs: [],
+    } as TripEntityGraph;
+    const roster = {
+      participants: [
+        {
+          id: "p-amanda",
+          fullName: "Amanda",
+          role: "student",
+          inCostSplit: true,
+          groupIds: ["main"],
+          roomId: null,
+        },
+        {
+          id: "p-sam",
+          fullName: "Sam",
+          role: "student",
+          inCostSplit: true,
+          groupIds: ["main"],
+          roomId: null,
+        },
+      ],
+      groups: [{ id: "main", name: "Main" }],
+      rooms: [],
+    };
+    const presence = buildParticipantPresenceMap(graph, roster);
+    const line = {
+      id: "line-package",
+      sortOrder: 0,
+      category: "transport" as const,
+      description: "CHC to Tokyo return",
+      notes: null,
+      totalAmountCents: 0,
+      currency: "NZD",
+      quantity: null,
+      allocationRuleType: "equal_present" as const,
+      allocationRulePayload: {},
+      linkedStayId: null,
+      linkedTransportLegId: null,
+      linkedTransportProductId: "product-chc-tokyo",
+      linkedActivityId: null,
+      scope: "presence" as const,
+      supplierPaymentStatus: null,
+      ...defaultCostLineFinanceFields(),
+    };
+    const eligible = eligibleParticipantIdsForLine(line, graph, roster, presence);
+    assert.deepEqual(eligible.sort(), ["p-amanda", "p-sam"]);
+  });
 });

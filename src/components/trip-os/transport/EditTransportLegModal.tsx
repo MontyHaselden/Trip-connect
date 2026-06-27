@@ -226,6 +226,62 @@ export function EditTransportLegModal(props: {
     }
   }
 
+  function resolveBillingForSave(): {
+    commands: TripCommand[];
+    transportProductId: string | null;
+    billingMode: "single" | "product";
+  } {
+    const commands: TripCommand[] = [];
+    let transportProductId: string | null = null;
+    let billingMode: "single" | "product" = "single";
+
+    if (billingChoice === "package" && isPlane) {
+      if (packageTarget === "new") {
+        transportProductId = newId();
+        commands.push({
+          type: "addTransportProduct",
+          product: {
+            id: transportProductId,
+            kind: "flight_package",
+            name: newProductName.trim() || "Return flights",
+            participantIds: [],
+          },
+        });
+      } else {
+        transportProductId = packageTarget;
+      }
+      billingMode = "product";
+    } else if (billingChoice === "new") {
+      transportProductId = newId();
+      const kind = defaultProductKind(draft!);
+      commands.push({
+        type: "addTransportProduct",
+        product: {
+          id: transportProductId,
+          kind,
+          name: newProductName.trim() || transportProductKindLabel(kind),
+          participantIds: [],
+        },
+      });
+      billingMode = "product";
+    } else if (billingChoice === "existing" && productId) {
+      transportProductId = productId;
+      billingMode = "product";
+    }
+
+    return { commands, transportProductId, billingMode };
+  }
+
+  function draftWithBilling(
+    billing: ReturnType<typeof resolveBillingForSave>,
+  ): TransportLegDraft | IntercityLegDraft {
+    return {
+      ...draft!,
+      transportProductId: billing.transportProductId,
+      billingMode: billing.billingMode,
+    };
+  }
+
   async function removeLeg() {
     if (!draft || !props.bucket) return;
     const route = legRouteLabel(draft, props.graph);
@@ -264,60 +320,24 @@ export function EditTransportLegModal(props: {
         window.alert("Choose at least one traveller for this leg.");
         return;
       }
-      const ok = await dispatchAndWait(
-        buildGroupedTransportLegCommands({
-          draft,
+      const billing = resolveBillingForSave();
+      const ok = await dispatchAndWait([
+        ...billing.commands,
+        ...buildGroupedTransportLegCommands({
+          draft: draftWithBilling(billing),
           bucket: props.bucket,
           groupedLegTargets: props.groupedLegTargets,
           selectedGroupIds,
         }),
-      );
+      ]);
       if (ok) props.onClose();
       return;
     }
 
-    const commands: TripCommand[] = [];
-    let nextProductId: string | null = null;
-    let billingMode: "single" | "product" = "single";
-
-    if (billingChoice === "package" && isPlane) {
-      if (packageTarget === "new") {
-        nextProductId = newId();
-        commands.push({
-          type: "addTransportProduct",
-          product: {
-            id: nextProductId,
-            kind: "flight_package",
-            name: newProductName.trim() || "Return flights",
-            participantIds: [],
-          },
-        });
-      } else {
-        nextProductId = packageTarget;
-      }
-      billingMode = "product";
-    } else if (billingChoice === "new") {
-      nextProductId = newId();
-      const kind = defaultProductKind(draft);
-      commands.push({
-        type: "addTransportProduct",
-        product: {
-          id: nextProductId,
-          kind,
-          name: newProductName.trim() || transportProductKindLabel(kind),
-          participantIds: [],
-        },
-      });
-      billingMode = "product";
-    } else if (billingChoice === "existing" && productId) {
-      nextProductId = productId;
-      billingMode = "product";
-    }
-
+    const billing = resolveBillingForSave();
+    const commands: TripCommand[] = [...billing.commands];
     const patch: Partial<IntercityLegDraft> = {
-      ...draft,
-      transportProductId: nextProductId,
-      billingMode,
+      ...draftWithBilling(billing),
     };
 
     if ("intercityFromCity" in draft) {
@@ -336,7 +356,7 @@ export function EditTransportLegModal(props: {
       targetBucket: targetBucket !== props.bucket ? targetBucket : undefined,
     });
 
-    if (billingChoice === "package" && isPlane && nextProductId && pairedLegId) {
+    if (billingChoice === "package" && isPlane && billing.transportProductId && pairedLegId) {
       const paired = findLegPlacement(props.graph, pairedLegId);
       if (paired && paired.leg.id !== draft.id) {
         commands.push({
@@ -345,7 +365,7 @@ export function EditTransportLegModal(props: {
           bucket: paired.bucket,
           legId: pairedLegId,
           patch: {
-            transportProductId: nextProductId,
+            transportProductId: billing.transportProductId,
             billingMode: "product",
           },
         });
@@ -356,6 +376,8 @@ export function EditTransportLegModal(props: {
     if (ok) props.onClose();
   }
 
+  const showPassBilling = !isPlane;
+  const showFlightBilling = !isGrouped && isPlane;
   const packageNeedsPair = billingChoice === "package" && isPlane && packageTarget === "new";
   const saveDisabled =
     props.saving ||
@@ -374,7 +396,7 @@ export function EditTransportLegModal(props: {
           <div className="min-w-0">
             <h3 className="truncate text-base font-semibold text-zinc-900">{routeTitle}</h3>
             <p className="text-xs text-zinc-500">
-              {isGrouped ? "Edit route and travellers" : "Edit transport"}
+              {isGrouped ? "Edit route, billing, and travellers" : "Edit transport"}
             </p>
           </div>
           <button
@@ -413,7 +435,7 @@ export function EditTransportLegModal(props: {
             </div>
           ) : null}
 
-          {!isGrouped && (showFlightRole || isPlane) ? (
+          {showPassBilling || showFlightBilling ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               {showFlightRole ? (
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -549,7 +571,7 @@ export function EditTransportLegModal(props: {
             </label>
           ) : null}
 
-          {!isGrouped && billingChoice === "existing" && !isPlane ? (
+          {billingChoice === "existing" && !isPlane ? (
             <select
               value={productId}
               onChange={(e) => setProductId(e.target.value)}
@@ -564,7 +586,7 @@ export function EditTransportLegModal(props: {
             </select>
           ) : null}
 
-          {!isGrouped && billingChoice === "new" && !isPlane ? (
+          {billingChoice === "new" && !isPlane ? (
             <input
               value={newProductName}
               onChange={(e) => setNewProductName(e.target.value)}

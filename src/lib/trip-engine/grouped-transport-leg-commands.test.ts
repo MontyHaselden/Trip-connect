@@ -66,4 +66,25 @@ describe("buildGroupedTransportLegCommands", () => {
       ["leg-m"],
     );
   });
+
+  it("applies transport product billing on every grouped leg update", () => {
+    const commands = buildGroupedTransportLegCommands({
+      draft: {
+        ...draft,
+        transportProductId: "jr-pass",
+        billingMode: "product",
+      },
+      bucket: "intercity",
+      groupedLegTargets: targets,
+      selectedGroupIds: ["g-amanda", "g-kaleb", "g-mia"],
+    });
+
+    const updates = commands.filter((command) => command.type === "updateTransportLeg");
+    assert.equal(updates.length, 3);
+    for (const command of updates) {
+      if (command.type !== "updateTransportLeg") continue;
+      assert.equal(command.patch.transportProductId, "jr-pass");
+      assert.equal(command.patch.billingMode, "product");
+    }
+  });
 });

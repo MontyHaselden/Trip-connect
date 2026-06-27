@@ -288,6 +288,59 @@ export function participantCalendarFollowsTransportLeg(
   return false;
 }
 
+function tripHomeCity(graph: TripEntityGraph): string {
+  return (graph.basics.returnCity || graph.basics.departureCity || "").trim();
+}
+
+/** Outbound / return legs from the trip home city — not painted on in-country calendars. */
+function isTripGatewayTransportLeg(graph: TripEntityGraph, legId: string): boolean {
+  const leg = findTransportLeg(graph, legId);
+  if (!leg) return false;
+
+  const isOutbound = graph.outboundLegs.some((row) => row.id === legId);
+  if (isOutbound) {
+    const home = graph.basics.departureCity?.trim();
+    if (!home) return false;
+    const { fromKey, fromRaw } = transportLegEndpoints(leg);
+    return cityMatchesPlace(home, fromKey, fromRaw);
+  }
+
+  const isReturn = graph.returnLegs.some((row) => row.id === legId);
+  if (isReturn) {
+    const home = tripHomeCity(graph);
+    if (!home) return false;
+    const { toKey, toRaw } = transportLegEndpoints(leg);
+    return cityMatchesPlace(home, toKey, toRaw);
+  }
+
+  return false;
+}
+
+function participantEligibleForTripGatewayLeg(
+  plan: ResolvedParticipantPlan,
+  graph: TripEntityGraph,
+  leg: Pick<TransportLegDraft, "id" | "travelDate" | "fromCity" | "toCity"> & {
+    intercityFromCity?: string;
+    intercityToCity?: string;
+  },
+): boolean {
+  const travelDate = leg.travelDate?.trim();
+  if (!travelDate) return true;
+
+  const { startDate, endDate } = graph.basics;
+  if (travelDate < startDate || travelDate > endDate) return false;
+
+  const { toKey, toRaw } = transportLegEndpoints(leg);
+  if (
+    plan.mode === "overlay" &&
+    overlayParticipantHasConflictingPersonalLeg(plan, graph, travelDate, toKey, toRaw)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 /** True when a participant's calendar follows this transport leg. */
 export function participantUsesTransportLeg(
   plan: ResolvedParticipantPlan,
@@ -306,6 +359,10 @@ export function participantUsesTransportLeg(
   const legOrigin = leg.originGroupId?.trim();
   if (graph && legOrigin && legOrigin !== graph.mainGroupId) {
     return plan.legIds.has(leg.id);
+  }
+
+  if (graph && isTripGatewayTransportLeg(graph, leg.id)) {
+    return participantEligibleForTripGatewayLeg(plan, graph, leg);
   }
 
   return participantCalendarFollowsTransportLeg(plan, leg, graph);

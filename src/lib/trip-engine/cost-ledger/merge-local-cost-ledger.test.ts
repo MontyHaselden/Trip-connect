@@ -129,6 +129,36 @@ describe("localCostLedgerIsAhead", () => {
     assert.equal(localCostLedgerIsAhead(local, server), false);
   });
 
+  it("detects pinned allocations missing from a stale server snapshot", () => {
+    const line = manualLine("meals-1", "Meals");
+    line.category = "meals";
+    const local = emptyCostLedgerProjection();
+    local.lineItems = [{ ...line, totalAmountCents: 1_140_000 }];
+    local.lineAllocations = [
+      {
+        lineItemId: "meals-1",
+        allocations: { p1: 60_000, p2: 60_000 },
+        eligibleParticipantIds: ["p1", "p2"],
+        pinnedParticipantIds: ["p1", "p2"],
+        balanced: true,
+        allocatedTotalCents: 1_140_000,
+      },
+    ];
+    const server = emptyCostLedgerProjection();
+    server.lineItems = [line];
+    server.lineAllocations = [
+      {
+        lineItemId: "meals-1",
+        allocations: {},
+        eligibleParticipantIds: ["p1", "p2"],
+        pinnedParticipantIds: [],
+        balanced: true,
+        allocatedTotalCents: 0,
+      },
+    ];
+    assert.equal(localCostLedgerIsAhead(local, server), true);
+  });
+
   it("detects linked activity rows missing from a stale server snapshot", () => {
     const local = emptyCostLedgerProjection();
     local.lineItems = [linkedActivityLine("server-line-1", "act-1", "Skytree")];
@@ -194,5 +224,39 @@ describe("mergePreferLocalCostLedger", () => {
     const merged = mergePreferLocalCostLedger(local, server, { graph: emptyGraph() });
     assert.equal(merged?.lineItems.length, 1);
     assert.equal(merged?.lineItems[0]?.id, "db-line-1");
+  });
+
+  it("keeps pinned allocations when a stale server refresh returns zeros", () => {
+    const line = manualLine("meals-1", "Meals");
+    line.category = "meals";
+    const server = emptyCostLedgerProjection();
+    server.lineItems = [line];
+    server.lineAllocations = [
+      {
+        lineItemId: "meals-1",
+        allocations: {},
+        eligibleParticipantIds: ["p1", "p2"],
+        pinnedParticipantIds: [],
+        balanced: true,
+        allocatedTotalCents: 0,
+      },
+    ];
+    const local = emptyCostLedgerProjection();
+    local.lineItems = [{ ...line, totalAmountCents: 1_140_000 }];
+    local.lineAllocations = [
+      {
+        lineItemId: "meals-1",
+        allocations: { p1: 60_000, p2: 60_000 },
+        eligibleParticipantIds: ["p1", "p2"],
+        pinnedParticipantIds: ["p1", "p2"],
+        balanced: true,
+        allocatedTotalCents: 1_140_000,
+      },
+    ];
+
+    const merged = mergePreferLocalCostLedger(local, server);
+    assert.equal(merged?.lineItems[0]?.totalAmountCents, 1_140_000);
+    assert.equal(merged?.lineAllocations[0]?.allocatedTotalCents, 1_140_000);
+    assert.deepEqual(merged?.lineAllocations[0]?.pinnedParticipantIds, ["p1", "p2"]);
   });
 });

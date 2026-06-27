@@ -275,7 +275,13 @@ export function useTripOsEngine(tripId: string) {
         body.costLedger,
         graph,
         {
-          forceKeepLocal: financePatchInFlightRef.current > 0,
+          forceKeepLocal:
+            financePatchInFlightRef.current > 0 ||
+            localCostLedgerIsAhead(
+              dataRef.current?.costLedger,
+              body.costLedger,
+              graph,
+            ),
         },
       );
       const roster = body.rosterSummary ?? EMPTY_ROSTER;
@@ -372,7 +378,13 @@ export function useTripOsEngine(tripId: string) {
         hydrated.costLedger,
         graph,
         {
-          forceKeepLocal: financePatchInFlightRef.current > 0,
+          forceKeepLocal:
+            financePatchInFlightRef.current > 0 ||
+            localCostLedgerIsAhead(
+              dataRef.current?.costLedger,
+              hydrated.costLedger,
+              graph,
+            ),
         },
       );
       const roster =

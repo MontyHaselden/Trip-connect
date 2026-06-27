@@ -2,7 +2,7 @@ import { isManualFinanceLine } from "./finance-sections";
 import { isOptimisticFinanceLineId } from "./optimistic-finance-patch";
 import { linkedEntityExistsInGraph } from "./prune-cost-ledger-orphans";
 import type { TripEntityGraph } from "../types";
-import type { CostLedgerProjection, CostLineItemDraft } from "./types";
+import type { CostLedgerProjection, CostLineItemDraft, LineAllocationResult } from "./types";
 
 export function primaryLinkKey(line: CostLineItemDraft): string | null {
   if (line.linkedActivityId) return `activity:${line.linkedActivityId}`;
@@ -110,6 +110,58 @@ export function pruneRunawayLocalFinanceLines(
   };
 }
 
+/** Local pinned per-person amounts not yet reflected on the server snapshot. */
+export function localAllocIsAheadOfServer(
+  local: LineAllocationResult,
+  server: LineAllocationResult | undefined,
+): boolean {
+  if (!server) {
+    return local.pinnedParticipantIds.length > 0 || local.allocatedTotalCents > 0;
+  }
+  if (local.pinnedParticipantIds.length > server.pinnedParticipantIds.length) return true;
+  if (local.allocatedTotalCents > server.allocatedTotalCents) return true;
+  for (const participantId of local.pinnedParticipantIds) {
+    if ((local.allocations[participantId] ?? 0) > (server.allocations[participantId] ?? 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function localHasUnsyncedPinnedAllocations(
+  local: CostLedgerProjection,
+  server: CostLedgerProjection,
+): boolean {
+  const serverByLine = new Map(server.lineAllocations.map((row) => [row.lineItemId, row]));
+  return local.lineAllocations.some((row) =>
+    localAllocIsAheadOfServer(row, serverByLine.get(row.lineItemId)),
+  );
+}
+
+function preferAheadLineAllocation(
+  local: LineAllocationResult | undefined,
+  server: LineAllocationResult | undefined,
+): LineAllocationResult | undefined {
+  if (!local) return server;
+  if (!server) return local;
+  if (localAllocIsAheadOfServer(local, server)) return local;
+  return server;
+}
+
+function mergeLineAllocations(
+  local: CostLedgerProjection,
+  server: CostLedgerProjection,
+): LineAllocationResult[] {
+  const localByLine = new Map(local.lineAllocations.map((row) => [row.lineItemId, row]));
+  const serverByLine = new Map(server.lineAllocations.map((row) => [row.lineItemId, row]));
+  const lineIds = new Set([...localByLine.keys(), ...serverByLine.keys()]);
+  return [...lineIds]
+    .map((lineItemId) =>
+      preferAheadLineAllocation(localByLine.get(lineItemId), serverByLine.get(lineItemId)),
+    )
+    .filter((row): row is LineAllocationResult => row != null);
+}
+
 /** True when local draft has finance rows or settings the server snapshot does not yet include. */
 export function localCostLedgerIsAhead(
   local: CostLedgerProjection | null | undefined,
@@ -135,7 +187,10 @@ export function localCostLedgerIsAhead(
   ) {
     return true;
   }
-  return localHasUnsyncedLinkedLines(local, server, graph);
+  return (
+    localHasUnsyncedLinkedLines(local, server, graph) ||
+    localHasUnsyncedPinnedAllocations(local, server)
+  );
 }
 
 /**
@@ -156,7 +211,8 @@ export function mergePreferLocalCostLedger(
   if (localCostLedgerIsRunawayDuplicate(prunedLocal, server)) return server;
 
   const ahead = localCostLedgerIsAhead(prunedLocal, server, graph);
-  if (!ahead) return server;
+  const allocationAhead = localHasUnsyncedPinnedAllocations(prunedLocal, server);
+  if (!ahead && !allocationAhead) return server;
 
   const serverIds = new Set(server.lineItems.map((line) => line.id));
   const linkedOnServer = serverLinkKeys(server);
@@ -167,22 +223,46 @@ export function mergePreferLocalCostLedger(
     if (linkKey && linkedOnServer.has(linkKey)) return false;
     return isOptimisticFinanceLineId(line.id) || !serverIds.has(line.id);
   });
-  if (!localOnlyLines.length && !hasOptimisticFinanceSections(local.settings)) {
+  if (
+    !localOnlyLines.length &&
+    !hasOptimisticFinanceSections(local.settings) &&
+    !allocationAhead
+  ) {
     return server;
   }
 
   const localOnlyIds = new Set(localOnlyLines.map((line) => line.id));
   const localById = new Map(prunedLocal.lineItems.map((line) => [line.id, line]));
+  const localAllocByLine = new Map(
+    prunedLocal.lineAllocations.map((row) => [row.lineItemId, row]),
+  );
+  const serverAllocByLine = new Map(
+    server.lineAllocations.map((row) => [row.lineItemId, row]),
+  );
 
   const mergedLineItems = [
-    ...server.lineItems.map((line) => localById.get(line.id) ?? line),
+    ...server.lineItems.map((line) => {
+      const localLine = localById.get(line.id);
+      if (!localLine) return line;
+      const localAlloc = localAllocByLine.get(line.id);
+      if (
+        localAlloc &&
+        localAllocIsAheadOfServer(localAlloc, serverAllocByLine.get(line.id)) &&
+        localLine.totalAmountCents > line.totalAmountCents
+      ) {
+        return localLine;
+      }
+      return localLine.totalAmountCents > line.totalAmountCents ? localLine : line;
+    }),
     ...localOnlyLines.filter((line) => !serverIds.has(line.id)),
   ];
 
-  const mergedAllocations = [
-    ...server.lineAllocations.filter((row) => !localOnlyIds.has(row.lineItemId)),
-    ...prunedLocal.lineAllocations.filter((row) => localOnlyIds.has(row.lineItemId)),
-  ];
+  const mergedAllocations = allocationAhead
+    ? mergeLineAllocations(prunedLocal, server)
+    : [
+        ...server.lineAllocations.filter((row) => !localOnlyIds.has(row.lineItemId)),
+        ...prunedLocal.lineAllocations.filter((row) => localOnlyIds.has(row.lineItemId)),
+      ];
 
   const serverSectionIds = new Set(
     server.settings.financeCustomSections.map((section) => section.id),
