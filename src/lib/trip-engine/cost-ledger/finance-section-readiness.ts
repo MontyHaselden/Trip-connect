@@ -7,7 +7,8 @@ import {
 } from "./finance-sections";
 import { effectiveLineTotalCents } from "./finance-grid-totals";
 import { isAllocationBalanced } from "./smart-split";
-import { allTransportLegs } from "./transport-finance-product";
+import { allTransportLegs, canonicalPersonalTransportLegId } from "./transport-finance-product";
+import { transportLegIdsForFinancePresence } from "./presence";
 import { financeSeedAccommodationStays } from "./accommodation-finance-leg";
 import type { CostLedgerProjection, CostLineItemDraft, LineAllocationResult } from "./types";
 import type { TripEntityGraph } from "../types";
@@ -292,9 +293,11 @@ export function stayFinanceLineId(
 export function transportLegFinanceLineId(
   leg: { id: string; transportProductId?: string | null },
   ledger: CostLedgerProjection | null | undefined,
+  graph?: TripEntityGraph | null,
 ): string | null {
   if (!ledger) return null;
-  return linkedLinesForTransportLeg(leg, ledger)[0]?.id ?? null;
+  const legId = graph ? canonicalPersonalTransportLegId(graph, leg.id) : leg.id;
+  return linkedLinesForTransportLeg({ ...leg, id: legId }, ledger)[0]?.id ?? null;
 }
 
 export function activityFinanceLineId(
@@ -400,6 +403,12 @@ export function transportLegFinanceAttentionById(
 
     if (line.linkedTransportLegId) {
       map.set(line.linkedTransportLegId, line.id);
+      for (const siblingId of transportLegIdsForFinancePresence(
+        graph,
+        line.linkedTransportLegId,
+      )) {
+        map.set(siblingId, line.id);
+      }
       continue;
     }
 

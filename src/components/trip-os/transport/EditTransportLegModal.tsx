@@ -18,10 +18,16 @@ import { personalGroupIdForParticipant } from "@/lib/trip-engine/person-lens";
 import type { TripEntityGraph, RosterSummary } from "@/lib/trip-engine/types";
 import { transportProductKindLabel } from "@/lib/trip-engine/transport-product-defaults";
 import {
+  lastTripPersistSucceeded,
+  waitForTripPersist,
+} from "@/lib/trip-os/persist-queue";
+import {
   newId,
+  TRANSPORT_TYPES,
   type IntercityLegDraft,
   type TransportLegDraft,
   type TransportProductKind,
+  type TransportType,
 } from "@/lib/host/wizard/types";
 
 type LegBucket = "outbound" | "return" | "intercity";
@@ -31,6 +37,19 @@ const chipOn = "bg-violet-600 text-white";
 const chipOff = "bg-zinc-100 text-zinc-800 hover:bg-zinc-200";
 const fieldClass =
   "h-9 w-full rounded-lg border border-zinc-200 bg-white px-2.5 text-sm text-zinc-900";
+
+const TRANSPORT_LABELS: Record<TransportType, string> = {
+  unsure: "Unsure",
+  plane: "Plane",
+  train: "Train",
+  bus: "Bus",
+  coach: "Coach",
+  ferry: "Ferry",
+  car: "Car",
+  taxi: "Taxi / shuttle",
+  walking: "Walking",
+  other: "Other",
+};
 
 function defaultProductKind(leg: TransportLegDraft): TransportProductKind {
   if (leg.transportType === "plane") return "flight_package";
@@ -153,6 +172,50 @@ export function EditTransportLegModal(props: {
     );
   }
 
+  function changeTransportType(transportType: TransportType) {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const next: TransportLegDraft | IntercityLegDraft = { ...prev, transportType };
+      if (transportType === "plane" && prev.transportType !== "plane") {
+        next.transportProductId = null;
+        next.billingMode = "single";
+      } else if (transportType !== "plane" && prev.transportType === "plane") {
+        next.transportProductId = null;
+        next.billingMode = "single";
+        next.flightNumber = null;
+        next.arrivalDate = null;
+      } else if (
+        transportType === "train" &&
+        prev.transportType !== "train" &&
+        prev.transportProductId
+      ) {
+        const product = products.find((row) => row.id === prev.transportProductId);
+        if (product && product.kind === "flight_package") {
+          next.transportProductId = null;
+          next.billingMode = "single";
+        }
+      }
+      return next;
+    });
+    if (transportType === "plane") {
+      setBillingChoice("single");
+      setProductId("");
+    } else if (transportType === "train") {
+      setBillingChoice("single");
+    }
+  }
+
+  async function dispatchAndWait(commands: TripCommand[]): Promise<boolean> {
+    const dispatched = await props.onDispatch(commands);
+    if (!dispatched) return false;
+    await waitForTripPersist(props.graph.tripId);
+    if (lastTripPersistSucceeded(props.graph.tripId) === false) {
+      window.alert("Could not save that change. Your edits are kept on this device — try again.");
+      return false;
+    }
+    return true;
+  }
+
   function selectFlightPackage() {
     setBillingChoice("package");
     if (!pairedLegId) {
@@ -189,7 +252,7 @@ export function EditTransportLegModal(props: {
             legId: draft.id,
           },
         ];
-    const ok = await props.onDispatch(commands);
+    const ok = await dispatchAndWait(commands);
     if (ok) props.onClose();
   }
 
@@ -201,7 +264,7 @@ export function EditTransportLegModal(props: {
         window.alert("Choose at least one traveller for this leg.");
         return;
       }
-      const ok = await props.onDispatch(
+      const ok = await dispatchAndWait(
         buildGroupedTransportLegCommands({
           draft,
           bucket: props.bucket,
@@ -289,7 +352,7 @@ export function EditTransportLegModal(props: {
       }
     }
 
-    const ok = await props.onDispatch(commands);
+    const ok = await dispatchAndWait(commands);
     if (ok) props.onClose();
   }
 
@@ -509,6 +572,21 @@ export function EditTransportLegModal(props: {
               placeholder="e.g. JR Pass"
             />
           ) : null}
+
+          <label className="block text-xs text-zinc-600">
+            <span className="mb-1 block font-medium text-zinc-800">Transport type</span>
+            <select
+              value={draft.transportType}
+              onChange={(e) => changeTransportType(e.target.value as TransportType)}
+              className={fieldClass}
+            >
+              {TRANSPORT_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {TRANSPORT_LABELS[type]}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <TransportLegForm
             leg={draft}

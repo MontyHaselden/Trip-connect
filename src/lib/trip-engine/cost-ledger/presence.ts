@@ -4,7 +4,7 @@ import type { TransportLegDraft } from "@/lib/host/wizard/types";
 import type { TransportProductDraft } from "@/lib/host/wizard/types";
 import { legsForTransportProduct } from "@/lib/host/locations/transport-products";
 
-import { transportLegDisplayKey } from "../group-transport-legs-for-display";
+import { transportLegRouteKey } from "../group-transport-legs-for-display";
 import { allTransportLegs } from "./transport-finance-product";
 
 import { costSplitParticipants } from "./allocate";
@@ -112,10 +112,10 @@ export function transportLegIdsForFinancePresence(
   if (!leg) return [legId];
   const origin = leg.originGroupId ?? graph.mainGroupId;
   if (origin === graph.mainGroupId) return [legId];
-  const key = transportLegDisplayKey(leg);
+  const key = transportLegRouteKey(leg);
   return allTransportLegs(graph)
     .filter((row) => (row.originGroupId ?? graph.mainGroupId) !== graph.mainGroupId)
-    .filter((row) => transportLegDisplayKey(row) === key)
+    .filter((row) => transportLegRouteKey(row) === key)
     .map((row) => row.id);
 }
 

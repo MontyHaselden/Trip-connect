@@ -1,5 +1,8 @@
 import type { IntercityLegDraft, TransportLegDraft } from "@/lib/host/wizard/types";
 import type { TripCommand } from "@/lib/trip-engine/commands";
+import {
+  sanitizeDayPlaceDraft,
+} from "@/lib/trip-engine/sanitize-day-place";
 
 function legEndpointCities(leg: TransportLegDraft | IntercityLegDraft): {
   fromCity: string;
@@ -48,6 +51,28 @@ function transportLegKey(
   ].join("|");
 }
 
+function mergeCoalescedDayPlaces(
+  existing: Extract<TripCommand, { type: "setDayPlaces" }>["days"],
+  incoming: Extract<TripCommand, { type: "setDayPlaces" }>["days"],
+): Extract<TripCommand, { type: "setDayPlaces" }>["days"] {
+  const byDate = new Map(
+    existing
+      .filter((day) => Boolean(day?.date))
+      .map((day) => [day.date, sanitizeDayPlaceDraft(day)]),
+  );
+  for (const day of incoming) {
+    if (!day?.date) continue;
+    byDate.set(day.date, sanitizeDayPlaceDraft(day));
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function updateTransportLegKey(
+  command: Extract<TripCommand, { type: "updateTransportLeg" }>,
+): string {
+  return [command.groupId, command.bucket, command.legId].join("|");
+}
+
 /** Collapse rapid duplicate calendar/transport intents before a persist batch. */
 export function coalescePendingCommands(commands: TripCommand[]): TripCommand[] {
   if (commands.length <= 1) return commands;
@@ -56,6 +81,8 @@ export function coalescePendingCommands(commands: TripCommand[]): TripCommand[] 
   const paintIndex = new Map<string, number>();
   const needIndex = new Map<string, number>();
   const addLegIndex = new Map<string, number>();
+  const updateLegIndex = new Map<string, number>();
+  const dayPlacesIndex = new Map<string, number>();
 
   for (const command of commands) {
     if (command.type === "paintDayRange") {
@@ -92,6 +119,46 @@ export function coalescePendingCommands(commands: TripCommand[]): TripCommand[] 
         result[existing] = command;
       } else {
         addLegIndex.set(key, result.length);
+        result.push(command);
+      }
+      continue;
+    }
+
+    if (command.type === "updateTransportLeg") {
+      const key = updateTransportLegKey(command);
+      const existing = updateLegIndex.get(key);
+      if (existing !== undefined) {
+        const prev = result[existing];
+        if (prev?.type === "updateTransportLeg") {
+          result[existing] = {
+            ...command,
+            patch: { ...prev.patch, ...command.patch },
+          };
+        } else {
+          result.push(command);
+        }
+      } else {
+        updateLegIndex.set(key, result.length);
+        result.push(command);
+      }
+      continue;
+    }
+
+    if (command.type === "setDayPlaces") {
+      const key = command.groupId;
+      const existing = dayPlacesIndex.get(key);
+      if (existing !== undefined) {
+        const prev = result[existing];
+        if (prev?.type === "setDayPlaces") {
+          result[existing] = {
+            ...command,
+            days: mergeCoalescedDayPlaces(prev.days, command.days),
+          };
+        } else {
+          result.push(command);
+        }
+      } else {
+        dayPlacesIndex.set(key, result.length);
         result.push(command);
       }
       continue;

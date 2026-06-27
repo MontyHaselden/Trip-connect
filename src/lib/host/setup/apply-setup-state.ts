@@ -161,7 +161,24 @@ async function syncOverlayOps(tripId: string, ops: GroupOverlayOpDraft[]) {
     if (existingIds.has(op.id)) {
       await db.update(groupOverlayOps).set(values).where(eq(groupOverlayOps.id, op.id));
     } else {
-      await db.insert(groupOverlayOps).values({ id: op.id, ...values });
+      await db
+        .insert(groupOverlayOps)
+        .values({ id: op.id, ...values })
+        .onConflictDoUpdate({
+          target: [
+            groupOverlayOps.tripId,
+            groupOverlayOps.groupId,
+            groupOverlayOps.entityType,
+            groupOverlayOps.baseEntityId,
+            groupOverlayOps.op,
+          ],
+          set: {
+            replacementEntityId: sql`excluded.replacement_entity_id`,
+            effectiveFrom: sql`excluded.effective_from`,
+            effectiveTo: sql`excluded.effective_to`,
+            updatedAt: sql`excluded.updated_at`,
+          },
+        });
     }
   }
 }

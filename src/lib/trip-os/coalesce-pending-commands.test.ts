@@ -67,4 +67,51 @@ describe("coalescePendingCommands", () => {
     assert.equal(out.length, 3);
     assert.equal(out[2]?.type, "unhidePendingTransportNeed");
   });
+
+  it("merges updateTransportLeg patches for the same leg", () => {
+    const out = coalescePendingCommands([
+      {
+        type: "updateTransportLeg",
+        groupId: "g-amanda",
+        bucket: "intercity",
+        legId: "leg-1",
+        patch: { fromCity: "Tokyo" },
+      },
+      {
+        type: "updateTransportLeg",
+        groupId: "g-amanda",
+        bucket: "intercity",
+        legId: "leg-1",
+        patch: { transportType: "plane", toCity: "Tottori" },
+      },
+    ]);
+
+    assert.equal(out.length, 1);
+    assert.equal(out[0]?.type, "updateTransportLeg");
+    if (out[0]?.type === "updateTransportLeg") {
+      assert.equal(out[0].patch.fromCity, "Tokyo");
+      assert.equal(out[0].patch.transportType, "plane");
+      assert.equal(out[0].patch.toCity, "Tottori");
+    }
+  });
+
+  it("merges setDayPlaces for the same group", () => {
+    const out = coalescePendingCommands([
+      {
+        type: "setDayPlaces",
+        groupId: "g-amanda",
+        days: [{ date: "2026-12-06", primaryCity: "Tokyo", dayType: "trip" }],
+      },
+      {
+        type: "setDayPlaces",
+        groupId: "g-amanda",
+        days: [{ date: "2026-12-07", primaryCity: "Tottori", dayType: "trip" }],
+      },
+    ]);
+
+    assert.equal(out.length, 1);
+    if (out[0]?.type === "setDayPlaces") {
+      assert.equal(out[0].days.length, 2);
+    }
+  });
 });

@@ -393,7 +393,7 @@ export function TransportSection(props: {
   function openLegFinance(leg: TransportLegDraft | IntercityLegDraft) {
     const lineId =
       transportFinanceAttention.get(leg.id) ??
-      transportLegFinanceLineId(leg, props.costLedger);
+      transportLegFinanceLineId(leg, props.costLedger, props.graph);
     props.onOpenFinanceSection?.("transport", lineId ?? undefined);
   }
 
@@ -401,7 +401,7 @@ export function TransportSection(props: {
     if (!props.onCostsAction) return;
     const lineId =
       transportFinanceAttention.get(leg.id) ??
-      transportLegFinanceLineId(leg, props.costLedger);
+      transportLegFinanceLineId(leg, props.costLedger, props.graph);
     if (!lineId) return;
     await props.onCostsAction({
       action: "updateLine",

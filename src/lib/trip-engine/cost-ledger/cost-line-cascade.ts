@@ -9,6 +9,10 @@ import {
   type FinanceDismissedEntityType,
 } from "./finance-dismissals";
 import { duplicatePersonalStayIdsForFinance } from "./accommodation-finance-leg";
+import {
+  canonicalPersonalTransportLegId,
+  duplicatePersonalTransportLegIdsForFinance,
+} from "./transport-finance-product";
 
 export async function deleteCostLinesForStay(tripId: string, stayId: string): Promise<void> {
   await db
@@ -146,6 +150,56 @@ export async function purgeDuplicatePersonalStayFinanceLines(
     await db.delete(costLineItems).where(eq(costLineItems.id, id));
   }
   return orphanIds.length;
+}
+
+/** Remove or relink finance rows for personal transport legs that share one route. */
+export async function purgeDuplicatePersonalTransportFinanceLines(
+  tripId: string,
+  graph: TripEntityGraph,
+): Promise<number> {
+  const duplicateLegIds = duplicatePersonalTransportLegIdsForFinance(graph);
+  if (!duplicateLegIds.size) return 0;
+
+  const lines = await db
+    .select({
+      id: costLineItems.id,
+      linkedTransportLegId: costLineItems.linkedTransportLegId,
+    })
+    .from(costLineItems)
+    .where(eq(costLineItems.tripId, tripId));
+
+  const lineByLegId = new Map(
+    lines
+      .filter((line) => line.linkedTransportLegId)
+      .map((line) => [line.linkedTransportLegId!, line.id]),
+  );
+
+  let changes = 0;
+  for (const line of lines) {
+    const legId = line.linkedTransportLegId;
+    if (!legId || !duplicateLegIds.has(legId)) continue;
+
+    const canonicalLegId = canonicalPersonalTransportLegId(graph, legId);
+    if (canonicalLegId === legId) continue;
+
+    const canonicalLineId = lineByLegId.get(canonicalLegId);
+    if (canonicalLineId) {
+      await db.delete(costLineItems).where(eq(costLineItems.id, line.id));
+      lineByLegId.delete(legId);
+      changes++;
+      continue;
+    }
+
+    await db
+      .update(costLineItems)
+      .set({ linkedTransportLegId: canonicalLegId, updatedAt: new Date() })
+      .where(eq(costLineItems.id, line.id));
+    lineByLegId.set(canonicalLegId, line.id);
+    lineByLegId.delete(legId);
+    changes++;
+  }
+
+  return changes;
 }
 
 export function graphEntityIdSets(graph: {

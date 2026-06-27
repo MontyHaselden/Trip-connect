@@ -346,14 +346,27 @@ export function useTripOsEngine(tripId: string) {
   const applyResponse = useCallback(
     (
       body: SetupEngineResponse & { inviteCode?: string },
-      context?: { viewGroupId?: string; rebuildView?: boolean; skipTransportRepair?: boolean },
+      context?: {
+        viewGroupId?: string;
+        rebuildView?: boolean;
+        skipTransportRepair?: boolean;
+        /** Replay in-flight optimistic commands on top of a server snapshot. */
+        preservePending?: boolean;
+      },
     ) => {
       const hydrated = hydrateSetupEngineResponse(body);
       const viewGroupId =
         context?.viewGroupId ?? activeGroupIdRef.current ?? hydrated.graph.mainGroupId;
-      const graph = context?.skipTransportRepair
+      const pending = context?.preservePending ? [...pendingCommandsRef.current] : [];
+      let graph = context?.skipTransportRepair
         ? hydrated.graph
         : withRepairedTransportGraph(hydrated.graph);
+      let replayWarnings = hydrated.warnings ?? [];
+      if (pending.length) {
+        const replay = applyCommandBatch(graph, pending);
+        graph = replay.graph;
+        replayWarnings = [...replayWarnings, ...replay.warnings];
+      }
       const mergedCostLedger = mergeCostLedgerForGraph(
         dataRef.current?.costLedger,
         hydrated.costLedger,
@@ -396,7 +409,9 @@ export function useTripOsEngine(tripId: string) {
         adminProjection:
           hydrated.adminProjection ?? buildTripAdminProjection(view.graph, roster),
         readiness: view.readiness,
-        warnings: hydrated.warnings ?? dataRef.current?.warnings ?? [],
+        warnings: replayWarnings.length
+          ? replayWarnings
+          : (hydrated.warnings ?? dataRef.current?.warnings ?? []),
         conflicts: view.conflicts,
         inviteCode: hydrated.inviteCode ?? dataRef.current?.inviteCode ?? "",
         rosterSummary: roster,
@@ -405,8 +420,8 @@ export function useTripOsEngine(tripId: string) {
       setActiveGroupId(viewGroupId);
       setData(next);
       persistLocalSnapshot(graph, {
-        pendingCommands: [],
-        pendingGroupId: "",
+        pendingCommands: pending,
+        pendingGroupId: pending.length ? pendingGroupIdRef.current : "",
         activeGroupId: viewGroupId,
         inviteCode: next.inviteCode,
         rosterSummary: next.rosterSummary,
@@ -731,6 +746,7 @@ export function useTripOsEngine(tripId: string) {
         applyResponse(body as SetupEngineResponse, {
           viewGroupId: activeGroupIdRef.current || persistGroupId,
           rebuildView: false,
+          preservePending: pendingCommandsRef.current.length > 0,
         });
       } else {
         await fetchServerMetadata(loadGenerationRef.current, activeGroupIdRef.current, {

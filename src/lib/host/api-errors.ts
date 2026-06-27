@@ -53,6 +53,9 @@ function sanitizeHostApiErrorMessage(raw: string, fallback: string) {
     if (/group_day_places/i.test(msg)) {
       return "Could not save calendar paint for that day. Refresh and try again.";
     }
+    if (/group_overlay_ops/i.test(msg)) {
+      return "Could not save personal calendar overlay. Try again in a moment.";
+    }
     return "That value is already in use.";
   }
 

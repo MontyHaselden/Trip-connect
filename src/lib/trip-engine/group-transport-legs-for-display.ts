@@ -40,18 +40,22 @@ function legEndpoints(leg: TransportLegDraft | IntercityLegDraft): {
   return { from: leg.fromCity.trim(), to: leg.toCity.trim() };
 }
 
-/** Identity for collapsing identical personal legs across participants. */
-export function transportLegDisplayKey(leg: ScopedTransportLeg): string {
+/** Shared journey identity — date + endpoints (+ flight number when set). */
+export function transportLegRouteKey(leg: ScopedTransportLeg): string {
   const { from, to } = legEndpoints(leg);
   const flight =
     leg.transportType === "plane" ? (leg.flightNumber?.trim() ?? "") : "";
   return [
-    leg.transportType,
     leg.travelDate?.trim() ?? "",
     locationPaletteKey(from),
     locationPaletteKey(to),
     flight,
   ].join("|");
+}
+
+/** @deprecated alias — use {@link transportLegRouteKey}. */
+export function transportLegDisplayKey(leg: ScopedTransportLeg): string {
+  return transportLegRouteKey(leg);
 }
 
 /** Merge identical personal-scope legs into one shared section (whole group unchanged). */
@@ -75,7 +79,7 @@ export function groupPersonalTransportScopesForDisplay(
 
   const byKey = new Map<string, Pair[]>();
   for (const pair of pairs) {
-    const key = transportLegDisplayKey(pair.leg);
+    const key = transportLegRouteKey(pair.leg);
     const bucket = byKey.get(key) ?? [];
     bucket.push(pair);
     byKey.set(key, bucket);

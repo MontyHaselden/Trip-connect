@@ -1,7 +1,7 @@
 import type { TripEntityGraph } from "../types";
 import { legsForTransportProduct } from "@/lib/host/locations/transport-products";
 import { transportLegRouteLabel } from "../transport-route-label";
-import { transportLegDisplayKey } from "../group-transport-legs-for-display";
+import { transportLegRouteKey } from "../group-transport-legs-for-display";
 import type { TransportProductDraft } from "@/lib/host/wizard/types";
 
 import type { CostLineItemDraft } from "./types";
@@ -72,17 +72,69 @@ export function financeSeedTransportLegs(
       kept.push(leg);
       continue;
     }
-    const key = transportLegDisplayKey(leg);
+    const key = transportLegRouteKey(leg);
     const bucket = personalByKey.get(key) ?? [];
     bucket.push(leg);
     personalByKey.set(key, bucket);
   }
 
   for (const bucket of personalByKey.values()) {
-    kept.push(bucket[0]!);
+    kept.push(pickCanonicalPersonalTransportLeg(bucket)!);
   }
 
   return kept;
+}
+
+function pickCanonicalPersonalTransportLeg(
+  legs: Array<TripEntityGraph["outboundLegs"][number]>,
+): (typeof legs)[number] | undefined {
+  if (!legs.length) return undefined;
+  return [...legs].sort((a, b) => a.id.localeCompare(b.id))[0];
+}
+
+/** Personal leg ids that share a route with another participant (extra finance rows). */
+export function duplicatePersonalTransportLegIdsForFinance(
+  graph: TripEntityGraph,
+): Set<string> {
+  const mainGroupId = graph.mainGroupId;
+  const byKey = new Map<string, string[]>();
+
+  for (const leg of allTransportLegs(graph)) {
+    const origin = leg.originGroupId ?? mainGroupId;
+    if (origin === mainGroupId) continue;
+    const key = transportLegRouteKey(leg);
+    const bucket = byKey.get(key) ?? [];
+    bucket.push(leg.id);
+    byKey.set(key, bucket);
+  }
+
+  const duplicate = new Set<string>();
+  for (const ids of byKey.values()) {
+    if (ids.length <= 1) continue;
+    const sorted = [...ids].sort();
+    for (const id of sorted.slice(1)) {
+      duplicate.add(id);
+    }
+  }
+  return duplicate;
+}
+
+/** Stable leg id used for one shared finance row per personal route. */
+export function canonicalPersonalTransportLegId(
+  graph: TripEntityGraph,
+  legId: string,
+): string {
+  const leg = allTransportLegs(graph).find((row) => row.id === legId);
+  if (!leg) return legId;
+  const origin = leg.originGroupId ?? graph.mainGroupId;
+  if (origin === graph.mainGroupId) return legId;
+
+  const key = transportLegRouteKey(leg);
+  const siblings = allTransportLegs(graph).filter((row) => {
+    const rowOrigin = row.originGroupId ?? graph.mainGroupId;
+    return rowOrigin !== graph.mainGroupId && transportLegRouteKey(row) === key;
+  });
+  return pickCanonicalPersonalTransportLeg(siblings)?.id ?? legId;
 }
 
 export function buildTransportProductSeeds(

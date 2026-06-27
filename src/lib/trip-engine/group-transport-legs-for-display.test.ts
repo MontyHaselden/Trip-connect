@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   groupPersonalTransportScopesForDisplay,
-  transportLegDisplayKey,
+  transportLegRouteKey,
 } from "./group-transport-legs-for-display";
 import type { ScopedTransportLeg, TripScopeSection } from "./section-scope-lists";
 
@@ -68,12 +68,26 @@ describe("groupPersonalTransportScopesForDisplay", () => {
     a.flightNumber = "NH123";
     const b = leg("l2", "2026-12-06", "Tokyo", "Tottori", "g-kaleb");
     b.flightNumber = "NH456";
-    assert.notEqual(transportLegDisplayKey(a), transportLegDisplayKey(b));
+    assert.notEqual(transportLegRouteKey(a), transportLegRouteKey(b));
 
     const display = groupPersonalTransportScopesForDisplay([
       scope("g-amanda", "Amanda", [a]),
       scope("g-kaleb", "Kaleb", [b]),
     ]);
     assert.equal(display.length, 2);
+  });
+
+  it("groups the same route even when transport types differ", () => {
+    const train = leg("l1", "2026-12-06", "Tokyo", "Tottori", "g-kaleb");
+    train.transportType = "train";
+    const plane = leg("l2", "2026-12-06", "Tokyo", "Tottori", "g-mia");
+    plane.transportType = "plane";
+
+    const display = groupPersonalTransportScopesForDisplay([
+      scope("g-kaleb", "Kaleb", [train]),
+      scope("g-mia", "Mia", [plane]),
+    ]);
+    assert.equal(display.length, 1);
+    assert.equal(display[0]?.groupedLegTargets?.length, 2);
   });
 });
