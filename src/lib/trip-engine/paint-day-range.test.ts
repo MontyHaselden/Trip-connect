@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { applyHalfDayPaint, clearAllLocationInSpan, paintLocationDayRange, paintLocationDayRangeProtected } from "./paint-day-range";
+import { applyHalfDayPaint, clearAllLocationInSpan, paintLocationDayRange, paintLocationDayRangeProtected, repairIntercityTransitionDays } from "./paint-day-range";
 import { clearCalendarContentInRange } from "@/lib/host/setup/clear-day-content";
 import type { TripSetupState } from "@/lib/host/setup/types";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
@@ -329,6 +329,35 @@ describe("clearAllLocationInSpan", () => {
     const dec6 = out.find((d) => d.date === "2026-12-06");
     assert.equal(dec6?.primaryCity, "Tokyo");
     assert.equal(dec6?.secondaryCity, null);
+    assert.equal(dec6?.primaryShare, 0.5);
+  });
+});
+
+describe("repairIntercityTransitionDays", () => {
+  it("repairs stale full incoming city into a travel split", () => {
+    const days = [
+      {
+        date: "2026-12-05",
+        primaryCity: "",
+        secondaryCity: "Tokyo",
+        primaryShare: 0.5,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-06",
+        primaryCity: "Kagoshima",
+        secondaryCity: null,
+        primaryShare: 1,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+      day("2026-12-07", "Kagoshima"),
+    ];
+    const out = repairIntercityTransitionDays(days);
+    const dec6 = out.find((d) => d.date === "2026-12-06");
+    assert.equal(dec6?.primaryCity, "Tokyo");
+    assert.equal(dec6?.secondaryCity, "Kagoshima");
     assert.equal(dec6?.primaryShare, 0.5);
   });
 });

@@ -139,4 +139,18 @@ describe("uncoveredTripDays", () => {
     ];
     assert.equal(uncoveredTripDays(days, "2000-01-01", "2000-01-01").length, 0);
   });
+
+  it("treats secondary-only half days as covered", () => {
+    const days = [
+      {
+        date: "2026-12-05",
+        primaryCity: "",
+        secondaryCity: "Tokyo",
+        primaryShare: 0.5,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+    ];
+    assert.equal(uncoveredTripDays(days, "2026-12-05", "2026-12-13").length, 0);
+  });
 });

@@ -1,4 +1,6 @@
 import type { TripSetupState } from "@/lib/host/setup/types";
+
+import { repairIntercityTransitionDays } from "./paint-day-range";
 import type { TripEntityGraph } from "./types";
 
 const EMPTY_SUMMARIES: Pick<
@@ -20,7 +22,13 @@ const EMPTY_SUMMARIES: Pick<
 };
 
 export function setupStateToGraph(tripId: string, state: TripSetupState): TripEntityGraph {
-  return { ...state, tripId, ...EMPTY_SUMMARIES };
+  const dayPlacesByGroupId = Object.fromEntries(
+    Object.entries(state.dayPlacesByGroupId).map(([groupId, days]) => [
+      groupId,
+      repairIntercityTransitionDays(days),
+    ]),
+  );
+  return { ...state, dayPlacesByGroupId, tripId, ...EMPTY_SUMMARIES };
 }
 
 export function graphToSetupState(graph: TripEntityGraph): TripSetupState {

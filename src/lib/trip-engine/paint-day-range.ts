@@ -134,6 +134,72 @@ function departureEdgeDay(date: string, city: string): DayPlaceDraft {
   };
 }
 
+function startingCityOnDay(day: DayPlaceDraft): string {
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  if (!primary && secondary) return secondary;
+  return primary || secondary;
+}
+
+function isFullSingleCityDay(day: DayPlaceDraft): boolean {
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const share = day.primaryShare ?? 1;
+  return Boolean(primary && !secondary && share >= 0.99);
+}
+
+function isTravelSplitDayPaint(day: DayPlaceDraft): boolean {
+  const primary = day.primaryCity.trim();
+  const secondary = day.secondaryCity?.trim() ?? "";
+  const share = day.primaryShare ?? 1;
+  return Boolean(primary && secondary && share < 0.99);
+}
+
+function paintDepartureTransitionDay(
+  day: DayPlaceDraft,
+  location: string,
+  nextCity: string,
+): DayPlaceDraft {
+  return {
+    date: day.date,
+    primaryCity: location.trim(),
+    secondaryCity: nextCity.trim(),
+    primaryShare: DEFAULT_HALF_SHARE,
+    dayType: day.dayType === "buffer" ? "buffer" : "travel",
+    includeBuffer: day.includeBuffer,
+  };
+}
+
+/** Fix stale full-day rows that should be intercity travel splits between neighbours. */
+export function repairIntercityTransitionDays(days: DayPlaceDraft[]): DayPlaceDraft[] {
+  const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date));
+  const byDate = new Map(sorted.map((day) => [day.date, { ...day }]));
+
+  for (let i = 0; i < sorted.length; i++) {
+    const date = sorted[i]!.date;
+    const day = byDate.get(date)!;
+    if (isTravelSplitDayPaint(day) || !isFullSingleCityDay(day)) continue;
+
+    const loc = day.primaryCity.trim();
+    const prev = i > 0 ? byDate.get(sorted[i - 1]!.date) : undefined;
+    const prevCity = prev ? endingCityOnDay(prev) : "";
+    if (prevCity && !locationsMatch(prevCity, loc)) {
+      byDate.set(date, paintArrivalTransitionDay(day, loc, prevCity));
+      continue;
+    }
+
+    const next = i < sorted.length - 1 ? byDate.get(sorted[i + 1]!.date) : undefined;
+    const nextCity = next ? startingCityOnDay(next) : "";
+    if (nextCity && !locationsMatch(nextCity, loc)) {
+      byDate.set(date, paintDepartureTransitionDay(day, loc, nextCity));
+    }
+  }
+
+  return [...byDate.values()]
+    .filter((day) => day.primaryCity.trim() || day.secondaryCity?.trim())
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 /** Remove location paint across a selection using the same night span as apply/paint. */
 export function clearAllLocationInSpan(
   days: DayPlaceDraft[],
@@ -504,6 +570,25 @@ function priorDepartCityForRangeStart(
   return null;
 }
 
+function nextArrivalCityForRangeEnd(
+  days: DayPlaceDraft[],
+  rangeEnd: string,
+  location: string,
+): string | null {
+  const byDate = new Map(days.map((d) => [d.date, d]));
+  const next = byDate.get(addDays(rangeEnd, 1));
+  if (next) {
+    const city = startingCityOnDay(next);
+    if (city && !locationsMatch(city, location)) return city;
+  }
+  const current = byDate.get(rangeEnd);
+  if (current) {
+    const secondary = current.secondaryCity?.trim() ?? "";
+    if (secondary && !locationsMatch(secondary, location)) return secondary;
+  }
+  return null;
+}
+
 function paintArrivalTransitionDay(
   day: DayPlaceDraft,
   location: string,
@@ -545,12 +630,17 @@ function paintLocationFullCalendarDays(
   }
 
   const departCity = priorDepartCityForRangeStart(result, rangeStart, loc);
+  const arrivalCity = nextArrivalCityForRangeEnd(result, end, loc);
 
   result = result.map((day) => {
     if (day.date < rangeStart || day.date > end) return day;
 
     if (day.date === rangeStart && departCity) {
       return paintArrivalTransitionDay(day, loc, departCity);
+    }
+
+    if (day.date === end && end !== rangeStart && arrivalCity) {
+      return paintDepartureTransitionDay(day, loc, arrivalCity);
     }
 
     return {

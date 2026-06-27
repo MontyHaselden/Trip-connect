@@ -5,6 +5,8 @@ import {
 } from "@/lib/host/wizard/location-stays";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
 
+import { repairIntercityTransitionDays } from "./paint-day-range";
+
 function emptyDayPlace(date: string): DayPlaceDraft {
   return {
     date,
@@ -164,5 +166,5 @@ export function resolveDisplayDayPlaces(
     return stored ?? derived ?? emptyDayPlace(date);
   });
 
-  return fillIncompleteSplitDays(resolved);
+  return repairIntercityTransitionDays(fillIncompleteSplitDays(resolved));
 }

@@ -111,6 +111,10 @@ export function tripDayInBounds(
   return date >= startDate && date <= endDate;
 }
 
+function dayHasLocationPaint(day: DayPlaceDraft): boolean {
+  return Boolean(day.primaryCity.trim() || day.secondaryCity?.trim());
+}
+
 /** Uncovered days inside the trip date range only — not the wider scroll calendar. */
 export function uncoveredTripDays(
   days: DayPlaceDraft[],
@@ -121,7 +125,7 @@ export function uncoveredTripDays(
   return days.filter(
     (d) =>
       tripDayInBounds(d.date, startDate, endDate) &&
-      !d.primaryCity.trim() &&
+      !dayHasLocationPaint(d) &&
       d.dayType !== "buffer",
   );
 }
