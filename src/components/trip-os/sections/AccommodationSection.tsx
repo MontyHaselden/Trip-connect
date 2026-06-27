@@ -340,6 +340,7 @@ export function AccommodationSection(props: {
         }}
         tripId={props.tripId}
         inviteCode={props.inviteCode}
+        graph={props.graph}
         hotelStays={hotelStaysForRooms}
         roster={roster}
         initialStayId={roomsModalStayId}

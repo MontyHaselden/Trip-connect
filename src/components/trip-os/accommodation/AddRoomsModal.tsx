@@ -3,9 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { hostJson } from "@/components/host/shared/host-fetch";
+import type { AccommodationAssignmentRow } from "@/lib/host/accommodation-assignment-queries";
+import {
+  assignedRoomNameByParticipantAtStay,
+  eligibleStudentsForStay,
+  groupStayRoomAssignments,
+  hotelNameMatchesStay,
+} from "@/lib/host/accommodation/hotel-stay-rooms";
 import type { AccommodationStayDraft } from "@/lib/host/wizard/types";
 import { newId } from "@/lib/host/wizard/types";
-import type { RosterSummary } from "@/lib/trip-engine/types";
+import type { RosterSummary, TripEntityGraph } from "@/lib/trip-engine/types";
 
 import { TripInput } from "../shared/TripInput";
 import { TripPrimaryButton } from "../shared/TripPrimaryButton";
@@ -26,15 +33,10 @@ type AccommodationPayload = {
       participants: Array<{ id: string; fullName: string }>;
     }>;
   }>;
-  unassignedParticipants: Array<{ id: string; fullName: string }>;
 };
 
 function emptyRow(): RoomRow {
   return { key: newId(), roomName: "", participantIds: [] };
-}
-
-function normalizeHotelKey(name: string): string {
-  return name.trim().toLowerCase();
 }
 
 export function AddRoomsModal(props: {
@@ -42,6 +44,7 @@ export function AddRoomsModal(props: {
   onClose: () => void;
   tripId: string;
   inviteCode: string;
+  graph: TripEntityGraph;
   hotelStays: AccommodationStayDraft[];
   roster: RosterSummary;
   initialStayId?: string | null;
@@ -50,21 +53,32 @@ export function AddRoomsModal(props: {
   const api = `/api/host/${encodeURIComponent(props.inviteCode)}`;
   const [stayId, setStayId] = useState(props.hotelStays[0]?.id ?? "");
   const [rows, setRows] = useState<RoomRow[]>([emptyRow()]);
-  const [data, setData] = useState<AccommodationPayload | null>(null);
+  const [assignments, setAssignments] = useState<AccommodationAssignmentRow[]>([]);
+  const [legacyHotels, setLegacyHotels] = useState<AccommodationPayload["hotels"]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const wasOpenRef = useRef(false);
+  const initialStayIdRef = useRef<string | null>(null);
 
   const selectedStay = props.hotelStays.find((s) => s.id === stayId) ?? props.hotelStays[0];
 
   const load = useCallback(async () => {
-    const body = await hostJson<AccommodationPayload>(`/api/trips/${props.tripId}/accommodation`);
-    setData(body);
+    const [assignmentsRes, accommodationRes] = await Promise.all([
+      fetch(`/api/trips/${props.tripId}/accommodation-assignments`),
+      hostJson<AccommodationPayload>(`/api/trips/${props.tripId}/accommodation`),
+    ]);
+    const assignmentsBody = await assignmentsRes.json();
+    if (!assignmentsRes.ok) {
+      throw new Error(assignmentsBody.error || "Failed to load room assignments");
+    }
+    setAssignments(assignmentsBody.assignments ?? []);
+    setLegacyHotels(accommodationRes.hotels ?? []);
   }, [props.tripId]);
 
   useEffect(() => {
     if (!props.open) {
       wasOpenRef.current = false;
+      initialStayIdRef.current = null;
       return;
     }
 
@@ -78,36 +92,68 @@ export function AddRoomsModal(props: {
       props.initialStayId && props.hotelStays.some((s) => s.id === props.initialStayId)
         ? props.initialStayId
         : props.hotelStays[0]?.id ?? "";
+    initialStayIdRef.current = preferred;
     setStayId(preferred);
-    load().catch(() => setData(null));
+    load().catch(() => {
+      setAssignments([]);
+      setLegacyHotels([]);
+    });
   }, [props.open, props.initialStayId, props.hotelStays, load]);
 
-  const hotelGroup = useMemo(() => {
-    if (!data || !selectedStay?.name?.trim()) return null;
-    const key = normalizeHotelKey(selectedStay.name);
-    return (
-      data.hotels.find((h) => normalizeHotelKey(h.name) === key) ??
-      data.hotels.find((h) => normalizeHotelKey(h.name).startsWith(key)) ??
-      null
-    );
-  }, [data, selectedStay]);
+  useEffect(() => {
+    if (!props.open || !wasOpenRef.current) return;
+    if (stayId === initialStayIdRef.current) return;
+    setRows([emptyRow()]);
+    setError(null);
+  }, [props.open, stayId]);
 
-  const students = useMemo(
-    () => props.roster.participants.filter((p) => p.role === "student"),
-    [props.roster.participants],
-  );
+  const students = useMemo(() => {
+    if (!selectedStay) return [];
+    return eligibleStudentsForStay(props.graph, props.roster, selectedStay);
+  }, [props.graph, props.roster, selectedStay]);
+
+  const existingRooms = useMemo(() => {
+    if (!selectedStay) return [];
+    const fromAssignments = groupStayRoomAssignments(assignments, selectedStay.id, props.roster);
+    if (fromAssignments.length) return fromAssignments;
+
+    const legacyHotel = legacyHotels.find((hotel) =>
+      hotelNameMatchesStay(hotel.name, selectedStay),
+    );
+    if (!legacyHotel) return [];
+
+    const studentIds = new Set(students.map((student) => student.id));
+    return legacyHotel.rooms
+      .map((room) => ({
+        roomId: room.id,
+        roomName: room.roomName,
+        participantIds: room.participants
+          .map((participant) => participant.id)
+          .filter((participantId) => studentIds.has(participantId)),
+        participants: room.participants.filter((participant) => studentIds.has(participant.id)),
+      }))
+      .filter((room) => room.participants.length > 0);
+  }, [assignments, legacyHotels, props.roster, selectedStay, students]);
 
   const assignedRoomByParticipant = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const hotel of data?.hotels ?? []) {
-      for (const room of hotel.rooms) {
-        for (const p of room.participants) {
-          map.set(p.id, room.roomName);
-        }
+    if (!selectedStay) return new Map<string, string>();
+    const map = assignedRoomNameByParticipantAtStay(assignments, selectedStay.id);
+    if (map.size) return map;
+
+    const legacyHotel = legacyHotels.find((hotel) =>
+      hotelNameMatchesStay(hotel.name, selectedStay),
+    );
+    if (!legacyHotel) return map;
+
+    const studentIds = new Set(students.map((student) => student.id));
+    for (const room of legacyHotel.rooms) {
+      for (const participant of room.participants) {
+        if (!studentIds.has(participant.id)) continue;
+        map.set(participant.id, room.roomName);
       }
     }
     return map;
-  }, [data]);
+  }, [assignments, legacyHotels, selectedStay, students]);
 
   const draftRoomByParticipant = useMemo(() => {
     const map = new Map<string, { rowKey: string; label: string }>();
@@ -157,6 +203,10 @@ export function AddRoomsModal(props: {
       setError("Choose a hotel stay first.");
       return;
     }
+    if (!selectedStay.checkInDate || !selectedStay.checkOutDate) {
+      setError("This stay is missing check-in or check-out dates.");
+      return;
+    }
     const valid = rows.filter((r) => r.roomName.trim());
     if (!valid.length) {
       setError("Add at least one room number or name.");
@@ -167,6 +217,7 @@ export function AddRoomsModal(props: {
     setError(null);
     const savedRowKeys = new Set<string>();
     const failures: string[] = [];
+    let workingAssignments = [...assignments];
 
     try {
       for (const row of valid) {
@@ -181,11 +232,34 @@ export function AddRoomsModal(props: {
             }),
           });
           for (const participantId of row.participantIds) {
-            await hostJson(`${api}/participants/${participantId}`, {
-              method: "PATCH",
+            const existing = workingAssignments.filter(
+              (assignment) =>
+                assignment.stayId === selectedStay.id &&
+                assignment.participantId === participantId,
+            );
+            for (const assignment of existing) {
+              const res = await fetch(
+                `/api/trips/${props.tripId}/accommodation-assignments?id=${encodeURIComponent(assignment.id)}`,
+                { method: "DELETE" },
+              );
+              const body = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(body.error || "Could not update room assignment");
+              workingAssignments = workingAssignments.filter((item) => item.id !== assignment.id);
+            }
+
+            const res = await fetch(`/api/trips/${props.tripId}/accommodation-assignments`, {
+              method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ roomId: created.id }),
+              body: JSON.stringify({
+                stayId: selectedStay.id,
+                participantId,
+                roomId: created.id,
+                startDate: selectedStay.checkInDate,
+                endDate: selectedStay.checkOutDate,
+              }),
             });
+            const body = await res.json();
+            if (!res.ok) throw new Error(body.error || "Could not assign student to room");
           }
           savedRowKeys.add(row.key);
         } catch (err) {
@@ -289,14 +363,14 @@ export function AddRoomsModal(props: {
                 </label>
               ) : null}
 
-              {hotelGroup?.rooms.length ? (
+              {existingRooms.length ? (
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
                     Existing rooms
                   </p>
                   <ul className="mt-2 space-y-1.5 text-sm text-zinc-700">
-                    {hotelGroup.rooms.map((room) => (
-                      <li key={room.id}>
+                    {existingRooms.map((room) => (
+                      <li key={room.roomId}>
                         <span className="font-medium">Room {room.roomName}</span>
                         {room.participants.length ? (
                           <span className="text-zinc-500">
@@ -338,7 +412,7 @@ export function AddRoomsModal(props: {
                   {students.length ? (
                     <div className="mt-3">
                       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-                        Students
+                        Students on this stay
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {students.map((student) => {
@@ -380,7 +454,7 @@ export function AddRoomsModal(props: {
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-zinc-500">
-                      Add students in Users before assigning rooms.
+                      No students are on the calendar for this stay.
                     </p>
                   )}
                 </div>

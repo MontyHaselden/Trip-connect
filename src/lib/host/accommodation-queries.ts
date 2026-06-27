@@ -88,11 +88,12 @@ export async function loadAccommodationView(tripId: string) {
   for (const room of roster.rooms) {
     const hotelName = room.hotelName?.trim() || "Accommodation";
     const hotelAddress = room.hotelAddress ?? null;
-    const key =
-      [...hotelsByKey.keys()].find((k) => k.startsWith(hotelName.toLowerCase())) ??
-      normalizeHotelKey(hotelName, hotelAddress);
+    const key = normalizeHotelKey(hotelName, hotelAddress);
+    const exactKey = [...hotelsByKey.keys()].find(
+      (candidate) => candidate === key || candidate.startsWith(`${normalizeHotelKey(hotelName, null)}|`),
+    );
 
-    let group = hotelsByKey.get(key);
+    let group = exactKey ? hotelsByKey.get(exactKey) : hotelsByKey.get(key);
     if (!group) {
       group = {
         key,
