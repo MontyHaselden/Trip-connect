@@ -48,7 +48,7 @@ describe("applyHalfDayPaint", () => {
     assert.equal(out.find((d) => d.date === "2026-07-10")?.secondaryCity, "Paris, France");
     assert.equal(out.find((d) => d.date === "2026-07-10")?.primaryCity, "Bangkok");
     assert.equal(out.find((d) => d.date === "2026-07-16")?.primaryCity, "Paris, France");
-    assert.equal(out.find((d) => d.date === "2026-07-16")?.primaryShare, 1);
+    assert.ok((out.find((d) => d.date === "2026-07-16")?.primaryShare ?? 1) < 0.99);
     assert.equal(out.find((d) => d.date === "2026-07-17"), undefined);
   });
 
@@ -196,6 +196,45 @@ describe("applyHalfDayPaint", () => {
     assert.equal(dec13?.primaryCity, "Kagoshima");
     assert.equal(dec13?.secondaryCity, null);
     assert.equal(dec14?.primaryCity, "Hiroshima");
+  });
+
+  it("paints checkout morning on range end when selection starts on second half", () => {
+    const days = [
+      {
+        date: "2026-12-05",
+        primaryCity: "",
+        secondaryCity: "Tokyo",
+        primaryShare: 0.5,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+      {
+        date: "2026-12-06",
+        primaryCity: "Tokyo",
+        secondaryCity: null,
+        primaryShare: 0.5,
+        dayType: "trip" as const,
+        includeBuffer: false,
+      },
+    ];
+    const out = paintLocationDayRange(
+      days,
+      "2026-12-06",
+      "2026-12-13",
+      "Kagoshima",
+      "right",
+      "full",
+    );
+    const dec6 = out.find((d) => d.date === "2026-12-06");
+    const dec7 = out.find((d) => d.date === "2026-12-07");
+    const dec13 = out.find((d) => d.date === "2026-12-13");
+    assert.equal(dec6?.primaryCity, "Tokyo");
+    assert.equal(dec6?.secondaryCity, "Kagoshima");
+    assert.equal(dec7?.primaryCity, "Kagoshima");
+    assert.equal(dec7?.primaryShare, 1);
+    assert.equal(dec13?.primaryCity, "Kagoshima");
+    assert.ok((dec13?.primaryShare ?? 1) < 0.99);
+    assert.equal(dec13?.secondaryCity, null);
   });
 
   it("preserves departure city when painting from the second half of a travel day", () => {

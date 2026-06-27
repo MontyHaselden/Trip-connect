@@ -653,13 +653,19 @@ function paintLocationFullCalendarDays(
     startHalf,
     endHalf,
   });
+  const contextDays = ensureDaysInPaintRange(
+    transitionContextDays ?? days,
+    rangeStart,
+    end,
+  );
+  const departCity = priorDepartCityForRangeStart(contextDays, rangeStart, loc, transitionContextDays);
+  const arrivalCity = nextArrivalCityForRangeEnd(contextDays, end, loc, transitionContextDays);
+
   result = applyStayAlignedCityPaint(days, loc, bounds.checkIn, bounds.checkOut, {
     from: rangeStart,
     to: end,
   });
 
-  const departCity = priorDepartCityForRangeStart(result, rangeStart, loc, transitionContextDays);
-  const arrivalCity = nextArrivalCityForRangeEnd(result, end, loc, transitionContextDays);
   const byDate = new Map(result.map((day) => [day.date, day]));
 
   if (departCity) {
@@ -700,31 +706,32 @@ export function paintLocationDayRange(
     return paintLocationSingleDay(days, rangeStart, end, loc, startHalf, endHalf);
   }
 
-  if (startHalf === "full" && endHalf === "full") {
+  const spillAfterCheckout = endHalf === "right" ? addDays(end, 1) : end;
+
+  if (startHalf !== "full" && endHalf !== "full") {
     return clearLocationSpillAfterCheckout(
-      paintLocationFullCalendarDays(
+      paintLocationHalfAwareCalendarRange(
         days,
         rangeStart,
         end,
         loc,
         startHalf,
         endHalf,
-        transitionContextDays,
       ),
-      end,
+      spillAfterCheckout,
       loc,
     );
   }
 
-  const spillAfterCheckout = endHalf === "right" ? addDays(end, 1) : end;
   return clearLocationSpillAfterCheckout(
-    paintLocationHalfAwareCalendarRange(
+    paintLocationFullCalendarDays(
       days,
       rangeStart,
       end,
       loc,
       startHalf,
       endHalf,
+      transitionContextDays,
     ),
     spillAfterCheckout,
     loc,
