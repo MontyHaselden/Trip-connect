@@ -6,6 +6,8 @@ import type { TripCacheState } from "@/hooks/useTripCache";
 import type { ParticipantPhoto } from "@/lib/student/participant-photos";
 import type { DayWeatherSnapshot } from "@/types/activity-category";
 
+export type StudentAppTab = "today" | "my-trip";
+
 export type TodayDayNav = {
   scheduledDays: Array<{
     id: string;
@@ -48,6 +50,8 @@ export type TripAppContextValue = {
   setCalendarOpen: (open: boolean) => void;
   participantPhotos: ParticipantPhoto[];
   refreshPhotos: () => Promise<void>;
+  studentTab: StudentAppTab;
+  setStudentTab: (tab: StudentAppTab) => void;
 };
 
 export const TripAppContext = createContext<TripAppContextValue | null>(null);

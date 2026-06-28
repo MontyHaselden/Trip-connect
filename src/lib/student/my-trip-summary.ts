@@ -3,21 +3,15 @@ export function formatParticipantRole(role: string): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
-export function formatRoomGroupSummary(props: {
-  roomName?: string | null;
-  groups?: Array<{ name: string }>;
-}): string | null {
-  const parts: string[] = [];
-  if (props.roomName?.trim()) parts.push(props.roomName.trim());
-  const groupNames = (props.groups ?? [])
+export function formatGroupsSummary(
+  groups?: Array<{ name: string }>,
+): string | null {
+  const groupNames = (groups ?? [])
     .map((g) => g.name.trim())
     .filter(Boolean);
-  if (groupNames.length === 1) {
-    parts.push(groupNames[0]!);
-  } else if (groupNames.length > 1) {
-    parts.push(groupNames.join(" · "));
-  }
-  return parts.length ? parts.join(" · ") : null;
+  if (groupNames.length === 0) return null;
+  if (groupNames.length === 1) return groupNames[0]!;
+  return groupNames.join(" · ");
 }
 
 export function formatContactsSubtitle(

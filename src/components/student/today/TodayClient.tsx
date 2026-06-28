@@ -18,6 +18,7 @@ import {
   stayColor,
 } from "@/lib/host/locations/accommodation-colors";
 import { resolveAccommodationForDate } from "@/lib/student/resolve-accommodation-for-date";
+import { studentDayLocationLabel } from "@/lib/student/student-day-location";
 import { sortItemsByStartTime } from "@/lib/timeline/time-math";
 import { TodayBuildingBanner } from "@/components/student/today/TodayBuildingBanner";
 import { CompactDaySheet } from "@/components/student/today/CompactDaySheet";
@@ -82,13 +83,16 @@ function TodayContent() {
 
   const nightStay = useMemo(() => {
     if (!trip || !selectedDay || !cache.participantId) return null;
-    const acc = resolveAccommodationForDate(trip, cache.participantId, selectedDay.date);
+    const dayLocation = studentDayLocationLabel(selectedDay);
+    const acc = resolveAccommodationForDate(trip, cache.participantId, selectedDay.date, {
+      dayCityLabel: dayLocation,
+    });
     if (!acc?.name) return null;
     return {
       name: acc.name,
       color: stayColor({
         name: acc.name,
-        cityLabel: acc.cityLabel ?? selectedDay.cityLabel,
+        cityLabel: acc.cityLabel ?? dayLocation,
       }),
     };
   }, [trip, selectedDay, cache.participantId]);
@@ -167,7 +171,7 @@ function TodayContent() {
         dayReminders={dayReminders}
         tripTimezone={tripTz}
         dateISO={selectedDay.date}
-        cityLabel={selectedDay.cityLabel}
+        cityLabel={studentDayLocationLabel(selectedDay)}
         weather={selectedDay.weather}
         tripStartDate={trip.trip.startDate}
         isViewingToday={isViewingToday}

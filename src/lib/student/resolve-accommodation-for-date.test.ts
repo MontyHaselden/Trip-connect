@@ -80,6 +80,79 @@ describe("resolveAccommodationForDate", () => {
     assert.equal(acc?.name, "Everyone Hotel");
   });
 
+  it("does not treat check-out morning as a stay night", () => {
+    const acc = resolveAccommodationForDate(baseSnapshot, "p1", "2026-12-10");
+    assert.equal(acc, null);
+  });
+
+  it("prefers stay matching the day city when multiple overlap", () => {
+    const snapshot: PublishedTripSnapshotV1 = {
+      ...baseSnapshot,
+      accommodationStays: [
+        {
+          id: "stay-hiroshima",
+          cityLabel: "Hiroshima",
+          stayType: "hotel",
+          name: "The Knot",
+          address: "Hiroshima",
+          checkInDate: "2026-12-01",
+          checkOutDate: "2026-12-20",
+          visibilityMode: "everyone",
+          audienceType: "everyone",
+          audienceId: null,
+        },
+        {
+          id: "stay-kagoshima",
+          cityLabel: "Kagoshima",
+          stayType: "homestay",
+          name: "Homestays",
+          address: null,
+          checkInDate: "2026-12-06",
+          checkOutDate: "2026-12-14",
+          visibilityMode: "everyone",
+          audienceType: "everyone",
+          audienceId: null,
+        },
+      ],
+      accommodationAssignments: [],
+    };
+    const acc = resolveAccommodationForDate(snapshot, "p1", "2026-12-08", {
+      dayCityLabel: "Kagoshima",
+    });
+    assert.equal(acc?.name, "Homestays");
+  });
+
+  it("does not fall back to undated participant room hotel", () => {
+    const snapshot: PublishedTripSnapshotV1 = {
+      ...baseSnapshot,
+      accommodationStays: [],
+      accommodationAssignments: [],
+      rooms: [
+        {
+          id: "room-1",
+          roomName: "Boys 1",
+          hotelName: "The Knot",
+          hotelAddress: "Hiroshima",
+          nearestStation: null,
+          hotelPhone: null,
+          nearestStationNotes: null,
+          nearestBusStopName: null,
+          routeNotesToAccommodation: null,
+          staticMapUrl: null,
+          mapsUrl: null,
+          visibilityMode: "everyone",
+          audienceType: "everyone",
+          audienceId: null,
+        },
+      ],
+      participantRooms: [{ participantId: "p1", roomId: "room-1" }],
+    };
+    const acc = resolveAccommodationForDate(snapshot, "p1", "2026-12-08", {
+      dayCityLabel: "Kagoshima",
+    });
+    assert.equal(acc, null);
+  });
+
   it("works with participant-filtered student payload", () => {
     const filtered = filterSnapshotForParticipantV1(baseSnapshot, "p1");
     const acc = resolveAccommodationForDate(filtered, "p1", "2026-12-02");

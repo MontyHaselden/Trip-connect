@@ -5,13 +5,12 @@ import { usePathname } from "next/navigation";
 
 import { MyTripErrorBoundary } from "@/components/debug/MyTripErrorBoundary";
 import { useTripApp } from "@/components/layout/TripAppContext";
-import { resolveAccommodationForDate } from "@/lib/student/resolve-accommodation-for-date";
 import { TripNotReady } from "@/components/student/TripNotReady";
 import { PhotoGallerySheet } from "@/components/student/photos/PhotoGallerySheet";
 import { tripDebug } from "@/lib/debug/trip-debug";
 import {
   formatContactsSubtitle,
-  formatRoomGroupSummary,
+  formatGroupsSummary,
 } from "@/lib/student/my-trip-summary";
 import {
   hasMyTripProfile,
@@ -22,8 +21,6 @@ import {
   isTripConnectionError,
   TRIP_CONNECTION_ERROR_MESSAGE,
 } from "@/lib/student/trip-load-state";
-import { EmergencyCardBanner } from "@/components/student/my-trip/EmergencyCardBanner";
-import { EmergencyCardFullView } from "@/components/student/my-trip/EmergencyCardFullView";
 import { KeyContactsSheet } from "@/components/student/my-trip/KeyContacts";
 import { MyDetailsSheet } from "@/components/student/my-trip/MyDetails";
 import { MyTripMenuGroup } from "@/components/student/my-trip/MyTripMenuGroup";
@@ -33,17 +30,16 @@ import {
   MyTripPhotoSection,
   usePhotoGalleryByDay,
 } from "@/components/student/my-trip/MyTripPhotoSection";
-import { RoomGroupsSheet } from "@/components/student/my-trip/MyGroupsRooms";
+import { GroupsSheet } from "@/components/student/my-trip/MyGroupsRooms";
 import { PhraseCategoriesSheet } from "@/components/student/my-trip/PhraseCategoriesSheet";
 import { PhraseCategorySheet } from "@/components/student/my-trip/PhraseCategorySheet";
 
 type ActiveSheet =
   | "details"
-  | "room"
+  | "groups"
   | "contacts"
   | "phrases"
   | "gallery"
-  | "emergency"
   | null;
 
 function MyTripScroll({ children }: { children: React.ReactNode }) {
@@ -56,7 +52,7 @@ function MyTripScroll({ children }: { children: React.ReactNode }) {
 
 function MyTripPageContent() {
   const pathname = usePathname();
-  const { cache, participantPhotos, todayNav } = useTripApp();
+  const { cache, participantPhotos } = useTripApp();
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null);
   const [selectedPhraseCategoryId, setSelectedPhraseCategoryId] = useState<string | null>(
     null,
@@ -73,26 +69,12 @@ function MyTripPageContent() {
       !trip &&
       (cache.status === "up_to_date" || cache.status === "ready"));
 
-  const emergencyContacts = useMemo(() => {
-    if (!trip) return [];
-    const contacts = trip.contacts ?? [];
-    const leads = contacts.filter((c) => c.isEmergencyLead);
-    return leads.length ? leads : contacts;
-  }, [trip]);
-
-  const room = trip?.room
-    ? { roomName: trip.room.roomName, roommates: trip.room.roommates ?? [] }
-    : null;
   const groups = trip?.groups ?? [];
   const contacts = trip?.contacts ?? [];
   const phraseCategories = trip?.phraseCategories ?? [];
   const phrases = trip?.phrases ?? [];
 
-  const roomGroupSummary = formatRoomGroupSummary({
-    roomName: room?.roomName,
-    groups,
-  });
-  const hasRoomOrGroups = Boolean(room || groups.length);
+  const groupsSummary = formatGroupsSummary(groups);
 
   const phraseCategoryCount = useMemo(() => {
     const ids = new Set(phrases.map((p) => p.categoryId));
@@ -110,43 +92,6 @@ function MyTripPageContent() {
   );
 
   const galleryByDay = usePhotoGalleryByDay(trip?.days ?? [], participantPhotos);
-
-  const emergencyAccommodationDate =
-    todayNav?.selectedDateISO ?? trip?.days[0]?.date ?? trip?.trip.startDate ?? null;
-
-  const emergencyAccommodation = useMemo(() => {
-    if (!trip || !cache.participantId || !emergencyAccommodationDate) return null;
-    const acc = resolveAccommodationForDate(
-      trip,
-      cache.participantId,
-      emergencyAccommodationDate,
-    );
-    if (!acc) {
-      if (!trip.room) return null;
-      return {
-        name: trip.room.hotelName,
-        address: trip.room.hotelAddress,
-        phone: trip.room.hotelPhone ?? null,
-        nearestStation: trip.room.nearestStation,
-        nearestStationNotes: trip.room.nearestStationNotes ?? null,
-        nearestBusStopName: trip.room.nearestBusStopName ?? null,
-        routeNotes: trip.room.routeNotesToAccommodation ?? null,
-        mapsUrl: trip.room.mapsUrl ?? null,
-        staticMapUrl: trip.room.staticMapUrl ?? null,
-      };
-    }
-    return {
-      name: acc.name,
-      address: acc.address,
-      phone: acc.phone ?? acc.hotelPhone ?? null,
-      nearestStation: acc.nearestStation ?? null,
-      nearestStationNotes: acc.nearestStationNotes ?? null,
-      nearestBusStopName: acc.nearestBusStopName ?? null,
-      routeNotes: acc.routeNotesToAccommodation ?? null,
-      mapsUrl: acc.mapsUrl ?? null,
-      staticMapUrl: acc.staticMapUrl ?? null,
-    };
-  }, [trip, cache.participantId, emergencyAccommodationDate]);
 
   useEffect(() => {
     tripDebug("my-trip.mount", {
@@ -198,11 +143,8 @@ function MyTripPageContent() {
           tripName={trip.trip.name}
           fullName={trip.participant.fullName}
           role={trip.participant.role}
-          roomName={room?.roomName}
           groups={groups}
         />
-
-        <EmergencyCardBanner onOpen={() => setActiveSheet("emergency")} />
 
         <div>
           <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--student-text-muted)]">
@@ -214,11 +156,11 @@ function MyTripPageContent() {
               subtitle={trip.participant.phoneNumberE164}
               onClick={() => setActiveSheet("details")}
             />
-            {hasRoomOrGroups ? (
+            {groups.length > 0 ? (
               <MyTripMenuRow
-                title="My room & groups"
-                subtitle={roomGroupSummary ?? undefined}
-                onClick={() => setActiveSheet("room")}
+                title="My groups"
+                subtitle={groupsSummary ?? undefined}
+                onClick={() => setActiveSheet("groups")}
               />
             ) : null}
             <MyTripMenuRow
@@ -255,11 +197,10 @@ function MyTripPageContent() {
         participantId={trip.participant.id}
       />
 
-      <RoomGroupsSheet
-        open={activeSheet === "room"}
+      <GroupsSheet
+        open={activeSheet === "groups"}
         onClose={() => setActiveSheet(null)}
         groups={groups}
-        room={room}
       />
 
       <KeyContactsSheet
@@ -273,24 +214,6 @@ function MyTripPageContent() {
         onClose={() => setActiveSheet(null)}
         tripTimezone={trip.trip.timezone}
         galleryByDay={galleryByDay}
-      />
-
-      <EmergencyCardFullView
-        open={activeSheet === "emergency"}
-        onClose={() => setActiveSheet(null)}
-        tripName={trip.trip.name}
-        schoolName={trip.trip.schoolName}
-        studentName={trip.participant.fullName}
-        localEmergencyNumber={trip.trip.localEmergencyNumber ?? null}
-        schoolEmergencyPhone={trip.trip.schoolEmergencyPhone ?? null}
-        emergencyContacts={emergencyContacts.map((c) => ({
-          name: c.name,
-          role: c.role,
-          phoneNumber: c.phoneNumber,
-        }))}
-        accommodation={emergencyAccommodation}
-        phraseCategories={phraseCategories}
-        phrases={phrases}
       />
 
       <PhraseCategoriesSheet

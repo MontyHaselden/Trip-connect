@@ -114,6 +114,8 @@ export function ParticipantPreviewShell(props: {
         setCalendarOpen,
         participantPhotos: [],
         refreshPhotos: async () => {},
+        studentTab: tab,
+        setStudentTab: onTabChange,
       }}
     >
       <div
@@ -134,8 +136,27 @@ export function ParticipantPreviewShell(props: {
 
           <TripDayNavBridge />
 
-          <div key={tab} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {tab === "today" ? <TodayClient /> : <MyTripClient />}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div
+              className={
+                tab === "today"
+                  ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+                  : "hidden"
+              }
+              aria-hidden={tab !== "today"}
+            >
+              <TodayClient />
+            </div>
+            <div
+              className={
+                tab === "my-trip"
+                  ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+                  : "hidden"
+              }
+              aria-hidden={tab !== "my-trip"}
+            >
+              <MyTripClient />
+            </div>
           </div>
 
           {showTravelHeader ? <StudentDayNavBar /> : null}

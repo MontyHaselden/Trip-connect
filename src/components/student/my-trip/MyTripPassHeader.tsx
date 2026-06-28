@@ -1,19 +1,18 @@
 "use client";
 
 import {
+  formatGroupsSummary,
   formatParticipantRole,
-  formatRoomGroupSummary,
 } from "@/lib/student/my-trip-summary";
 
 export function MyTripPassHeader(props: {
   tripName: string;
   fullName: string;
   role: string;
-  roomName?: string | null;
   groups?: Array<{ name: string }>;
 }) {
-  const { tripName, fullName, role, roomName, groups } = props;
-  const summary = formatRoomGroupSummary({ roomName, groups });
+  const { tripName, fullName, role, groups } = props;
+  const summary = formatGroupsSummary(groups);
   const roleLabel = formatParticipantRole(role);
 
   return (

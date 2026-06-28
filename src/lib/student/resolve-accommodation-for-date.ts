@@ -11,6 +11,12 @@ import {
 import type { ParticipantVisibilityContext } from "@/lib/visibility/types";
 import { targetsForEntity } from "@/lib/visibility/types";
 
+import {
+  assignmentCoversDate,
+  stayCoversNightOnDate,
+  stayMatchesDayCity,
+} from "./student-day-location";
+
 function isParticipantFilteredTrip(
   snapshot: PublishedTripSnapshotV1 | ParticipantFilteredTripV1,
 ): snapshot is ParticipantFilteredTripV1 {
@@ -77,85 +83,69 @@ export function resolveAccommodationForDate(
   snapshot: PublishedTripSnapshotV1 | ParticipantFilteredTripV1,
   participantId: string,
   dateISO: string,
+  options?: { dayCityLabel?: string | null },
 ): ResolvedAccommodation | null {
   const ctx = buildParticipantContext(snapshot, participantId, dateISO);
   const assignments = snapshot.accommodationAssignments ?? [];
   const stays = snapshot.accommodationStays ?? [];
   const allTargets = snapshot.visibilityTargets ?? [];
-
-  const inRange = (start: string, end: string) => dateISO >= start && dateISO <= end;
+  const dayCityLabel = options?.dayCityLabel ?? null;
 
   const participantAssignment = assignments.find(
-    (a) => a.participantId === participantId && inRange(a.startDate, a.endDate),
+    (a) =>
+      a.participantId === participantId &&
+      assignmentCoversDate(a.startDate, a.endDate, dateISO),
   );
   if (participantAssignment) {
     return assignmentToResolved(participantAssignment, "assignment");
   }
 
   const groupAssignment = assignments.find(
-    (a) => a.groupId && ctx.groupIds.has(a.groupId) && inRange(a.startDate, a.endDate),
+    (a) =>
+      a.groupId &&
+      ctx.groupIds.has(a.groupId) &&
+      assignmentCoversDate(a.startDate, a.endDate, dateISO),
   );
   if (groupAssignment) {
     return assignmentToResolved(groupAssignment, "assignment");
   }
 
   const roomAssignment = assignments.find(
-    (a) => a.roomId && ctx.roomId && a.roomId === ctx.roomId && inRange(a.startDate, a.endDate),
+    (a) =>
+      a.roomId &&
+      ctx.roomId &&
+      a.roomId === ctx.roomId &&
+      assignmentCoversDate(a.startDate, a.endDate, dateISO),
   );
   if (roomAssignment) {
     return assignmentToResolved(roomAssignment, "assignment");
   }
 
-  for (const stay of stays) {
-    if (!inRange(stay.checkInDate, stay.checkOutDate)) continue;
+  const visibleEveryoneStays = stays.filter((stay) => {
+    if (!stayCoversNightOnDate(stay.checkInDate, stay.checkOutDate, dateISO)) return false;
     const entity = withLegacyAudience(stay);
-    if (
+    return (
       isVisibleToParticipant(
         entity,
         ctx,
         targetsForEntity("accommodation_stay", stay.id, allTargets),
-      ) &&
-      entity.visibilityMode === "everyone"
-    ) {
-      return {
-        source: "everyone_stay",
-        name: stay.name,
-        address: stay.address,
-        phone: stay.phone ?? null,
-        stayType: stay.stayType,
-        cityLabel: stay.cityLabel,
-      };
-    }
-  }
+      ) && entity.visibilityMode === "everyone"
+    );
+  });
 
-  if (ctx.roomId) {
-    const room = snapshot.rooms?.find((r) => r.id === ctx.roomId);
-    if (room) {
-      const entity = withLegacyAudience(room);
-      if (
-        isVisibleToParticipant(
-          entity,
-          ctx,
-          targetsForEntity("room", room.id, allTargets),
-        )
-      ) {
-        return {
-          source: "room",
-          name: room.hotelName ?? room.roomName,
-          address: room.hotelAddress,
-          phone: room.hotelPhone ?? null,
-          stayType: "homestay",
-          cityLabel: null,
-          hotelPhone: room.hotelPhone ?? null,
-          nearestStation: room.nearestStation,
-          nearestStationNotes: room.nearestStationNotes ?? null,
-          nearestBusStopName: room.nearestBusStopName ?? null,
-          routeNotesToAccommodation: room.routeNotesToAccommodation ?? null,
-          staticMapUrl: room.staticMapUrl ?? null,
-          mapsUrl: room.mapsUrl ?? null,
-        };
-      }
-    }
+  if (visibleEveryoneStays.length) {
+    const cityMatch = dayCityLabel
+      ? visibleEveryoneStays.find((stay) => stayMatchesDayCity(stay.cityLabel, dayCityLabel))
+      : null;
+    const stay = cityMatch ?? visibleEveryoneStays[0]!;
+    return {
+      source: "everyone_stay",
+      name: stay.name,
+      address: stay.address,
+      phone: stay.phone ?? null,
+      stayType: stay.stayType,
+      cityLabel: stay.cityLabel,
+    };
   }
 
   return null;

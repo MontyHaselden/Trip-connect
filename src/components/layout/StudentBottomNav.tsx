@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { usePathname } from "next/navigation";
 import { DateTime } from "luxon";
 
@@ -16,20 +16,17 @@ import { dayNeedsPhotoReminder } from "@/lib/student/participant-photos";
 import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
 
 function NavItem(props: {
-  href: string;
   label: string;
   active: boolean;
   reminder?: boolean;
+  onClick: () => void;
 }) {
-  const pathname = usePathname();
-  const { href, label, active, reminder } = props;
+  const { label, active, reminder, onClick } = props;
 
   return (
-    <a
-      href={href}
-      onClick={() => {
-        tripDebug("nav.click", { from: pathname, to: href, active, mode: "hard" });
-      }}
+    <button
+      type="button"
+      onClick={onClick}
       className={[
         "relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold transition-colors",
         active
@@ -44,7 +41,7 @@ function NavItem(props: {
           aria-label="Photos needed for this day"
         />
       ) : null}
-    </a>
+    </button>
   );
 }
 
@@ -72,7 +69,7 @@ export function StudentBottomNav(props: {
   onEmbeddedTabChange?: (tab: StudentEmbeddedTab) => void;
 }) {
   const pathname = usePathname();
-  const { cache, todayNav, participantPhotos } = useTripApp();
+  const { cache, todayNav, participantPhotos, studentTab, setStudentTab } = useTripApp();
   const route = parseStudentRoute(pathname);
   const inviteCode = props.inviteCode ?? route.inviteCode;
   const tripId = route.tripId ?? cache.tripId;
@@ -88,25 +85,13 @@ export function StudentBottomNav(props: {
       ? studentTripMyTripPath(tripId)
       : null;
 
-  const [todayHref, setTodayHref] = useState(todayBase ?? "/");
-
   const trip = useMemo(
     () => resolveStudentTripPayload(cache.payload, cache.participantId),
     [cache.payload, cache.participantId],
   );
 
-  const onToday =
-    Boolean(todayBase) &&
-    (pathname === todayBase ||
-      pathname.startsWith(`${todayBase}?`) ||
-      (tripId !== null &&
-        (pathname === studentTripTodayPath(tripId) ||
-          pathname.startsWith(`${studentTripTodayPath(tripId)}?`))));
-
-  const onMyTrip =
-    Boolean(myTripHref) &&
-    (pathname === myTripHref ||
-      (tripId !== null && pathname === studentTripMyTripPath(tripId)));
+  const onToday = studentTab === "today";
+  const onMyTrip = studentTab === "my-trip";
 
   const myTripPhotoReminder = useMemo(() => {
     if (!todayNav || !trip) return false;
@@ -123,75 +108,44 @@ export function StudentBottomNav(props: {
     );
   }, [todayNav, trip, participantPhotos]);
 
-  useEffect(() => {
-    if (!todayBase) return;
-    if (
-      pathname.includes("/today") ||
-      pathname === todayBase ||
-      pathname.startsWith(`${todayBase}?`)
-    ) {
-      const search = typeof window !== "undefined" ? window.location.search : "";
-      setTodayHref(search ? `${todayBase}${search}` : todayBase);
-      return;
-    }
-    try {
-      const lastDate = sessionStorage.getItem("tc_last_date");
-      if (lastDate) {
-        setTodayHref(`${todayBase}?date=${encodeURIComponent(lastDate)}`);
-        return;
-      }
-    } catch {
-      // ignore
-    }
-    setTodayHref(todayBase);
-  }, [pathname, todayBase]);
-
   if (!todayBase || !myTripHref) return null;
 
+  function switchTab(tab: StudentEmbeddedTab) {
+    tripDebug("nav.click", { from: pathname, to: tab, mode: "instant" });
+    setStudentTab(tab);
+  }
+
   if (props.preview) {
-    const embeddedTab = props.embeddedTab ?? "today";
-    const onTabChange = props.onEmbeddedTabChange;
+    const embeddedTab = props.embeddedTab ?? studentTab;
+    const onTabChange = props.onEmbeddedTabChange ?? setStudentTab;
 
     return (
       <nav className="relative z-20 mt-auto shrink-0 border-t border-[var(--student-line)] bg-[var(--student-bg)] pb-[max(env(safe-area-inset-bottom),0px)] pt-2">
         <div className="flex items-center gap-1 rounded-full bg-[var(--student-surface)] p-1 shadow-sm ring-1 ring-[var(--student-line)]/80">
-          {onTabChange ? (
-            <>
-              <button
-                type="button"
-                onClick={() => onTabChange("today")}
-                className={[
-                  "relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold transition-colors",
-                  embeddedTab === "today"
-                    ? "bg-[var(--student-nav)] text-white"
-                    : "text-[var(--student-text-muted)]",
-                ].join(" ")}
-              >
-                Today
-              </button>
-              <button
-                type="button"
-                onClick={() => onTabChange("my-trip")}
-                className={[
-                  "relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold transition-colors",
-                  embeddedTab === "my-trip"
-                    ? "bg-[var(--student-nav)] text-white"
-                    : "text-[var(--student-text-muted)]",
-                ].join(" ")}
-              >
-                My Trip
-              </button>
-            </>
-          ) : (
-            <>
-              <span className="relative flex flex-1 items-center justify-center rounded-full bg-[var(--student-nav)] px-3 py-2.5 text-sm font-semibold text-white">
-                Today
-              </span>
-              <span className="relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold text-[var(--student-text-muted)]">
-                My Trip
-              </span>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={() => onTabChange("today")}
+            className={[
+              "relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold transition-colors",
+              embeddedTab === "today"
+                ? "bg-[var(--student-nav)] text-white"
+                : "text-[var(--student-text-muted)]",
+            ].join(" ")}
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            onClick={() => onTabChange("my-trip")}
+            className={[
+              "relative flex flex-1 items-center justify-center rounded-full px-3 py-2.5 text-sm font-semibold transition-colors",
+              embeddedTab === "my-trip"
+                ? "bg-[var(--student-nav)] text-white"
+                : "text-[var(--student-text-muted)]",
+            ].join(" ")}
+          >
+            My Trip
+          </button>
         </div>
       </nav>
     );
@@ -200,12 +154,12 @@ export function StudentBottomNav(props: {
   return (
     <nav className="relative z-20 mt-auto shrink-0 border-t border-[var(--student-line)] bg-[var(--student-bg)] pb-[max(env(safe-area-inset-bottom),0px)] pt-2">
       <div className="flex items-center gap-1 rounded-full bg-[var(--student-surface)] p-1 shadow-sm ring-1 ring-[var(--student-line)]/80">
-        <NavItem href={todayHref} label="Today" active={onToday} />
+        <NavItem label="Today" active={onToday} onClick={() => switchTab("today")} />
         <NavItem
-          href={myTripHref}
           label="My Trip"
           active={onMyTrip}
           reminder={myTripPhotoReminder && !onMyTrip}
+          onClick={() => switchTab("my-trip")}
         />
       </div>
     </nav>

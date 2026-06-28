@@ -13,6 +13,7 @@ import {
   timeToMinutes,
 } from "@/lib/timeline/time-math";
 import type { ItineraryRowItem } from "@/lib/utils/itinerary-item-style";
+import { formatStudentInCityLabel } from "@/lib/student/student-day-location";
 
 import { ActivityDetailSheet } from "./ActivityDetailSheet";
 import { CompactItineraryRow } from "./CompactItineraryRow";
@@ -53,13 +54,6 @@ function DayRemindersFooter(props: {
 }
 
 const DAY_LOCATION_PLACEHOLDER_ID = "__day-location__";
-
-function formatDayLocationLabel(cityLabel: string): string | null {
-  const city = cityLabel.trim();
-  if (!city) return null;
-  if (city.includes("→")) return city;
-  return `In ${city}`;
-}
 
 function buildLocationPlaceholderItem(label: string): ItineraryRowItem {
   return {
@@ -121,7 +115,7 @@ export function CompactDaySheet(props: {
   } = props;
 
   const locationLabel =
-    items.length === 0 && !buildingEmptyLabel ? formatDayLocationLabel(cityLabel) : null;
+    items.length === 0 && !buildingEmptyLabel ? formatStudentInCityLabel(cityLabel) : null;
   const displayItems =
     items.length > 0
       ? items

@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useTripApp } from "@/components/layout/TripAppContext";
 import { stayColor } from "@/lib/host/locations/accommodation-colors";
+import { resolveAccommodationForDate } from "@/lib/student/resolve-accommodation-for-date";
 import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
+import { studentDayLocationLabel } from "@/lib/student/student-day-location";
 
 function PinIcon() {
   return (
@@ -20,21 +22,6 @@ function PinIcon() {
       <path d="M12 21s7-4.5 7-11a7 7 0 1 0-14 0c0 6.5 7 11 7 11z" />
       <circle cx="12" cy="10" r="2.5" />
     </svg>
-  );
-}
-
-function resolveStayForNight(
-  date: string,
-  stays: Array<{
-    cityLabel: string;
-    name: string | null;
-    address: string | null;
-    checkInDate: string;
-    checkOutDate: string;
-  }>,
-) {
-  return (
-    stays.find((s) => s.checkInDate <= date && s.checkOutDate >= date) ?? null
   );
 }
 
@@ -59,7 +46,7 @@ export function DayLocationButton(props: { placement?: "header" | "nav" }) {
     [cache.payload, cache.participantId],
   );
 
-  if (!todayNav || !trip) return null;
+  if (!todayNav || !trip || !cache.participantId) return null;
 
   const selected = todayNav.scheduledDays.find(
     (d) => d.date === todayNav.selectedDateISO,
@@ -67,29 +54,25 @@ export function DayLocationButton(props: { placement?: "header" | "nav" }) {
   if (!selected) return null;
 
   const dayMeta = trip.days.find((d) => d.id === selected.id);
-  const locationLabel =
-    dayMeta?.dayType === "travel" && dayMeta.secondaryCityLabel
-      ? `${dayMeta.cityLabel} → ${dayMeta.secondaryCityLabel}`
-      : dayMeta?.calendarLabel || selected.cityLabel;
+  const locationLabel = dayMeta
+    ? studentDayLocationLabel(dayMeta)
+    : studentDayLocationLabel(selected);
+
+  const accommodation = resolveAccommodationForDate(
+    trip,
+    cache.participantId,
+    selected.date,
+    { dayCityLabel: locationLabel },
+  );
 
   const hotelItem = trip.itineraryItems.find(
     (i) => i.tripDayId === selected.id && i.category === "hotel",
   );
 
-  const stay = resolveStayForNight(
-    selected.date,
-    trip.accommodationStays ?? [],
-  );
-
   const hotelName =
-    trip.room?.hotelName ??
-    stay?.name ??
-    hotelItem?.locationName ??
-    hotelItem?.title ??
-    null;
+    accommodation?.name ?? hotelItem?.locationName ?? hotelItem?.title ?? null;
 
-  const hotelAddress =
-    trip.room?.hotelAddress ?? stay?.address ?? hotelItem?.address ?? null;
+  const hotelAddress = accommodation?.address ?? hotelItem?.address ?? null;
 
   const popupClass =
     placement === "header"
@@ -123,10 +106,15 @@ export function DayLocationButton(props: { placement?: "header" | "nav" }) {
             {hotelName ? (
               <>
                 <p className="mt-1 flex items-center gap-2 text-sm text-[var(--student-text)]">
-                  {stay ? (
+                  {accommodation?.name ? (
                     <span
                       className="h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: stayColor(stay) }}
+                      style={{
+                        backgroundColor: stayColor({
+                          name: accommodation.name,
+                          cityLabel: accommodation.cityLabel ?? locationLabel,
+                        }),
+                      }}
                       aria-hidden
                     />
                   ) : null}

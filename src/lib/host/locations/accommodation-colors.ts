@@ -1,3 +1,5 @@
+import { stayCoversNightOnDate } from "@/lib/student/student-day-location";
+
 export type AccommodationStayLike = {
   id?: string;
   name: string | null;
@@ -56,7 +58,5 @@ export function stayForNight<T extends AccommodationStayLike>(
   date: string,
   stays: T[],
 ): T | null {
-  return (
-    stays.find((s) => s.checkInDate <= date && s.checkOutDate >= date) ?? null
-  );
+  return stays.find((s) => stayCoversNightOnDate(s.checkInDate, s.checkOutDate, date)) ?? null;
 }

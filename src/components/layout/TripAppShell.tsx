@@ -7,12 +7,14 @@ import type { ParticipantPhoto } from "@/lib/student/participant-photos";
 
 import { StudentBottomNav } from "./StudentBottomNav";
 import { StudentUpdateToast } from "@/components/student/StudentUpdateToast";
-import { TripAppContext, type TodayDayMeta, type TodayDayNav } from "./TripAppContext";
+import { TripAppContext, type StudentAppTab, type TodayDayMeta, type TodayDayNav } from "./TripAppContext";
 import { TripDayNavBridge } from "./TripDayNavBridge";
 import { TripDebugPanel } from "@/components/debug/TripDebugPanel";
 import { TripPwaHead } from "@/components/mobile/TripPwaHead";
 import { TravelPassDateHeader } from "@/components/student/TravelPassHeader";
 import { StudentDayNavBar } from "@/components/student/StudentDayNavBar";
+import { MyTripClient } from "@/components/student/my-trip/MyTripClient";
+import { TodayClient } from "@/components/student/today/TodayClient";
 import { DayCalendarSheet } from "@/components/student/today/DayCalendarSheet";
 import { useTripCache } from "@/hooks/useTripCache";
 import { useStudentViewportLock } from "@/hooks/useStudentViewportLock";
@@ -20,7 +22,10 @@ import { plusJakartaSans } from "@/lib/fonts/student-font";
 import { installTripDebugGlobal, tripDebug } from "@/lib/debug/trip-debug";
 import {
   STUDENT_APP_LAUNCH_PATH,
+  studentAppMyTripPath,
   studentAppPath,
+  studentTripMyTripPath,
+  studentTripTodayPath,
 } from "@/lib/mobile/trip-storage";
 import { resolveStudentTripPayload } from "@/lib/student/resolve-trip-payload";
 
@@ -42,6 +47,9 @@ export function TripAppShell({
   const [todayDayMeta, setTodayDayMeta] = useState<TodayDayMeta | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [participantPhotos, setParticipantPhotos] = useState<ParticipantPhoto[]>([]);
+  const [studentTab, setStudentTabState] = useState<StudentAppTab>(() =>
+    pathname.includes("/my-trip") ? "my-trip" : "today",
+  );
   const setTodayNav = useCallback((nav: TodayDayNav | null) => {
     setTodayNavState(nav);
   }, []);
@@ -71,9 +79,50 @@ export function TripAppShell({
   );
 
   const onToday =
-    pathname.includes("/today") || pathname.match(/^\/s\/[^/]+\/?$/) !== null;
-  const onMyTrip = pathname.includes("/my-trip");
-  const showTravelHeader = onToday && todayNav !== null;
+    studentTab === "today" &&
+    (pathname.includes("/today") || pathname.match(/^\/s\/[^/]+\/?$/) !== null);
+  const onMyTrip = studentTab === "my-trip";
+  const showTravelHeader = studentTab === "today" && todayNav !== null;
+  const useEmbeddedStudentTabs =
+    pathname.match(/^\/s\/[^/]+/) !== null || pathname.match(/^\/trip\/[^/]+/) !== null;
+
+  const setStudentTab = useCallback(
+    (tab: StudentAppTab) => {
+      setStudentTabState(tab);
+      if (!useEmbeddedStudentTabs) return;
+
+      let href = "/";
+      if (inviteCode) {
+        href =
+          tab === "my-trip"
+            ? studentAppMyTripPath(inviteCode)
+            : studentAppPath(inviteCode);
+      } else if (tripId) {
+        href =
+          tab === "my-trip" ? studentTripMyTripPath(tripId) : studentTripTodayPath(tripId);
+      }
+
+      if (tab === "today" && typeof window !== "undefined") {
+        try {
+          const lastDate = sessionStorage.getItem("tc_last_date");
+          const search = window.location.search.replace(/^\?/, "");
+          const params = new URLSearchParams(search);
+          if (lastDate) params.set("date", lastDate);
+          const query = params.toString();
+          if (query) href = `${href}?${query}`;
+        } catch {
+          // ignore
+        }
+      }
+
+      window.history.replaceState(window.history.state, "", href);
+    },
+    [inviteCode, tripId, useEmbeddedStudentTabs],
+  );
+
+  useEffect(() => {
+    setStudentTabState(pathname.includes("/my-trip") ? "my-trip" : "today");
+  }, [pathname]);
 
   const itemCountByDayId = useMemo(() => {
     const m = new Map<string, number>();
@@ -168,6 +217,8 @@ export function TripAppShell({
         setCalendarOpen,
         participantPhotos,
         refreshPhotos,
+        studentTab,
+        setStudentTab,
       }}
     >
       {pwaStartUrl ? (
@@ -194,8 +245,33 @@ export function TripAppShell({
           )}
 
           <TripDayNavBridge />
-          <div key={pathname} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {children}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {useEmbeddedStudentTabs ? (
+              <>
+                <div
+                  className={
+                    studentTab === "today"
+                      ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+                      : "hidden"
+                  }
+                  aria-hidden={studentTab !== "today"}
+                >
+                  <TodayClient />
+                </div>
+                <div
+                  className={
+                    studentTab === "my-trip"
+                      ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+                      : "hidden"
+                  }
+                  aria-hidden={studentTab !== "my-trip"}
+                >
+                  <MyTripClient />
+                </div>
+              </>
+            ) : (
+              children
+            )}
           </div>
           <Suspense fallback={null}>
             <TripDebugPanel />
