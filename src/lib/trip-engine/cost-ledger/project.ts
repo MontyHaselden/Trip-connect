@@ -50,6 +50,7 @@ export function projectCostLedger(
     const effectiveTotal = effectiveLineTotalCents(line, {
       allocatedTotalCents,
       pinnedParticipantIds,
+      allocations,
     });
     return {
       lineItemId: line.id,
