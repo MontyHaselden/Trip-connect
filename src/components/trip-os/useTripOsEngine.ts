@@ -37,7 +37,6 @@ import {
   pruneRunawayLocalFinanceLines,
 } from "@/lib/trip-engine/cost-ledger/merge-local-cost-ledger";
 import { mergeFinancePatchResult } from "@/lib/trip-engine/cost-ledger/merge-finance-patch-result";
-import { mergeActivitiesById } from "@/lib/trip-engine/merge-graph-activities";
 import { repairTransportGraphSync } from "@/lib/trip-engine/repair-transport-graph";
 import { mergeOptimisticSeedsIntoCostLedger } from "@/lib/trip-engine/cost-ledger/optimistic-seed-cost-ledger";
 import { pruneCostLedgerLinkedOrphans } from "@/lib/trip-engine/cost-ledger/prune-cost-ledger-orphans";
@@ -447,7 +446,6 @@ export function useTripOsEngine(tripId: string) {
     async (
       generation: number,
       groupId?: string,
-      options?: { keepLocalGraph?: boolean },
     ) => {
       try {
         const gid = groupId ?? activeGroupIdRef.current;
@@ -459,65 +457,12 @@ export function useTripOsEngine(tripId: string) {
         } & SetupEngineResponse;
         if (generation !== loadGenerationRef.current || !res.ok) return;
 
-        if (options?.keepLocalGraph && dataRef.current) {
-          const mergedActivities = mergeActivitiesById(
-            dataRef.current.graph.activities,
-            body.graph.activities,
-          );
-          const mergedGraph = {
-            ...dataRef.current.graph,
-            activities: mergedActivities,
-          };
-          const mergedCostLedger = mergeCostLedgerForGraph(
-            dataRef.current.costLedger,
-            body.costLedger,
-            mergedGraph,
-            {
-              forceKeepLocal:
-                financePatchInFlightRef.current > 0 ||
-                localCostLedgerIsAhead(
-                  dataRef.current.costLedger,
-                  body.costLedger,
-                  dataRef.current.graph,
-                ),
-            },
-          );
-          let nextCostLedger = mergedCostLedger ?? dataRef.current.costLedger;
-          if (
-            mergedActivities.length > dataRef.current.graph.activities.length &&
-            nextCostLedger
-          ) {
-            nextCostLedger = mergeOptimisticSeedsIntoCostLedger(
-              nextCostLedger,
-              mergedGraph,
-              dataRef.current.rosterSummary ?? EMPTY_ROSTER,
-            );
-          }
-          setData((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  graph: mergedGraph,
-                  inviteCode: body.inviteCode ?? prev.inviteCode,
-                  rosterSummary: body.rosterSummary ?? prev.rosterSummary,
-                  costLedger: nextCostLedger ?? prev.costLedger,
-                }
-              : prev,
-          );
-          persistLocalSnapshot(mergedGraph, {
-            inviteCode: body.inviteCode ?? dataRef.current.inviteCode,
-            rosterSummary: body.rosterSummary ?? dataRef.current.rosterSummary,
-            costLedger: nextCostLedger,
-          });
-          return;
-        }
-
         applyResponse(body, { viewGroupId: gid ?? body.graph.mainGroupId });
       } catch {
         // Background refresh only — local draft remains authoritative.
       }
     },
-    [tripId, applyResponse, persistLocalSnapshot],
+    [tripId, applyResponse],
   );
 
   const load = useCallback(
@@ -761,15 +706,7 @@ export function useTripOsEngine(tripId: string) {
           preservePending: pendingCommandsRef.current.length > 0,
         });
       } else {
-        await fetchServerMetadata(loadGenerationRef.current, activeGroupIdRef.current, {
-          keepLocalGraph:
-            financePatchInFlightRef.current > 0 ||
-            localCostLedgerIsAhead(
-              dataRef.current?.costLedger,
-              undefined,
-              dataRef.current?.graph,
-            ),
-        });
+        await fetchServerMetadata(loadGenerationRef.current, activeGroupIdRef.current);
       }
       setSaveStatus("idle");
       if (retryTimerRef.current) {
