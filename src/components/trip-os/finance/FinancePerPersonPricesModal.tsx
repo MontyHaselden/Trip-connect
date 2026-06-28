@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { formatMoney, parseMoneyInput } from "@/lib/trip-engine/cost-ledger/format-money";
 import { splitAmountEvenly } from "@/lib/trip-engine/cost-ledger/smart-split";
@@ -22,6 +22,7 @@ type PricingMode = "perPerson" | "totalSplit";
 
 export function FinancePerPersonPricesModal(props: {
   open: boolean;
+  lineId: string;
   lineDescription: string;
   linkedHint?: string | null;
   currency: string;
@@ -33,9 +34,17 @@ export function FinancePerPersonPricesModal(props: {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [amountInput, setAmountInput] = useState("");
   const [pricingMode, setPricingMode] = useState<PricingMode>("perPerson");
+  const sessionKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!props.open) return;
+    if (!props.open) {
+      sessionKeyRef.current = null;
+      return;
+    }
+    const openingNew = sessionKeyRef.current !== props.lineId;
+    sessionKeyRef.current = props.lineId;
+    if (!openingNew) return;
+
     const preselected = props.participants
       .filter((p) => p.isPinned)
       .map((p) => p.id);
@@ -46,7 +55,7 @@ export function FinancePerPersonPricesModal(props: {
     );
     setAmountInput("");
     setPricingMode("perPerson");
-  }, [props.open, props.participants]);
+  }, [props.open, props.lineId, props.participants]);
 
   function toggleParticipant(participantId: string) {
     setSelectedIds((prev) => {

@@ -1,7 +1,27 @@
+import { isManualFinanceLine } from "./finance-sections";
 import { primaryLinkKey } from "./merge-local-cost-ledger";
 import { isOptimisticFinanceLineId } from "./optimistic-finance-patch";
 import { isServerFinanceLineId } from "./finance-line-delete-plan";
 import type { CostLedgerProjection, CostLineItemDraft } from "./types";
+
+function manualLineFingerprint(line: CostLineItemDraft): string | null {
+  if (!line.allocationRulePayload?.financeSection) return null;
+  if (!isManualFinanceLine(line)) return null;
+  return `${line.allocationRulePayload.financeSection}|${line.description.trim().toLowerCase()}`;
+}
+
+export function findServerLineIdForManualLine(
+  line: CostLineItemDraft,
+  ledger: CostLedgerProjection,
+): string | null {
+  const fingerprint = manualLineFingerprint(line);
+  if (!fingerprint) return null;
+  const match = ledger.lineItems.find((row) => {
+    if (!isServerFinanceLineId(row.id)) return false;
+    return manualLineFingerprint(row) === fingerprint;
+  });
+  return match?.id ?? null;
+}
 
 export function findServerLineIdForLinkedLine(
   line: CostLineItemDraft,
@@ -28,7 +48,10 @@ export function resolveFinanceLineIdForServer(
   const line = ledger.lineItems.find((row) => row.id === lineId);
   if (!line) return null;
 
-  return findServerLineIdForLinkedLine(line, ledger);
+  return (
+    findServerLineIdForLinkedLine(line, ledger) ??
+    findServerLineIdForManualLine(line, ledger)
+  );
 }
 
 export function ledgerHasUnmaterializedLinkedLines(ledger: CostLedgerProjection): boolean {
@@ -43,7 +66,9 @@ export function remapOptimisticFinanceLineIds(
 ): void {
   for (const line of ledger.lineItems) {
     if (!isOptimisticFinanceLineId(line.id)) continue;
-    const serverId = findServerLineIdForLinkedLine(line, ledger);
+    const serverId =
+      findServerLineIdForLinkedLine(line, ledger) ??
+      findServerLineIdForManualLine(line, ledger);
     if (serverId) mapping.set(line.id, serverId);
   }
 }

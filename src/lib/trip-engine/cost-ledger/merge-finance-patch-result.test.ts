@@ -109,11 +109,56 @@ describe("mergeFinancePatchResult", () => {
         id: "optimistic-1",
         description: "New line",
         totalAmountCents: 5000,
+        allocationRulePayload: { financeSection: "other" },
       },
     ];
 
     const merged = mergeFinancePatchResult(optimistic, emptyCostLedgerProjection());
     assert.equal(merged.lineItems.length, 1);
     assert.equal(merged.lineItems[0]?.totalAmountCents, 5000);
+  });
+
+  it("drops materialized optimistic manual rows when the server row exists", () => {
+    const optimistic = emptyCostLedgerProjection();
+    optimistic.lineItems = [
+      {
+        ...optimistic.lineItems[0]!,
+        id: "optimistic-1",
+        description: "Travel management fee",
+        totalAmountCents: 2_090_00,
+        allocationRulePayload: { financeSection: "other" },
+      },
+    ];
+    optimistic.lineAllocations = [
+      {
+        lineItemId: "optimistic-1",
+        allocations: { p1: 110_00 },
+        eligibleParticipantIds: ["p1", "p2"],
+        pinnedParticipantIds: ["p1"],
+        balanced: false,
+        allocatedTotalCents: 110_00,
+      },
+    ];
+
+    const server = emptyCostLedgerProjection();
+    server.lineItems = [
+      {
+        ...server.lineItems[0]!,
+        id: "line-server-1",
+        description: "Travel management fee",
+        totalAmountCents: 0,
+        allocationRulePayload: { financeSection: "other" },
+      },
+    ];
+
+    const merged = mergeFinancePatchResult(optimistic, server, {
+      optimisticLineMap: new Map([["optimistic-1", "line-server-1"]]),
+    });
+
+    assert.equal(merged.lineItems.length, 1);
+    assert.equal(merged.lineItems[0]?.id, "line-server-1");
+    assert.equal(merged.lineItems[0]?.totalAmountCents, 2_090_00);
+    assert.equal(merged.lineAllocations[0]?.lineItemId, "line-server-1");
+    assert.equal(merged.lineAllocations[0]?.allocations.p1, 110_00);
   });
 });

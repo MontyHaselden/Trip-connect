@@ -1513,6 +1513,7 @@ export function FinanceSpreadsheet(props: {
       {pricingLine && props.onPatchParticipantsBulk ? (
         <FinancePerPersonPricesModal
           open={pricingLineId != null}
+          lineId={pricingLine.id}
           lineDescription={pricingLine.description}
           linkedHint={linkedLegHint(pricingLine)}
           currency={pricingLine.currency}
@@ -1529,6 +1530,7 @@ export function FinanceSpreadsheet(props: {
       {pricingFund && props.onPatchFundParticipantsBulk ? (
         <FinancePerPersonPricesModal
           open={pricingFundId != null}
+          lineId={pricingFund.id}
           lineDescription={pricingFund.name.trim() || "New line"}
           currency={pricingFund.currency}
           participants={pricingFundParticipants}

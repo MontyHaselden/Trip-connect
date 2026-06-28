@@ -1338,7 +1338,9 @@ export function useTripOsEngine(tripId: string) {
               if (!prev) return prev;
               const latestLedger = dataRef.current?.costLedger ?? prev.costLedger;
               const costLedger = latestLedger
-                ? mergeFinancePatchResult(latestLedger, body.costLedger!)
+                ? mergeFinancePatchResult(latestLedger, body.costLedger!, {
+                    optimisticLineMap: optimisticLineMapRef.current,
+                  })
                 : body.costLedger!;
               persistLocalSnapshot(prev.graph, { costLedger });
               return { ...prev, costLedger };
