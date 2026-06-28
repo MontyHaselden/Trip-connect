@@ -275,6 +275,17 @@ function stayDraftCityLabel(draft: {
   );
 }
 
+function resolveStayCityLabel(
+  draft: { name: string; city: string; address: string | null },
+  selection: CalendarSelection,
+  days: DayPlaceDraft[],
+): string {
+  return (
+    stayDraftCityLabel(draft).trim() ||
+    uniformLocationCityForSelection(selection, days)
+  );
+}
+
 function splitDayTransitionSummary(left: string | undefined, right: string | undefined): string | null {
   const l = left?.trim();
   const r = right?.trim();
@@ -596,7 +607,10 @@ export function DayContextPanel(props: {
     }
 
     if (editingField === "accommodation") {
-      const city = linkedStay ? stayCityLabel(linkedStay) : "";
+      const defaultStayType = linkedStay?.stayType ?? "hotel";
+      const city = linkedStay
+        ? stayCityLabel(linkedStay)
+        : uniformLocationCityForSelection(selection, daysForConflictCheck);
       const dates = isMultiDayRange
         ? stayDatesForRangeApply(selection)
         : linkedStay
@@ -615,8 +629,9 @@ export function DayContextPanel(props: {
         longitude: linkedStay?.longitude ?? null,
         checkIn: dates.checkIn,
         checkOut: dates.checkOut,
-        stayType: linkedStay?.stayType ?? "hotel",
-        isHomestayGroup: linkedStay?.isHomestayGroup ?? false,
+        stayType: defaultStayType,
+        isHomestayGroup:
+          linkedStay?.isHomestayGroup ?? defaultHomestayGroupForType(defaultStayType),
       });
     }
   }, [
@@ -882,17 +897,7 @@ export function DayContextPanel(props: {
     const ok = await props.onDispatch(commands);
     if (ok) {
       setStayConflictDialog(null);
-      if (isGroupHomestayPeriod) {
-        setHomestaysModalContext({
-          cityLabel,
-          checkIn: mergedDates.checkIn,
-          checkOut: mergedDates.checkOut,
-        });
-        setHomestaysModalOpen(true);
-        setEditingField(null);
-      } else {
-        setEditingField(null);
-      }
+      setEditingField(null);
     } else {
       setActionError(props.error || "Could not save stay.");
     }
@@ -955,8 +960,11 @@ export function DayContextPanel(props: {
       setActionError("Property name and check-in/out dates are required.");
       return;
     }
-    if (isGroupHomestay && !stayDraftCityLabel(stayDraft).trim()) {
-      setActionError("Enter a stay city for the homestay period.");
+    const cityLabel = resolveStayCityLabel(stayDraft, selection, daysForConflictCheck);
+    if (isGroupHomestay && !cityLabel.trim()) {
+      setActionError(
+        "Enter a stay city for the homestay period, or paint one location on the calendar first.",
+      );
       return;
     }
     const mergedDates = isMultiDayRange
@@ -969,7 +977,6 @@ export function DayContextPanel(props: {
       setActionError("Check-out must be after check-in.");
       return;
     }
-    const cityLabel = stayDraftCityLabel(stayDraft);
     const conflicts = detectAccommodationLocationConflicts(
       selection,
       daysForConflictCheck,
@@ -1310,8 +1317,8 @@ export function DayContextPanel(props: {
                 </label>
                 <div className="rounded-2xl border border-violet-200/70 bg-violet-50/50 px-4 py-4">
                   <p className="text-sm leading-relaxed text-zinc-700">
-                    Save the homestay period on the calendar first. You&apos;ll then add each host
-                    family and assign students in a quick popup.
+                    Apply saves the homestay period on the calendar — host families are optional.
+                    Add names and assign students later when you have them.
                   </p>
                   {homestayPeriodInRange ? (
                     <button

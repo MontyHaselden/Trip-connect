@@ -10,17 +10,15 @@ import { StudentUpdateToast } from "@/components/student/StudentUpdateToast";
 import { TripAppContext, type TodayDayMeta, type TodayDayNav } from "./TripAppContext";
 import { TripDayNavBridge } from "./TripDayNavBridge";
 import { TripDebugPanel } from "@/components/debug/TripDebugPanel";
-import { AddToHomeScreenHint } from "@/components/mobile/AddToHomeScreenHint";
 import { TripPwaHead } from "@/components/mobile/TripPwaHead";
-import { TravelPassHeader } from "@/components/student/TravelPassHeader";
+import { TravelPassDateHeader } from "@/components/student/TravelPassHeader";
+import { StudentDayNavBar } from "@/components/student/StudentDayNavBar";
 import { DayCalendarSheet } from "@/components/student/today/DayCalendarSheet";
 import { useTripCache } from "@/hooks/useTripCache";
 import { useStudentViewportLock } from "@/hooks/useStudentViewportLock";
 import { plusJakartaSans } from "@/lib/fonts/student-font";
 import { installTripDebugGlobal, tripDebug } from "@/lib/debug/trip-debug";
-import { isStandaloneDisplayMode } from "@/lib/mobile/pwa-detect";
 import {
-  INSTALL_HINT_SESSION_KEY,
   STUDENT_APP_LAUNCH_PATH,
   studentAppPath,
 } from "@/lib/mobile/trip-storage";
@@ -44,7 +42,6 @@ export function TripAppShell({
   const [todayDayMeta, setTodayDayMeta] = useState<TodayDayMeta | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [participantPhotos, setParticipantPhotos] = useState<ParticipantPhoto[]>([]);
-  const [showInstallHint, setShowInstallHint] = useState(false);
   const setTodayNav = useCallback((nav: TodayDayNav | null) => {
     setTodayNavState(nav);
   }, []);
@@ -107,18 +104,6 @@ export function TripAppShell({
       setRefreshing(false);
     }
   }
-
-  useEffect(() => {
-    if (isStandaloneDisplayMode()) return;
-    try {
-      if (sessionStorage.getItem(INSTALL_HINT_SESSION_KEY) === "1") {
-        sessionStorage.removeItem(INSTALL_HINT_SESSION_KEY);
-        setShowInstallHint(true);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
 
   useEffect(() => {
     installTripDebugGlobal();
@@ -192,18 +177,12 @@ export function TripAppShell({
           manifestId={pwaStartUrl}
         />
       ) : null}
-      {showInstallHint ? (
-        <AddToHomeScreenHint
-          tripName={trip?.trip.name ?? "Itinerary Live"}
-          onDismiss={() => setShowInstallHint(false)}
-        />
-      ) : null}
       <div
         className={`${plusJakartaSans.variable} student-app fixed inset-0 z-0 overflow-hidden`}
       >
         <div className="mx-auto flex h-full w-full max-w-md flex-col gap-2 overflow-hidden px-4 py-3">
           {showTravelHeader ? (
-            <TravelPassHeader />
+            <TravelPassDateHeader />
           ) : onMyTrip ? null : (
             <header className="shrink-0 border-b border-[var(--student-line)] pb-2 pt-0.5">
               <div className="flex items-center justify-between">
@@ -221,6 +200,7 @@ export function TripAppShell({
           <Suspense fallback={null}>
             <TripDebugPanel />
           </Suspense>
+          {showTravelHeader ? <StudentDayNavBar /> : null}
           <StudentBottomNav inviteCode={inviteCode} />
         </div>
       </div>

@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { TripAppShell } from "@/components/layout/TripAppShell";
+import { StudentInstallWizard } from "@/components/student/StudentInstallWizard";
 import { StudentJoinForm } from "@/components/student/StudentJoinForm";
 import { useStudentViewportLock } from "@/hooks/useStudentViewportLock";
+import { needsStudentInstallWizard } from "@/lib/mobile/pwa-detect";
 import {
   buildTripManifestHref,
   wirePwaHead,
@@ -16,6 +18,8 @@ import {
   studentAppPath,
 } from "@/lib/mobile/trip-storage";
 
+type AppPhase = "loading" | "install" | "join" | "app";
+
 export function StudentAppRoot(props: {
   inviteCode: string;
   /** Code in the URL — may be a group link; used for join API. */
@@ -25,34 +29,44 @@ export function StudentAppRoot(props: {
   children: React.ReactNode;
 }) {
   const { inviteCode, joinInviteCode = inviteCode, tripId, tripName, children } = props;
-  const [phase, setPhase] = useState<"loading" | "join" | "app">("loading");
+  const [phase, setPhase] = useState<AppPhase>("loading");
+
+  const appPath = useMemo(() => studentAppPath(inviteCode), [inviteCode]);
+  const manifestHref = useMemo(
+    () => buildTripManifestHref(tripName, appPath, appPath),
+    [tripName, appPath],
+  );
 
   useStudentViewportLock();
 
-  useEffect(() => {
-    const appPath = studentAppPath(inviteCode);
-    wirePwaHead({
-      manifestHref: buildTripManifestHref(tripName, appPath, appPath),
-      appTitle: tripName,
-    });
-
+  const resolvePhase = useCallback((): AppPhase => {
     const session = getStoredTripSession();
     if (session?.inviteCode && session.inviteCode !== inviteCode) {
       clearTripSession();
-      setPhase("join");
-      return;
-    }
-    if (session?.tripId && session.tripId !== tripId) {
+    } else if (session?.tripId && session.tripId !== tripId) {
       clearTripSession();
-      setPhase("join");
-      return;
+    } else if (session?.accessToken && session.inviteCode === inviteCode) {
+      return "app";
     }
-    if (session?.accessToken && session.inviteCode === inviteCode) {
-      setPhase("app");
-      return;
+
+    if (needsStudentInstallWizard()) {
+      return "install";
     }
+    return "join";
+  }, [inviteCode, tripId]);
+
+  useEffect(() => {
+    wirePwaHead({ manifestHref, appTitle: tripName });
+    setPhase(resolvePhase());
+  }, [manifestHref, tripName, resolvePhase]);
+
+  const onInstallReady = useCallback(() => {
     setPhase("join");
-  }, [inviteCode, tripName]);
+  }, []);
+
+  const onJoined = useCallback(() => {
+    redirectToStudentApp(inviteCode);
+  }, [inviteCode]);
 
   if (phase === "loading") {
     return (
@@ -62,13 +76,23 @@ export function StudentAppRoot(props: {
     );
   }
 
+  if (phase === "install") {
+    return (
+      <StudentInstallWizard
+        tripName={tripName}
+        manifestHref={manifestHref}
+        onReady={onInstallReady}
+      />
+    );
+  }
+
   if (phase === "join") {
     return (
       <StudentJoinForm
         inviteCode={joinInviteCode}
         tripInviteCode={inviteCode}
         tripName={tripName}
-        onJoined={() => redirectToStudentApp(inviteCode, { promptInstall: true })}
+        onJoined={onJoined}
       />
     );
   }

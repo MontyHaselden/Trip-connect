@@ -26,7 +26,42 @@ type JoinRosterResponse = {
   error?: string;
 };
 
-type Flow = "pick-name" | "sign-in" | "password" | "fallback";
+type JoinMode = "join" | "signin";
+type Flow = "names" | "password" | "fallback";
+
+function JoinSignInTabs(props: {
+  mode: JoinMode;
+  onChange: (mode: JoinMode) => void;
+}) {
+  return (
+    <div className="mt-4 flex rounded-xl border border-[var(--student-line)] bg-[var(--student-surface)] p-1">
+      <button
+        type="button"
+        onClick={() => props.onChange("join")}
+        className={[
+          "flex-1 rounded-lg py-2 text-sm font-semibold transition",
+          props.mode === "join"
+            ? "bg-[var(--student-nav)] text-white"
+            : "text-[var(--student-text-muted)]",
+        ].join(" ")}
+      >
+        Join (first time)
+      </button>
+      <button
+        type="button"
+        onClick={() => props.onChange("signin")}
+        className={[
+          "flex-1 rounded-lg py-2 text-sm font-semibold transition",
+          props.mode === "signin"
+            ? "bg-[var(--student-nav)] text-white"
+            : "text-[var(--student-text-muted)]",
+        ].join(" ")}
+      >
+        Sign in (returning)
+      </button>
+    </div>
+  );
+}
 
 export function StudentJoinForm(props: {
   inviteCode: string;
@@ -35,8 +70,8 @@ export function StudentJoinForm(props: {
   onJoined?: () => void;
 }) {
   const { inviteCode, tripInviteCode = inviteCode, tripName, onJoined } = props;
-  const [flow, setFlow] = useState<Flow>("pick-name");
-  const [isSignIn, setIsSignIn] = useState(false);
+  const [mode, setMode] = useState<JoinMode>("join");
+  const [flow, setFlow] = useState<Flow>("names");
   const [roster, setRoster] = useState<JoinRosterResponse | null>(null);
   const [rosterLoading, setRosterLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -54,7 +89,12 @@ export function StudentJoinForm(props: {
         const res = await fetch(`/api/join/${encodeURIComponent(inviteCode)}/roster`);
         const body = (await res.json().catch(() => ({}))) as JoinRosterResponse;
         if (!res.ok) throw new Error(body.error || "Could not load names");
-        if (!cancelled) setRoster(body);
+        if (!cancelled) {
+          setRoster(body);
+          if (body.available.length === 0 && body.joined.length > 0) {
+            setMode("signin");
+          }
+        }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Could not load names");
@@ -69,6 +109,7 @@ export function StudentJoinForm(props: {
     };
   }, [inviteCode]);
 
+  const isSignIn = mode === "signin";
   const selectedPerson =
     roster?.available.find((p) => p.id === selectedId) ??
     roster?.joined.find((p) => p.id === selectedId);
@@ -84,30 +125,22 @@ export function StudentJoinForm(props: {
       onJoined();
       return;
     }
-    redirectToStudentApp(inviteCode, { promptInstall: true });
+    redirectToStudentApp(inviteCode);
+  }
+
+  function switchMode(next: JoinMode) {
+    setMode(next);
+    setSelectedId(null);
+    setPassword("");
+    setError(null);
+    setFlow("names");
   }
 
   function resetToNameList() {
     setSelectedId(null);
     setPassword("");
     setError(null);
-    setFlow(isSignIn ? "sign-in" : "pick-name");
-  }
-
-  function startSignIn() {
-    setIsSignIn(true);
-    setSelectedId(null);
-    setPassword("");
-    setError(null);
-    setFlow("sign-in");
-  }
-
-  function startJoin() {
-    setIsSignIn(false);
-    setSelectedId(null);
-    setPassword("");
-    setError(null);
-    setFlow("pick-name");
+    setFlow("names");
   }
 
   function pickPerson(id: string) {
@@ -123,10 +156,9 @@ export function StudentJoinForm(props: {
     setBusy(true);
     setError(null);
     try {
-      const endpoint =
-        isSignIn
-          ? `/api/join/${encodeURIComponent(inviteCode)}/login`
-          : `/api/join/${encodeURIComponent(inviteCode)}`;
+      const endpoint = isSignIn
+        ? `/api/join/${encodeURIComponent(inviteCode)}/login`
+        : `/api/join/${encodeURIComponent(inviteCode)}`;
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -180,36 +212,27 @@ export function StudentJoinForm(props: {
   return (
     <main className="student-app-scroll flex h-dvh flex-col items-center justify-center overflow-y-auto overscroll-y-contain bg-[var(--student-bg)] px-6 py-10">
       <div className="student-card w-full max-w-md shadow-sm">
-        <h1 className="text-xl font-bold text-[var(--student-text)]">{displayName}</h1>
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--student-nav)]">
+          Step 2 of 2 — Join your trip
+        </p>
+        <h1 className="mt-2 text-xl font-bold text-[var(--student-text)]">{displayName}</h1>
 
         {flow === "password" && selectedPerson ? (
           <>
-            <div className="mt-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-[var(--student-text-muted)]">
-              <span className="rounded-full bg-[var(--student-nav)] px-2 py-0.5 text-white">
-                1
-              </span>
-              <span className="text-[var(--student-text-muted)]">Name</span>
-              <span className="text-[var(--student-line)]">→</span>
-              <span className="rounded-full bg-[var(--student-nav)] px-2 py-0.5 text-white">
-                2
-              </span>
-              <span className="text-[var(--student-text)]">Password</span>
-            </div>
             <p className="mt-2 text-sm text-[var(--student-text-muted)]">
-              {isSignIn
-                ? "Enter the password you chose when you joined."
-                : "Choose a password so you can sign back in on a new phone."}
+              Step 2 of 2 — {isSignIn ? "enter your password" : "choose a password"}
+            </p>
+            <p className="mt-1 text-xs text-[var(--student-text-muted)]">
+              You&apos;re set — we&apos;ll remember you on this phone.
             </p>
           </>
-        ) : flow === "sign-in" ? (
-          <p className="mt-2 text-sm text-[var(--student-text-muted)]">
-            Tap your name, then enter your password.
-          </p>
         ) : flow === "fallback" ? null : (
-          <p className="mt-2 text-sm text-[var(--student-text-muted)]">
-            <span className="font-medium text-[var(--student-text)]">Step 1:</span> tap your name
-            from the list below.
-          </p>
+          <>
+            <JoinSignInTabs mode={mode} onChange={switchMode} />
+            <p className="mt-3 text-sm text-[var(--student-text-muted)]">
+              Step 1 of 2 — pick your name from the list below.
+            </p>
+          </>
         )}
 
         {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
@@ -307,7 +330,7 @@ export function StudentJoinForm(props: {
             <button
               type="button"
               onClick={() => {
-                setFlow("pick-name");
+                setFlow("names");
                 setError(null);
               }}
               className="w-full text-sm text-[var(--student-text-muted)]"
@@ -349,46 +372,27 @@ export function StudentJoinForm(props: {
                 );
               })}
             </ul>
-            {isSignIn ? (
+            {!isSignIn ? (
               <button
                 type="button"
-                onClick={startJoin}
-                className="mt-4 w-full text-sm font-medium text-[var(--student-nav)]"
+                onClick={() => {
+                  setFlow("fallback");
+                  setError(null);
+                }}
+                className="mt-4 w-full text-sm text-[var(--student-text-muted)] underline-offset-2 hover:underline"
               >
-                ← First time here? Join instead
+                My name isn&apos;t listed
               </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFlow("fallback");
-                    setError(null);
-                  }}
-                  className="mt-4 w-full text-sm text-[var(--student-text-muted)] underline-offset-2 hover:underline"
-                >
-                  My name isn&apos;t listed
-                </button>
-                {(roster?.joined.length ?? 0) > 0 ? (
-                  <button
-                    type="button"
-                    onClick={startSignIn}
-                    className="mt-3 w-full rounded-xl border border-[var(--student-line)] py-2.5 text-sm font-medium text-[var(--student-text-muted)] transition hover:border-[var(--student-nav)] hover:text-[var(--student-text)]"
-                  >
-                    Already joined? Sign in
-                  </button>
-                ) : null}
-              </>
-            )}
+            ) : null}
           </div>
         ) : isSignIn ? (
           <div className="mt-5 space-y-3">
             <p className="text-sm text-[var(--student-text-muted)]">
-              Nobody has joined yet. Pick your name from the join list to get started.
+              Nobody has joined yet. Switch to Join and pick your name to get started.
             </p>
             <button
               type="button"
-              onClick={startJoin}
+              onClick={() => switchMode("join")}
               className="student-btn-primary h-11 w-full text-sm"
             >
               Join trip
@@ -401,10 +405,10 @@ export function StudentJoinForm(props: {
             </p>
             <button
               type="button"
-              onClick={startSignIn}
+              onClick={() => switchMode("signin")}
               className="student-btn-primary h-11 w-full text-sm"
             >
-              Sign in
+              Go to Sign in
             </button>
           </div>
         ) : (

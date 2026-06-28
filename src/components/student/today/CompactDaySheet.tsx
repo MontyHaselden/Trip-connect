@@ -90,6 +90,7 @@ export function CompactDaySheet(props: {
     buildingEmptyLabel,
     listFooter,
     nightStay,
+    cityLabel,
     hostEditing,
     layout = "run-sheet",
   } = props;
@@ -176,12 +177,38 @@ export function CompactDaySheet(props: {
     items.length > 0 || prepItems.length > 0 || dayReminders.length > 0 || listFooter;
 
   if (!hasContent) {
+    const locationLine = (() => {
+      const city = cityLabel.trim();
+      if (!city) return null;
+      if (city.includes("→")) return city;
+      return `In ${city}`;
+    })();
+
     return (
       <div className="flex min-h-0 flex-1 flex-col gap-2">
-        <div className="flex flex-1 items-center justify-center text-center">
-          <p className="text-sm font-medium text-[var(--student-text-muted)]">
-            {buildingEmptyLabel ?? "No event today"}
-          </p>
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
+          {buildingEmptyLabel ? (
+            <p className="text-sm font-medium text-[var(--student-text-muted)]">
+              {buildingEmptyLabel}
+            </p>
+          ) : (
+            <>
+              {locationLine ? (
+                <p className="text-lg font-semibold text-[var(--student-text)]">{locationLine}</p>
+              ) : null}
+              {nightStay?.name ? (
+                <div className="flex items-center justify-center gap-2 text-sm text-[var(--student-text-muted)]">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full ring-1 ring-[var(--student-line)]"
+                    style={{ backgroundColor: nightStay.color }}
+                    aria-hidden
+                  />
+                  <span>Staying at {nightStay.name}</span>
+                </div>
+              ) : null}
+              <p className="text-sm text-[var(--student-text-muted)]">No scheduled activities</p>
+            </>
+          )}
         </div>
       </div>
     );

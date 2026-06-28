@@ -31,3 +31,10 @@ export function detectMobileBrowser(): "ios" | "android" | "other" {
   if (/android/.test(ua)) return "android";
   return "other";
 }
+
+/** Phones must install to home screen before join so localStorage persists on iOS. */
+export function needsStudentInstallWizard(): boolean {
+  if (typeof window === "undefined") return false;
+  if (isStandaloneDisplayMode()) return false;
+  return detectMobileBrowser() !== "other";
+}

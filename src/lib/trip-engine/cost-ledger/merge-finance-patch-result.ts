@@ -62,7 +62,6 @@ export function mergeFinancePatchResult(
   );
 
   const serverLineById = new Map(server.lineItems.map((line) => [line.id, line]));
-  const optimisticLineById = new Map(filteredOptimisticItems.map((line) => [line.id, line]));
 
   const optimisticAllocByLine = new Map<string, LineAllocationResult>();
   for (const row of optimistic.lineAllocations) {

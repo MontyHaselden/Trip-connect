@@ -6,7 +6,8 @@ import { TripAppContext, type TodayDayMeta, type TodayDayNav } from "@/component
 import { TripDayNavBridge } from "@/components/layout/TripDayNavBridge";
 import { StudentBottomNav } from "@/components/layout/StudentBottomNav";
 import { MyTripClient } from "@/components/student/my-trip/MyTripClient";
-import { TravelPassHeader } from "@/components/student/TravelPassHeader";
+import { TravelPassDateHeader } from "@/components/student/TravelPassHeader";
+import { StudentDayNavBar } from "@/components/student/StudentDayNavBar";
 import { TodayClient } from "@/components/student/today/TodayClient";
 import { DayCalendarSheet } from "@/components/student/today/DayCalendarSheet";
 import { StudentOverlayProvider } from "@/components/student/StudentOverlayContext";
@@ -120,7 +121,7 @@ export function ParticipantPreviewShell(props: {
       >
         <div className="mx-auto flex h-full w-full max-w-md flex-col gap-2 overflow-hidden px-4 py-3">
           {showTravelHeader ? (
-            <TravelPassHeader />
+            <TravelPassDateHeader />
           ) : tab === "my-trip" ? null : (
             <header className="shrink-0 border-b border-[var(--student-line)] pb-2 pt-0.5">
               <div className="flex items-center justify-between">
@@ -137,6 +138,7 @@ export function ParticipantPreviewShell(props: {
             {tab === "today" ? <TodayClient /> : <MyTripClient />}
           </div>
 
+          {showTravelHeader ? <StudentDayNavBar /> : null}
           <StudentBottomNav
             inviteCode={inviteCode}
             preview
