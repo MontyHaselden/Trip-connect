@@ -30,11 +30,6 @@ import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 import { tripFieldClass } from "../shared/TripInput";
 import type { CostsPatchResult } from "../useTripOsEngine";
 
-function activityCityHint(graph: TripEntityGraph, groupId: string, date: string): string | undefined {
-  const places = graph.dayPlacesByGroupId[groupId] ?? [];
-  return places.find((place) => place.date === date)?.primaryCity?.trim() || undefined;
-}
-
 function activityLocationLabel(a: ActivityDraft): string | null {
   if (a.locationName?.trim()) return a.locationName.trim();
   if (a.address?.trim()) return a.address.trim();
@@ -255,7 +250,9 @@ export function ActivitiesSection(props: {
                         {canEdit ? (
                           editingLocationId === a.id ? (
                             <div className="mt-3 space-y-2 border-t border-zinc-100 pt-3">
-                              <p className="text-xs font-medium text-zinc-600">Venue location</p>
+                              <p className="text-xs text-zinc-500">
+                                Search is trip-wide, not limited to the calendar city on this day.
+                              </p>
                               <VenueNamePicker
                                 value={locationDraft}
                                 onChange={setLocationDraft}
@@ -263,8 +260,7 @@ export function ActivitiesSection(props: {
                                   void saveActivityLocation(a, scope.groupId, selection);
                                 }}
                                 countryNames={countryNames}
-                                cityHint={activityCityHint(props.graph, scope.groupId, a.date)}
-                                placeholder="Search venue (e.g. teamLab Planets Tokyo)…"
+                                placeholder="Search anywhere in the trip (e.g. teamLab Osaka, USJ)…"
                                 inputClassName={tripFieldClass}
                               />
                               <button

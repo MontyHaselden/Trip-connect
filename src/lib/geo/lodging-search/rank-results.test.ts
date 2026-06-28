@@ -127,6 +127,25 @@ describe("rankAndFilterLodgingResults", () => {
     const { results } = rankAndFilterLodgingResults(candidates, "THE KNOT", "Hiroshima");
     assert.equal(results[0]?.label, "THE KNOT HIROSHIMA");
   });
+
+  it("returns widened results for day-trip venues when stay city is empty", () => {
+    const candidates = [
+      suggestion({
+        label: "Universal Studios Japan",
+        sublabel: "Osaka, Japan",
+        placeId: "usj",
+      }),
+      suggestion({
+        label: "Kyoto Station Hotel",
+        sublabel: "Kyoto, Japan",
+        placeId: "kyoto-hotel",
+      }),
+    ];
+
+    const { results, widened } = rankAndFilterLodgingResults(candidates, "USJ", "");
+    assert.equal(widened, true);
+    assert.equal(results[0]?.label, "Universal Studios Japan");
+  });
 });
 
 describe("mapToTripCityVocabulary", () => {

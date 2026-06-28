@@ -22,13 +22,12 @@ function ActivityAddressField(props: {
   value: string;
   onChange: (value: string) => void;
   countryNames: string[];
-  cityHint?: string;
   onBlur?: () => void;
   onSelectVenue?: (selection: VenueSelection) => void;
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-zinc-700">Address (optional)</span>
+      <span className="mb-1 block text-sm font-medium text-zinc-700">Venue location</span>
       <VenueNamePicker
         value={props.value}
         onChange={props.onChange}
@@ -37,13 +36,12 @@ function ActivityAddressField(props: {
           if (selection.address) props.onChange(selection.address);
         }}
         countryNames={props.countryNames}
-        cityHint={props.cityHint}
-        placeholder="Search or type an address…"
+        placeholder="Search anywhere in the trip (e.g. Peace Memorial Park Hiroshima, USJ Osaka)…"
         inputClassName={tripFieldClass}
         onBlur={props.onBlur}
       />
       <p className="mt-1 text-[11px] text-zinc-400">
-        For maps and student directions — does not affect setup status.
+        Not limited to the calendar city — use for day trips and split travel days.
       </p>
     </label>
   );
@@ -118,10 +116,6 @@ export function DayOverviewActivities(props: {
   const [formError, setFormError] = useState<string | null>(null);
 
   const countryNames = props.graph.basics.destinationCountries ?? [];
-  const cityHint = useMemo(() => {
-    const places = props.graph.dayPlacesByGroupId[props.groupId] ?? [];
-    return places.find((place) => place.date === props.rangeStart)?.primaryCity ?? undefined;
-  }, [props.graph.dayPlacesByGroupId, props.groupId, props.rangeStart]);
 
   const activitiesByDay = useMemo(() => {
     const end = props.rangeEnd || props.rangeStart;
@@ -373,7 +367,6 @@ export function DayOverviewActivities(props: {
                 value={address}
                 onChange={setAddress}
                 countryNames={countryNames}
-                cityHint={cityHint}
                 onSelectVenue={setPendingVenue}
               />
             </div>
@@ -434,8 +427,7 @@ export function DayOverviewActivities(props: {
                                 if (selection.address) setAddressDraft(selection.address);
                               }}
                               countryNames={countryNames}
-                              cityHint={cityHint}
-                              placeholder="Search or type an address…"
+                              placeholder="Search anywhere in the trip…"
                               inputClassName={tripFieldClass}
                               onBlur={() => void saveActivityAddress(activity.id)}
                             />

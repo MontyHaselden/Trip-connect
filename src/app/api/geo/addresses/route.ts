@@ -12,6 +12,8 @@ const SearchSchema = z.object({
   city: z.string().trim().max(120).optional(),
   stayCity: z.string().trim().max(120).optional(),
   lodging: z.enum(["1", "true"]).optional(),
+  /** Venue/activity search — no stay-city filter (day trips, split days). */
+  wide: z.enum(["1", "true"]).optional(),
 });
 
 const DetailsSchema = z.object({
@@ -42,6 +44,7 @@ export async function GET(req: Request) {
     city: url.searchParams.get("city") ?? undefined,
     stayCity: url.searchParams.get("stayCity") ?? undefined,
     lodging: url.searchParams.get("lodging") ?? undefined,
+    wide: url.searchParams.get("wide") ?? undefined,
   });
 
   if (!parsed.success) {
@@ -52,12 +55,16 @@ export async function GET(req: Request) {
     ? parsed.data.countries.split(",").filter(Boolean)
     : undefined;
 
-  const stayCity = parsed.data.stayCity ?? parsed.data.city ?? "";
+  const lodgingOnly = parsed.data.lodging === "1" || parsed.data.lodging === "true";
+  const wideSearch = parsed.data.wide === "1" || parsed.data.wide === "true";
+  const stayCity = wideSearch
+    ? ""
+    : parsed.data.stayCity ?? parsed.data.city ?? "";
   const { suggestions, meta } = await searchLodging({
     query: parsed.data.q,
     stayCity,
     countryCodes,
-    lodgingOnly: parsed.data.lodging === "1" || parsed.data.lodging === "true",
+    lodgingOnly,
     limit: 10,
   });
 

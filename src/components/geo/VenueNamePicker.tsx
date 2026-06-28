@@ -40,6 +40,7 @@ export function VenueNamePicker({
   onBlur?: () => void;
   placeholder?: string;
   countryNames?: string[];
+  /** @deprecated Ignored — venue search is trip-wide within destination countries. */
   cityHint?: string;
   inputClassName?: string;
 }) {
@@ -48,9 +49,8 @@ export function VenueNamePicker({
   const search = useCallback(
     async (query: string): Promise<AutocompleteOption[]> => {
       const codes = codesForCountryNames(countryNames);
-      const params = new URLSearchParams({ q: query });
+      const params = new URLSearchParams({ q: query, wide: "1" });
       if (codes.length) params.set("countries", codes.join(","));
-      if (cityHint?.trim()) params.set("city", cityHint.trim());
 
       const res = await fetch(`/api/geo/addresses?${params.toString()}`);
       if (!res.ok) return [];
@@ -65,7 +65,7 @@ export function VenueNamePicker({
         sublabel: s.sublabel,
       }));
     },
-    [cityHint, countryNames],
+    [countryNames],
   );
 
   const handleSelect = useCallback(
@@ -120,6 +120,7 @@ export function VenueNamePicker({
       search={search}
       minChars={2}
       inputClassName={inputClassName}
+      emptyMessage="No matches — try the venue name and city (e.g. teamLab Osaka)"
     />
   );
 }
