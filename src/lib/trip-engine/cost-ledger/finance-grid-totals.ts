@@ -6,29 +6,49 @@ import type {
   TripCostSettingsDraft,
 } from "./types";
 
+function mergedParticipantTotalCents(
+  lineAlloc?: Pick<LineAllocationResult, "allocations" | "allocatedTotalCents"> | null,
+  pendingAllocations?: Record<string, number | null> | null,
+): number {
+  if (!pendingAllocations || Object.keys(pendingAllocations).length === 0) {
+    return lineAlloc?.allocatedTotalCents ?? 0;
+  }
+  const alloc = lineAlloc?.allocations ?? {};
+  const participantIds = new Set([...Object.keys(alloc), ...Object.keys(pendingAllocations)]);
+  let sum = 0;
+  for (const participantId of participantIds) {
+    const pending = pendingAllocations[participantId];
+    const cents = pending !== undefined ? pending : alloc[participantId];
+    if (cents != null && cents > 0) sum += cents;
+  }
+  return sum;
+}
+
 /** Row total for display and section subtotals — includes per-person pins when stored total is still zero. */
 export function effectiveLineTotalCents(
   line: Pick<CostLineItemDraft, "totalAmountCents">,
-  lineAlloc?: Pick<LineAllocationResult, "allocatedTotalCents" | "pinnedParticipantIds"> | null,
+  lineAlloc?: Pick<
+    LineAllocationResult,
+    "allocatedTotalCents" | "pinnedParticipantIds" | "allocations"
+  > | null,
   pendingAllocations?: Record<string, number | null> | null,
+  pendingLineTotalCents?: number | null,
 ): number {
+  if (pendingLineTotalCents != null && pendingLineTotalCents >= 0) {
+    return pendingLineTotalCents;
+  }
+
   const stored = line.totalAmountCents;
   const allocated = lineAlloc?.allocatedTotalCents ?? 0;
   const hasPins = (lineAlloc?.pinnedParticipantIds.length ?? 0) > 0;
+  const mergedParticipantTotal = mergedParticipantTotalCents(lineAlloc, pendingAllocations);
 
-  let pendingSum = 0;
-  if (pendingAllocations) {
-    for (const cents of Object.values(pendingAllocations)) {
-      if (cents != null && cents > 0) pendingSum += cents;
-    }
+  if (pendingAllocations && Object.keys(pendingAllocations).length > 0 && mergedParticipantTotal > 0) {
+    return Math.max(stored, mergedParticipantTotal);
   }
-
-  // Pending edits apply to per-person cells only — never inflate a row total that is already set.
-  if (pendingSum > 0) {
-    if (stored === 0) return Math.max(allocated, pendingSum);
+  if (hasPins || (stored === 0 && allocated > 0) || allocated > stored) {
     return Math.max(stored, allocated);
   }
-  if (hasPins || (stored === 0 && allocated > 0)) return Math.max(stored, allocated);
   return stored;
 }
 
@@ -37,6 +57,7 @@ export function sectionLinesSubtotalCents(
   lineAllocations: LineAllocationResult[],
   settings: TripCostSettingsDraft,
   pendingAllocations?: Record<string, Record<string, number | null>>,
+  pendingLineTotals?: Record<string, number>,
 ): number {
   const allocById = new Map(lineAllocations.map((row) => [row.lineItemId, row]));
   return lines.reduce((sum, line) => {
@@ -44,6 +65,7 @@ export function sectionLinesSubtotalCents(
       line,
       allocById.get(line.id),
       pendingAllocations?.[line.id],
+      pendingLineTotals?.[line.id],
     );
     return sum + toBase(total, line.currency, settings);
   }, 0);

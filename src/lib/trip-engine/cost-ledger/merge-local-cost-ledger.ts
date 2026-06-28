@@ -138,6 +138,19 @@ function localHasUnsyncedPinnedAllocations(
   );
 }
 
+/** Saved row totals in the local session that a stale server refresh has not caught up to. */
+export function localHasUnsyncedLineTotals(
+  local: CostLedgerProjection,
+  server: CostLedgerProjection,
+): boolean {
+  const serverById = new Map(server.lineItems.map((line) => [line.id, line]));
+  return local.lineItems.some((line) => {
+    const onServer = serverById.get(line.id);
+    if (!onServer) return false;
+    return line.totalAmountCents !== onServer.totalAmountCents;
+  });
+}
+
 function preferAheadLineAllocation(
   local: LineAllocationResult | undefined,
   server: LineAllocationResult | undefined,
@@ -189,7 +202,8 @@ export function localCostLedgerIsAhead(
   }
   return (
     localHasUnsyncedLinkedLines(local, server, graph) ||
-    localHasUnsyncedPinnedAllocations(local, server)
+    localHasUnsyncedPinnedAllocations(local, server) ||
+    localHasUnsyncedLineTotals(local, server)
   );
 }
 
@@ -212,7 +226,8 @@ export function mergePreferLocalCostLedger(
 
   const ahead = localCostLedgerIsAhead(prunedLocal, server, graph);
   const allocationAhead = localHasUnsyncedPinnedAllocations(prunedLocal, server);
-  if (!ahead && !allocationAhead) return server;
+  const totalAhead = localHasUnsyncedLineTotals(prunedLocal, server);
+  if (!ahead && !allocationAhead && !totalAhead) return server;
 
   const serverIds = new Set(server.lineItems.map((line) => line.id));
   const linkedOnServer = serverLinkKeys(server);
@@ -226,7 +241,8 @@ export function mergePreferLocalCostLedger(
   if (
     !localOnlyLines.length &&
     !hasOptimisticFinanceSections(local.settings) &&
-    !allocationAhead
+    !allocationAhead &&
+    !totalAhead
   ) {
     return server;
   }
@@ -257,9 +273,10 @@ export function mergePreferLocalCostLedger(
     ...localOnlyLines.filter((line) => !serverIds.has(line.id)),
   ];
 
-  const mergedAllocations = allocationAhead
-    ? mergeLineAllocations(prunedLocal, server)
-    : [
+  const mergedAllocations =
+    allocationAhead || totalAhead
+      ? mergeLineAllocations(prunedLocal, server)
+      : [
         ...server.lineAllocations.filter((row) => !localOnlyIds.has(row.lineItemId)),
         ...prunedLocal.lineAllocations.filter((row) => localOnlyIds.has(row.lineItemId)),
       ];

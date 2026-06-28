@@ -108,14 +108,47 @@ describe("finance-grid-totals", () => {
     );
   });
 
-  it("does not inflate stored row total from pending per-person edits", () => {
+  it("does not deflate stored row total from partial pending per-person edits", () => {
     assert.equal(
       effectiveLineTotalCents(
         { totalAmountCents: 436_800 },
-        { allocatedTotalCents: 436_800, pinnedParticipantIds: [] },
+        {
+          allocatedTotalCents: 436_800,
+          pinnedParticipantIds: [],
+          allocations: { p1: 218_400, p2: 218_400 },
+        },
         { p1: 229_90, p2: 229_90 },
       ),
       436_800,
+    );
+  });
+
+  it("uses merged participant totals when pending edits exceed stored row total", () => {
+    assert.equal(
+      effectiveLineTotalCents(
+        { totalAmountCents: 110_700 },
+        {
+          allocatedTotalCents: 110_700,
+          pinnedParticipantIds: ["p1", "p2"],
+          allocations: { p1: 55_350, p2: 55_350 },
+        },
+        { p1: 213_600, p2: 213_600 },
+      ),
+      427_200,
+    );
+  });
+
+  it("uses allocated total when per-person pins outran stored row total", () => {
+    assert.equal(
+      effectiveLineTotalCents(
+        { totalAmountCents: 110_700 },
+        {
+          allocatedTotalCents: 427_200,
+          pinnedParticipantIds: ["p1", "p2"],
+          allocations: { p1: 213_600, p2: 213_600 },
+        },
+      ),
+      427_200,
     );
   });
 

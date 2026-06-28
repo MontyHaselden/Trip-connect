@@ -41,6 +41,14 @@ function dedupeManualFinanceLines(lines: CostLineItemDraft[]): CostLineItemDraft
   return [...rest, ...dedupedManual];
 }
 
+function preferMergedLine(
+  optimisticLine: CostLineItemDraft,
+  saved: CostLineItemDraft,
+): CostLineItemDraft {
+  if (optimisticLine.totalAmountCents > saved.totalAmountCents) return optimisticLine;
+  return saved;
+}
+
 function remapAllocationRow(
   row: LineAllocationResult,
   remapId: (id: string) => string,
@@ -82,40 +90,16 @@ export function mergeFinancePatchResult(
     if (!optimisticLine || !saved) continue;
     const targetLine =
       optimisticLine.id === serverId ? optimisticLine : { ...optimisticLine, id: serverId };
-    const optimisticAlloc = optimisticAllocByLine.get(serverId);
-    const serverAlloc = serverAllocByLine.get(serverId);
-    if (optimisticAlloc && localAllocIsAheadOfServer(optimisticAlloc, serverAlloc)) {
-      mergedById.set(
-        serverId,
-        targetLine.totalAmountCents >= saved.totalAmountCents ? targetLine : saved,
-      );
-    } else {
-      mergedById.set(
-        serverId,
-        saved.totalAmountCents >= targetLine.totalAmountCents ? saved : targetLine,
-      );
-    }
+    mergedById.set(serverId, preferMergedLine(targetLine, saved));
   }
 
   for (const line of filteredOptimisticItems) {
     const targetId = remapId(line.id);
     const optimisticLine = targetId === line.id ? line : { ...line, id: targetId };
     const saved = serverLineById.get(targetId);
-    const optimisticAlloc = optimisticAllocByLine.get(targetId);
-    const serverAlloc = serverAllocByLine.get(targetId);
 
     if (saved) {
-      if (optimisticAlloc && localAllocIsAheadOfServer(optimisticAlloc, serverAlloc)) {
-        mergedById.set(
-          targetId,
-          optimisticLine.totalAmountCents >= saved.totalAmountCents ? optimisticLine : saved,
-        );
-      } else {
-        mergedById.set(
-          targetId,
-          saved.totalAmountCents >= optimisticLine.totalAmountCents ? saved : optimisticLine,
-        );
-      }
+      mergedById.set(targetId, preferMergedLine(optimisticLine, saved));
     } else {
       mergedById.set(targetId, optimisticLine);
     }
@@ -134,7 +118,16 @@ export function mergeFinancePatchResult(
   for (const lineId of keptLineIds) {
     const optimisticAlloc = optimisticAllocByLine.get(lineId);
     const serverAlloc = serverAllocByLine.get(lineId);
-    if (optimisticAlloc && localAllocIsAheadOfServer(optimisticAlloc, serverAlloc)) {
+    const saved = serverLineById.get(lineId);
+    const mergedLine = mergedById.get(lineId);
+    const totalAhead =
+      saved != null &&
+      mergedLine != null &&
+      mergedLine.totalAmountCents > saved.totalAmountCents;
+    if (
+      optimisticAlloc &&
+      (totalAhead || localAllocIsAheadOfServer(optimisticAlloc, serverAlloc))
+    ) {
       lineAllocations.push(optimisticAlloc);
     } else if (serverAlloc) {
       lineAllocations.push(serverAlloc);

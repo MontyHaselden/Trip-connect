@@ -68,15 +68,25 @@ export function TripOsCurrencyCalculatorHub(props: {
             />
           </div>
 
-          <div className="mt-3 overflow-hidden rounded-xl border border-violet-100">
-            <FinanceCalculatorPanel
-              tripId={props.tripId}
-              open
-              embedded
-              onClose={() => hub.setOpen(false)}
-            />
-          </div>
+          {inline ? (
+            <div className="mt-3 overflow-hidden rounded-xl border border-violet-100">
+              <FinanceCalculatorPanel
+                tripId={props.tripId}
+                open
+                embedded
+                onClose={() => hub.setOpen(false)}
+              />
+            </div>
+          ) : null}
         </div>
+      ) : null}
+
+      {hub.open && !inline ? (
+        <FinanceCalculatorPanel
+          tripId={props.tripId}
+          open
+          onClose={() => hub.setOpen(false)}
+        />
       ) : null}
     </div>
   );

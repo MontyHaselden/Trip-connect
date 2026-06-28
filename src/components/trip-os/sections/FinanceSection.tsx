@@ -211,7 +211,7 @@ function FinanceSectionBody(props: {
       lineId: resolvedId,
       line: patchBulkParticipantAllocations(line, lineAlloc, updates, {
         replacePins: true,
-        syncTotalToPins: line.totalAmountCents <= 0,
+        syncTotalToPins: true,
       }),
     });
   }

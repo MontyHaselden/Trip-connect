@@ -154,6 +154,7 @@ export function FinanceAmountCell(props: {
   baseCurrency?: string;
   ratesFromBase?: Record<string, number>;
   onPatch: (lineId: string, patch: Partial<CostLineFormValues>) => void;
+  onPendingTotalChange?: (lineId: string, totalCents: number | null) => void;
 }) {
   const quantity = effectiveLineQuantity(props.line, props.graph);
   const unitLabel = quantityUnitLabel(props.line, props.graph);
@@ -179,6 +180,7 @@ export function FinanceAmountCell(props: {
         align="center"
         valueCents={rowTotalCents > 0 ? rowTotalCents : null}
         {...moneyProps}
+        onDraftChange={(cents) => props.onPendingTotalChange?.(props.line.id, cents)}
         onCommit={(cents) => {
           props.onPatch(props.line.id, {
             totalAmountCents: cents ?? 0,
@@ -192,6 +194,16 @@ export function FinanceAmountCell(props: {
             align="center"
             valueCents={perUnit}
             {...moneyProps}
+            onDraftChange={(cents) => {
+              if (!quantity || cents == null) {
+                props.onPendingTotalChange?.(props.line.id, null);
+                return;
+              }
+              props.onPendingTotalChange?.(
+                props.line.id,
+                totalFromUnitCents(cents, quantity),
+              );
+            }}
             onCommit={(cents) => {
               if (!quantity || cents == null) return;
               props.onPatch(props.line.id, {

@@ -248,6 +248,7 @@ export function FinanceSpreadsheet(props: {
   const [byPersonId, setByPersonId] = useState<string | null>(null);
   const [byGroupId, setByGroupId] = useState<string | null>(null);
   const [pendingAllocations, setPendingAllocations] = useState<PendingAllocations>({});
+  const [pendingLineTotals, setPendingLineTotals] = useState<Record<string, number>>({});
   useEffect(() => {
     if (!props.focusSectionTab && !props.focusLineId) return;
     if (props.focusSectionTab) setActiveTab(props.focusSectionTab);
@@ -308,6 +309,50 @@ export function FinanceSpreadsheet(props: {
       return changed || Object.keys(next).length !== Object.keys(prev).length ? next : prev;
     });
   }, [props.costLedger.lineAllocations]);
+
+  useEffect(() => {
+    setPendingLineTotals((prev) => {
+      if (!Object.keys(prev).length) return prev;
+      const next: Record<string, number> = {};
+      let changed = false;
+      for (const [lineId, pendingTotal] of Object.entries(prev)) {
+        const line = props.costLedger.lineItems.find((row) => row.id === lineId);
+        if (!line) {
+          next[lineId] = pendingTotal;
+          continue;
+        }
+        if (line.totalAmountCents !== pendingTotal) {
+          next[lineId] = pendingTotal;
+        } else {
+          changed = true;
+        }
+      }
+      return changed || Object.keys(next).length !== Object.keys(prev).length ? next : prev;
+    });
+  }, [props.costLedger.lineItems]);
+
+  function handlePatchLine(lineId: string, patch: FinanceLinePatch) {
+    if (patch.totalAmountCents !== undefined) {
+      setPendingLineTotals((prev) => ({
+        ...prev,
+        [lineId]: patch.totalAmountCents ?? 0,
+      }));
+    }
+    props.onPatchLine(lineId, patch);
+  }
+
+  function handlePendingLineTotal(lineId: string, totalCents: number | null) {
+    setPendingLineTotals((prev) => {
+      if (totalCents == null || totalCents <= 0) {
+        if (!(lineId in prev)) return prev;
+        const next = { ...prev };
+        delete next[lineId];
+        return next;
+      }
+      if (prev[lineId] === totalCents) return prev;
+      return { ...prev, [lineId]: totalCents };
+    });
+  }
 
   const settings = props.costLedger.settings;
   const [instantSectionExclusions, setInstantSectionExclusions] = useState<
@@ -689,6 +734,7 @@ export function FinanceSpreadsheet(props: {
       props.costLedger.lineAllocations,
       settings,
       pendingAllocations,
+      pendingLineTotals,
     );
   }
 
@@ -714,6 +760,7 @@ export function FinanceSpreadsheet(props: {
       line,
       lineAlloc,
       pendingAllocations[line.id],
+      pendingLineTotals[line.id],
     );
     const isEmpty = rowTotalCents === 0;
     const hasPinnedPrices = (lineAlloc?.pinnedParticipantIds.length ?? 0) > 0;
@@ -810,7 +857,7 @@ export function FinanceSpreadsheet(props: {
               graph={props.graph}
               openCell={openCell}
               setOpenCell={setOpenCell}
-              onPatch={props.onPatchLine}
+              onPatch={handlePatchLine}
             />
             {props.onPatchParticipantsBulk ? (
               <button
@@ -844,7 +891,7 @@ export function FinanceSpreadsheet(props: {
             graph={props.graph}
             openCell={openCell}
             setOpenCell={setOpenCell}
-            onPatch={props.onPatchLine}
+            onPatch={handlePatchLine}
           />
         </td>
         <td className={`${tdMoneyClass} ${moneyCol} ${tdRowBg} text-center ${rowDimClass}`}>
@@ -853,7 +900,8 @@ export function FinanceSpreadsheet(props: {
             graph={props.graph}
             displayTotalCents={rowTotalCents}
             {...moneyCellProps}
-            onPatch={props.onPatchLine}
+            onPatch={handlePatchLine}
+            onPendingTotalChange={handlePendingLineTotal}
           />
         </td>
         {pool.map((participant) => {
@@ -1280,7 +1328,7 @@ export function FinanceSpreadsheet(props: {
             Delete selected ({totalSelectedCount})
           </button>
         ) : null}
-        <TripOsCurrencyCalculatorHub tripId={props.tripId} layout="spreadsheet" />
+        <TripOsCurrencyCalculatorHub tripId={props.tripId} />
       </div>
 
       {pricingError ? (

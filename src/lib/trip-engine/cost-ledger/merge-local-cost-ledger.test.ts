@@ -167,12 +167,14 @@ describe("localCostLedgerIsAhead", () => {
     assert.equal(localCostLedgerIsAhead(local, server, graph), true);
   });
 
-  it("does not treat deleted activities as ahead of server", () => {
-    const local = emptyCostLedgerProjection();
-    local.lineItems = [linkedActivityLine("server-line-1", "act-1", "Skytree")];
+  it("detects saved row totals missing from a stale server snapshot", () => {
+    const line = manualLine("stay-1", "Hotel");
+    line.category = "accommodation";
     const server = emptyCostLedgerProjection();
-    const graph = graphWithoutActivities();
-    assert.equal(localCostLedgerIsAhead(local, server, graph), false);
+    server.lineItems = [{ ...line, totalAmountCents: 110_700 }];
+    const local = emptyCostLedgerProjection();
+    local.lineItems = [{ ...line, totalAmountCents: 427_200 }];
+    assert.equal(localCostLedgerIsAhead(local, server), true);
   });
 });
 
@@ -258,5 +260,17 @@ describe("mergePreferLocalCostLedger", () => {
     assert.equal(merged?.lineItems[0]?.totalAmountCents, 1_140_000);
     assert.equal(merged?.lineAllocations[0]?.allocatedTotalCents, 1_140_000);
     assert.deepEqual(merged?.lineAllocations[0]?.pinnedParticipantIds, ["p1", "p2"]);
+  });
+
+  it("keeps higher saved row totals when a stale server refresh returns old prices", () => {
+    const line = manualLine("stay-1", "Hotel");
+    line.category = "accommodation";
+    const server = emptyCostLedgerProjection();
+    server.lineItems = [{ ...line, totalAmountCents: 110_700 }];
+    const local = emptyCostLedgerProjection();
+    local.lineItems = [{ ...line, totalAmountCents: 427_200 }];
+
+    const merged = mergePreferLocalCostLedger(local, server);
+    assert.equal(merged?.lineItems[0]?.totalAmountCents, 427_200);
   });
 });
