@@ -64,12 +64,14 @@ function boundsForDay(
 }
 
 export function MapView(props: {
+  tripId: string;
   graph: TripEntityGraph;
   groupId: string;
   calendarSelection: CalendarSelection;
   onHighlightDay: (iso: string) => void;
   onGoToDate: (iso: string) => void;
   onNavigateSection: (section: TripOsSection) => void;
+  onReload: () => void;
 }) {
   const [categories, setCategories] = useState<Set<TripMapCategory>>(
     () => new Set(ALL_MAP_CATEGORIES),
@@ -79,6 +81,8 @@ export function MapView(props: {
   const [missingCollapsed, setMissingCollapsed] = useState(false);
   const [fitTripTrigger, setFitTripTrigger] = useState(0);
   const [focusDayTrigger, setFocusDayTrigger] = useState(0);
+  const [resolving, setResolving] = useState(false);
+  const [resolveSummary, setResolveSummary] = useState<string | null>(null);
 
   const projection = useMemo(
     () => projectTripMap(props.graph, { groupId: props.groupId, categories }),
@@ -131,6 +135,43 @@ export function MapView(props: {
   );
 
   const hasMappedContent = projection.markers.length > 0 || projection.routeLines.length > 0;
+
+  const resolvableCount = useMemo(
+    () => projection.missingCoordinates.filter((item) => item.entityType === "accommodation").length,
+    [projection.missingCoordinates],
+  );
+
+  const handleResolveCoordinates = useCallback(async () => {
+    if (resolving || resolvableCount === 0) return;
+    setResolving(true);
+    setResolveSummary(null);
+    try {
+      const res = await fetch(
+        `/api/trips/${encodeURIComponent(props.tripId)}/map/resolve-coordinates`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ groupId: props.groupId }),
+        },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResolveSummary(body.error ?? "Could not resolve coordinates.");
+        return;
+      }
+      const parts = [`Resolved ${body.resolved ?? 0} hotel${body.resolved === 1 ? "" : "s"}`];
+      if (body.failed) parts.push(`${body.failed} unmatched`);
+      if (body.skipped) parts.push(`${body.skipped} skipped`);
+      setResolveSummary(parts.join(" · "));
+      setMissingCollapsed(false);
+      props.onReload();
+      setFitTripTrigger((n) => n + 1);
+    } catch {
+      setResolveSummary("Could not resolve coordinates.");
+    } finally {
+      setResolving(false);
+    }
+  }, [props, resolvableCount, resolving]);
 
   return (
     <TripSectionShell
@@ -207,6 +248,10 @@ export function MapView(props: {
           collapsed={missingCollapsed}
           onToggleCollapsed={() => setMissingCollapsed((c) => !c)}
           onOpenItem={handleOpenItem}
+          resolvableCount={resolvableCount}
+          resolving={resolving}
+          resolveSummary={resolveSummary}
+          onResolve={() => void handleResolveCoordinates()}
         />
       </div>
     </TripSectionShell>

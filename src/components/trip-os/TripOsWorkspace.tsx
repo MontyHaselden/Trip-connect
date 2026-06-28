@@ -121,12 +121,14 @@ export function TripOsWorkspace(props: {
     case "map":
       return (
         <MapView
+          tripId={tripId}
           graph={graph}
           groupId={groupId}
           calendarSelection={props.calendarSelection ?? { ...EMPTY_CALENDAR_SELECTION }}
           onHighlightDay={props.onHighlightDayFromMap ?? (() => {})}
           onGoToDate={props.onGoToDateFromMap ?? (() => {})}
           onNavigateSection={(s) => props.onNavigateSection(s)}
+          onReload={props.onReload}
         />
       );
     case "locations":

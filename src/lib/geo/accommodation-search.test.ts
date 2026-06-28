@@ -111,10 +111,14 @@ describe("looksLikeFormalMapsCityLabel", () => {
 });
 
 describe("resolveLodgingSearchQuery", () => {
-  it("splits trailing city from hotel name when it conflicts with hint", () => {
+  it("keeps full name when trailing token is not the stay city", () => {
     assert.deepEqual(resolveLodgingSearchQuery("THE KNOT HIROSHIMA", "Tottori"), {
-      query: "THE KNOT",
-      cityHint: "HIROSHIMA",
+      query: "THE KNOT HIROSHIMA",
+      cityHint: "Tottori",
+    });
+    assert.deepEqual(resolveLodgingSearchQuery("Villa Fontaine Grand", "Tokyo"), {
+      query: "Villa Fontaine Grand",
+      cityHint: "Tokyo",
     });
   });
 

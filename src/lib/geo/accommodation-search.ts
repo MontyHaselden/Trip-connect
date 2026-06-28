@@ -339,10 +339,15 @@ export function resolveLodgingSearchQuery(
           hintCity.includes(lastLower) ||
           lastLower.includes(hintCity));
 
-      return {
-        query: namePart,
-        cityHint: sameAsHint ? sanitizedHint : last,
-      };
+      if (sameAsHint) {
+        return { query: namePart, cityHint: sanitizedHint };
+      }
+      // No stay city — treat trailing token as an embedded city (e.g. "The Knot Hiroshima").
+      if (!sanitizedHint) {
+        return { query: namePart, cityHint: last };
+      }
+      // Stay city is authoritative — do not peel name suffixes like "Grand" off hotel brands.
+      return { query: trimmed, cityHint: sanitizedHint };
     }
   }
 

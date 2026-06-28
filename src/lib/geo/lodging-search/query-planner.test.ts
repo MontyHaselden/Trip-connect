@@ -11,10 +11,10 @@ describe("planLodgingQueryAttempts", () => {
     assert.equal(attempts[0]?.debugAttempt, "resolved");
   });
 
-  it("splits trailing city when it conflicts with hint", () => {
+  it("keeps full name when stay city differs from embedded city", () => {
     const attempts = planLodgingQueryAttempts("THE KNOT HIROSHIMA", "Tottori");
-    assert.equal(attempts[0]?.query, "THE KNOT");
-    assert.equal(attempts[0]?.cityHint, "HIROSHIMA");
+    assert.equal(attempts[0]?.query, "THE KNOT HIROSHIMA");
+    assert.equal(attempts[0]?.cityHint, "Tottori");
   });
 
   it("includes strip-the attempt for The-prefixed names", () => {
