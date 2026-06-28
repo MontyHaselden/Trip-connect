@@ -274,7 +274,12 @@ export function TripOsBoard(props: { tripId: string }) {
     [engine.data, handleNavSelect],
   );
 
-  if (!engine.data) {
+  if (!engine.data || engine.loadStatus.phase !== "ready") {
+    const loadMessage =
+      engine.loadStatus.message ||
+      (engine.refreshing ? "Loading trip…" : "Starting…");
+    const loadProgress = engine.loadStatus.progress;
+
     return (
       <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -310,9 +315,23 @@ export function TripOsBoard(props: { tripId: string }) {
                 </div>
               </>
             ) : (
-              <p className="text-sm text-zinc-500">
-                {engine.refreshing ? "Loading trip…" : "Starting…"}
-              </p>
+              <>
+                <p className="text-sm text-zinc-500">{loadMessage}</p>
+                {loadProgress > 0 && loadProgress < 100 ? (
+                  <div
+                    className="h-1 w-48 overflow-hidden rounded-full bg-zinc-100"
+                    role="progressbar"
+                    aria-valuenow={loadProgress}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                    <div
+                      className="h-full rounded-full bg-violet-500 transition-[width] duration-300"
+                      style={{ width: `${loadProgress}%` }}
+                    />
+                  </div>
+                ) : null}
+              </>
             )}
           </main>
         </div>
@@ -320,18 +339,12 @@ export function TripOsBoard(props: { tripId: string }) {
     );
   }
 
-  const calendarBootstrapping =
-    !calendarView ||
-    (calendarView.calendarRenderModel.days.length === 0 &&
-      calendarView.calendarProjection.days.length === 0 &&
-      engine.loadStatus.phase !== "ready");
-
   const { graph: tripGraph, readiness, warnings, conflicts, rosterSummary: roster, costLedger } =
-    engine.data!;
+    engine.data;
   const calendarRenderModel =
-    calendarView?.calendarRenderModel ?? engine.data!.calendarRenderModel;
+    calendarView?.calendarRenderModel ?? engine.data.calendarRenderModel;
   const calendarProjection =
-    calendarView?.calendarProjection ?? engine.data!.calendarProjection;
+    calendarView?.calendarProjection ?? engine.data.calendarProjection;
   const activeGroupId = editGroupId;
   const calmNav = isTripWelcomeState(graphToSetupState(tripGraph));
   const calendarLensReady =
@@ -449,12 +462,6 @@ export function TripOsBoard(props: { tripId: string }) {
         </main>
         {!hideCalendar ? (
         <aside className="flex min-h-0 w-[min(42rem,48vw)] min-w-[320px] shrink-0 flex-col overflow-hidden bg-white shadow-[inset_1px_0_0_0_rgb(0_0_0/0.04)]">
-          {calendarBootstrapping ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-              <p className="text-sm font-medium text-zinc-700">Building calendar…</p>
-              <p className="text-xs text-zinc-500">Large trips can take a few seconds.</p>
-            </div>
-          ) : (
           <InteractiveTripCalendar
             tripId={props.tripId}
             model={calendarRenderModel}
@@ -468,7 +475,6 @@ export function TripOsBoard(props: { tripId: string }) {
             statusLine={saveStatusLine ?? undefined}
             interactionDisabled={!calendarLensReady || engine.saving || engine.refreshing}
           />
-          )}
         </aside>
         ) : null}
       </div>

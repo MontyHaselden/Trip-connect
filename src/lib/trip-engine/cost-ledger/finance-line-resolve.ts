@@ -1,7 +1,10 @@
+import type { TripEntityGraph } from "../types";
+
 import { isManualFinanceLine } from "./finance-sections";
 import { primaryLinkKey } from "./merge-local-cost-ledger";
 import { isOptimisticFinanceLineId } from "./optimistic-finance-patch";
 import { isServerFinanceLineId } from "./finance-line-delete-plan";
+import { buildSeedLineItems, seedItemsNotYetPresent } from "./seed-from-graph";
 import type { CostLedgerProjection, CostLineItemDraft } from "./types";
 
 function manualLineFingerprint(line: CostLineItemDraft): string | null {
@@ -58,6 +61,16 @@ export function ledgerHasUnmaterializedLinkedLines(ledger: CostLedgerProjection)
   return ledger.lineItems.some(
     (line) => isOptimisticFinanceLineId(line.id) && Boolean(primaryLinkKey(line)),
   );
+}
+
+/** True when graph-linked costs still need server rows or optimistic seeds are pending. */
+export function graphHasUnsyncedFinanceSeeds(
+  graph: TripEntityGraph,
+  ledger: CostLedgerProjection | null,
+): boolean {
+  if (!ledger) return true;
+  if (ledgerHasUnmaterializedLinkedLines(ledger)) return true;
+  return seedItemsNotYetPresent(ledger.lineItems, buildSeedLineItems(graph)).length > 0;
 }
 
 export function remapOptimisticFinanceLineIds(

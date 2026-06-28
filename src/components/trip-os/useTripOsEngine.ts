@@ -46,6 +46,7 @@ import {
   removeFromTripCommandsForLines,
 } from "@/lib/trip-engine/cost-ledger/finance-line-delete-plan";
 import {
+  graphHasUnsyncedFinanceSeeds,
   ledgerHasUnmaterializedLinkedLines,
   remapOptimisticFinanceLineIds,
   resolveFinanceLineIdForServer,
@@ -91,6 +92,7 @@ export type TripLoadPhase =
   | "parsing"
   | "preparing"
   | "building-calendar"
+  | "syncing-finance"
   | "ready";
 
 export type TripLoadStatus = {
@@ -196,6 +198,10 @@ export function useTripOsEngine(tripId: string) {
   const refreshCostLedgerRef = useRef<
     () => Promise<CostLedgerProjection | null>
   >(async () => null);
+  const materializeLinkedFinanceLinesRef = useRef<() => Promise<void>>(async () => {});
+  const runTripFinanceBootstrapRef = useRef<
+    (generation: number, options: { silent: boolean; hadData: boolean }) => Promise<void>
+  >(async () => {});
 
   const buildStateFromGraph = useCallback(
     (
@@ -473,10 +479,14 @@ export function useTripOsEngine(tripId: string) {
       const generation = ++loadGenerationRef.current;
       const forceServer = options?.forceServer ?? false;
       const skipLocalDraft = options?.skipLocalDraft ?? forceServer;
+      const silent = options?.silent ?? false;
+      const hadData = Boolean(dataRef.current);
 
       setRefreshing(true);
       setError(null);
-      setLoadStatus({ phase: "connecting", progress: 10, message: "Loading trip…" });
+      if (!silent || !hadData) {
+        setLoadStatus({ phase: "connecting", progress: 10, message: "Loading trip…" });
+      }
       await yieldToMain();
       try {
         if (forceServer && pendingCommandsRef.current.length) {
@@ -549,18 +559,19 @@ export function useTripOsEngine(tripId: string) {
         scheduleAfterPaint(() => {
           void (async () => {
             if (generation !== loadGenerationRef.current) return;
-            setLoadStatus({
-              phase: "building-calendar",
-              progress: 85,
-              message: "Building calendar…",
-            });
+            if (!silent || !hadData) {
+              setLoadStatus({
+                phase: "building-calendar",
+                progress: 85,
+                message: "Building calendar…",
+              });
+            }
             await yieldToMain();
             if (generation !== loadGenerationRef.current) return;
             try {
               applyResponse(body, {
                 viewGroupId,
                 rebuildView: true,
-                skipTransportRepair: true,
               });
             } catch (calendarErr) {
               setError(
@@ -569,8 +580,9 @@ export function useTripOsEngine(tripId: string) {
                   : "Calendar build failed.",
               );
             }
+            await runTripFinanceBootstrapRef.current(generation, { silent, hadData });
+            if (generation !== loadGenerationRef.current) return;
             setLoadStatus(READY_LOAD_STATUS);
-            void refreshCostLedgerRef.current();
             if (pendingCommandsRef.current.length) scheduleFlushRef.current();
           })();
         });
@@ -951,7 +963,8 @@ export function useTripOsEngine(tripId: string) {
         );
         remapOptimisticFinanceLineIds(costLedger, optimisticLineMapRef.current);
         persistLocalSnapshot(prev.graph, { costLedger });
-        return { ...prev, costLedger };
+        const readiness = computeReadiness(prev.graph, prev.calendarProjection, costLedger);
+        return { ...prev, costLedger, readiness };
       });
       return body.costLedger;
     } catch {
@@ -962,8 +975,10 @@ export function useTripOsEngine(tripId: string) {
   refreshCostLedgerRef.current = refreshCostLedgerFromServer;
 
   const materializeLinkedFinanceLines = useCallback(async (): Promise<void> => {
-    const ledger = dataRef.current?.costLedger;
-    if (!ledger || !ledgerHasUnmaterializedLinkedLines(ledger)) return;
+    const snap = dataRef.current;
+    if (!snap?.costLedger) return;
+    const needsSync = graphHasUnsyncedFinanceSeeds(snap.graph, snap.costLedger);
+    if (!needsSync) return;
     try {
       const res = await fetch(`/api/trips/${tripId}/costs`, {
         method: "PATCH",
@@ -982,12 +997,70 @@ export function useTripOsEngine(tripId: string) {
         const costLedger = merged ?? body.costLedger!;
         remapOptimisticFinanceLineIds(costLedger, optimisticLineMapRef.current);
         persistLocalSnapshot(prev.graph, { costLedger });
-        return { ...prev, costLedger };
+        const readiness = computeReadiness(prev.graph, prev.calendarProjection, costLedger);
+        return { ...prev, costLedger, readiness };
       });
     } catch {
       // Background materialization — local optimistic rows remain editable.
     }
   }, [tripId, persistLocalSnapshot]);
+
+  materializeLinkedFinanceLinesRef.current = materializeLinkedFinanceLines;
+
+  const runTripFinanceBootstrap = useCallback(
+    async (generation: number, options: { silent: boolean; hadData: boolean }) => {
+      const { silent, hadData } = options;
+      const setSyncPhase = () => {
+        if (generation !== loadGenerationRef.current) return;
+        if (!silent || !hadData) {
+          setLoadStatus({
+            phase: "syncing-finance",
+            progress: 92,
+            message: "Syncing costs and status…",
+          });
+        }
+      };
+
+      for (let attempt = 0; attempt < 5; attempt++) {
+        if (generation !== loadGenerationRef.current) return;
+        await yieldToMain();
+        setSyncPhase();
+
+        const snap = dataRef.current;
+        if (!snap?.graph) break;
+
+        const needsSync = graphHasUnsyncedFinanceSeeds(snap.graph, snap.costLedger);
+        if (needsSync) {
+          await materializeLinkedFinanceLinesRef.current();
+        } else {
+          await refreshCostLedgerRef.current();
+        }
+
+        const after = dataRef.current;
+        if (
+          after?.costLedger &&
+          !graphHasUnsyncedFinanceSeeds(after.graph, after.costLedger)
+        ) {
+          break;
+        }
+      }
+
+      if (generation !== loadGenerationRef.current) return;
+      setSyncPhase();
+      await refreshCostLedgerRef.current();
+
+      setData((prev) => {
+        if (!prev?.costLedger) return prev;
+        return {
+          ...prev,
+          readiness: computeReadiness(prev.graph, prev.calendarProjection, prev.costLedger),
+        };
+      });
+    },
+    [],
+  );
+
+  runTripFinanceBootstrapRef.current = runTripFinanceBootstrap;
 
   const resolveFinancePayload = useCallback(
     (payload: Record<string, unknown>): { payload: Record<string, unknown> } => {
@@ -1335,10 +1408,11 @@ export function useTripOsEngine(tripId: string) {
   }, []);
 
   useEffect(() => {
-    const ledger = data?.costLedger;
-    if (!ledger || !ledgerHasUnmaterializedLinkedLines(ledger)) return;
+    const snap = dataRef.current;
+    if (!snap?.costLedger) return;
+    if (!graphHasUnsyncedFinanceSeeds(snap.graph, snap.costLedger)) return;
     void materializeLinkedFinanceLines();
-  }, [data?.costLedger, materializeLinkedFinanceLines]);
+  }, [data?.costLedger, data?.graph, materializeLinkedFinanceLines]);
 
   return {
     data,
