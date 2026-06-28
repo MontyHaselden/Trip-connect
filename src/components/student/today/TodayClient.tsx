@@ -1,9 +1,9 @@
 "use client";
 
 import { Suspense, useEffect, useMemo } from "react";
+import { DateTime } from "luxon";
 
 import { useTripApp } from "@/components/layout/TripAppContext";
-import { useSelectedTripDay } from "@/hooks/useSelectedTripDay";
 import {
   hasTodaySchedule,
   resolveStudentTripPayload,
@@ -24,7 +24,7 @@ import { CompactDaySheet } from "@/components/student/today/CompactDaySheet";
 import { TodayDayMetaBridge } from "@/components/student/today/TodayDayMetaBridge";
 
 function TodayContent() {
-  const { cache } = useTripApp();
+  const { cache, todayNav } = useTripApp();
   const trip = useMemo(
     () => resolveStudentTripPayload(cache.payload, cache.participantId),
     [cache.payload, cache.participantId],
@@ -37,15 +37,18 @@ function TodayContent() {
       (cache.status === "up_to_date" || cache.status === "ready"));
 
   const tripTz = trip?.trip.timezone ?? "UTC";
-  const tripDates = trip
-    ? { startDate: trip.trip.startDate, endDate: trip.trip.endDate }
-    : undefined;
 
-  const { scheduledDays, selectedDay, isViewingToday } = useSelectedTripDay(
-    trip?.days ?? [],
-    tripTz,
-    tripDates,
-  );
+  const scheduledDays = todayNav?.scheduledDays ?? [];
+  const selectedDay = useMemo(() => {
+    if (!todayNav?.selectedDateISO || !trip?.days?.length) return null;
+    return trip.days.find((d) => d.date === todayNav.selectedDateISO) ?? null;
+  }, [todayNav?.selectedDateISO, trip?.days]);
+
+  const isViewingToday = useMemo(() => {
+    if (!selectedDay) return false;
+    const todayISO = DateTime.now().setZone(tripTz).toISODate();
+    return selectedDay.date === todayISO;
+  }, [selectedDay, tripTz]);
 
   useEffect(() => {
     if (!selectedDay?.date) return;

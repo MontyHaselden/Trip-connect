@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { DateTime } from "luxon";
 
 import type { DayWeatherSnapshot } from "@/types/activity-category";
@@ -54,7 +54,6 @@ export function useSelectedTripDay(
   tripTimezone: string,
   tripDates?: { startDate: string; endDate: string },
 ) {
-  const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
 
@@ -97,6 +96,20 @@ export function useSelectedTripDay(
     }
   }, [dateParam, daysByDate, defaultDateISO]);
 
+  useEffect(() => {
+    function onPopState() {
+      const params = new URLSearchParams(window.location.search);
+      const date = params.get("date");
+      if (date && daysByDate.has(date)) {
+        setActiveDateISO(date);
+      } else if (defaultDateISO) {
+        setActiveDateISO(defaultDateISO);
+      }
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [daysByDate, defaultDateISO]);
+
   const selectedDay = useMemo(() => {
     const iso = activeDateISO ?? dateParam ?? defaultDateISO;
     if (iso && daysByDate.has(iso)) return daysByDate.get(iso)!;
@@ -111,11 +124,16 @@ export function useSelectedTripDay(
     (dateISO: string) => {
       if (!daysByDate.has(dateISO)) return;
       setActiveDateISO(dateISO);
-      const params = new URLSearchParams(search.toString());
+      const params = new URLSearchParams(
+        typeof window !== "undefined" ? window.location.search : search.toString(),
+      );
       params.set("date", dateISO);
-      router.push(`${pathname}?${params.toString()}`);
+      const nextUrl = `${pathname}?${params.toString()}`;
+      if (typeof window !== "undefined") {
+        window.history.replaceState(window.history.state, "", nextUrl);
+      }
     },
-    [daysByDate, pathname, router, search],
+    [daysByDate, pathname, search],
   );
 
   const goNext = useCallback(() => {

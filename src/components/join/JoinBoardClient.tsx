@@ -86,16 +86,16 @@ export function JoinBoardClient(props: { inviteCode: string; tripName: string })
   );
 
   return (
-    <div className="flex min-h-dvh flex-col bg-zinc-100 text-zinc-900">
-      <header className="border-b border-zinc-200 bg-white px-6 py-8 text-center">
+    <div className="flex h-dvh flex-col overflow-hidden bg-zinc-100 text-zinc-900">
+      <header className="shrink-0 border-b border-zinc-200 bg-white px-6 py-4 text-center md:py-5">
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-violet-700">
           Join trip
         </p>
-        <h1 className="mt-2 text-4xl font-bold tracking-tight text-zinc-900 md:text-5xl">
+        <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-900 md:text-4xl lg:text-5xl">
           {displayName}
         </h1>
         {total > 0 ? (
-          <div className="mx-auto mt-6 max-w-md">
+          <div className="mx-auto mt-4 max-w-md md:mt-5">
             <div className="flex items-baseline justify-between gap-4 text-sm text-zinc-600">
               <span>
                 <span className="text-2xl font-semibold text-emerald-700">{joinedCount}</span> of{" "}
@@ -103,7 +103,7 @@ export function JoinBoardClient(props: { inviteCode: string; tripName: string })
               </span>
               <span className="font-medium tabular-nums">{progress}%</span>
             </div>
-            <div className="mt-2 h-3 overflow-hidden rounded-full bg-zinc-200">
+            <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-zinc-200 md:h-3">
               <div
                 className="h-full rounded-full bg-emerald-500 transition-all duration-500"
                 style={{ width: `${progress}%` }}
@@ -113,9 +113,9 @@ export function JoinBoardClient(props: { inviteCode: string; tripName: string })
         ) : null}
       </header>
 
-      <div className="grid flex-1 gap-5 px-4 py-6 lg:grid-cols-[minmax(11rem,14rem)_minmax(0,1fr)_minmax(11rem,14rem)] lg:px-6 xl:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)_minmax(12rem,16rem)]">
-        <section className="flex min-h-0 flex-col rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden px-4 py-4 max-lg:grid-rows-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:grid-cols-[minmax(11rem,14rem)_minmax(0,1fr)_minmax(11rem,14rem)] lg:gap-5 lg:px-6 lg:py-5 xl:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)_minmax(12rem,16rem)]">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm lg:p-4">
+          <h2 className="flex shrink-0 items-center gap-2 text-sm font-semibold text-amber-900">
             <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-200/80 text-xs">
               …
             </span>
@@ -124,7 +124,7 @@ export function JoinBoardClient(props: { inviteCode: string; tripName: string })
               {waiting.length}
             </span>
           </h2>
-          <ul className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
+          <ul className="join-board-name-reel mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-y-contain pr-0.5">
             {waitingSorted.length === 0 ? (
               <li className="text-xs leading-relaxed text-amber-800/80">
                 {total === 0 ? "No students on the roster yet." : "Everyone has joined!"}
@@ -148,28 +148,36 @@ export function JoinBoardClient(props: { inviteCode: string; tripName: string })
           </ul>
         </section>
 
-        <section className="flex flex-col items-center justify-center rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm lg:p-8">
-          <p className="text-center text-xl font-semibold text-zinc-900">Scan to join on your phone</p>
-          <p className="mt-1 text-center text-sm text-zinc-600">
+        <section className="flex min-h-0 flex-col items-center justify-center overflow-hidden rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm lg:p-6">
+          <p className="shrink-0 text-center text-lg font-semibold text-zinc-900 lg:text-xl">
+            Scan to join on your phone
+          </p>
+          <p className="mt-1 shrink-0 text-center text-sm text-zinc-600">
             Tap your name, then set a password
           </p>
-          {qrDataUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={qrDataUrl}
-              alt={`QR code to join ${displayName}`}
-              className="mt-6 w-full max-w-[min(520px,72vw)] rounded-xl"
-            />
-          ) : (
-            <div className="mt-6 aspect-square w-full max-w-[min(520px,72vw)] animate-pulse rounded-xl bg-zinc-100" />
-          )}
-          <p className="mt-5 max-w-lg break-all text-center font-mono text-[10px] text-zinc-400">
+          <div className="mt-4 flex min-h-0 w-full flex-1 items-center justify-center">
+            {qrDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={qrDataUrl}
+                alt={`QR code to join ${displayName}`}
+                className="max-h-full max-w-full rounded-xl object-contain"
+                style={{ maxHeight: "min(52vh, 420px)", maxWidth: "min(52vh, 420px)" }}
+              />
+            ) : (
+              <div
+                className="aspect-square max-h-full w-full max-w-[min(52vh,420px)] animate-pulse rounded-xl bg-zinc-100"
+                style={{ maxHeight: "min(52vh, 420px)" }}
+              />
+            )}
+          </div>
+          <p className="mt-3 max-w-lg shrink-0 truncate text-center font-mono text-[10px] text-zinc-400">
             {url}
           </p>
         </section>
 
-        <section className="flex min-h-0 flex-col rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm lg:p-4">
+          <h2 className="flex shrink-0 items-center gap-2 text-sm font-semibold text-emerald-900">
             <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-200/80 text-xs">
               ✓
             </span>
@@ -178,7 +186,7 @@ export function JoinBoardClient(props: { inviteCode: string; tripName: string })
               {joinedCount}
             </span>
           </h2>
-          <ul className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
+          <ul className="join-board-name-reel mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-y-contain pr-0.5">
             {joinedSorted.length === 0 ? (
               <li className="text-xs leading-relaxed text-emerald-800/80">Nobody yet — be the first!</li>
             ) : (

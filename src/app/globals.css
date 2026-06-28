@@ -215,6 +215,21 @@ html.student-app-viewport-lock body {
   display: none;
 }
 
+.join-board-name-reel {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+.join-board-name-reel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.join-board-name-reel::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
 @keyframes block-in {
   from {
     opacity: 0;

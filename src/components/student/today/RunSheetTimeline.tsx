@@ -18,6 +18,7 @@ export function RunSheetTimeline(props: {
   animateItemIds?: Set<string>;
   typewriterItemId?: string | null;
   listFooter?: ReactNode;
+  timelessItemIds?: Set<string>;
 }) {
   const {
     items,
@@ -31,6 +32,7 @@ export function RunSheetTimeline(props: {
     animateItemIds,
     typewriterItemId,
     listFooter,
+    timelessItemIds,
   } = props;
 
   return (
@@ -60,6 +62,7 @@ export function RunSheetTimeline(props: {
               onTap={() => onTapItem(item)}
               animateIn={animateItemIds?.has(item.id)}
               typewriterTitle={typewriterItemId === item.id}
+              timeless={timelessItemIds?.has(item.id)}
             />
           ))}
         </div>

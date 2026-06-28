@@ -20,6 +20,7 @@ export function RunSheetRow(props: {
   onTap: () => void;
   animateIn?: boolean;
   typewriterTitle?: boolean;
+  timeless?: boolean;
 }) {
   const {
     item,
@@ -31,14 +32,17 @@ export function RunSheetRow(props: {
     onTap,
     animateIn,
     typewriterTitle,
+    timeless = false,
   } = props;
 
   const category = resolveCategory(item);
   const accent = categoryAccent(category);
   const time =
-    item.endTime && item.endTime !== item.startTime
-      ? formatItineraryTimeRange(item.startTime, item.endTime, tripTimezone)
-      : formatCompactStartTime(item.startTime, tripTimezone);
+    timeless
+      ? null
+      : item.endTime && item.endTime !== item.startTime
+        ? formatItineraryTimeRange(item.startTime, item.endTime, tripTimezone)
+        : formatCompactStartTime(item.startTime, tripTimezone);
   const title = useTypewriterText(item.title, Boolean(typewriterTitle));
 
   return (
@@ -76,9 +80,13 @@ export function RunSheetRow(props: {
 
       <div className="min-w-0 flex-1 self-stretch border-b border-[var(--student-line)] pb-2.5 group-last:border-b-0">
         <div className="flex h-full items-center gap-2">
-          <span className="w-16 shrink-0 text-[10px] font-semibold leading-tight tabular-nums text-[var(--student-text-muted)]">
-            {time}
-          </span>
+          {timeless ? (
+            <span className="w-16 shrink-0" aria-hidden />
+          ) : (
+            <span className="w-16 shrink-0 text-[10px] font-semibold leading-tight tabular-nums text-[var(--student-text-muted)]">
+              {time}
+            </span>
+          )}
           <span className="min-w-0 flex-1 text-sm font-semibold leading-snug text-[var(--student-text)]">
             {title}
             {typewriterTitle && title.length < item.title.length ? (
