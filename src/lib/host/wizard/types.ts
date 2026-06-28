@@ -174,6 +174,9 @@ export type ActivityDraft = {
   category: ActivityCategory;
   locationName: string | null;
   address: string | null;
+  googlePlaceId?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   isLocationTbc: boolean;
   transportNote: string | null;
   leaveByTime: string | null;

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
+import { VenueNamePicker, type VenueSelection } from "@/components/geo/VenueNamePicker";
 import type { ActivityDraft } from "@/lib/host/wizard/types";
 import {
   activityFinanceAttentionById,
@@ -26,7 +27,28 @@ import { FinanceLineStatusBadge } from "../shared/FinanceLineStatusBadge";
 import { FinanceEntityQuickActions } from "../shared/FinanceEntityQuickActions";
 import { TripScopedSectionHeader } from "../shared/TripScopedSectionHeader";
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
+import { tripFieldClass } from "../shared/TripInput";
 import type { CostsPatchResult } from "../useTripOsEngine";
+
+function activityCityHint(graph: TripEntityGraph, groupId: string, date: string): string | undefined {
+  const places = graph.dayPlacesByGroupId[groupId] ?? [];
+  return places.find((place) => place.date === date)?.primaryCity?.trim() || undefined;
+}
+
+function activityLocationLabel(a: ActivityDraft): string | null {
+  if (a.locationName?.trim()) return a.locationName.trim();
+  if (a.address?.trim()) return a.address.trim();
+  return null;
+}
+
+function hasMapCoords(a: ActivityDraft): boolean {
+  return (
+    typeof a.latitude === "number" &&
+    typeof a.longitude === "number" &&
+    Number.isFinite(a.latitude) &&
+    Number.isFinite(a.longitude)
+  );
+}
 
 function activitySortKey(a: ActivityDraft): string {
   return `${a.date}\0${a.isTimeTbc || !a.startTime?.trim() ? "99:99" : a.startTime.slice(0, 5)}`;
@@ -41,6 +63,7 @@ function formatActivityLine(a: ActivityDraft): string {
   }
   if (a.locationName?.trim()) parts.push(a.locationName.trim());
   else if (a.address?.trim()) parts.push(a.address.trim());
+  if (hasMapCoords(a)) parts.push("On map");
   return parts.join(" · ");
 }
 
@@ -78,6 +101,42 @@ export function ActivitiesSection(props: {
     () => activityFinanceAttentionById(props.costLedger),
     [props.costLedger],
   );
+
+  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [locationDraft, setLocationDraft] = useState("");
+
+  const countryNames = props.graph.basics.destinationCountries ?? [];
+
+  function startEditingLocation(activity: ActivityDraft) {
+    setEditingLocationId(activity.id);
+    setLocationDraft(activity.locationName ?? activity.title);
+  }
+
+  async function saveActivityLocation(
+    activity: ActivityDraft,
+    groupId: string,
+    selection: VenueSelection,
+  ) {
+    const ok = await props.onDispatch([
+      {
+        type: "updateActivity",
+        groupId,
+        activityId: activity.id,
+        patch: {
+          locationName: selection.name,
+          address: selection.address,
+          googlePlaceId: selection.placeId ?? null,
+          latitude: selection.lat ?? null,
+          longitude: selection.lng ?? null,
+          isLocationTbc: false,
+        },
+      },
+    ]);
+    if (ok) {
+      setEditingLocationId(null);
+      setLocationDraft("");
+    }
+  }
 
   function openActivityFinance(activityId: string) {
     const lineId =
@@ -151,12 +210,19 @@ export function ActivitiesSection(props: {
                       );
                       const showFinanceActions =
                         financeStatus === "needs_attention" && Boolean(props.onCostsAction);
+                      const canEdit = isScopeEditable(
+                        scope.groupId,
+                        props.calendarEditContext,
+                        props.graph,
+                      );
+                      const location = activityLocationLabel(a);
 
                       return (
                       <li
                         key={a.id}
-                        className="flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm"
+                        className="rounded-2xl bg-white px-4 py-3 shadow-sm"
                       >
+                        <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <p className="font-medium text-zinc-900">{a.title}</p>
                           <p className="text-sm text-zinc-500">{formatActivityLine(a)}</p>
@@ -185,6 +251,57 @@ export function ActivitiesSection(props: {
                             onNeedsAttention={() => openActivityFinance(a.id)}
                           />
                         </div>
+                        </div>
+                        {canEdit ? (
+                          editingLocationId === a.id ? (
+                            <div className="mt-3 space-y-2 border-t border-zinc-100 pt-3">
+                              <p className="text-xs font-medium text-zinc-600">Venue location</p>
+                              <VenueNamePicker
+                                value={locationDraft}
+                                onChange={setLocationDraft}
+                                onSelectVenue={(selection) => {
+                                  void saveActivityLocation(a, scope.groupId, selection);
+                                }}
+                                countryNames={countryNames}
+                                cityHint={activityCityHint(props.graph, scope.groupId, a.date)}
+                                placeholder="Search venue (e.g. teamLab Planets Tokyo)…"
+                                inputClassName={tripFieldClass}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingLocationId(null);
+                                  setLocationDraft("");
+                                }}
+                                className="text-xs font-medium text-zinc-500 hover:text-zinc-700"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="mt-2 border-t border-zinc-100 pt-2">
+                              {location ? (
+                                <button
+                                  type="button"
+                                  onClick={() => startEditingLocation(a)}
+                                  className="text-left text-xs text-zinc-500 hover:text-zinc-700"
+                                >
+                                  {hasMapCoords(a) ? "📍 " : ""}
+                                  {location}
+                                  <span className="ml-2 text-violet-600">Edit location</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => startEditingLocation(a)}
+                                  className="text-xs font-medium text-violet-600 hover:text-violet-700"
+                                >
+                                  + Add location for map
+                                </button>
+                              )}
+                            </div>
+                          )
+                        ) : null}
                       </li>
                       );
                     })}

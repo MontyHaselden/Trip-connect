@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { DateTime } from "luxon";
 
-import { VenueNamePicker } from "@/components/geo/VenueNamePicker";
+import { VenueNamePicker, type VenueSelection } from "@/components/geo/VenueNamePicker";
 import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import type { ActivityDraft } from "@/lib/host/wizard/types";
 import { newId } from "@/lib/host/wizard/types";
@@ -24,6 +24,7 @@ function ActivityAddressField(props: {
   countryNames: string[];
   cityHint?: string;
   onBlur?: () => void;
+  onSelectVenue?: (selection: VenueSelection) => void;
 }) {
   return (
     <label className="block">
@@ -31,8 +32,9 @@ function ActivityAddressField(props: {
       <VenueNamePicker
         value={props.value}
         onChange={props.onChange}
-        onSelectVenue={({ address }) => {
-          if (address) props.onChange(address);
+        onSelectVenue={(selection) => {
+          props.onSelectVenue?.(selection);
+          if (selection.address) props.onChange(selection.address);
         }}
         countryNames={props.countryNames}
         cityHint={props.cityHint}
@@ -48,7 +50,8 @@ function ActivityAddressField(props: {
 }
 
 function newActivityPayload(
-  partial: Pick<ActivityDraft, "id" | "title" | "date" | "startTime" | "endTime" | "address">,
+  partial: Pick<ActivityDraft, "id" | "title" | "date" | "startTime" | "endTime" | "address"> &
+    Partial<Pick<ActivityDraft, "locationName" | "googlePlaceId" | "latitude" | "longitude">>,
 ): ActivityDraft {
   return {
     id: partial.id,
@@ -59,9 +62,12 @@ function newActivityPayload(
     endTime: partial.endTime,
     isTimeTbc: false,
     category: "activity",
-    locationName: null,
+    locationName: partial.locationName ?? null,
     address: partial.address,
-    isLocationTbc: true,
+    googlePlaceId: partial.googlePlaceId ?? null,
+    latitude: partial.latitude ?? null,
+    longitude: partial.longitude ?? null,
+    isLocationTbc: !(partial.locationName?.trim() || partial.address?.trim()),
     transportNote: null,
     leaveByTime: null,
     bringNote: null,
@@ -108,6 +114,7 @@ export function DayOverviewActivities(props: {
   const [startTime, setStartTime] = useState("10:00");
   const [endTime, setEndTime] = useState("");
   const [address, setAddress] = useState("");
+  const [pendingVenue, setPendingVenue] = useState<VenueSelection | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
   const countryNames = props.graph.basics.destinationCountries ?? [];
@@ -162,6 +169,7 @@ export function DayOverviewActivities(props: {
     const normalizedEnd = endTime.trim() ? normalizeTime(endTime) : null;
     const activityId = newId();
     const trimmedAddress = address.trim() || null;
+    const venue = pendingVenue;
 
     const ok = await props.onDispatch([
       {
@@ -174,7 +182,11 @@ export function DayOverviewActivities(props: {
           date: props.rangeStart,
           startTime: normalizedStart,
           endTime: normalizedEnd,
-          address: trimmedAddress,
+          address: venue?.address ?? trimmedAddress,
+          locationName: venue?.name ?? null,
+          googlePlaceId: venue?.placeId ?? null,
+          latitude: venue?.lat ?? null,
+          longitude: venue?.lng ?? null,
         }),
       },
     ]);
@@ -184,6 +196,7 @@ export function DayOverviewActivities(props: {
       setStartTime("10:00");
       setEndTime("");
       setAddress("");
+      setPendingVenue(null);
       setAdding(false);
     }
   }
@@ -202,6 +215,7 @@ export function DayOverviewActivities(props: {
     const normalizedStart = normalizeTime(startTime);
     const normalizedEnd = endTime.trim() ? normalizeTime(endTime) : null;
     const trimmedAddress = address.trim() || null;
+    const venue = pendingVenue;
 
     const ok = await props.onDispatch([
       {
@@ -213,7 +227,11 @@ export function DayOverviewActivities(props: {
           date: props.rangeStart,
           startTime: normalizedStart,
           endTime: normalizedEnd,
-          address: trimmedAddress,
+          address: venue?.address ?? trimmedAddress,
+          locationName: venue?.name ?? null,
+          googlePlaceId: venue?.placeId ?? null,
+          latitude: venue?.lat ?? null,
+          longitude: venue?.lng ?? null,
         }),
       },
     ]);
@@ -223,6 +241,7 @@ export function DayOverviewActivities(props: {
       setStartTime("10:00");
       setEndTime("");
       setAddress("");
+      setPendingVenue(null);
       setAdding(false);
     }
   }
@@ -230,6 +249,7 @@ export function DayOverviewActivities(props: {
   function startEditingAddress(activity: ActivityDraft) {
     setEditingAddressId(activity.id);
     setAddressDraft(activity.address ?? "");
+    setPendingVenue(null);
   }
 
   async function saveActivityAddress(activityId: string) {
@@ -248,10 +268,24 @@ export function DayOverviewActivities(props: {
         type: "updateActivity",
         groupId: props.groupId,
         activityId,
-        patch: { address: nextAddress },
+        patch: {
+          address: nextAddress,
+          ...(pendingVenue
+            ? {
+                locationName: pendingVenue.name,
+                googlePlaceId: pendingVenue.placeId ?? null,
+                latitude: pendingVenue.lat ?? null,
+                longitude: pendingVenue.lng ?? null,
+                isLocationTbc: false,
+              }
+            : {}),
+        },
       },
     ]);
-    if (ok) setEditingAddressId(null);
+    if (ok) {
+      setEditingAddressId(null);
+      setPendingVenue(null);
+    }
   }
 
   async function removeActivity(activityId: string) {
@@ -340,6 +374,7 @@ export function DayOverviewActivities(props: {
                 onChange={setAddress}
                 countryNames={countryNames}
                 cityHint={cityHint}
+                onSelectVenue={setPendingVenue}
               />
             </div>
           </div>
@@ -354,6 +389,7 @@ export function DayOverviewActivities(props: {
                 setAdding(false);
                 setFormError(null);
                 setAddress("");
+                setPendingVenue(null);
               }}
               className="rounded-full px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100"
             >
@@ -393,8 +429,9 @@ export function DayOverviewActivities(props: {
                             <VenueNamePicker
                               value={addressDraft}
                               onChange={setAddressDraft}
-                              onSelectVenue={({ address: picked }) => {
-                                if (picked) setAddressDraft(picked);
+                              onSelectVenue={(selection) => {
+                                setPendingVenue(selection);
+                                if (selection.address) setAddressDraft(selection.address);
                               }}
                               countryNames={countryNames}
                               cityHint={cityHint}

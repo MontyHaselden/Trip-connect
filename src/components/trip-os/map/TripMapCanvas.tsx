@@ -5,6 +5,7 @@ import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-
 import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
 
 import { configureLeafletDefaultIcons } from "@/lib/map/leaflet-icons";
+import { greatCircleArc } from "@/lib/map/route-geometry";
 import { getMapTileConfig } from "@/lib/map/tile-config";
 import type { TripMapBounds, TripMapMarker, TripMapRouteLine } from "@/lib/trip-engine/map-types";
 
@@ -139,20 +140,27 @@ export function TripMapCanvas(props: {
 
       {props.routes.map((route) => {
         const selected = props.selectedRouteId === route.id;
-        const dashArray =
-          route.status === "flexible" || route.status === "not_booked" ? "8 8" : undefined;
+        const isFlight = route.mode === "flight";
+        const dashed =
+          isFlight || route.status === "flexible" || route.status === "not_booked";
+        const positions = isFlight
+          ? greatCircleArc(
+              { lat: route.fromLat, lng: route.fromLng },
+              { lat: route.toLat, lng: route.toLng },
+            )
+          : ([
+              [route.fromLat, route.fromLng],
+              [route.toLat, route.toLng],
+            ] as Array<[number, number]>);
         return (
           <Polyline
             key={route.id}
-            positions={[
-              [route.fromLat, route.fromLng],
-              [route.toLat, route.toLng],
-            ]}
+            positions={positions}
             pathOptions={{
-              color: selected ? "#4f46e5" : "#2563eb",
+              color: selected ? "#4f46e5" : isFlight ? "#6366f1" : "#2563eb",
               weight: selected ? 4 : 3,
               opacity: selected ? 1 : 0.75,
-              dashArray,
+              dashArray: dashed ? "8 10" : undefined,
             }}
             eventHandlers={{
               click: () => props.onRouteClick(route),

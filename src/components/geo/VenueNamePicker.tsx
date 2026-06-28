@@ -9,6 +9,9 @@ import { AutocompleteField, type AutocompleteOption } from "./AutocompleteField"
 export type VenueSelection = {
   name: string;
   address: string;
+  placeId?: string | null;
+  lat?: number | null;
+  lng?: number | null;
 };
 
 type VenueSuggestionResponse = {
@@ -70,15 +73,26 @@ export function VenueNamePicker({
       const meta = suggestionMeta.current.get(option.id);
       let name = meta?.name ?? meta?.label ?? option.label;
       let address = meta?.address ?? "";
+      let placeId: string | null = meta?.placeId ?? null;
+      let lat: number | null = null;
+      let lng: number | null = null;
 
       if (meta?.placeId) {
         const res = await fetch(
           `/api/geo/addresses?placeId=${encodeURIComponent(meta.placeId)}`,
         );
         if (res.ok) {
-          const details = (await res.json()) as { address: string; name: string | null };
+          const details = (await res.json()) as {
+            address: string;
+            name: string | null;
+            lat?: number | null;
+            lng?: number | null;
+          };
           address = details.address;
           name = details.name ?? name;
+          placeId = meta.placeId;
+          lat = details.lat ?? null;
+          lng = details.lng ?? null;
         } else if (meta.sublabel) {
           address = [meta.label, meta.sublabel].filter(Boolean).join(", ");
         }
@@ -88,7 +102,7 @@ export function VenueNamePicker({
 
       onChange(name);
       if (address) {
-        onSelectVenue({ name, address });
+        onSelectVenue({ name, address, placeId, lat, lng });
       }
     },
     [onChange, onSelectVenue],

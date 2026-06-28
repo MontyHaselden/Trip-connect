@@ -2,7 +2,6 @@ import { locationsMatch } from "@/lib/host/wizard/location-stays";
 import type {
   AccommodationStayDraft,
   ActivityDraft,
-  DayPlaceDraft,
   IntercityLegDraft,
   TransportLegDraft,
   TransportType,
@@ -135,31 +134,6 @@ function computeBounds(
   return { south, west, north, east };
 }
 
-function addDayPlaceMissing(
-  missing: NeedsCoordinatesItem[],
-  seen: Set<string>,
-  day: DayPlaceDraft,
-  city: string,
-  groupId: string,
-) {
-  const id = `day_place-${day.date}-${city}`;
-  if (seen.has(id)) return;
-  seen.add(id);
-  missing.push({
-    id,
-    entityType: "day_place",
-    entityId: `${day.date}-${city}`,
-    title: city,
-    subtitle: `Calendar day ${day.date}`,
-    date: day.date,
-    groupId,
-    category: "locations",
-    city,
-    sectionId: "locations",
-    linkedCalendarDay: day.date,
-  });
-}
-
 function projectAccommodationMarkers(
   stays: AccommodationStayDraft[],
   groupId: string,
@@ -217,15 +191,46 @@ function projectAccommodationMarkers(
   }
 }
 
-function projectActivityMissing(
+function projectActivityMarkers(
   activities: ActivityDraft[],
   groupId: string,
+  markers: TripMapMarker[],
   missing: NeedsCoordinatesItem[],
   seenMissing: Set<string>,
 ): void {
   for (const activity of activities) {
     if (!activity.title.trim()) continue;
-    const city = activity.locationName?.trim() || activity.address?.trim() || "";
+    const city =
+      activity.locationName?.trim() ||
+      activity.address?.trim()?.split(",")[0]?.trim() ||
+      "";
+    if (hasValidCoords(activity.latitude, activity.longitude)) {
+      markers.push({
+        id: `activity-${activity.id}`,
+        entityType: "activity",
+        entityId: activity.id,
+        title: activity.title,
+        subtitle: city || activity.date,
+        date: activity.date,
+        groupId: activity.originGroupId ?? groupId,
+        category: "activities",
+        lat: activity.latitude!,
+        lng: activity.longitude!,
+        city: city || "—",
+        linkedCalendarDay: activity.date,
+        color: MAP_MARKER_COLORS.activities,
+        status: activity.bookingStatus,
+        popupData: {
+          entityType: "activity",
+          entityId: activity.id,
+          sectionId: "activities",
+          linkedCalendarDay: activity.date,
+          bookingStatus: activity.bookingStatus,
+        },
+      });
+      continue;
+    }
+
     const id = `missing-activity-${activity.id}`;
     if (seenMissing.has(id)) continue;
     seenMissing.add(id);
@@ -242,22 +247,6 @@ function projectActivityMissing(
       sectionId: "activities",
       linkedCalendarDay: activity.date,
     });
-  }
-}
-
-function projectDayPlacesMissing(
-  days: DayPlaceDraft[],
-  groupId: string,
-  missing: NeedsCoordinatesItem[],
-  seenMissing: Set<string>,
-): void {
-  for (const day of days) {
-    const primary = day.primaryCity.trim();
-    const secondary = day.secondaryCity?.trim() ?? "";
-    if (primary) addDayPlaceMissing(missing, seenMissing, day, primary, groupId);
-    if (secondary && secondary !== primary) {
-      addDayPlaceMissing(missing, seenMissing, day, secondary, groupId);
-    }
   }
 }
 
@@ -375,7 +364,6 @@ export function projectTripMap(
 ): TripMapProjection {
   const groupId = filters.groupId;
   const scope = calendarContentScopeForGroup(graph, groupId);
-  const days = dayPlacesForGroup(graph, groupId);
   const activities = activitiesForGroup(graph, groupId);
 
   const allMarkers: TripMapMarker[] = [];
@@ -412,11 +400,7 @@ export function projectTripMap(
   }
 
   if (categoryEnabled(filters, "activities")) {
-    projectActivityMissing(activities, groupId, missing, seenMissing);
-  }
-
-  if (categoryEnabled(filters, "locations")) {
-    projectDayPlacesMissing(days, groupId, missing, seenMissing);
+    projectActivityMarkers(activities, groupId, allMarkers, missing, seenMissing);
   }
 
   if (categoryEnabled(filters, "transport")) {

@@ -25,6 +25,9 @@ function rowToActivity(
     title: string;
     locationName: string | null;
     address: string | null;
+    googlePlaceId: string | null;
+    latitude: string | null;
+    longitude: string | null;
     leaveByTime: string | null;
     transportNote: string | null;
     bringNote: string | null;
@@ -39,6 +42,8 @@ function rowToActivity(
   },
   date: string,
 ): ActivityDraft {
+  const lat = row.latitude != null ? Number(row.latitude) : null;
+  const lng = row.longitude != null ? Number(row.longitude) : null;
   return {
     id: row.id,
     title: row.title,
@@ -50,6 +55,9 @@ function rowToActivity(
     category: row.category ?? "other",
     locationName: row.locationName,
     address: row.address,
+    googlePlaceId: row.googlePlaceId,
+    latitude: Number.isFinite(lat) ? lat : null,
+    longitude: Number.isFinite(lng) ? lng : null,
     isLocationTbc: row.isLocationTbc,
     transportNote: row.transportNote,
     leaveByTime: row.leaveByTime ? row.leaveByTime.slice(0, 5) : null,
@@ -128,6 +136,9 @@ export async function syncActivitiesForTrip(
       title: act.title,
       locationName: act.isLocationTbc ? null : act.locationName,
       address: act.address,
+      googlePlaceId: act.googlePlaceId ?? null,
+      latitude: act.latitude != null ? String(act.latitude) : null,
+      longitude: act.longitude != null ? String(act.longitude) : null,
       mapQuery: null,
       leaveByTime: act.leaveByTime ? defaultTime(act.leaveByTime, "08:00:00") : null,
       transportNote: act.transportNote,
