@@ -21,7 +21,6 @@ import {
 import { TripOsDayCell } from "./cells/TripOsDayCell";
 import type { CalendarSelection } from "./useCalendarSelection";
 import type { HalfSide } from "@/lib/host/wizard/location-stays";
-import { TripEyebrow } from "../shared/TripEyebrow";
 import { useCalendarInitialScroll } from "./useCalendarScroll";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -127,17 +126,14 @@ export function InteractiveTripCalendar(props: {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-white">
-      <div className="shrink-0 border-b border-zinc-100 px-4 py-5" onClick={handleEmptyAreaClick}>
-        <TripEyebrow>Trip calendar</TripEyebrow>
-        {props.statusLine ? (
-          <p className="mt-1 text-xs text-zinc-500">{props.statusLine}</p>
-        ) : (
-          <p className="mt-1 text-xs text-zinc-400">
-            Click days for a range, or a half on split days
-          </p>
-        )}
-        {props.headerAside ? <div className="mt-4">{props.headerAside}</div> : null}
-      </div>
+      {(props.headerAside || props.statusLine) ? (
+        <div className="shrink-0 border-b border-zinc-100 px-3 py-2" onClick={handleEmptyAreaClick}>
+          {props.headerAside}
+          {props.statusLine ? (
+            <p className="mt-1 text-[10px] leading-snug text-amber-800">{props.statusLine}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div
         className="shrink-0 grid grid-cols-7 gap-1.5 px-3 pb-2"

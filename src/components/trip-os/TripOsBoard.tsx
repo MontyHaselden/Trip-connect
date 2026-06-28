@@ -465,11 +465,7 @@ export function TripOsBoard(props: { tripId: string }) {
             onInitialScroll={rememberScrollPosition}
             onClearSelection={calendar.clearSelection}
             headerAside={groupSelector}
-            statusLine={
-              saveStatusLine
-                ? `${calendar.statusLine} · ${saveStatusLine}`
-                : calendar.statusLine
-            }
+            statusLine={saveStatusLine ?? undefined}
             interactionDisabled={!calendarLensReady || engine.saving || engine.refreshing}
           />
           )}

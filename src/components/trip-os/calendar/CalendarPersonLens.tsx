@@ -307,16 +307,11 @@ export function CalendarPersonLens(props: {
   const lensLabel = lensDisplayLabel(props.lens, props.graph, props.roster);
 
   return (
-    <div className="flex w-full flex-col gap-3">
-      <div>
-        <label
-          htmlFor="trip-os-calendar-lens"
-          className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500"
-        >
-          Viewing calendar
-        </label>
+    <div className="flex w-full flex-col gap-2">
+      <div className="flex items-center gap-2">
         <select
           id="trip-os-calendar-lens"
+          aria-label="Viewing calendar"
           value={selectValueForLens(props.lens)}
           disabled={lensBusy}
           onChange={(e) => {
@@ -335,7 +330,7 @@ export function CalendarPersonLens(props: {
               void selectPerson(value.slice("person:".length));
             }
           }}
-          className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm font-semibold text-zinc-900 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-sm font-medium text-zinc-900 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <option value="">Whole group</option>
           {subgroups.length ? (
@@ -362,23 +357,21 @@ export function CalendarPersonLens(props: {
             <option value="party">{lensLabel}</option>
           ) : null}
         </select>
+        <button
+          type="button"
+          disabled={lensBusy}
+          onClick={() => setPartyPickerOpen(true)}
+          className="shrink-0 rounded-lg border border-zinc-200 px-2.5 py-2 text-xs font-medium text-zinc-700 hover:border-violet-300 hover:bg-violet-50/40 disabled:opacity-50"
+        >
+          Edit together…
+        </button>
       </div>
 
       {props.lens.kind === "party" ? (
-        <p className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-900">
-          Editing together: <span className="font-semibold">{lensLabel}</span>. Calendar and
-          transport changes apply to all of them.
+        <p className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] leading-snug text-violet-900">
+          Editing together: <span className="font-semibold">{lensLabel}</span>
         </p>
       ) : null}
-
-      <button
-        type="button"
-        disabled={lensBusy}
-        onClick={() => setPartyPickerOpen(true)}
-        className="rounded-xl border border-dashed border-zinc-300 px-3 py-2 text-xs font-medium text-zinc-700 hover:border-violet-300 hover:bg-violet-50/40 disabled:opacity-50"
-      >
-        Edit multiple together…
-      </button>
 
       <div className="flex flex-wrap items-center justify-end gap-1.5">
         {selectedPerson || props.lens.kind === "party" ? (
