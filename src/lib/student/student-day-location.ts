@@ -1,6 +1,7 @@
+import { isPlaceholderCityLabel } from "@/lib/host/setup/placeholder-city";
 import { locationsMatch } from "@/lib/host/wizard/location-stays";
 
-const PLACEHOLDER_CITIES = new Set(["tbc", "unknown", ""]);
+export { isPlaceholderCityLabel };
 
 /** Hotel nights: check-in date through the night before check-out. */
 export function stayCoversNightOnDate(
@@ -18,10 +19,6 @@ export function assignmentCoversDate(
   dateISO: string,
 ): boolean {
   return startDate <= dateISO && endDate >= dateISO;
-}
-
-export function isPlaceholderCityLabel(city: string | null | undefined): boolean {
-  return PLACEHOLDER_CITIES.has((city ?? "").trim().toLowerCase());
 }
 
 export function studentDayLocationLabel(day: {

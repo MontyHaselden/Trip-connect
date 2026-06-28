@@ -9,6 +9,7 @@ import {
 } from "@/lib/host/wizard/location-stays";
 import { effectiveHotelBandStart } from "@/lib/host/setup/accommodation-calendar";
 import { metroDisplayLabel } from "@/lib/host/setup/metro-display";
+import { isPlaceholderCityLabel } from "@/lib/host/setup/placeholder-city";
 import {
   resolveArrivalStayCity,
   resolveDepartureStayCity,
@@ -419,6 +420,7 @@ export function inferDayPlacesFromIntercityLeg(
     ? resolveArrivalStayCity(leg.intercityToCity, stays, [], date)
     : metroDisplayLabel(leg.intercityToCity.trim());
   if (!from || !to || !date) return existing;
+  if (isPlaceholderCityLabel(from) || isPlaceholderCityLabel(to)) return existing;
 
   const byDate = new Map(existing.map((d) => [d.date, d]));
   const prev = byDate.get(date);

@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { sanitizeDayType } from "@/lib/trip-engine/sanitize-day-place";
+import { stripPlaceholderDayPlaces } from "@/lib/host/setup/placeholder-city";
 import { dayPlaceToSlice, sliceToDayPlace } from "@/lib/calendar-core/adapters";
 import {
   groupDayPlaces,
@@ -73,7 +74,7 @@ export async function syncGroupDayPlaces(
   groupId: string,
   days: DayPlaceDraft[],
 ) {
-  const normalizedDays = dedupeDaysByDate(days);
+  const normalizedDays = dedupeDaysByDate(stripPlaceholderDayPlaces(days));
   const existing = await db
     .select({ id: groupDayPlaces.id, date: groupDayPlaces.date })
     .from(groupDayPlaces)

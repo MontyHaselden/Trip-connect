@@ -10,6 +10,7 @@ import { isAllocationBalanced } from "./smart-split";
 import { allTransportLegs, canonicalPersonalTransportLegId } from "./transport-finance-product";
 import { transportLegIdsForFinancePresence } from "./presence";
 import { financeSeedAccommodationStays } from "./accommodation-finance-leg";
+import { canonicalFinanceLineIds, isCanonicalFinanceLine } from "./finance-line-dedupe";
 import type { CostLedgerProjection, CostLineItemDraft, LineAllocationResult } from "./types";
 import type { TripEntityGraph } from "../types";
 import type { AccommodationStayDraft } from "@/lib/host/wizard/types";
@@ -179,30 +180,48 @@ export function financeSectionAllocationMessage(
 
 export type EntityFinanceDisplayStatus = "complete" | "needs_attention" | "tbc" | "none";
 
+function canonicalLinkedLines(
+  lines: CostLineItemDraft[],
+  graph?: TripEntityGraph | null,
+): CostLineItemDraft[] {
+  if (lines.length <= 1) return lines;
+  const canonical = canonicalFinanceLineIds(lines, graph);
+  return lines.filter((line) => isCanonicalFinanceLine(line, graph, canonical));
+}
+
 function linkedLinesForStay(
   stayId: string,
   ledger: CostLedgerProjection,
+  graph?: TripEntityGraph | null,
 ): CostLineItemDraft[] {
-  return ledger.lineItems.filter((line) => line.linkedStayId === stayId);
+  return canonicalLinkedLines(
+    ledger.lineItems.filter((line) => line.linkedStayId === stayId),
+    graph,
+  );
 }
 
 function linkedLinesForTransportLeg(
   leg: { id: string; transportProductId?: string | null },
   ledger: CostLedgerProjection,
+  graph?: TripEntityGraph | null,
 ): CostLineItemDraft[] {
-  if (leg.transportProductId) {
-    return ledger.lineItems.filter(
-      (line) => line.linkedTransportProductId === leg.transportProductId,
-    );
-  }
-  return ledger.lineItems.filter((line) => line.linkedTransportLegId === leg.id);
+  const lines = leg.transportProductId
+    ? ledger.lineItems.filter(
+        (line) => line.linkedTransportProductId === leg.transportProductId,
+      )
+    : ledger.lineItems.filter((line) => line.linkedTransportLegId === leg.id);
+  return canonicalLinkedLines(lines, graph);
 }
 
 function linkedLinesForActivity(
   activityId: string,
   ledger: CostLedgerProjection,
+  graph?: TripEntityGraph | null,
 ): CostLineItemDraft[] {
-  return ledger.lineItems.filter((line) => line.linkedActivityId === activityId);
+  return canonicalLinkedLines(
+    ledger.lineItems.filter((line) => line.linkedActivityId === activityId),
+    graph,
+  );
 }
 
 function entityFinanceDisplayStatus(

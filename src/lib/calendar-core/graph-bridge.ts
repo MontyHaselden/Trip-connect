@@ -11,6 +11,7 @@ import {
   slicesToDayPlaces,
 } from "@/lib/calendar-core";
 import type { HalfSelection } from "@/lib/calendar-core";
+import { stripPlaceholderDayPlaces } from "@/lib/host/setup/placeholder-city";
 import { personalGroupForGroupId } from "@/lib/trip-engine/person-lens";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
@@ -52,14 +53,15 @@ export function setDayPlacesForGroup(
   groupId: string,
   days: DayPlaceDraft[],
 ): DayPlaceDraft[] {
+  const cleaned = stripPlaceholderDayPlaces(days);
   const personal = personalGroupForGroupId(graph, groupId);
   const mainSlices = dayPlacesToSlices(graph.dayPlacesByGroupId[graph.mainGroupId] ?? []);
   const groupSlices = dayPlacesToSlices(graph.dayPlacesByGroupId[groupId] ?? []);
 
   if (!personal || personal.inheritMode === "independent") {
-    return slicesToDayPlaces(setDaysFromLegacy(groupSlices, days));
+    return slicesToDayPlaces(setDaysFromLegacy(groupSlices, cleaned));
   }
 
-  const personalFull = days.map(dayPlaceToSlice);
+  const personalFull = cleaned.map(dayPlaceToSlice);
   return slicesToDayPlaces(extractOverrides(mainSlices, personalFull));
 }

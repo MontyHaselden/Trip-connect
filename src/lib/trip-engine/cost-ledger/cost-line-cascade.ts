@@ -16,6 +16,7 @@ import {
   allTransportLegs,
 } from "./transport-finance-product";
 import { duplicateActivityIdsForFinance } from "../merge-graph-activities";
+import { financeLineIdsToDrop } from "./finance-line-dedupe";
 
 export async function deleteCostLinesForStay(tripId: string, stayId: string): Promise<void> {
   await db
@@ -319,6 +320,43 @@ export async function purgeDuplicateActivityFinanceLines(
 
   return changes;
 }
+
+/** Collapse repeated finance rows for the same linked entity or content fingerprint. */
+export async function purgeRepeatedLinkedFinanceLines(
+  tripId: string,
+  graph: TripEntityGraph,
+): Promise<number> {
+  let changes = await purgeDuplicateActivityFinanceLines(tripId, graph);
+
+  const lines = await db
+    .select({
+      id: costLineItems.id,
+      category: costLineItems.category,
+      description: costLineItems.description,
+      notes: costLineItems.notes,
+      linkedStayId: costLineItems.linkedStayId,
+      linkedTransportLegId: costLineItems.linkedTransportLegId,
+      linkedTransportProductId: costLineItems.linkedTransportProductId,
+      linkedActivityId: costLineItems.linkedActivityId,
+      totalAmountCents: costLineItems.totalAmountCents,
+      sortOrder: costLineItems.sortOrder,
+    })
+    .from(costLineItems)
+    .where(eq(costLineItems.tripId, tripId));
+
+  const deleteIds = financeLineIdsToDrop(lines, graph);
+  if (!deleteIds.size) return changes;
+
+  for (const id of deleteIds) {
+    await db.delete(costLineItems).where(eq(costLineItems.id, id));
+    changes++;
+  }
+
+  return changes;
+}
+
+/** @deprecated Use purgeRepeatedLinkedFinanceLines */
+export const purgeRepeatedActivityFinanceLines = purgeRepeatedLinkedFinanceLines;
 
 export function graphEntityIdSets(graph: {
   accommodationStays: { id: string; name?: string | null }[];

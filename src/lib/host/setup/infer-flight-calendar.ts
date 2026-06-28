@@ -8,6 +8,7 @@ import {
   type FlightConnectionChain,
 } from "@/lib/host/setup/flight-connection-chains";
 import { metroDisplayLabel } from "@/lib/host/setup/metro-display";
+import { isPlaceholderCityLabel } from "@/lib/host/setup/placeholder-city";
 import { resolveArrivalStayCity } from "@/lib/host/setup/resolve-arrival-stay-city";
 import { locationsMatch } from "@/lib/host/wizard/location-stays";
 import {
@@ -29,6 +30,11 @@ import type {
 const CROSSOVER_LEFT = 0.5;
 
 export { metroDisplayLabel } from "@/lib/host/setup/metro-display";
+
+function calendarPaintCity(raw: string): string {
+  const label = metroDisplayLabel(raw.trim());
+  return isPlaceholderCityLabel(label) ? "" : label;
+}
 
 function emptyDay(date: string): DayPlaceDraft {
   return {
@@ -315,8 +321,8 @@ function applyConnectionChainPaint(
 ): void {
   const first = chainStartLeg(chain);
   const last = chainEndLeg(chain);
-  const origin = metroDisplayLabel(first.fromCity);
-  const dest = resolveDestCity(last, stays, planeLegs);
+  const origin = calendarPaintCity(first.fromCity);
+  const dest = calendarPaintCity(resolveDestCity(last, stays, planeLegs));
   if (!origin || !dest || locationsMatch(origin, dest)) return;
 
   const { connectionDate, sameDay } = chain;
@@ -379,8 +385,8 @@ function applyLegPaint(
 ): void {
   if (leg.transportType !== "plane") return;
 
-  const origin = metroDisplayLabel(leg.fromCity);
-  const dest = resolveDestCity(leg, stays, planeLegs);
+  const origin = calendarPaintCity(leg.fromCity);
+  const dest = calendarPaintCity(resolveDestCity(leg, stays, planeLegs));
   if (!origin && !dest) return;
 
   const dep = leg.travelDate?.trim();

@@ -5,6 +5,7 @@ import { emptyCostLedgerProjection } from "./empty-projection";
 import { projectionToRaw } from "./projection-to-raw";
 import { projectCostLedger } from "./project";
 import { buildSeedLineItems, seedItemsNotYetPresent } from "./seed-from-graph";
+import { dedupeFinanceSeeds } from "./dedupe-finance-seeds";
 import type { CostLedgerProjection, CostLineItemDraft } from "./types";
 
 function optimisticIdForSeed(seed: Omit<CostLineItemDraft, "id">, index: number): string {
@@ -29,15 +30,7 @@ export function mergeOptimisticSeedsIntoCostLedger(
   const seeds = seedItemsNotYetPresent(base.lineItems, buildSeedLineItems(normalizedGraph));
   if (!seeds.length) return base;
 
-  const existingActivityIds = new Set(
-    base.lineItems.map((line) => line.linkedActivityId).filter(Boolean),
-  );
-  const dedupedSeeds = seeds.filter((seed) => {
-    if (!seed.linkedActivityId) return true;
-    if (existingActivityIds.has(seed.linkedActivityId)) return false;
-    existingActivityIds.add(seed.linkedActivityId);
-    return true;
-  });
+  const dedupedSeeds = dedupeFinanceSeeds(base.lineItems, seeds);
   if (!dedupedSeeds.length) return base;
 
   const optimisticLines: CostLineItemDraft[] = dedupedSeeds.map((seed, index) => ({

@@ -3,6 +3,7 @@
 import { useRef } from "react";
 
 import { canonicalStayCity } from "@/lib/host/setup/canonical-stay-city";
+import { isPlaceholderCityLabel } from "@/lib/host/setup/placeholder-city";
 import {
   DEFAULT_HALF_SHARE,
   halfFromClickX,
@@ -42,12 +43,16 @@ export function TripOsDayCell(props: {
   const { iso, day, selection } = props;
 
   const stayCtx = { dayPlaces: props.tripDayPlaces ?? [day], date: iso };
-  const primary = day.primaryCity.trim()
-    ? canonicalStayCity(day.primaryCity, stayCtx)
-    : "";
-  const secondary = day.secondaryCity?.trim()
-    ? canonicalStayCity(day.secondaryCity, stayCtx)
-    : "";
+  const primaryRaw = day.primaryCity.trim();
+  const secondaryRaw = day.secondaryCity?.trim() ?? "";
+  const primary =
+    primaryRaw && !isPlaceholderCityLabel(primaryRaw)
+      ? canonicalStayCity(primaryRaw, stayCtx)
+      : "";
+  const secondary =
+    secondaryRaw && !isPlaceholderCityLabel(secondaryRaw)
+      ? canonicalStayCity(secondaryRaw, stayCtx)
+      : "";
   const displayShare = normalizeDayShare(day.primaryShare ?? 1);
   const mergedDay = {
     ...day,

@@ -295,6 +295,100 @@ describe("groupLinesByFinanceSection", () => {
     const grouped = groupLinesByFinanceSection([canonicalLine, duplicateLine], graph);
     assert.deepEqual(grouped.get("activities")?.map((row) => row.id), ["line-canonical"]);
   });
+
+  it("hides repeated finance rows for the same activity id", () => {
+    const graph = {
+      activities: [
+        { id: "act-team-labs", title: "Team labs", date: "2026-12-19", originGroupId: "main-group" },
+      ],
+    } as TripEntityGraph;
+
+    const pricedLine = line({
+      id: "line-priced",
+      category: "activities",
+      description: "Team labs",
+      notes: "2026-12-19",
+      linkedActivityId: "act-team-labs",
+      totalAmountCents: 38000,
+    });
+    const emptyDuplicate = line({
+      id: "line-empty-1",
+      category: "activities",
+      description: "Team labs",
+      notes: "2026-12-19",
+      linkedActivityId: "act-team-labs",
+      totalAmountCents: 0,
+    });
+    const emptyDuplicate2 = line({
+      id: "line-empty-2",
+      category: "activities",
+      description: "Team labs",
+      notes: "2026-12-19",
+      linkedActivityId: "act-team-labs",
+      totalAmountCents: 0,
+    });
+
+    const grouped = groupLinesByFinanceSection(
+      [emptyDuplicate, pricedLine, emptyDuplicate2],
+      graph,
+    );
+    assert.deepEqual(grouped.get("activities")?.map((row) => row.id), ["line-priced"]);
+  });
+
+  it("hides repeated finance rows for the same stay id", () => {
+    const graph = {
+      accommodationStays: [{ id: "stay-1", name: "Hotel", cityLabel: "Kyoto" }],
+    } as TripEntityGraph;
+
+    const pricedLine = line({
+      id: "line-priced",
+      category: "accommodation",
+      linkedStayId: "stay-1",
+      totalAmountCents: 120000,
+    });
+    const emptyDuplicate = line({
+      id: "line-empty",
+      category: "accommodation",
+      linkedStayId: "stay-1",
+      totalAmountCents: 0,
+    });
+
+    const grouped = groupLinesByFinanceSection([emptyDuplicate, pricedLine], graph);
+    assert.deepEqual(grouped.get("accommodation")?.map((row) => row.id), ["line-priced"]);
+  });
+
+  it("hides repeated finance rows for the same transport leg id", () => {
+    const graph = {
+      outboundLegs: [],
+      returnLegs: [],
+      intercityLegs: [
+        {
+          id: "leg-1",
+          transportType: "plane",
+          fromCity: "Tokyo",
+          toCity: "Tottori",
+          travelDate: "2026-12-06",
+          originGroupId: "main",
+        },
+      ],
+    } as TripEntityGraph;
+
+    const pricedLine = line({
+      id: "line-priced",
+      category: "transport",
+      linkedTransportLegId: "leg-1",
+      totalAmountCents: 50000,
+    });
+    const emptyDuplicate = line({
+      id: "line-empty",
+      category: "transport",
+      linkedTransportLegId: "leg-1",
+      totalAmountCents: 0,
+    });
+
+    const grouped = groupLinesByFinanceSection([emptyDuplicate, pricedLine], graph);
+    assert.deepEqual(grouped.get("transport")?.map((row) => row.id), ["line-priced"]);
+  });
 });
 
 describe("finance section tabs", () => {

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { TransportLegForm } from "@/components/host/wizard/shared/TransportLegForm";
+import { TripConfirmModal } from "@/components/trip-os/shared/TripConfirmModal";
 import { legsForTransportProduct } from "@/lib/host/locations/transport-products";
 import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import type { TripCommand } from "@/lib/trip-engine/commands";
@@ -95,6 +96,7 @@ export function EditTransportLegModal(props: {
   const [pairedLegId, setPairedLegId] = useState("");
   const [newProductName, setNewProductName] = useState("Return flights");
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
 
   const travellerOptions = useMemo(
     () =>
@@ -182,6 +184,15 @@ export function EditTransportLegModal(props: {
 
   const tripLookup = { state: graphToSetupState(props.graph) };
   const routeTitle = legRouteLabel(draft, props.graph);
+  const removeTargetCount = props.groupedLegTargets?.length ?? 1;
+  const removeConfirmTitle =
+    removeTargetCount > 1 ?
+      `Remove ${routeTitle} for ${removeTargetCount} travellers?`
+    : `Remove ${routeTitle}?`;
+  const removeConfirmDescription =
+    removeTargetCount > 1 ?
+      "These legs will reappear in From your calendar so you can add them again."
+    : "It will reappear in From your calendar so you can add it again.";
 
   function toggleTraveller(groupId: string) {
     setSelectedGroupIds((current) =>
@@ -303,15 +314,6 @@ export function EditTransportLegModal(props: {
 
   async function removeLeg() {
     if (!draft || !props.bucket) return;
-    const route = legRouteLabel(draft, props.graph);
-    const targetCount = props.groupedLegTargets?.length ?? 1;
-    const prompt =
-      targetCount > 1
-        ? `Remove ${route} for ${targetCount} travellers? They will reappear in "From your calendar".`
-        : `Remove ${route}? It will reappear in "From your calendar" so you can add it again.`;
-    if (!window.confirm(prompt)) {
-      return;
-    }
     const commands: TripCommand[] = props.groupedLegTargets?.length
       ? props.groupedLegTargets.map((target) => ({
           type: "removeTransportLeg" as const,
@@ -328,7 +330,10 @@ export function EditTransportLegModal(props: {
           },
         ];
     const ok = await dispatchAndWait(commands);
-    if (ok) props.onClose();
+    if (ok) {
+      setRemoveConfirmOpen(false);
+      props.onClose();
+    }
   }
 
   async function save() {
@@ -405,6 +410,7 @@ export function EditTransportLegModal(props: {
     (packageNeedsPair && !pairedLegId);
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div
         role="dialog"
@@ -658,7 +664,7 @@ export function EditTransportLegModal(props: {
           <button
             type="button"
             disabled={props.saving}
-            onClick={() => void removeLeg()}
+            onClick={() => setRemoveConfirmOpen(true)}
             className="rounded-lg px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
           >
             Delete
@@ -683,5 +689,18 @@ export function EditTransportLegModal(props: {
         </div>
       </div>
     </div>
+
+    <TripConfirmModal
+      open={removeConfirmOpen}
+      eyebrow="Transport"
+      title={removeConfirmTitle}
+      description={removeConfirmDescription}
+      tone="danger"
+      confirmLabel="Remove"
+      confirmLoading={props.saving}
+      onCancel={() => setRemoveConfirmOpen(false)}
+      onConfirm={() => void removeLeg()}
+    />
+    </>
   );
 }

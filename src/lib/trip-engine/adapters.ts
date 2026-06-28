@@ -1,3 +1,4 @@
+import { stripPlaceholderDayPlaces } from "@/lib/host/setup/placeholder-city";
 import type { TripSetupState } from "@/lib/host/setup/types";
 
 import type { TripEntityGraph } from "./types";
@@ -21,7 +22,12 @@ const EMPTY_SUMMARIES: Pick<
 };
 
 export function setupStateToGraph(tripId: string, state: TripSetupState): TripEntityGraph {
-  const dayPlacesByGroupId = { ...state.dayPlacesByGroupId };
+  const dayPlacesByGroupId = Object.fromEntries(
+    Object.entries(state.dayPlacesByGroupId).map(([groupId, days]) => [
+      groupId,
+      stripPlaceholderDayPlaces(days),
+    ]),
+  );
   return { ...state, dayPlacesByGroupId, tripId, ...EMPTY_SUMMARIES };
 }
 

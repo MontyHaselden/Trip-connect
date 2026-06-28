@@ -8,8 +8,12 @@ import {
   buildTransportProductSeeds,
   financeSeedTransportLegs,
 } from "./transport-finance-product";
-import type { CostLineItemDraft } from "./types";
+import {
+  activityFinanceContentKey,
+  financeSeedContentKey,
+} from "./finance-line-dedupe";
 import { defaultCostLineFinanceFields } from "./finance-metadata";
+import type { CostLineItemDraft } from "./types";
 
 function seedStay(stay: TripEntityGraph["accommodationStays"][number], sortOrder: number) {
   if (!stay.name?.trim()) return null;
@@ -114,6 +118,24 @@ export function seedItemsNotYetPresent(
   const linkedStayIds = new Set(existing.map((l) => l.linkedStayId).filter(Boolean));
   const linkedLegIds = new Set(existing.map((l) => l.linkedTransportLegId).filter(Boolean));
   const linkedActivityIds = new Set(existing.map((l) => l.linkedActivityId).filter(Boolean));
+  const existingActivityContentKeys = new Set(
+    existing.flatMap((line) => {
+      const key = activityFinanceContentKey(line);
+      return key ? [key] : [];
+    }),
+  );
+  const existingStayContentKeys = new Set(
+    existing.flatMap((line) => {
+      const key = financeSeedContentKey(line);
+      return key?.startsWith("accommodation:") ? [key] : [];
+    }),
+  );
+  const existingTransportContentKeys = new Set(
+    existing.flatMap((line) => {
+      const key = financeSeedContentKey(line);
+      return key?.startsWith("transport:") ? [key] : [];
+    }),
+  );
 
   const linkedProductIds = new Set(
     existing.map((l) => l.linkedTransportProductId).filter(Boolean),
@@ -135,6 +157,18 @@ export function seedItemsNotYetPresent(
     if (seed.linkedActivityId) {
       if (linkedActivityIds.has(seed.linkedActivityId)) return false;
       if (dismissedKeys.has(`itinerary_item:${seed.linkedActivityId}`)) return false;
+    }
+    if (seed.category === "activities") {
+      const contentKey = activityFinanceContentKey(seed);
+      if (contentKey && existingActivityContentKeys.has(contentKey)) return false;
+    }
+    if (seed.category === "accommodation") {
+      const contentKey = financeSeedContentKey(seed);
+      if (contentKey && existingStayContentKeys.has(contentKey)) return false;
+    }
+    if (seed.category === "transport" || seed.category === "flights") {
+      const contentKey = financeSeedContentKey(seed);
+      if (contentKey && existingTransportContentKeys.has(contentKey)) return false;
     }
     return true;
   });

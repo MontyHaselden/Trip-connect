@@ -34,6 +34,7 @@ import {
   type AccommodationLocationConflict,
 } from "@/lib/host/setup/day-selection-setup";
 import { shortCityName } from "@/lib/host/setup/location-range-display";
+import { dayHasMeaningfulLocationPaint, isPlaceholderCityLabel } from "@/lib/host/setup/placeholder-city";
 import { dayPlacesForGroup, staysForGroup } from "@/lib/trip-engine/selectors";
 import {
   buildAdoptMainGroupStayCommands,
@@ -193,10 +194,10 @@ function stayCoveringDate(
 
 function locationSummaryForDay(projected: ProjectedDay | undefined): string {
   const parts: string[] = [];
-  if (projected?.primaryCity.trim()) {
+  if (projected?.primaryCity.trim() && !isPlaceholderCityLabel(projected.primaryCity)) {
     parts.push(formatLocationSlice(projected.primaryCity, projected.primaryShare));
   }
-  if (projected?.secondaryCity?.trim()) {
+  if (projected?.secondaryCity?.trim() && !isPlaceholderCityLabel(projected.secondaryCity)) {
     parts.push(formatLocationSlice(projected.secondaryCity, 1 - projected.primaryShare));
   }
   return parts.length ? parts.join(" · ") : "Not selected";
@@ -210,7 +211,7 @@ function sliceLocationSummary(
   const day = projectedToDayPlace(projected);
   if (half === "full") return locationSummaryForDay(projected);
   const city = cityOnHalf(day, half).trim();
-  if (!city) return "Not selected";
+  if (!city || isPlaceholderCityLabel(city)) return "Not selected";
   const share = half === "left" ? day.primaryShare ?? 0.5 : 1 - (day.primaryShare ?? 0.5);
   return formatLocationSlice(city, share);
 }
@@ -456,6 +457,22 @@ export function DayContextPanel(props: {
     return model.projectedDays.filter((d) => d.date >= rangeStart && d.date <= end);
   }, [model.projectedDays, rangeStart, rangeEnd]);
 
+  const hasPlaceholderPaint = useMemo(() => {
+    if (!rangeStart) return false;
+    const end = rangeEnd || rangeStart;
+    for (const iso of enumerateDates(rangeStart, end)) {
+      const day = model.days.find((d) => d.date === iso);
+      if (!day) continue;
+      if (
+        (day.primaryCity.trim() && isPlaceholderCityLabel(day.primaryCity)) ||
+        (day.secondaryCity?.trim() && isPlaceholderCityLabel(day.secondaryCity))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }, [model.days, rangeStart, rangeEnd]);
+
   const hasPaint = useMemo(() => {
     if (!rangeStart) return false;
     const end = rangeEnd || rangeStart;
@@ -463,8 +480,13 @@ export function DayContextPanel(props: {
       const projected = model.projectedDays.find((d) => d.date === iso);
       if (!projected) continue;
       const half = halfForDateInSelection(selection, iso);
-      const city = locationLabelForSelectedHalf(projectedToDayPlace(projected), half);
-      if (city.trim()) return true;
+      const day = projectedToDayPlace(projected);
+      if (half === "full") {
+        if (dayHasMeaningfulLocationPaint(day)) return true;
+        continue;
+      }
+      const city = cityOnHalf(day, half).trim();
+      if (city && !isPlaceholderCityLabel(city)) return true;
     }
     return false;
   }, [selection, model.projectedDays, rangeStart, rangeEnd]);
@@ -1597,7 +1619,7 @@ export function DayContextPanel(props: {
         />
       ) : null}
 
-      {(hasPaint || hasStay) && (
+      {(hasPaint || hasStay || hasPlaceholderPaint) && (
         <button
           type="button"
           onClick={() => setPendingConfirm("clearRange")}

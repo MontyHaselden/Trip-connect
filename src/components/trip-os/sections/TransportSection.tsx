@@ -58,6 +58,7 @@ import { returnFlightPackageSummaryFromLegs } from "@/lib/trip-engine/return-fli
 
 import { FinanceLineStatusBadge } from "../shared/FinanceLineStatusBadge";
 import { FinanceEntityQuickActions } from "../shared/FinanceEntityQuickActions";
+import { TripConfirmModal } from "../shared/TripConfirmModal";
 import { TripScopedSectionHeader } from "../shared/TripScopedSectionHeader";
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 import { AddTransportModal } from "../transport/AddTransportModal";
@@ -66,6 +67,12 @@ import { EditTransportLegModal } from "../transport/EditTransportLegModal";
 import { TransportProductEditor } from "../transport/TransportProductEditor";
 
 type LegBucket = "outbound" | "return" | "intercity";
+
+type PendingTransportDelete = {
+  targets: Array<{ legId: string; groupId: string; bucket: LegBucket }>;
+  route: string;
+  schedule: string;
+};
 
 function flightRoleBadge(bucket: LegBucket): string | null {
   if (bucket === "outbound") return "Outbound";
@@ -321,6 +328,8 @@ export function TransportSection(props: {
     groupedLegTargets?: TransportLegGroupedTarget[];
   } | null>(null);
   const [editingProduct, setEditingProduct] = useState<TransportProductDraft | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingTransportDelete | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const pendingScopes = useMemo(
     () => pendingTransportListedFromProjection(props.adminProjection),
@@ -424,7 +433,7 @@ export function TransportSection(props: {
     return "return";
   }
 
-  async function deleteLeg(
+  function requestDeleteLeg(
     leg: TransportLegDraft | IntercityLegDraft,
     bucket: LegBucket,
     groupId: string,
@@ -432,26 +441,45 @@ export function TransportSection(props: {
   ) {
     const route = legRouteLabel(leg, props.graph);
     const schedule = legScheduleSummary(leg);
-    const targetCount = groupedTargets?.length ?? 1;
-    const prompt =
-      targetCount > 1
-        ? `Remove ${route}${schedule ? ` (${schedule})` : ""} for ${targetCount} travellers? They will reappear in "From your calendar" so you can add them again.`
-        : `Remove ${route}${schedule ? ` (${schedule})` : ""}? It will reappear in "From your calendar" so you can add it again.`;
-    if (!window.confirm(prompt)) {
-      return;
-    }
     const targets =
       groupedTargets?.length ?
-        groupedTargets
-      : [{ legId: leg.id, groupId }];
-    await props.onDispatch(
-      targets.map((target) => ({
-        type: "removeTransportLeg" as const,
-        groupId: target.groupId,
-        bucket,
-        legId: target.legId,
+        groupedTargets.map((target) => ({ ...target, bucket }))
+      : [{ legId: leg.id, groupId, bucket }];
+    setPendingDelete({ targets, route, schedule });
+  }
+
+  async function confirmDeleteLeg() {
+    if (!pendingDelete) return;
+    setDeleteBusy(true);
+    try {
+      await props.onDispatch(
+        pendingDelete.targets.map((target) => ({
+          type: "removeTransportLeg" as const,
+          groupId: target.groupId,
+          bucket: target.bucket,
+          legId: target.legId,
+        })),
+      );
+      setPendingDelete(null);
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  function requestDeleteProductLegs(
+    legs: TransportLegDraft[],
+    scopeGroupId: string,
+    route: string,
+  ) {
+    setPendingDelete({
+      route,
+      schedule: "",
+      targets: legs.map((leg) => ({
+        legId: leg.id,
+        groupId: scopeGroupId,
+        bucket: legBucket(leg.id),
       })),
-    );
+    });
   }
 
   function openAdd(need: PendingTransportNeed, groupId: string, targetGroupIds?: string[]) {
@@ -755,30 +783,14 @@ export function TransportSection(props: {
                         if (leg) openLegFinance(leg);
                       }}
                       onEdit={isActiveScope ? () => setEditingProduct(product) : undefined}
-                      onDelete={() =>
-                        void (async () => {
-                          const sorted = [...productLegs].sort(compareTransportLegsChronologically);
-                          const route = returnFlightPackageSummaryFromLegs(
-                            sorted[0]!,
-                            sorted[1]!,
-                          ).packageTitle;
-                          if (
-                            !window.confirm(
-                              `Remove ${route}? Both flights will reappear in "From your calendar".`,
-                            )
-                          ) {
-                            return;
-                          }
-                          await props.onDispatch(
-                            productLegs.map((leg) => ({
-                              type: "removeTransportLeg" as const,
-                              groupId: scope.groupId,
-                              bucket: legBucket(leg.id),
-                              legId: leg.id,
-                            })),
-                          );
-                        })()
-                      }
+                      onDelete={() => {
+                        const sorted = [...productLegs].sort(compareTransportLegsChronologically);
+                        const route = returnFlightPackageSummaryFromLegs(
+                          sorted[0]!,
+                          sorted[1]!,
+                        ).packageTitle;
+                        requestDeleteProductLegs(productLegs, scope.groupId, route);
+                      }}
                       saving={props.saving}
                       showFinanceActions={
                         packageFinanceStatus === "needs_attention" &&
@@ -810,7 +822,7 @@ export function TransportSection(props: {
                         onOpenFinance={() => openLegFinance(leg)}
                         onEdit={canEditLeg ? () => openLegEditor(leg) : undefined}
                         onDelete={() =>
-                          void deleteLeg(
+                          requestDeleteLeg(
                             leg,
                             legBucket(leg.id),
                             scope.groupId,
@@ -853,7 +865,7 @@ export function TransportSection(props: {
                     onOpenFinance={() => openLegFinance(leg)}
                     onEdit={canEditLeg ? () => openLegEditor(leg) : undefined}
                     onDelete={() =>
-                      void deleteLeg(
+                      requestDeleteLeg(
                         leg,
                         legBucket(leg.id),
                         scope.groupId,
@@ -939,6 +951,35 @@ export function TransportSection(props: {
         saving={props.saving}
         onClose={() => setEditingProduct(null)}
         onDispatch={props.onDispatch}
+      />
+
+      <TripConfirmModal
+        open={Boolean(pendingDelete)}
+        eyebrow="Transport"
+        title={
+          pendingDelete ?
+            pendingDelete.targets.length > 1 ?
+              `Remove ${pendingDelete.route}${pendingDelete.schedule ? ` (${pendingDelete.schedule})` : ""} for ${pendingDelete.targets.length} travellers?`
+            : `Remove ${pendingDelete.route}${pendingDelete.schedule ? ` (${pendingDelete.schedule})` : ""}?`
+          : "Remove transport?"
+        }
+        description={
+          pendingDelete ?
+            pendingDelete.targets.length > 1 ?
+              "These legs will reappear in From your calendar so you can add them again."
+            : pendingDelete.targets.length === 2 && !pendingDelete.schedule ?
+              "Both flights will reappear in From your calendar so you can add them again."
+            : "It will reappear in From your calendar so you can add it again."
+          : undefined
+        }
+        tone="danger"
+        confirmLabel="Remove"
+        confirmLoading={deleteBusy || props.saving}
+        onCancel={() => {
+          if (deleteBusy) return;
+          setPendingDelete(null);
+        }}
+        onConfirm={() => void confirmDeleteLeg()}
       />
     </TripSectionShell>
   );

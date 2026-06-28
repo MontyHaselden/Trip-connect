@@ -1,8 +1,13 @@
 import type { StayType } from "@/lib/host/wizard/types";
 import type { TripEntityGraph } from "../types";
-import { duplicateActivityIdsForFinance } from "../merge-graph-activities";
 import { allTransportLegs, financeSeedTransportLegs } from "./transport-finance-product";
 import type { RosterSummary } from "../types";
+import {
+  isVisibleActivityFinanceLine,
+} from "./activity-finance-dedupe";
+import { canonicalFinanceLineIds, isCanonicalFinanceLine } from "./finance-line-dedupe";
+
+export { isVisibleActivityFinanceLine } from "./activity-finance-dedupe";
 
 import { orderFinanceSectionLines } from "./finance-line-chronology";
 import { convertToBaseCents } from "./format-money";
@@ -187,15 +192,6 @@ export function isVisibleTransportFinanceLine(
   return financeSeedTransportLegs(graph).some((row) => row.id === leg.id);
 }
 
-/** Hide finance rows linked to duplicate calendar activities (same title/day/scope). */
-export function isVisibleActivityFinanceLine(
-  line: CostLineItemDraft,
-  graph?: TripEntityGraph | null,
-): boolean {
-  if (!line.linkedActivityId || !graph) return true;
-  return !duplicateActivityIdsForFinance(graph.activities).has(line.linkedActivityId);
-}
-
 export function groupLinesByFinanceSection(
   lines: CostLineItemDraft[],
   graph?: TripEntityGraph | null,
@@ -205,9 +201,10 @@ export function groupLinesByFinanceSection(
   const grouped = new Map<FinanceEntitySection, CostLineItemDraft[]>(
     sections.map((s) => [s, []]),
   );
+  const canonicalLineIds = canonicalFinanceLineIds(lines, graph);
   for (const line of lines) {
+    if (!isCanonicalFinanceLine(line, graph, canonicalLineIds)) continue;
     if (!isVisibleTransportFinanceLine(line, graph)) continue;
-    if (!isVisibleActivityFinanceLine(line, graph)) continue;
     const section = financeSectionForLine(line, graph, settings);
     if (!section) continue;
     if (!grouped.has(section)) {

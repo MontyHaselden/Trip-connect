@@ -6,15 +6,11 @@ import { syncTripBoundsFromContent } from "@/lib/host/setup/sync-trip-bounds";
 import type { TripSetupState } from "@/lib/host/setup/types";
 import { tripDatesAreUnset } from "@/lib/host/trip-date-display";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
+import { dayHasMeaningfulLocationPaint } from "@/lib/host/setup/placeholder-city";
 
 function isMeaningfulPaint(day: DayPlaceDraft): boolean {
-  const primary = day.primaryCity.trim();
-  const secondary = day.secondaryCity?.trim() ?? "";
   if (day.dayType === "buffer") return false;
-  if (!primary && !secondary) return false;
-  if (primary.toLowerCase() === "tbc" && !secondary) return false;
-  if (secondary.toLowerCase() === "tbc" && !primary) return false;
-  return true;
+  return dayHasMeaningfulLocationPaint(day);
 }
 
 function transportDatesFromState(state: TripSetupState): string[] {
