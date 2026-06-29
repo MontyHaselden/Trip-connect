@@ -20,7 +20,7 @@ import {
   shiftTripDates,
 } from "@/lib/host/setup/set-trip-date-range";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
-import { paintDayRangeForGroup, setDayPlacesForGroup } from "@/lib/calendar-core/graph-bridge";
+import { paintDayRangeForGroup, enforcePersonalOverlayDayPlaces, setDayPlacesForGroup } from "@/lib/calendar-core/graph-bridge";
 import { personalGroupForGroupId } from "./person-lens";
 import { normalizeGraphActivities } from "./merge-graph-activities";
 import { pruneStalePersonalTransportLegs } from "./prune-stale-personal-transport-legs";
@@ -538,36 +538,53 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
     }
 
     case "setDayPlaces": {
-      const painted = setDayPlacesForGroup(graph, command.groupId, command.days);
+      let painted = setDayPlacesForGroup(graph, command.groupId, command.days);
+      const personal = personalGroupForGroupId(graph, command.groupId);
 
-      if (personalGroupForGroupId(graph, command.groupId)) {
-        const synced = syncTripBoundsFromContent({
-          ...graph,
-          dayPlacesByGroupId: {
-            ...graph.dayPlacesByGroupId,
-            [command.groupId]: painted,
-          },
-        });
-        return ok(
-          applyPersonalCalendarSideEffects(
-            mergeGraphState(graph, synced),
+      if (personal) {
+        painted =
+          personal.inheritMode === "independent"
+            ? enforceGroupHalfDayBoundaries(
+                graphToSetupState({
+                  ...graph,
+                  dayPlacesByGroupId: {
+                    ...graph.dayPlacesByGroupId,
+                    [command.groupId]: painted,
+                  },
+                }),
+                command.groupId,
+              ).dayPlacesByGroupId[command.groupId] ?? painted
+            : enforcePersonalOverlayDayPlaces(graph, command.groupId, painted);
+      } else {
+        painted =
+          enforceGroupHalfDayBoundaries(
+            graphToSetupState({
+              ...graph,
+              dayPlacesByGroupId: {
+                ...graph.dayPlacesByGroupId,
+                [command.groupId]: painted,
+              },
+            }),
             command.groupId,
-          ),
+          ).dayPlacesByGroupId[command.groupId] ?? painted;
+      }
+
+      const withDays: TripEntityGraph = {
+        ...graph,
+        dayPlacesByGroupId: {
+          ...graph.dayPlacesByGroupId,
+          [command.groupId]: painted,
+        },
+      };
+
+      if (personal) {
+        return ok(
+          applyPersonalCalendarSideEffects(withDays, command.groupId),
           warnings,
         );
       }
 
-      const synced = enforceGroupHalfDayBoundaries(
-        {
-          ...graph,
-          dayPlacesByGroupId: {
-            ...graph.dayPlacesByGroupId,
-            [command.groupId]: painted,
-          },
-        },
-        command.groupId,
-      );
-      const next = syncTripBoundsFromContent(synced);
+      const next = syncTripBoundsFromContent(withDays);
       return ok(mergeGraphState(graph, next), warnings);
     }
 

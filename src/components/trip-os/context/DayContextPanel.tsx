@@ -751,7 +751,6 @@ export function DayContextPanel(props: {
         setActionError("Enter both departure and arrival cities.");
         return;
       }
-      const existing = dayPlacesForGroup(graph, groupId);
       const projected = projectedInRange[0];
       const updatedDay = {
         date: rangeStart,
@@ -761,10 +760,7 @@ export function DayContextPanel(props: {
         dayType: projected?.dayType ?? ("trip" as const),
         includeBuffer: false,
       };
-      const days = existing.some((d) => d.date === rangeStart)
-        ? existing.map((d) => (d.date === rangeStart ? { ...d, ...updatedDay } : d))
-        : [...existing, updatedDay];
-      void props.onDispatch([{ type: "setDayPlaces", groupId, days }]);
+      void props.onDispatch([{ type: "setDayPlaces", groupId, days: [updatedDay] }]);
       setEditingField(null);
       return;
     }
@@ -869,11 +865,7 @@ export function DayContextPanel(props: {
           dayType: projected?.dayType ?? ("trip" as const),
           includeBuffer: false,
         };
-        const existing = dayPlacesForGroup(graph, groupId);
-        const days = existing.some((d) => d.date === rangeStart)
-          ? existing.map((d) => (d.date === rangeStart ? { ...d, ...updatedDay } : d))
-          : [...existing, updatedDay];
-        commands.push({ type: "setDayPlaces", groupId, days });
+        commands.push({ type: "setDayPlaces", groupId, days: [updatedDay] });
       } else {
         commands.push({
           type: "paintDayRange",

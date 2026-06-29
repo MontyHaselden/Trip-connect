@@ -13,6 +13,9 @@ import {
 import { halfSideToSelection } from "@/lib/calendar-core/half-map";
 import type { HalfSelection } from "@/lib/calendar-core";
 import { stripPlaceholderDayPlaces } from "@/lib/host/setup/placeholder-city";
+import { groupAccommodationStays } from "@/lib/host/setup/entity-scope";
+import { enforceContentHalfDayBoundaries } from "@/lib/host/setup/enforce-content-half-days";
+import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import { personalGroupForGroupId } from "@/lib/trip-engine/person-lens";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
@@ -53,12 +56,34 @@ export function setDayPlacesForGroup(
   const cleaned = stripPlaceholderDayPlaces(days);
   const personal = personalGroupForGroupId(graph, groupId);
   const mainSlices = dayPlacesToSlices(graph.dayPlacesByGroupId[graph.mainGroupId] ?? []);
-  const groupSlices = dayPlacesToSlices(graph.dayPlacesByGroupId[groupId] ?? []);
+  const storedSlices = dayPlacesToSlices(graph.dayPlacesByGroupId[groupId] ?? []);
 
   if (!personal || personal.inheritMode === "independent") {
-    return slicesToDayPlaces(setDaysFromLegacy(groupSlices, cleaned));
+    return slicesToDayPlaces(setDaysFromLegacy(storedSlices, cleaned));
   }
 
-  const personalFull = cleaned.map(dayPlaceToSlice);
-  return slicesToDayPlaces(extractOverrides(mainSlices, personalFull));
+  const projected = mergeOverrides(mainSlices, storedSlices, "override");
+  const updated = setDaysFromLegacy(projected, cleaned);
+  return slicesToDayPlaces(extractOverrides(mainSlices, updated));
+}
+
+/** Run stay/location half-day rules on a projected personal calendar, then store sparse overrides. */
+export function enforcePersonalOverlayDayPlaces(
+  graph: TripEntityGraph,
+  groupId: string,
+  sparseOverrides: DayPlaceDraft[],
+): DayPlaceDraft[] {
+  const mainSlices = dayPlacesToSlices(graph.dayPlacesByGroupId[graph.mainGroupId] ?? []);
+  const storedSlices = dayPlacesToSlices(sparseOverrides);
+  const projected = slicesToDayPlaces(mergeOverrides(mainSlices, storedSlices, "override"));
+  const trip = {
+    startDate: graph.basics.startDate,
+    endDate: graph.basics.endDate,
+    departureCity: graph.basics.departureCity,
+    returnCity: graph.basics.returnCity,
+  };
+  const stays = groupAccommodationStays(graphToSetupState(graph), groupId);
+  const enforced = enforceContentHalfDayBoundaries(projected, trip, stays);
+  const enforcedSlices = dayPlacesToSlices(enforced);
+  return slicesToDayPlaces(extractOverrides(mainSlices, enforcedSlices));
 }
