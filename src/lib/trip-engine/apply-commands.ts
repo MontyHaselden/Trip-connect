@@ -20,7 +20,7 @@ import {
   shiftTripDates,
 } from "@/lib/host/setup/set-trip-date-range";
 import type { DayPlaceDraft } from "@/lib/host/wizard/types";
-import { paintDayRangeForGroup, enforcePersonalOverlayDayPlaces, setDayPlacesForGroup } from "@/lib/calendar-core/graph-bridge";
+import { paintDayRangeForGroup, setDayPlacesForGroup } from "@/lib/calendar-core/graph-bridge";
 import { personalGroupForGroupId } from "./person-lens";
 import { normalizeGraphActivities } from "./merge-graph-activities";
 import { pruneStalePersonalTransportLegs } from "./prune-stale-personal-transport-legs";
@@ -554,7 +554,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
                 }),
                 command.groupId,
               ).dayPlacesByGroupId[command.groupId] ?? painted
-            : enforcePersonalOverlayDayPlaces(graph, command.groupId, painted);
+            : painted;
       } else {
         painted =
           enforceGroupHalfDayBoundaries(

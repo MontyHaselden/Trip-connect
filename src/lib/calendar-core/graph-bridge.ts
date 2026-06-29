@@ -13,9 +13,6 @@ import {
 import { halfSideToSelection } from "@/lib/calendar-core/half-map";
 import type { HalfSelection } from "@/lib/calendar-core";
 import { stripPlaceholderDayPlaces } from "@/lib/host/setup/placeholder-city";
-import { groupAccommodationStays } from "@/lib/host/setup/entity-scope";
-import { enforceContentHalfDayBoundaries } from "@/lib/host/setup/enforce-content-half-days";
-import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import { personalGroupForGroupId } from "@/lib/trip-engine/person-lens";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
@@ -64,26 +61,24 @@ export function setDayPlacesForGroup(
 
   const projected = mergeOverrides(mainSlices, storedSlices, "override");
   const updated = setDaysFromLegacy(projected, cleaned);
-  return slicesToDayPlaces(extractOverrides(mainSlices, updated));
-}
+  const overrides = extractOverrides(mainSlices, updated);
+  const overrideByDate = new Map(overrides.map((slice) => [slice.date, slice]));
 
-/** Run stay/location half-day rules on a projected personal calendar, then store sparse overrides. */
-export function enforcePersonalOverlayDayPlaces(
-  graph: TripEntityGraph,
-  groupId: string,
-  sparseOverrides: DayPlaceDraft[],
-): DayPlaceDraft[] {
-  const mainSlices = dayPlacesToSlices(graph.dayPlacesByGroupId[graph.mainGroupId] ?? []);
-  const storedSlices = dayPlacesToSlices(sparseOverrides);
-  const projected = slicesToDayPlaces(mergeOverrides(mainSlices, storedSlices, "override"));
-  const trip = {
-    startDate: graph.basics.startDate,
-    endDate: graph.basics.endDate,
-    departureCity: graph.basics.departureCity,
-    returnCity: graph.basics.returnCity,
-  };
-  const stays = groupAccommodationStays(graphToSetupState(graph), groupId);
-  const enforced = enforceContentHalfDayBoundaries(projected, trip, stays);
-  const enforcedSlices = dayPlacesToSlices(enforced);
-  return slicesToDayPlaces(extractOverrides(mainSlices, enforcedSlices));
+  // Explicit travel splits from the UI must round-trip both halves in storage.
+  for (const patch of cleaned) {
+    const primary = patch.primaryCity.trim();
+    const secondary = patch.secondaryCity?.trim() ?? "";
+    if (!primary || !secondary) continue;
+    const slice = dayPlaceToSlice(patch);
+    overrideByDate.set(patch.date, {
+      date: patch.date,
+      amCity: slice.amCity,
+      pmCity: slice.pmCity,
+      dayType: slice.dayType,
+    });
+  }
+
+  return slicesToDayPlaces(
+    [...overrideByDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+  );
 }
