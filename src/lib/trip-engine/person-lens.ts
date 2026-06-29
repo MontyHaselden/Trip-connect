@@ -283,6 +283,19 @@ export function participantInheritsMainCalendar(
   return !participantHasCustomOverrides(graph, personal.personalForParticipantId);
 }
 
+/** Overlay and follow-main personal calendars still count whole-group transport legs. */
+export function participantUsesMainTransportLegs(
+  graph: TripEntityGraph,
+  groupId: string,
+): boolean {
+  if (groupId === graph.mainGroupId) return true;
+  const personal = personalGroupForGroupId(graph, groupId);
+  if (!personal) return false;
+  if (personal.inheritMode === "independent") return false;
+  if (personal.inheritMode === "overlay") return true;
+  return participantInheritsMainCalendar(graph, groupId);
+}
+
 export function planModeLabel(
   graph: TripEntityGraph,
   participantId: string,

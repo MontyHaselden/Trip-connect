@@ -24,6 +24,7 @@ import { paintDayRangeForGroup, setDayPlacesForGroup } from "@/lib/calendar-core
 import { personalGroupForGroupId } from "./person-lens";
 import { normalizeGraphActivities } from "./merge-graph-activities";
 import { pruneStalePersonalTransportLegs } from "./prune-stale-personal-transport-legs";
+import { resetPersonalGroupFromMain } from "./reset-personal-group-from-main";
 import { normalizeCommand, type TripCommand } from "./commands";
 import { graphToSetupState } from "./adapters";
 import { mergeDuplicateIntercityLegAdd, repairTransportGraphSync } from "./repair-transport-graph";
@@ -760,25 +761,7 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
         });
         return { graph, warnings, conflicts };
       }
-      return ok(
-        {
-          ...graph,
-          groups: graph.groups.map((g) =>
-            g.id === command.groupId ? { ...g, inheritMode: null } : g,
-          ),
-          dayPlacesByGroupId: {
-            ...graph.dayPlacesByGroupId,
-            [command.groupId]: [],
-          },
-          accommodationStays: graph.accommodationStays.filter(
-            (s) => s.originGroupId !== command.groupId,
-          ),
-          intercityLegs: graph.intercityLegs.filter((l) => l.originGroupId !== command.groupId),
-          activities: graph.activities.filter((a) => a.originGroupId !== command.groupId),
-          overlayOps: graph.overlayOps.filter((o) => o.groupId !== command.groupId),
-        },
-        warnings,
-      );
+      return ok(resetPersonalGroupFromMain(graph, command.groupId), warnings);
     }
 
     case "setBookingStatus": {

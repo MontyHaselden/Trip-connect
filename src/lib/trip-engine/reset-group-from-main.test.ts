@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { applyCommands } from "./apply-commands";
+import { resetPersonalGroupFromMain } from "./reset-personal-group-from-main";
 import type { TripEntityGraph } from "./types";
 
 function graphWithPersonalOverlay(): TripEntityGraph {
@@ -166,6 +167,49 @@ describe("resetGroupFromMain", () => {
     assert.equal(
       graph.groups.find((g) => g.id === "personal-amanda")?.inheritMode,
       null,
+    );
+  });
+
+  it("clears personal outbound legs and hidden pending keys for the group", () => {
+    const before = graphWithPersonalOverlay();
+    const withExtras: TripEntityGraph = {
+      ...before,
+      outboundLegs: [
+        ...before.outboundLegs,
+        {
+          id: "out-personal",
+          transportType: "plane",
+          bookingStatus: "placeholder",
+          travelDate: "2026-12-05",
+          arrivalDate: "2026-12-05",
+          departureTime: null,
+          arrivalTime: null,
+          fromCity: "Christchurch",
+          toCity: "Tokyo",
+          fromStation: null,
+          toStation: null,
+          operator: null,
+          referenceNumber: null,
+          flightNumber: null,
+          notes: null,
+          originGroupId: "personal-amanda",
+        },
+      ],
+      hiddenPendingTransportNeedKeys: [
+        "personal-amanda|intercity|2026-12-18|kyoto|tokyo",
+        "main|intercity|2026-12-18|kyoto|tokyo",
+      ],
+    };
+
+    const graph = resetPersonalGroupFromMain(withExtras, "personal-amanda");
+    assert.ok(!graph.outboundLegs.some((leg) => leg.originGroupId === "personal-amanda"));
+    assert.ok(
+      !graph.hiddenPendingTransportNeedKeys?.some((key) =>
+        key.startsWith("personal-amanda|"),
+      ),
+    );
+    assert.ok(
+      graph.hiddenPendingTransportNeedKeys?.some((key) => key.startsWith("main|")),
     );
   });
 });

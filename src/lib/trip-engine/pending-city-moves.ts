@@ -8,7 +8,7 @@ import {
   isPendingTransportNeedHidden,
   pendingTransportNeedKey,
 } from "./hidden-pending-transport";
-import { personalGroupForGroupId } from "./person-lens";
+import { personalGroupForGroupId, participantUsesMainTransportLegs } from "./person-lens";
 import { projectCalendar } from "./project-calendar";
 import type { TripEntityGraph } from "./types";
 
@@ -245,11 +245,10 @@ export function detectMissingOutboundFlight(
 }
 
 function scopedTransportLegs(graph: TripEntityGraph, groupId: string) {
-  const personal = personalGroupForGroupId(graph, groupId);
-  const inheritsMainTransport = personal?.inheritMode === "overlay";
+  const usesMainTransport = participantUsesMainTransportLegs(graph, groupId);
   const legs: Array<TransportLegDraft | IntercityLegDraft> = [];
 
-  if (groupId === graph.mainGroupId || inheritsMainTransport) {
+  if (usesMainTransport) {
     legs.push(
       ...graph.outboundLegs.filter((leg) => isMainOwnedLeg(leg, graph.mainGroupId)),
       ...graph.returnLegs.filter((leg) => isMainOwnedLeg(leg, graph.mainGroupId)),
@@ -262,7 +261,7 @@ function scopedTransportLegs(graph: TripEntityGraph, groupId: string) {
     );
   } else {
     legs.push(...graph.intercityLegs.filter((leg) => leg.originGroupId === groupId));
-    if (inheritsMainTransport) {
+    if (usesMainTransport) {
       legs.push(
         ...graph.intercityLegs.filter((leg) => isMainOwnedLeg(leg, graph.mainGroupId)),
       );
