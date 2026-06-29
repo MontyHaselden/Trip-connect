@@ -176,4 +176,81 @@ describe("repairTransportGraphSync", () => {
     assert.equal(leg.travelDate, "2026-12-06");
     assert.equal(leg.arrivalDate, "2026-12-17");
   });
+
+  it("dedupes duplicate main-group city-change legs on the same route", () => {
+    const state = baseState();
+    const productId = "prod-jr";
+    state.transportProducts = [
+      {
+        id: productId,
+        kind: "rail_pass",
+        name: "JR Pass",
+        participantIds: [],
+        notes: null,
+      },
+    ];
+    state.dayPlacesByGroupId.main = [
+      {
+        date: "2026-12-18",
+        primaryCity: "Kyoto",
+        secondaryCity: "Tokyo",
+        primaryShare: 0.5,
+        dayType: "travel",
+        includeBuffer: false,
+      },
+    ];
+    state.intercityLegs = [
+      {
+        id: "ic-kyoto-tokyo-a",
+        legKind: "city_change",
+        transportType: "train",
+        bookingStatus: "not_booked",
+        travelDate: "2026-12-18",
+        arrivalDate: "2026-12-18",
+        departureTime: null,
+        arrivalTime: null,
+        fromCity: "Kyoto",
+        toCity: "Tokyo",
+        fromStation: null,
+        toStation: null,
+        operator: null,
+        referenceNumber: null,
+        flightNumber: null,
+        notes: null,
+        intercityFromCity: "Kyoto",
+        intercityToCity: "Tokyo",
+        transportProductId: productId,
+      },
+      {
+        id: "ic-kyoto-tokyo-b",
+        legKind: "city_change",
+        transportType: "train",
+        bookingStatus: "not_booked",
+        travelDate: "2026-12-18",
+        arrivalDate: "2026-12-18",
+        departureTime: null,
+        arrivalTime: null,
+        fromCity: "Kyoto",
+        toCity: "Tokyo",
+        fromStation: null,
+        toStation: null,
+        operator: null,
+        referenceNumber: null,
+        flightNumber: null,
+        notes: null,
+        intercityFromCity: "Kyoto",
+        intercityToCity: "Tokyo",
+        transportProductId: productId,
+      },
+    ];
+
+    const graph = repairTransportGraphSync(setupStateToGraph("trip-1", state));
+    const kyotoTokyo = graph.intercityLegs.filter(
+      (leg) =>
+        leg.intercityFromCity === "Kyoto" &&
+        leg.intercityToCity === "Tokyo" &&
+        leg.travelDate === "2026-12-18",
+    );
+    assert.equal(kyotoTokyo.length, 1);
+  });
 });

@@ -26,7 +26,7 @@ import { normalizeGraphActivities } from "./merge-graph-activities";
 import { pruneStalePersonalTransportLegs } from "./prune-stale-personal-transport-legs";
 import { normalizeCommand, type TripCommand } from "./commands";
 import { graphToSetupState } from "./adapters";
-import { repairTransportGraphSync } from "./repair-transport-graph";
+import { mergeDuplicateIntercityLegAdd, repairTransportGraphSync } from "./repair-transport-graph";
 import { pendingTransportNeedKey } from "./hidden-pending-transport";
 import { unhidePendingNeedsUncoveredAfterLegRemoval } from "./unhide-pending-transport";
 import {
@@ -305,7 +305,14 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
       } else if (command.bucket === "return") {
         next = { ...graph, returnLegs: [...graph.returnLegs, leg as typeof graph.returnLegs[0]] };
       } else {
-        next = { ...graph, intercityLegs: [...graph.intercityLegs, leg as typeof graph.intercityLegs[0]] };
+        const intercityLeg = leg as typeof graph.intercityLegs[0];
+        const merged = mergeDuplicateIntercityLegAdd(graph, intercityLeg, command.groupId);
+        next =
+          merged ??
+          ({
+            ...graph,
+            intercityLegs: [...graph.intercityLegs, intercityLeg],
+          } satisfies TripEntityGraph);
       }
       const derived = applySetupTransportChange(
         next,

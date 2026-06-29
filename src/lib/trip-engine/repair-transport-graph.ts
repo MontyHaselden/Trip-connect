@@ -1,6 +1,9 @@
 import { legsForTransportProduct } from "@/lib/host/locations/transport-products";
 import { classifyFlightLeg } from "@/lib/host/setup/classify-flight-legs";
+import { dedupeCityChangeLegs } from "@/lib/host/setup/dedupe-intercity-legs";
+import { mainAccommodationStays } from "@/lib/host/setup/entity-scope";
 import { inferLegArrivalDate } from "@/lib/host/setup/repair-transport-legs";
+import { locationsMatch } from "@/lib/host/wizard/location-stays";
 import type {
   IntercityLegDraft,
   TransportLegDraft,
@@ -251,6 +254,113 @@ function rebucketFlightPackageLegs(
   return { outboundLegs: outbound, returnLegs: returns };
 }
 
+function intercityLegRouteKey(leg: IntercityLegDraft): string {
+  const from = (leg.intercityFromCity || leg.fromCity).trim();
+  const to = (leg.intercityToCity || leg.toCity).trim();
+  return [
+    leg.travelDate?.trim() ?? "",
+    from.toLowerCase(),
+    to.toLowerCase(),
+    leg.transportProductId?.trim() ?? "",
+    leg.originGroupId?.trim() ?? "",
+  ].join("|");
+}
+
+function dedupePersonalIntercityLegs(legs: IntercityLegDraft[]): IntercityLegDraft[] {
+  const kept = new Map<string, IntercityLegDraft>();
+  const passthrough: IntercityLegDraft[] = [];
+
+  for (const leg of legs) {
+    const isCityChange = leg.legKind === "city_change" || !leg.legKind;
+    if (!isCityChange) {
+      passthrough.push(leg);
+      continue;
+    }
+    const key = intercityLegRouteKey(leg);
+    const existing = kept.get(key);
+    if (!existing) {
+      kept.set(key, leg);
+      continue;
+    }
+    const keeper =
+      existing.transportProductId && !leg.transportProductId
+        ? existing
+        : leg.transportProductId && !existing.transportProductId
+          ? leg
+          : existing.id.localeCompare(leg.id) <= 0
+            ? existing
+            : leg;
+    kept.set(key, keeper);
+  }
+
+  return [...passthrough, ...kept.values()];
+}
+
+function dedupeIntercityLegsForGraph(graph: TripEntityGraph): IntercityLegDraft[] {
+  const mainGroupId = graph.mainGroupId;
+  const mainDays = graph.dayPlacesByGroupId[mainGroupId] ?? [];
+  const mainStays = mainAccommodationStays(graph);
+  const mainScoped: IntercityLegDraft[] = [];
+  const personalScoped: IntercityLegDraft[] = [];
+
+  for (const leg of graph.intercityLegs) {
+    if (!leg.originGroupId || leg.originGroupId === mainGroupId) {
+      mainScoped.push(leg);
+    } else {
+      personalScoped.push(leg);
+    }
+  }
+
+  return [
+    ...dedupeCityChangeLegs(mainScoped, mainStays, mainDays),
+    ...dedupePersonalIntercityLegs(personalScoped),
+  ];
+}
+
+function matchingIntercityLeg(
+  graph: TripEntityGraph,
+  leg: IntercityLegDraft,
+  groupId: string,
+): IntercityLegDraft | undefined {
+  const from = (leg.intercityFromCity || leg.fromCity).trim();
+  const to = (leg.intercityToCity || leg.toCity).trim();
+  const date = leg.travelDate?.trim() ?? "";
+  const scope = leg.originGroupId ?? groupId;
+
+  return graph.intercityLegs.find((existing) => {
+    const existingScope = existing.originGroupId ?? graph.mainGroupId;
+    if (existingScope !== scope) return false;
+    const existingFrom = (existing.intercityFromCity || existing.fromCity).trim();
+    const existingTo = (existing.intercityToCity || existing.toCity).trim();
+    return (
+      (existing.travelDate?.trim() ?? "") === date &&
+      locationsMatch(existingFrom, from) &&
+      locationsMatch(existingTo, to)
+    );
+  });
+}
+
+/** Apply a duplicate intercity add by merging product links, or signal append when new. */
+export function mergeDuplicateIntercityLegAdd(
+  graph: TripEntityGraph,
+  leg: IntercityLegDraft,
+  groupId: string,
+): TripEntityGraph | null {
+  const existing = matchingIntercityLeg(graph, leg, groupId);
+  if (!existing) return null;
+
+  if (!existing.transportProductId && leg.transportProductId) {
+    return {
+      ...graph,
+      intercityLegs: graph.intercityLegs.map((row) =>
+        row.id === existing.id ? { ...row, transportProductId: leg.transportProductId } : row,
+      ),
+    };
+  }
+
+  return graph;
+}
+
 /** Normalize transport products and legs after load or before display. */
 export function repairTransportGraphSync<T extends TripEntityGraph>(graph: T): T {
   const products = graph.transportProducts ?? [];
@@ -273,6 +383,15 @@ export function repairTransportGraphSync<T extends TripEntityGraph>(graph: T): T
   returnLegs = remapLegProductIds(returnLegs, deduped.remap);
   intercityLegs = remapLegProductIds(intercityLegs, deduped.remap);
 
+  const dedupedIntercity = dedupeIntercityLegsForGraph({
+    ...graph,
+    transportProducts: deduped.products,
+    outboundLegs,
+    returnLegs,
+    intercityLegs,
+  });
+  intercityLegs = dedupedIntercity;
+
   const linked = linkOrphanFlightPackages({
     mainGroupId: graph.mainGroupId,
     transportProducts: deduped.products,
@@ -286,6 +405,9 @@ export function repairTransportGraphSync<T extends TripEntityGraph>(graph: T): T
     linked.returnLegs,
   );
 
+  const intercityIdsBefore = graph.intercityLegs.map((leg) => leg.id).sort().join("|");
+  const intercityIdsAfter = intercityLegs.map((leg) => leg.id).sort().join("|");
+
   const changed =
     rebucketed.outboundLegs !== graph.outboundLegs ||
     rebucketed.returnLegs !== graph.returnLegs ||
@@ -294,6 +416,7 @@ export function repairTransportGraphSync<T extends TripEntityGraph>(graph: T): T
     outboundLegs !== graph.outboundLegs ||
     returnLegs !== graph.returnLegs ||
     intercityLegs !== graph.intercityLegs ||
+    intercityIdsBefore !== intercityIdsAfter ||
     deduped.products !== products;
 
   if (!changed) return graph;

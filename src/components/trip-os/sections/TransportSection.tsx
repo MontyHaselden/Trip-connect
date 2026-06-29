@@ -40,6 +40,7 @@ import {
 } from "@/lib/trip-engine/group-pending-transport-needs";
 import {
   groupPersonalTransportScopesForDisplay,
+  transportLegRouteKey,
   type TransportLegDisplayScope,
   type TransportLegGroupedTarget,
 } from "@/lib/trip-engine/group-transport-legs-for-display";
@@ -81,6 +82,18 @@ function flightRoleBadge(bucket: LegBucket): string | null {
   return null;
 }
 
+function dedupeLegsForDisplay(legs: ScopedTransportLeg[]): ScopedTransportLeg[] {
+  const seen = new Set<string>();
+  const result: ScopedTransportLeg[] = [];
+  for (const leg of legs) {
+    const key = transportLegRouteKey(leg);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(leg);
+  }
+  return result;
+}
+
 function groupTransportLegs(
   all: ScopedTransportLeg[],
   products: TransportProductDraft[],
@@ -101,11 +114,12 @@ function groupTransportLegs(
       singles.push(leg);
     }
   }
-  singles.sort(compareTransportLegsChronologically);
+  const dedupedSingles = dedupeLegsForDisplay(singles);
+  dedupedSingles.sort(compareTransportLegsChronologically);
   for (const [productId, productLegs] of byProduct) {
-    byProduct.set(productId, [...productLegs].sort(compareTransportLegsChronologically));
+    byProduct.set(productId, dedupeLegsForDisplay([...productLegs]).sort(compareTransportLegsChronologically));
   }
-  return { byProduct, singles };
+  return { byProduct, singles: dedupedSingles };
 }
 
 function orphanTransportProducts(
