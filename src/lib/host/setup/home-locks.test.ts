@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   ensurePostTripHomeBuffer,
   ensurePreTripHomeBuffer,
+  enforceHomeLocks,
   postTripHomeBufferDate,
   preTripHomeBufferDate,
 } from "./home-locks";
@@ -90,5 +91,39 @@ describe("ensurePostTripHomeBuffer", () => {
     assert.ok(home?.primaryCity.includes("Christchurch"));
     assert.equal(home?.primaryShare, 1);
     assert.equal(days.find((d) => d.date === "2026-09-05")?.dayType, "travel");
+  });
+});
+
+describe("enforceHomeLocks", () => {
+  const japanTrip = {
+    startDate: "2026-12-05",
+    endDate: "2026-12-21",
+    departureCity: "Christchurch",
+    returnCity: "Christchurch",
+  };
+
+  it("splits the last trip day into destination and home when no return flight is booked", () => {
+    const locked = enforceHomeLocks(
+      [
+        {
+          date: "2026-12-21",
+          primaryCity: "Tokyo",
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: "trip",
+          includeBuffer: false,
+        },
+      ],
+      japanTrip,
+      new Set<string>(),
+      new Set<string>(),
+      false,
+    );
+
+    const endDay = locked.find((d) => d.date === "2026-12-21");
+    assert.equal(endDay?.primaryCity, "Tokyo");
+    assert.equal(endDay?.secondaryCity, "Christchurch");
+    assert.equal(endDay?.primaryShare, 0.5);
+    assert.equal(endDay?.dayType, "return");
   });
 });

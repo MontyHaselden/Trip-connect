@@ -165,7 +165,7 @@ export function applySetupTransportChange(
     trip,
     flightDepartureDates(transportDraft, trip),
     flightArrivalDates(transportDraft, trip),
-    returnDepartsAfterTripEnd(transportDraft, trip.endDate) || !hasReturnTransport,
+    returnDepartsAfterTripEnd(transportDraft, trip.endDate),
   );
   const hasOutboundTransport = hasScheduledOutboundTransport(transportDraft);
   lockedDays = clearOrphanOutboundHomePaint(lockedDays, trip, hasOutboundTransport);

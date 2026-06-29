@@ -75,6 +75,9 @@ export function expandCommandsForCalendarLens(
         for (const groupId of partyGroupIds) {
           expanded.push({ ...command, groupId } as TripCommand);
         }
+        if (command.type === "clearDayRange") {
+          expanded.push({ ...command, groupId: graph.mainGroupId } as TripCommand);
+        }
         continue;
       }
     }

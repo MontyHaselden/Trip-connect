@@ -164,4 +164,30 @@ describe("expandCommandsForCalendarLens", () => {
 
     assert.equal(expanded.length, 2);
   });
+
+  it("fans clearDayRange to party personal groups and main", () => {
+    const commands: TripCommand[] = [
+      {
+        type: "clearDayRange",
+        groupId: "g-amanda",
+        rangeStart: "2026-12-21",
+        rangeEnd: "2026-12-21",
+        startHalf: "full",
+        endHalf: "full",
+      },
+    ];
+
+    const expanded = expandCommandsForCalendarLens(
+      commands,
+      { kind: "party", participantIds: ["p-amanda", "p-kaleb"] },
+      graph(),
+      roster(),
+    );
+
+    assert.equal(expanded.length, 3);
+    assert.deepEqual(
+      expanded.map((c) => ("groupId" in c ? c.groupId : null)).sort(),
+      ["g-amanda", "g-kaleb", "main"],
+    );
+  });
 });

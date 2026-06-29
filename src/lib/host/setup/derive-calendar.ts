@@ -245,8 +245,7 @@ export function deriveCalendarState(input: {
 
   const hasReturnTransport =
     inferLocationsFromTransport && hasScheduledReturnTransport(transportDraft, trip);
-  const skipEndHomeLock =
-    returnDepartsAfterTripEnd(transportDraft, trip.endDate) || !hasReturnTransport;
+  const skipEndHomeLock = returnDepartsAfterTripEnd(transportDraft, trip.endDate);
 
   if (overlayStoredLocationGaps) {
     const storedDayPlaces = normalizeDayPlacesAirports(

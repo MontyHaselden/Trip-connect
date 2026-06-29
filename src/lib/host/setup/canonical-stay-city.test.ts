@@ -116,4 +116,29 @@ describe("normalizeDayPlacesAirports", () => {
     assert.equal(normalized[1]!.primaryCity, "Tokyo");
     assert.equal(normalized[1]!.secondaryCity, "Kagoshima");
   });
+
+  it("keeps Tokyo as the corridor city instead of a hotel ward on the last day", () => {
+    const input = [
+      day("2026-12-18", "Tokyo"),
+      day("2026-12-19", "Tokyo"),
+      day("2026-12-20", "Tokyo"),
+      day("2026-12-21", "Chuo City"),
+    ];
+
+    const normalized = normalizeDayPlacesAirports(input, {
+      stays: [
+        {
+          id: "h1",
+          cityLabel: "Chuo City, Tokyo",
+          name: "Hotel Sunroute",
+          checkInDate: "2026-12-18",
+          checkOutDate: "2026-12-22",
+          stayType: "hotel",
+        },
+      ],
+    });
+
+    const dec21 = normalized.find((row) => row.date === "2026-12-21");
+    assert.equal(dec21?.primaryCity, "Tokyo");
+  });
 });

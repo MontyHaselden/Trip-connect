@@ -80,6 +80,33 @@ function countLabels(labels: string[]): string | null {
   return ranked[0]?.[0] ?? null;
 }
 
+/** Prefer the corridor city the trip already paints over a one-off hotel ward label. */
+function corridorCityFromNearbyPaint(
+  ward: string,
+  dayPlaces: DayPlaceDraft[],
+  date?: string,
+): string | null {
+  const labels: string[] = [];
+  for (const day of dayPlaces) {
+    if (date) {
+      const windowStart = addDays(date, -4);
+      const windowEnd = addDays(date, 4);
+      if (day.date < windowStart || day.date > windowEnd) continue;
+    }
+    for (const raw of [day.primaryCity, day.secondaryCity ?? ""]) {
+      const city = raw.trim();
+      if (!city || isAirportEndpoint(city)) continue;
+      labels.push(city);
+    }
+  }
+  const ranked = countLabels(labels);
+  if (!ranked || locationsMatch(ranked, ward)) return null;
+  const wardCount = labels.filter((label) => locationsMatch(label, ward)).length;
+  const rankedCount = labels.filter((label) => locationsMatch(label, ranked)).length;
+  if (rankedCount > wardCount) return ranked;
+  return null;
+}
+
 function paintedStayCitiesInMetro(
   dayPlaces: DayPlaceDraft[],
   place: string,
@@ -146,7 +173,19 @@ export function canonicalStayCity(
   if (!trimmed) return "";
 
   if (!isAirportEndpoint(trimmed)) {
-    return metroStayLabel(trimmed);
+    const ward = trimmed.split(",")[0]?.trim() || trimmed;
+    if (ctx.dayPlaces?.length) {
+      const fromCorridor = corridorCityFromNearbyPaint(ward, ctx.dayPlaces, ctx.date);
+      if (fromCorridor) return fromCorridor;
+    }
+    const fromHotels = stayCityFromHotels(
+      trimmed,
+      ctx.stays ?? [],
+      ctx.date,
+      ctx.planeLegs ?? [],
+    );
+    if (fromHotels) return fromStayCity(fromHotels);
+    return metroDisplayLabel(trimmed);
   }
 
   const fromHotels = stayCityFromHotels(
