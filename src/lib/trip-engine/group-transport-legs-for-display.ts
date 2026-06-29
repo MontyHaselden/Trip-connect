@@ -89,8 +89,9 @@ export function groupPersonalTransportScopesForDisplay(
   const merged: TransportLegDisplayScope[] = [];
 
   for (const [key, bucket] of byKey) {
+    if (bucket.length <= 1) continue;
+
     const scopeIds = new Set(bucket.map((row) => row.scope.groupId));
-    if (scopeIds.size <= 1) continue;
 
     const scopes = [...new Map(bucket.map((row) => [row.scope.groupId, row.scope])).values()].sort(
       (a, b) => a.title.localeCompare(b.title),
@@ -99,8 +100,11 @@ export function groupPersonalTransportScopesForDisplay(
     for (const row of bucket) consumedLegIds.add(row.leg.id);
 
     merged.push({
-      groupId: `grouped:${key}`,
-      title: formatGroupedTravellerLabel(scopes),
+      groupId: scopeIds.size > 1 ? `grouped:${key}` : bucket[0]!.scope.groupId,
+      title:
+        scopeIds.size > 1
+          ? formatGroupedTravellerLabel(scopes)
+          : bucket[0]!.scope.title,
       memberNames: scopes.flatMap((scope) => scope.memberNames),
       items: [representative],
       groupedLegTargets: bucket.map((row) => ({

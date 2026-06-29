@@ -70,7 +70,7 @@ export function graphHasUnsyncedFinanceSeeds(
 ): boolean {
   if (!ledger) return true;
   if (ledgerHasUnmaterializedLinkedLines(ledger)) return true;
-  return seedItemsNotYetPresent(ledger.lineItems, buildSeedLineItems(graph)).length > 0;
+  return seedItemsNotYetPresent(ledger.lineItems, buildSeedLineItems(graph), new Set(), graph).length > 0;
 }
 
 export function remapOptimisticFinanceLineIds(

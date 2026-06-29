@@ -90,4 +90,19 @@ describe("groupPersonalTransportScopesForDisplay", () => {
     assert.equal(display.length, 1);
     assert.equal(display[0]?.groupedLegTargets?.length, 2);
   });
+
+  it("merges duplicate personal legs within one participant scope", () => {
+    const sections = [
+      scope("g-amanda", "Amanda", [
+        leg("l1", "2026-12-13", "Tottori", "Hiroshima", "g-amanda"),
+        leg("l2", "2026-12-13", "Tottori", "Hiroshima", "g-amanda"),
+        leg("l3", "2026-12-13", "Tottori", "Hiroshima", "g-amanda"),
+      ]),
+    ];
+
+    const display = groupPersonalTransportScopesForDisplay(sections);
+    assert.equal(display.length, 1);
+    assert.equal(display[0]?.items.length, 1);
+    assert.equal(display[0]?.groupedLegTargets?.length, 3);
+  });
 });

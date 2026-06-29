@@ -40,6 +40,7 @@ export async function syncCostLedgerFromGraph(
     raw.lineItems,
     buildSeedLineItems(normalizedGraph),
     dismissedKeys,
+    normalizedGraph,
   );
   if (!seeds.length) return 0;
 

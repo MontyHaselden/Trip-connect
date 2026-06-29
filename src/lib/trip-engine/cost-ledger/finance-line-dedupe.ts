@@ -1,4 +1,5 @@
 import { duplicateActivityIdsForFinance } from "../merge-graph-activities";
+import { financeLinkBucketKey } from "./transport-finance-route";
 import type { TripEntityGraph } from "../types";
 import { isServerFinanceLineId } from "./finance-line-delete-plan";
 import type { CostLineItemDraft } from "./types";
@@ -108,7 +109,7 @@ export function canonicalFinanceLineIds(
   for (const line of lines) {
     if (line.linkedActivityId && duplicateActivityIds.has(line.linkedActivityId)) continue;
 
-    const linkKey = financeLinePrimaryLinkKey(line);
+    const linkKey = financeLinkBucketKey(line, graph);
     if (linkKey) {
       const bucket = byPrimaryLink.get(linkKey) ?? [];
       bucket.push(line);
@@ -149,7 +150,7 @@ export function financeLineIdsToDrop(
       }
     }
 
-    const linkKey = financeLinePrimaryLinkKey(line);
+    const linkKey = financeLinkBucketKey(line, graph);
     const contentKey = financeLineContentKey(line);
     if (!linkKey && !contentKey) continue;
     if (!canonical.has(line.id)) drop.add(line.id);

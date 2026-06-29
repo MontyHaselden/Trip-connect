@@ -7,12 +7,16 @@ import {
 } from "./finance-sections";
 import { effectiveLineTotalCents } from "./finance-grid-totals";
 import { isAllocationBalanced } from "./smart-split";
-import { allTransportLegs, canonicalPersonalTransportLegId } from "./transport-finance-product";
-import { transportLegIdsForFinancePresence } from "./presence";
+import { personalGroupForGroupId } from "../person-lens";
+import { resolveParticipantPlan } from "../resolve-participant-graph";
+import { participantUsesTransportLeg, transportLegIdsForFinancePresence } from "./presence";
+import { allTransportLegs, canonicalPersonalTransportLegId, financeSeedTransportLegs } from "./transport-finance-product";
+import { transportLegIdsSharingRoute } from "./transport-finance-route";
+import { isVisibleTransportFinanceLine } from "./finance-sections";
 import { financeSeedAccommodationStays } from "./accommodation-finance-leg";
 import { canonicalFinanceLineIds, isCanonicalFinanceLine } from "./finance-line-dedupe";
 import type { CostLedgerProjection, CostLineItemDraft, LineAllocationResult } from "./types";
-import type { TripEntityGraph } from "../types";
+import type { RosterSummary, TripEntityGraph } from "../types";
 import type { AccommodationStayDraft } from "@/lib/host/wizard/types";
 
 export type FinanceSectionAllocationStatus = {
@@ -189,6 +193,24 @@ function canonicalLinkedLines(
   return lines.filter((line) => isCanonicalFinanceLine(line, graph, canonical));
 }
 
+function filterTransportLegsForFinanceScope(
+  legs: Array<{ id: string; transportProductId?: string | null }>,
+  graph?: TripEntityGraph | null,
+  options?: { scopedGroupId?: string; roster?: RosterSummary },
+): Array<{ id: string; transportProductId?: string | null }> {
+  if (!graph || !options?.scopedGroupId || options.scopedGroupId === graph.mainGroupId) {
+    return legs;
+  }
+  const personal = personalGroupForGroupId(graph, options.scopedGroupId);
+  const participantId = personal?.personalForParticipantId;
+  if (!participantId || !options.roster) return legs;
+  const plan = resolveParticipantPlan(graph, options.roster, participantId);
+  return legs.filter((leg) => {
+    const fullLeg = allTransportLegs(graph).find((row) => row.id === leg.id);
+    return fullLeg ? participantUsesTransportLeg(plan, fullLeg, graph) : false;
+  });
+}
+
 function linkedLinesForStay(
   stayId: string,
   ledger: CostLedgerProjection,
@@ -205,12 +227,24 @@ function linkedLinesForTransportLeg(
   ledger: CostLedgerProjection,
   graph?: TripEntityGraph | null,
 ): CostLineItemDraft[] {
-  const lines = leg.transportProductId
-    ? ledger.lineItems.filter(
-        (line) => line.linkedTransportProductId === leg.transportProductId,
-      )
-    : ledger.lineItems.filter((line) => line.linkedTransportLegId === leg.id);
-  return canonicalLinkedLines(lines, graph);
+  let lines: CostLineItemDraft[];
+  if (leg.transportProductId) {
+    lines = ledger.lineItems.filter(
+      (line) => line.linkedTransportProductId === leg.transportProductId,
+    );
+  } else if (graph) {
+    const legIds = new Set(transportLegIdsSharingRoute(graph, leg.id));
+    lines = ledger.lineItems.filter(
+      (line) => line.linkedTransportLegId != null && legIds.has(line.linkedTransportLegId),
+    );
+  } else {
+    lines = ledger.lineItems.filter((line) => line.linkedTransportLegId === leg.id);
+  }
+
+  const visible = graph
+    ? lines.filter((line) => isVisibleTransportFinanceLine(line, graph))
+    : lines;
+  return canonicalLinkedLines(visible, graph);
 }
 
 function linkedLinesForActivity(
@@ -261,17 +295,50 @@ export function stayFinanceDisplayStatusForStay(
 export function transportLegFinanceDisplayStatus(
   leg: { id: string; transportProductId?: string | null },
   ledger: CostLedgerProjection | null | undefined,
+  graph?: TripEntityGraph | null,
 ): EntityFinanceDisplayStatus {
   if (!ledger) return "none";
-  return entityFinanceDisplayStatus(linkedLinesForTransportLeg(leg, ledger), ledger);
+  return entityFinanceDisplayStatus(linkedLinesForTransportLeg(leg, ledger, graph), ledger);
+}
+
+export function transportLegFinanceDisplayStatusForLeg(
+  leg: { id: string; transportProductId?: string | null },
+  ledger: CostLedgerProjection | null | undefined,
+  graph: TripEntityGraph,
+  options?: { scopedGroupId?: string; roster?: RosterSummary },
+): EntityFinanceDisplayStatus {
+  if (options?.scopedGroupId && options.scopedGroupId !== graph.mainGroupId && options.roster) {
+    const personal = personalGroupForGroupId(graph, options.scopedGroupId);
+    const participantId = personal?.personalForParticipantId;
+    if (participantId) {
+      const plan = resolveParticipantPlan(graph, options.roster, participantId);
+      const fullLeg = allTransportLegs(graph).find((row) => row.id === leg.id);
+      if (fullLeg && !participantUsesTransportLeg(plan, fullLeg, graph)) {
+        return "none";
+      }
+    }
+  }
+
+  const status = transportLegFinanceDisplayStatus(leg, ledger, graph);
+  if (status !== "none") return status;
+  if (leg.transportProductId) return "none";
+  const canonicalId = canonicalPersonalTransportLegId(graph, leg.id);
+  const shouldSeed = financeSeedTransportLegs(graph).some(
+    (row) => row.id === canonicalId || row.id === leg.id,
+  );
+  return shouldSeed ? "needs_attention" : "none";
 }
 
 export function groupedTransportLegFinanceDisplayStatus(
   legs: Array<{ id: string; transportProductId?: string | null }>,
   ledger: CostLedgerProjection | null | undefined,
+  graph?: TripEntityGraph | null,
+  options?: { scopedGroupId?: string; roster?: RosterSummary },
 ): EntityFinanceDisplayStatus {
   if (!ledger || !legs.length) return "none";
-  const statuses = legs.map((leg) => transportLegFinanceDisplayStatus(leg, ledger));
+  const scopedLegs = filterTransportLegsForFinanceScope(legs, graph, options);
+  if (!scopedLegs.length) return "none";
+  const statuses = scopedLegs.map((leg) => transportLegFinanceDisplayStatus(leg, ledger, graph));
   if (statuses.some((status) => status === "needs_attention")) return "needs_attention";
   if (statuses.some((status) => status === "tbc")) return "tbc";
   if (statuses.some((status) => status === "complete")) return "complete";
@@ -281,9 +348,12 @@ export function groupedTransportLegFinanceDisplayStatus(
 export function groupedTransportLegFinanceAttentionReason(
   legs: Array<{ id: string; transportProductId?: string | null }>,
   ledger: CostLedgerProjection | null | undefined,
+  graph?: TripEntityGraph | null,
+  options?: { scopedGroupId?: string; roster?: RosterSummary },
 ): string | null {
-  for (const leg of legs) {
-    const reason = transportLegFinanceAttentionReason(leg, ledger);
+  const scopedLegs = filterTransportLegsForFinanceScope(legs, graph, options);
+  for (const leg of scopedLegs) {
+    const reason = transportLegFinanceAttentionReason(leg, ledger, graph);
     if (reason) return reason;
   }
   return null;
@@ -366,9 +436,10 @@ export function stayFinanceAttentionReason(
 export function transportLegFinanceAttentionReason(
   leg: { id: string; transportProductId?: string | null },
   ledger: CostLedgerProjection | null | undefined,
+  graph?: TripEntityGraph | null,
 ): string | null {
   if (!ledger) return null;
-  for (const line of linkedLinesForTransportLeg(leg, ledger)) {
+  for (const line of linkedLinesForTransportLeg(leg, ledger, graph)) {
     const reason = lineFinanceAttentionReason(line, ledger);
     if (reason) return reason;
   }

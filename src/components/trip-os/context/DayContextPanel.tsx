@@ -537,7 +537,7 @@ export function DayContextPanel(props: {
 
   const canFollowMainGroupStay = useMemo(() => {
     if (!stayDraft?.checkIn || !stayDraft.checkOut || !mainStayMatch) return false;
-    if (mainStayMatch.kind !== "exact" || linkedStayIsInherited) return false;
+    if (linkedStayIsInherited) return false;
     return canAdoptMainGroupStayForParticipant(graph, groupId, mainStayMatch.mainStay, {
       checkInDate: stayDraft.checkIn,
       checkOutDate: stayDraft.checkOut,
@@ -778,7 +778,16 @@ export function DayContextPanel(props: {
 
   async function adoptMainGroupStay(mainStay: AccommodationStayDraft) {
     setActionError(null);
-    const commands = buildAdoptMainGroupStayCommands(graph, groupId, mainStay);
+    const participantDates =
+      stayDraft?.checkIn && stayDraft.checkOut
+        ? { checkInDate: stayDraft.checkIn, checkOutDate: stayDraft.checkOut }
+        : undefined;
+    const commands = buildAdoptMainGroupStayCommands(
+      graph,
+      groupId,
+      mainStay,
+      participantDates,
+    );
     const ok = await props.onDispatch(commands);
     if (ok) {
       setStayConflictDialog(null);

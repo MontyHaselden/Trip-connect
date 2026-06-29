@@ -313,6 +313,7 @@ describe("finance section readiness", () => {
       transportLegFinanceDisplayStatus(
         { id: "leg-hiroshima", transportProductId: "prod-jr" },
         ledger,
+        graph,
       ),
       "complete",
     );

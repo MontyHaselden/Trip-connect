@@ -28,6 +28,7 @@ import { normalizeCommand, type TripCommand } from "./commands";
 import { graphToSetupState } from "./adapters";
 import { repairTransportGraphSync } from "./repair-transport-graph";
 import { pendingTransportNeedKey } from "./hidden-pending-transport";
+import { unhidePendingNeedsUncoveredAfterLegRemoval } from "./unhide-pending-transport";
 import {
   pendingTransportNeedsFromCalendar,
   transportLegCoversCityMove,
@@ -387,8 +388,12 @@ function applySingleCommand(graph: TripEntityGraph, raw: TripCommand): CommandRe
       const bucket = command.bucket;
       const listKey =
         bucket === "outbound" ? "outboundLegs" : bucket === "return" ? "returnLegs" : "intercityLegs";
+      const removed = graph[listKey].find((l) => l.id === command.legId);
       const legs = graph[listKey].filter((l) => l.id !== command.legId);
-      const next = { ...graph, [listKey]: legs } as TripEntityGraph;
+      let next = { ...graph, [listKey]: legs } as TripEntityGraph;
+      if (removed) {
+        next = unhidePendingNeedsUncoveredAfterLegRemoval(next, [removed]);
+      }
       const derived = applySetupTransportChange(
         next,
         {

@@ -253,6 +253,32 @@ describe("match-main-accommodation-stay", () => {
     );
   });
 
+  it("allows partial adoption when participant joins mid-stay", () => {
+    const base = macyIndependentFixture();
+    base.accommodationStays.push({
+      id: "stay-yaeno",
+      cityLabel: "Tokyo, Japan",
+      stayType: "hotel",
+      name: "Hotel Yaenomidori Tokyo",
+      url: null,
+      address: null,
+      phone: null,
+      checkInDate: "2026-12-18",
+      checkOutDate: "2026-12-21",
+      notes: null,
+      isHomestayGroup: false,
+      multipleInCity: false,
+    });
+    const graph = setupStateToGraph("trip-1", base);
+    const mainStay = graph.accommodationStays.find((stay) => stay.id === "stay-yaeno")!;
+    assert.ok(
+      canAdoptMainGroupStayForParticipant(graph, "g-macy", mainStay, {
+        checkInDate: "2026-12-19",
+        checkOutDate: "2026-12-21",
+      }),
+    );
+  });
+
   it("isBorrowMainStayOp detects self-replace borrow markers", () => {
     const op = borrowMainStayOverlayOp("g-macy", "stay-yaeno");
     assert.ok(isBorrowMainStayOp(op));

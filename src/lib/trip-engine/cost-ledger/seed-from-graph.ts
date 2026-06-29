@@ -12,6 +12,7 @@ import {
   activityFinanceContentKey,
   financeSeedContentKey,
 } from "./finance-line-dedupe";
+import { transportRouteAlreadySeededInLedger } from "./transport-finance-route";
 import { defaultCostLineFinanceFields } from "./finance-metadata";
 import type { CostLineItemDraft } from "./types";
 
@@ -114,6 +115,7 @@ export function seedItemsNotYetPresent(
   existing: CostLineItemDraft[],
   seeds: Omit<CostLineItemDraft, "id">[],
   dismissedKeys: Set<string> = new Set(),
+  graph?: TripEntityGraph | null,
 ): Omit<CostLineItemDraft, "id">[] {
   const linkedStayIds = new Set(existing.map((l) => l.linkedStayId).filter(Boolean));
   const linkedLegIds = new Set(existing.map((l) => l.linkedTransportLegId).filter(Boolean));
@@ -152,6 +154,9 @@ export function seedItemsNotYetPresent(
     }
     if (seed.linkedTransportLegId) {
       if (linkedLegIds.has(seed.linkedTransportLegId)) return false;
+      if (graph && transportRouteAlreadySeededInLedger(existing, graph, seed.linkedTransportLegId)) {
+        return false;
+      }
       if (dismissedKeys.has(`transport_leg:${seed.linkedTransportLegId}`)) return false;
     }
     if (seed.linkedActivityId) {

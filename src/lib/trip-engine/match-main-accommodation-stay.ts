@@ -231,7 +231,18 @@ export function borrowedMainStaysForParticipant(
   });
 }
 
-/** True when adopting the main stay would show it on the participant calendar (same dates + aligned cities). */
+export function participantStayRangeWithinMain(
+  participant: Pick<AccommodationStayDraft, "checkInDate" | "checkOutDate">,
+  mainStay: Pick<AccommodationStayDraft, "checkInDate" | "checkOutDate">,
+): boolean {
+  return (
+    participant.checkInDate >= mainStay.checkInDate &&
+    participant.checkOutDate <= mainStay.checkOutDate &&
+    participant.checkInDate < participant.checkOutDate
+  );
+}
+
+/** True when adopting the main stay would show it on the participant calendar. */
 export function canAdoptMainGroupStayForParticipant(
   graph: TripEntityGraph,
   groupId: string,
@@ -239,7 +250,9 @@ export function canAdoptMainGroupStayForParticipant(
   participantDates: Pick<AccommodationStayDraft, "checkInDate" | "checkOutDate">,
 ): boolean {
   if (groupId === graph.mainGroupId) return false;
-  if (!stayDateRangesEqual(mainStay, participantDates)) return false;
+  const sameDates = stayDateRangesEqual(mainStay, participantDates);
+  const partialJoin = participantStayRangeWithinMain(participantDates, mainStay);
+  if (!sameDates && !partialJoin) return false;
   if (borrowedMainStayIdsForGroup(graph, groupId).has(mainStay.id)) return false;
 
   const own = staysForGroup(graph, groupId).filter((s) => s.name?.trim());
@@ -297,9 +310,19 @@ export function mergePersonalDayPlacesFromMain(
   personalDays: DayPlaceDraft[],
   mainDays: DayPlaceDraft[],
   stay: AccommodationStayDraft,
+  participantRange?: Pick<AccommodationStayDraft, "checkInDate" | "checkOutDate">,
 ): DayPlaceDraft[] {
   const byDate = new Map(personalDays.map((d) => [d.date, d]));
-  for (const date of stayNightDates(stay.checkInDate, stay.checkOutDate)) {
+  const paintFrom =
+    participantRange && participantStayRangeWithinMain(participantRange, stay)
+      ? participantRange.checkInDate
+      : stay.checkInDate;
+  const paintTo =
+    participantRange && participantStayRangeWithinMain(participantRange, stay)
+      ? participantRange.checkOutDate
+      : stay.checkOutDate;
+
+  for (const date of stayNightDates(paintFrom, paintTo)) {
     const main = mainDays.find((d) => d.date === date);
     if (!main) continue;
     byDate.set(
@@ -320,10 +343,16 @@ export function buildAdoptMainGroupStayCommands(
   graph: TripEntityGraph,
   groupId: string,
   mainStay: AccommodationStayDraft,
+  participantDates?: Pick<AccommodationStayDraft, "checkInDate" | "checkOutDate">,
 ): TripCommand[] {
   const personalDays = dayPlacesForGroup(graph, groupId);
   const mainDays = dayPlacesForGroup(graph, graph.mainGroupId);
-  const merged = mergePersonalDayPlacesFromMain(personalDays, mainDays, mainStay);
+  const merged = mergePersonalDayPlacesFromMain(
+    personalDays,
+    mainDays,
+    mainStay,
+    participantDates,
+  );
 
   const overlappingSameHotel = staysForGroup(graph, groupId).filter(
     (stay) =>

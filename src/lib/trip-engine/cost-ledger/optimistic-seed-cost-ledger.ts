@@ -27,7 +27,7 @@ export function mergeOptimisticSeedsIntoCostLedger(
     ...graph,
     activities: normalizeGraphActivities(graph.activities),
   };
-  const seeds = seedItemsNotYetPresent(base.lineItems, buildSeedLineItems(normalizedGraph));
+  const seeds = seedItemsNotYetPresent(base.lineItems, buildSeedLineItems(normalizedGraph), new Set(), normalizedGraph);
   if (!seeds.length) return base;
 
   const dedupedSeeds = dedupeFinanceSeeds(base.lineItems, seeds);

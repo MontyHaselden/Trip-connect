@@ -9,6 +9,7 @@ import {
   groupedTransportLegFinanceAttentionReason,
   groupedTransportLegFinanceDisplayStatus,
   transportLegFinanceDisplayStatus,
+  transportLegFinanceDisplayStatusForLeg,
   transportLegFinanceAttentionById,
   transportLegFinanceAttentionReason,
   transportLegFinanceLineId,
@@ -316,6 +317,19 @@ export function TransportSection(props: {
   const roster = props.rosterSummary ?? { participants: [], groups: [], rooms: [] };
   const products = props.graph.transportProducts ?? [];
   const editGroupId = props.calendarEditContext.editGroupId;
+  const financeScope = useMemo(
+    () => ({ scopedGroupId: editGroupId, roster }),
+    [editGroupId, roster],
+  );
+
+  function legFinanceStatus(leg: { id: string; transportProductId?: string | null }) {
+    return transportLegFinanceDisplayStatusForLeg(
+      leg,
+      props.costLedger,
+      props.graph,
+      financeScope,
+    );
+  }
 
   const [addOpen, setAddOpen] = useState(false);
   const [prefillNeed, setPrefillNeed] = useState<PendingTransportNeed | null>(null);
@@ -445,7 +459,12 @@ export function TransportSection(props: {
       groupedTargets?.length ?
         groupedTargets.map((target) => ({ ...target, bucket }))
       : [{ legId: leg.id, groupId, bucket }];
-    setPendingDelete({ targets, route, schedule });
+    const scopedTargets =
+      editGroupId === props.graph.mainGroupId
+        ? targets
+        : targets.filter((target) => target.groupId === editGroupId);
+    if (!scopedTargets.length) return;
+    setPendingDelete({ targets: scopedTargets, route, schedule });
   }
 
   async function confirmDeleteLeg() {
@@ -694,8 +713,8 @@ export function TransportSection(props: {
 
     function legFinanceActions(leg: ScopedTransportLeg) {
       const financeStatus = isGroupedPersonal
-        ? groupedTransportLegFinanceDisplayStatus(groupedLegs, props.costLedger)
-        : transportLegFinanceDisplayStatus(leg, props.costLedger);
+        ? groupedTransportLegFinanceDisplayStatus(groupedLegs, props.costLedger, props.graph, financeScope)
+        : transportLegFinanceDisplayStatusForLeg(leg, props.costLedger, props.graph, financeScope);
       return {
         showFinanceActions:
           financeStatus === "needs_attention" && Boolean(props.onCostsAction),
@@ -738,7 +757,7 @@ export function TransportSection(props: {
             const packageFinanceStatus = (() => {
               if (!showAsReturnPackage) return "complete" as EntityFinanceDisplayStatus;
               const statuses = productLegs.map((leg) =>
-                transportLegFinanceDisplayStatus(leg, props.costLedger),
+                transportLegFinanceDisplayStatusForLeg(leg, props.costLedger, props.graph, financeScope),
               );
               if (statuses.some((s) => s === "needs_attention")) return "needs_attention";
               if (statuses.some((s) => s === "tbc")) return "tbc";
@@ -746,7 +765,7 @@ export function TransportSection(props: {
             })();
             const packageFinanceReason = showAsReturnPackage
               ? productLegs
-                  .map((leg) => transportLegFinanceAttentionReason(leg, props.costLedger))
+                  .map((leg) => transportLegFinanceAttentionReason(leg, props.costLedger, props.graph))
                   .find(Boolean) ?? null
               : null;
 
@@ -777,7 +796,7 @@ export function TransportSection(props: {
                       onOpenFinance={() => {
                         const leg = productLegs.find(
                           (row) =>
-                            transportLegFinanceDisplayStatus(row, props.costLedger) ===
+                            transportLegFinanceDisplayStatusForLeg(row, props.costLedger, props.graph) ===
                             "needs_attention",
                         );
                         if (leg) openLegFinance(leg);
@@ -799,7 +818,7 @@ export function TransportSection(props: {
                       onMarkTbc={() => {
                         const leg = productLegs.find(
                           (row) =>
-                            transportLegFinanceDisplayStatus(row, props.costLedger) ===
+                            transportLegFinanceDisplayStatusForLeg(row, props.costLedger, props.graph) ===
                             "needs_attention",
                         );
                         if (leg) void markLegTbc(leg);
@@ -814,10 +833,11 @@ export function TransportSection(props: {
                         bucket={legBucket(leg.id)}
                         productLabel={product.name}
                         scopeHint={scopeHint}
-                        financeStatus={transportLegFinanceDisplayStatus(leg, props.costLedger)}
+                        financeStatus={transportLegFinanceDisplayStatusForLeg(leg, props.costLedger, props.graph, financeScope)}
                         financeAttentionReason={transportLegFinanceAttentionReason(
                           leg,
                           props.costLedger,
+                          props.graph,
                         )}
                         onOpenFinance={() => openLegFinance(leg)}
                         onEdit={canEditLeg ? () => openLegEditor(leg) : undefined}
@@ -854,13 +874,13 @@ export function TransportSection(props: {
                     scopeHint={scopeHint}
                     financeStatus={
                       isGroupedPersonal
-                        ? groupedTransportLegFinanceDisplayStatus(groupedLegs, props.costLedger)
-                        : transportLegFinanceDisplayStatus(leg, props.costLedger)
+                        ? groupedTransportLegFinanceDisplayStatus(groupedLegs, props.costLedger, props.graph, financeScope)
+                        : transportLegFinanceDisplayStatusForLeg(leg, props.costLedger, props.graph, financeScope)
                     }
                     financeAttentionReason={
                       isGroupedPersonal
-                        ? groupedTransportLegFinanceAttentionReason(groupedLegs, props.costLedger)
-                        : transportLegFinanceAttentionReason(leg, props.costLedger)
+                        ? groupedTransportLegFinanceAttentionReason(groupedLegs, props.costLedger, props.graph, financeScope)
+                        : transportLegFinanceAttentionReason(leg, props.costLedger, props.graph)
                     }
                     onOpenFinance={() => openLegFinance(leg)}
                     onEdit={canEditLeg ? () => openLegEditor(leg) : undefined}
