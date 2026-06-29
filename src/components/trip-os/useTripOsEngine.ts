@@ -30,7 +30,7 @@ import { applyCommandBatch } from "@/lib/trip-engine/apply-command-batch";
 import { computeReadiness } from "@/lib/trip-engine/compute-readiness";
 import { rosterPayloadToSummary } from "@/lib/trip-engine/roster-summary";
 import type { TripCommand } from "@/lib/trip-engine/commands";
-import { groupIdFromCommands } from "@/lib/trip-engine/persist-command";
+import { coerceUnknownGroupCommandsToMain, groupIdFromCommands } from "@/lib/trip-engine/command-group-ids";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
 import {
   localCostLedgerIsAhead,
@@ -832,8 +832,10 @@ export function useTripOsEngine(tripId: string) {
 
       const viewGroupId =
         activeGroupIdRef.current || dataRef.current.graph.mainGroupId;
-      const persistGroupId = groupIdFromCommands(commands) ?? viewGroupId;
-      const optimistic = applyCommandBatch(dataRef.current.graph, commands);
+      const graph = dataRef.current.graph;
+      const commandsForApply = coerceUnknownGroupCommandsToMain(commands, graph);
+      const persistGroupId = groupIdFromCommands(commandsForApply) ?? viewGroupId;
+      const optimistic = applyCommandBatch(graph, commandsForApply);
       const rosterSummary = dataRef.current.rosterSummary ?? EMPTY_ROSTER;
       let nextCostLedger = dataRef.current.costLedger;
       if (commandsNeedCostLedgerSeed(commands)) {
@@ -851,7 +853,7 @@ export function useTripOsEngine(tripId: string) {
         costLedger: nextCostLedger,
       });
 
-      pendingCommandsRef.current.push(...commands);
+      pendingCommandsRef.current.push(...commandsForApply);
       pendingGroupIdRef.current = persistGroupId;
 
       persistLocalSnapshot(optimistic.graph, {

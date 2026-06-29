@@ -116,9 +116,7 @@ export function mergeTripLocalDraft(
     pendingGroupId: patch.pendingGroupId ?? existing?.pendingGroupId ?? "",
     activeGroupId: patch.activeGroupId ?? existing?.activeGroupId ?? graph.mainGroupId,
     calendarLens:
-      patch.calendarLens ??
-      existing?.calendarLens ??
-      ({ kind: "whole_group" } as const),
+      { kind: "whole_group" } as const,
     inviteCode: patch.inviteCode ?? existing?.inviteCode ?? "",
     rosterSummary:
       patch.rosterSummary !== undefined ? patch.rosterSummary : (existing?.rosterSummary ?? null),

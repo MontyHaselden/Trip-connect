@@ -25,7 +25,7 @@ export function GroupsSection(props: {
     <TripSectionShell
       eyebrow="Advanced"
       title="Groups"
-      description="Create a travel party for people sharing the same flights or city changes. Assign members in Users, then pick the party from the calendar lens."
+      description="Create a travel party for people sharing the same flights or city changes. Assign members in Users. Finance can group participants for bulk pricing."
     >
       <ul className="space-y-2">
         {props.graph.groups.map((g) => {
@@ -66,8 +66,7 @@ export function GroupsSection(props: {
       </ul>
       <TripSoftPanel title="Create travel party">
         <p className="mb-3 text-xs text-zinc-500">
-          Example: &quot;Tottori side trip&quot; for everyone flying Tokyo → Tottori together. Add
-          flights once on that party&apos;s calendar instead of four separate sections.
+          Example: &quot;Tottori side trip&quot; for everyone flying Tokyo → Tottori together.
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
           <TripInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Group name" />

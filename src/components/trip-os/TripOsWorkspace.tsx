@@ -15,7 +15,6 @@ import type {
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
 
-import type { CalendarLens } from "@/lib/trip-engine/person-lens";
 import type { CalendarEditContext, TripAdminProjection } from "@/lib/trip-admin/types";
 
 import type { CalendarSelection } from "./calendar/useCalendarSelection";
@@ -52,7 +51,6 @@ export function TripOsWorkspace(props: {
   section: TripOsSection;
   graph: TripEntityGraph;
   groupId: string;
-  calendarLens?: CalendarLens;
   adminProjection: TripAdminProjection;
   calendarEditContext: CalendarEditContext;
   tripId: string;

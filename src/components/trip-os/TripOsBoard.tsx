@@ -6,16 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildTripAdminProjection } from "@/lib/trip-admin/build-admin-projection";
 import { buildCalendarEditContext } from "@/lib/trip-admin/list-adapters";
 import {
-  editGroupIdForLens,
-  normalizeCalendarLens,
-  type CalendarLens,
-} from "@/lib/trip-engine/person-lens";
-import { expandCommandsForCalendarLens } from "@/lib/trip-engine/calendar-lens-dispatch";
-import {
   clearOversizedTripLocalDraft,
   clearTripLocalDraft,
-  mergeTripLocalDraft,
-  readTripLocalDraft,
 } from "@/lib/trip-os/local-draft";
 import { tripOsHomePath } from "@/lib/trip-os/paths";
 import { calendarViewForLens } from "@/lib/trip-os/calendar-view-for-lens";
@@ -50,8 +42,6 @@ export function TripOsBoard(props: { tripId: string }) {
     tab: FinanceBuiltInSection;
     lineId?: string;
   } | null>(null);
-  const [calendarLens, setCalendarLens] = useState<CalendarLens>({ kind: "whole_group" });
-  const calendarLensHydratedRef = useRef(false);
   const activeSectionRef = useRef(activeSection);
   const previewRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -80,26 +70,13 @@ export function TripOsBoard(props: { tripId: string }) {
   const dispatchWithPreviewRefresh = useCallback(
     async (commands: TripCommand[]) => {
       saveScrollPosition();
-      const graph = engine.data?.graph;
-      const roster = engine.data?.rosterSummary;
-      const expanded =
-        graph && roster
-          ? expandCommandsForCalendarLens(commands, calendarLens, graph, roster)
-          : commands;
-      const ok = await engine.dispatch(expanded);
+      const ok = await engine.dispatch(commands);
       if (ok) {
         scheduleParticipantPreviewRefresh();
       }
       return ok;
     },
-    [
-      calendarLens,
-      engine.data?.graph,
-      engine.data?.rosterSummary,
-      engine.dispatch,
-      scheduleParticipantPreviewRefresh,
-      saveScrollPosition,
-    ],
+    [engine.dispatch, scheduleParticipantPreviewRefresh, saveScrollPosition],
   );
 
   const saveStatusLine =
@@ -119,40 +96,6 @@ export function TripOsBoard(props: { tripId: string }) {
   }, [props.tripId]); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only initial load
 
   useEffect(() => {
-    calendarLensHydratedRef.current = false;
-  }, [props.tripId]);
-
-  useEffect(() => {
-    if (calendarLensHydratedRef.current) return;
-    if (!engine.data) return;
-    const draft = readTripLocalDraft(props.tripId);
-    if (draft?.calendarLens && engine.data?.graph && engine.data?.rosterSummary) {
-      setCalendarLens(
-        normalizeCalendarLens(
-          draft.calendarLens,
-          engine.data.graph,
-          engine.data.rosterSummary,
-        ),
-      );
-    }
-    calendarLensHydratedRef.current = true;
-  }, [props.tripId, engine.data]);
-
-  const handleCalendarLensChange = useCallback(
-    (lens: CalendarLens) => {
-      setCalendarLens(lens);
-      const g = engine.data?.graph;
-      const roster = engine.data?.rosterSummary;
-      if (!g || !roster) return;
-      mergeTripLocalDraft(props.tripId, {
-        calendarLens: lens,
-        activeGroupId: editGroupIdForLens(g, lens, roster),
-      });
-    },
-    [engine.data?.graph, engine.data?.rosterSummary, props.tripId],
-  );
-
-  useEffect(() => {
     if (!TRIP_OS_AI_IMPORT_ENABLED && activeSection === "ingest") {
       setActiveSection("overview");
     }
@@ -160,13 +103,10 @@ export function TripOsBoard(props: { tripId: string }) {
 
   const graph = engine.data?.graph;
   const rosterSummary = engine.data?.rosterSummary;
-  const editGroupId =
-    graph && rosterSummary
-      ? editGroupIdForLens(graph, calendarLens, rosterSummary)
-      : engine.activeGroupId || graph?.mainGroupId || "";
+  const editGroupId = graph?.mainGroupId ?? engine.activeGroupId ?? "";
 
   const calendarView = useMemo(() => {
-    if (!engine.data || !graph) return null;
+    if (!engine.data || !graph || !editGroupId) return null;
     return calendarViewForLens(graph, editGroupId, {
       calendarRenderModel: engine.data.calendarRenderModel,
       calendarProjection: engine.data.calendarProjection,
@@ -180,25 +120,16 @@ export function TripOsBoard(props: { tripId: string }) {
   }, [engine.data?.adminProjection, graph, rosterSummary]);
 
   const calendarEditContext = useMemo(() => {
-    if (!graph || !rosterSummary) return null;
-    return buildCalendarEditContext(graph, calendarLens, rosterSummary);
-  }, [graph, rosterSummary, calendarLens]);
+    if (!graph) return null;
+    return buildCalendarEditContext(graph);
+  }, [graph]);
 
   useEffect(() => {
-    if (!graph || !editGroupId) return;
-    const modelGroupId = engine.data?.calendarRenderModel.groupId;
-    if (editGroupId !== engine.activeGroupId || modelGroupId !== editGroupId) {
-      void engine.switchGroup(editGroupId);
+    if (!graph?.mainGroupId) return;
+    if (engine.activeGroupId !== graph.mainGroupId) {
+      void engine.switchGroup(graph.mainGroupId);
     }
-  }, [calendarLens, editGroupId, graph, engine.activeGroupId, engine.data?.calendarRenderModel.groupId, engine.switchGroup]);
-
-  useEffect(() => {
-    if (!graph) return;
-    mergeTripLocalDraft(props.tripId, {
-      calendarLens,
-      activeGroupId: editGroupId,
-    });
-  }, [calendarLens, editGroupId, graph, props.tripId]);
+  }, [graph?.mainGroupId, engine.activeGroupId, engine.switchGroup]);
 
   const renderModel = calendarView?.calendarRenderModel ?? null;
 
@@ -359,20 +290,7 @@ export function TripOsBoard(props: { tripId: string }) {
   const fullWidthMain = hideCalendar;
   const mapLayout = activeSection === "map";
 
-  const groupSelector = (
-    <CalendarPersonLens
-      graph={tripGraph}
-      roster={roster}
-      lens={calendarLens}
-      activeGroupId={activeGroupId}
-      onLensChange={handleCalendarLensChange}
-      onDispatch={dispatchWithPreviewRefresh}
-      saving={engine.saving || engine.refreshing}
-      onSwitchToPerson={(participantId) => {
-        handleCalendarLensChange({ kind: "person", participantId });
-      }}
-    />
-  );
+  const groupSelector = <CalendarPersonLens />;
 
   return (
     <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
@@ -428,7 +346,6 @@ export function TripOsBoard(props: { tripId: string }) {
               section={activeSection}
               graph={tripGraph}
               groupId={activeGroupId}
-              calendarLens={calendarLens}
               adminProjection={adminProjection}
               calendarEditContext={calendarEditContext}
               tripId={props.tripId}

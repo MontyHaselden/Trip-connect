@@ -5,27 +5,19 @@ import type { CalendarEditContext } from "./types";
 /** Whether Add/Edit/Hide actions apply directly to this scope (vs view-only with hint). */
 export function isScopeEditable(
   scopeId: string,
-  editContext: CalendarEditContext,
+  _editContext: CalendarEditContext,
   graph: TripEntityGraph,
 ): boolean {
-  if (scopeId === graph.mainGroupId) return true;
-  if (scopeId === editContext.editGroupId) return true;
-  if (
-    editContext.lens.kind === "party" &&
-    editContext.partyGroupIds?.includes(scopeId)
-  ) {
-    return true;
-  }
-  return false;
+  return scopeId === graph.mainGroupId;
 }
 
 export function scopeEditHint(
   scopeId: string,
-  scopeTitle: string,
+  _scopeTitle: string,
   editContext: CalendarEditContext,
   graph: TripEntityGraph,
 ): string | null {
   if (isScopeEditable(scopeId, editContext, graph)) return null;
   if (scopeId === graph.mainGroupId) return null;
-  return `Edit on ${scopeTitle}'s calendar`;
+  return "View only — calendar edits apply to the whole group";
 }

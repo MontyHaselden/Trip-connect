@@ -14,7 +14,7 @@ import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import { purgeTransportItineraryForRemovedLeg, reconcileTransportItineraryItems } from "@/lib/host/import/transport-itinerary-reconcile";
 import { graphToSetupState } from "./adapters";
 import { applyCommands } from "./apply-commands";
-import { allGroupIdsFromCommands, groupIdFromCommands } from "./command-group-ids";
+import { allGroupIdsFromCommands, coerceUnknownGroupCommandsToMain, groupIdFromCommands } from "./command-group-ids";
 import { syncActivitiesForTrip, loadActivitiesForTrip } from "./activities-persistence";
 import { mergeActivitiesById, normalizeGraphActivities } from "./merge-graph-activities";
 import { linkCostLineToActivity } from "./cost-ledger/link-cost-line-to-entity";
@@ -425,7 +425,8 @@ function repairCommandsForPersist(
   commands: TripCommand[],
   graph: TripEntityGraph,
 ): TripCommand[] {
-  return commands.map((command) => {
+  return coerceUnknownGroupCommandsToMain(
+    commands.map((command) => {
     if (command.type !== "setDayPlaces") return command;
     const existing = dayPlacesForGroup(graph, command.groupId);
     const incoming = command.days
@@ -441,7 +442,9 @@ function repairCommandsForPersist(
       ...command,
       days: mergeSetDayPlacesDays(existing, incoming),
     };
-  });
+  }),
+    graph,
+  );
 }
 
 function commandsNeedAuthoritativeGraphReload(commands: TripCommand[]): boolean {

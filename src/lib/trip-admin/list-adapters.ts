@@ -1,15 +1,10 @@
-import {
-  editGroupIdForLens,
-  partyPersonalGroupIds,
-  type CalendarLens,
-} from "@/lib/trip-engine/person-lens";
 import type { PendingTransportNeed } from "@/lib/trip-engine/pending-city-moves";
 import type {
   ScopedTransportLeg,
   TripScopedLists,
   TripScopeSection,
 } from "@/lib/trip-engine/section-scope-lists";
-import type { RosterSummary, TripEntityGraph } from "@/lib/trip-engine/types";
+import type { TripEntityGraph } from "@/lib/trip-engine/types";
 import type { AccommodationStayDraft, ActivityDraft } from "@/lib/host/wizard/types";
 
 import type { CalendarEditContext, TripAdminProjection } from "./types";
@@ -26,18 +21,10 @@ export function calendarScopeFromProjection(
   );
 }
 
-export function buildCalendarEditContext(
-  graph: TripEntityGraph,
-  lens: CalendarLens,
-  roster: RosterSummary,
-): CalendarEditContext {
+export function buildCalendarEditContext(graph: TripEntityGraph): CalendarEditContext {
   return {
-    lens,
-    editGroupId: editGroupIdForLens(graph, lens, roster),
-    partyGroupIds:
-      lens.kind === "party" ?
-        partyPersonalGroupIds(graph, lens.participantIds)
-      : undefined,
+    lens: { kind: "whole_group" },
+    editGroupId: graph.mainGroupId,
   };
 }
 
