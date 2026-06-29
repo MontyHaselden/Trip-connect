@@ -177,7 +177,6 @@ export function useTripOsEngine(tripId: string) {
   const [loading, setLoading] = useState(false);
   const [loadStatus, setLoadStatus] = useState<TripLoadStatus>(READY_LOAD_STATUS);
   const [refreshing, setRefreshing] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<TripSaveStatus>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -403,7 +402,9 @@ export function useTripOsEngine(tripId: string) {
         roster,
       );
       const hasServerCalendar =
-        !context?.rebuildView && setupResponseIncludesCalendarView(hydrated);
+        !context?.rebuildView &&
+        setupResponseIncludesCalendarView(hydrated) &&
+        pending.length === 0;
       const view = hasServerCalendar
         ? {
             graph,
@@ -832,7 +833,8 @@ export function useTripOsEngine(tripId: string) {
 
       const viewGroupId =
         activeGroupIdRef.current || dataRef.current.graph.mainGroupId;
-      const persistGroupId = groupIdFromCommands(commands) ?? viewGroupId;
+      const calendarGroupId = groupIdFromCommands(commands) ?? viewGroupId;
+      const persistGroupId = calendarGroupId;
       const optimistic = applyCommandBatch(dataRef.current.graph, commands);
       const rosterSummary = dataRef.current.rosterSummary ?? EMPTY_ROSTER;
       let nextCostLedger = dataRef.current.costLedger;
@@ -845,7 +847,7 @@ export function useTripOsEngine(tripId: string) {
       }
       nextCostLedger = pruneCostLedgerLinkedOrphans(nextCostLedger, optimistic.graph);
       const nextState = buildStateFromGraph(optimistic.graph, {
-        viewGroupId,
+        viewGroupId: calendarGroupId,
         warnings: optimistic.warnings,
         prev: dataRef.current,
         costLedger: nextCostLedger,
@@ -1461,7 +1463,7 @@ export function useTripOsEngine(tripId: string) {
     loading,
     loadStatus,
     refreshing,
-    saving,
+    saving: saveStatus === "syncing",
     saveStatus,
     saveError,
     error,

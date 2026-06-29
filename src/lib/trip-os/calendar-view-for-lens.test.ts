@@ -93,4 +93,41 @@ describe("calendarViewForLens", () => {
     assert.equal(view.calendarRenderModel.groupId, "group-main");
     assert.ok(view.calendarRenderModel.days.length > 0);
   });
+
+  it("rebuilds when the graph changes but the cached model group still matches", () => {
+    const graph = minimalGraph();
+    const cached = buildCalendarRenderModel(graph, { groupId: "group-main" });
+    const updated = {
+      ...graph,
+      dayPlacesByGroupId: {
+        "group-main": [
+          ...(graph.dayPlacesByGroupId["group-main"] ?? []),
+          {
+            date: "2026-12-13",
+            primaryCity: "Kagoshima",
+            secondaryCity: "Hiroshima",
+            primaryShare: 0.5,
+            dayType: "trip" as const,
+            includeBuffer: false,
+          },
+        ],
+      },
+    };
+    const view = calendarViewForLens(updated, "group-main", {
+      calendarRenderModel: cached,
+      calendarProjection: {
+        groupId: "group-main",
+        gridStart: cached.gridStart,
+        gridEnd: cached.gridEnd,
+        days: cached.projectedDays,
+        accommodationByDate: cached.accommodationByDate,
+        boundaries: cached.boundaries,
+      },
+      costLedger: null,
+    });
+
+    const dec13 = view.calendarRenderModel.days.find((day) => day.date === "2026-12-13");
+    assert.equal(dec13?.primaryCity, "Kagoshima");
+    assert.equal(dec13?.secondaryCity, "Hiroshima");
+  });
 });

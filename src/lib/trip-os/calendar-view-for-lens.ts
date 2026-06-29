@@ -6,7 +6,7 @@ import type {
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
 
-/** Calendar view for the selected lens — derives immediately when the cached model is stale. */
+/** Calendar view for the selected lens — always derived from the live graph. */
 export function calendarViewForLens(
   graph: TripEntityGraph,
   groupId: string,
@@ -16,18 +16,6 @@ export function calendarViewForLens(
     costLedger: CostLedgerProjection | null;
   },
 ): { calendarRenderModel: CalendarRenderModel; calendarProjection: CalendarProjection } {
-  const model = cached.calendarRenderModel;
-  const projection = cached.calendarProjection;
-  const inSync =
-    model.groupId === groupId &&
-    projection.groupId === groupId &&
-    model.days.length > 0 &&
-    projection.days.length > 0;
-
-  if (inSync) {
-    return { calendarRenderModel: model, calendarProjection: projection };
-  }
-
   const derived = deriveEngineViewFromGraph(graph, {
     groupId,
     costLedger: cached.costLedger,

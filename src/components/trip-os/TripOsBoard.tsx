@@ -470,7 +470,7 @@ export function TripOsBoard(props: { tripId: string }) {
             onClearSelection={calendar.clearSelection}
             headerAside={groupSelector}
             statusLine={saveStatusLine ?? undefined}
-            interactionDisabled={!calendarLensReady || engine.saving || engine.refreshing}
+            interactionDisabled={!calendarLensReady || engine.refreshing}
           />
         </aside>
         ) : null}
