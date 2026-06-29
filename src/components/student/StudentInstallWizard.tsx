@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { IosOpenInSafariHelp } from "@/components/mobile/IosOpenInSafariHelp";
 import {
   detectMobileBrowser,
   isStandaloneDisplayMode,
@@ -20,7 +21,8 @@ function IosInstructions(props: { tripName: string }) {
   return (
     <ol className="mt-5 space-y-3 text-sm text-zinc-800">
       <li>
-        <span className="font-medium">1.</span> Use <strong>Safari</strong> (not Chrome).
+        <span className="font-medium">1.</span> Use <strong>Safari</strong> (not Chrome). Opened
+        this from Gmail or Google? Tap <strong>Don&apos;t have Safari?</strong> above first.
       </li>
       <li>
         <span className="font-medium">2.</span> Tap <strong>Share</strong> (square with arrow).
@@ -181,7 +183,10 @@ export function StudentInstallWizard(props: {
         )}
 
         {platform === "ios" ? (
-          <IosInstructions tripName={tripName} />
+          <>
+            <IosOpenInSafariHelp />
+            <IosInstructions tripName={tripName} />
+          </>
         ) : (
           <AndroidInstructions tripName={tripName} showManualSteps={!canPromptInstall} />
         )}

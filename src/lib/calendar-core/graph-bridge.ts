@@ -10,16 +10,13 @@ import {
   setDaysFromLegacy,
   slicesToDayPlaces,
 } from "@/lib/calendar-core";
+import { halfSideToSelection } from "@/lib/calendar-core/half-map";
 import type { HalfSelection } from "@/lib/calendar-core";
 import { stripPlaceholderDayPlaces } from "@/lib/host/setup/placeholder-city";
 import { personalGroupForGroupId } from "@/lib/trip-engine/person-lens";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
-export function halfSideToSelection(half: HalfSide | "full"): HalfSelection {
-  if (half === "left") return "am";
-  if (half === "right") return "pm";
-  return "full";
-}
+export { halfSideToSelection };
 
 export function paintDayRangeForGroup(
   graph: TripEntityGraph,

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { hostJson } from "@/components/host/shared/host-fetch";
 import type { RosterParticipant, RosterPayload } from "@/components/host/roster/types";
-import { TripInput } from "../shared/TripInput";
+import { TripInput, tripTextareaClass } from "../shared/TripInput";
 import { TripSectionShell, TripSoftPanel } from "../shared/TripSectionShell";
 
 const ROLE_OPTIONS: Array<{ value: RosterParticipant["role"]; label: string }> = [
@@ -181,7 +181,7 @@ export function UsersSection(props: { inviteCode: string; onRosterChanged?: () =
     return map;
   }, [roster?.groups]);
 
-  function addUser(fullName: string) {
+  function addUser(fullName: string, options?: { notify?: boolean }) {
     const trimmed = fullName.trim();
     if (trimmed.length < 2) return;
 
@@ -206,7 +206,7 @@ export function UsersSection(props: { inviteCode: string; onRosterChanged?: () =
     );
     inputRef.current?.focus();
 
-    void (async () => {
+    return (async () => {
       try {
         const created = await hostJson<RosterParticipant>(`${api}/participants`, {
           method: "POST",
@@ -223,7 +223,8 @@ export function UsersSection(props: { inviteCode: string; onRosterChanged?: () =
               }
             : prev,
         );
-        notifyRosterChanged();
+        if (options?.notify !== false) notifyRosterChanged();
+        return created;
       } catch (e) {
         setRoster((prev) =>
           prev
@@ -232,6 +233,7 @@ export function UsersSection(props: { inviteCode: string; onRosterChanged?: () =
         );
         setError(e instanceof Error ? e.message : "Could not add user");
         inputRef.current?.focus();
+        throw e;
       }
     })();
   }
@@ -244,7 +246,15 @@ export function UsersSection(props: { inviteCode: string; onRosterChanged?: () =
     if (!names.length) return;
     setShowBulk(false);
     setBulkText("");
-    for (const n of names) addUser(n);
+    setError(null);
+    for (const n of names) {
+      try {
+        await addUser(n, { notify: false });
+      } catch {
+        break;
+      }
+    }
+    notifyRosterChanged();
   }
 
   async function patchParticipant(
@@ -363,7 +373,7 @@ export function UsersSection(props: { inviteCode: string; onRosterChanged?: () =
               onChange={(e) => setBulkText(e.target.value)}
               placeholder="One name per line"
               rows={4}
-              className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm"
+              className={tripTextareaClass}
             />
             <button
               type="button"

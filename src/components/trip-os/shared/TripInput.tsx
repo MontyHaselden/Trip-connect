@@ -6,6 +6,9 @@ type TripInputVariant = "pill" | "ghost" | "hero";
 export const tripFieldClass =
   "w-full rounded-full border-0 bg-zinc-100 px-4 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
 
+export const tripTextareaClass =
+  "w-full resize-y rounded-xl border-0 bg-zinc-100 px-4 py-3 text-sm leading-relaxed text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30";
+
 export const TripInput = forwardRef(function TripInput(
   props: InputHTMLAttributes<HTMLInputElement> & {
     variant?: TripInputVariant;

@@ -72,8 +72,8 @@ export function TripOsBoard(props: { tripId: string }) {
 
   const handleRosterChanged = useCallback(() => {
     scheduleParticipantPreviewRefresh();
-    void engine.load(undefined, { silent: true });
-  }, [engine.load, scheduleParticipantPreviewRefresh]);
+    void engine.refreshRosterSummary();
+  }, [engine.refreshRosterSummary, scheduleParticipantPreviewRefresh]);
 
   const { scrollRef, saveScrollPosition, rememberScrollPosition } = useCalendarScroll();
 

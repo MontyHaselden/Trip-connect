@@ -53,3 +53,8 @@ export {
   projectedDayPlacesForGroup,
 } from "./group-helpers";
 export { paintDayRangeForGroup, setDayPlacesForGroup, halfSideToSelection } from "./graph-bridge";
+export {
+  halfSideToSelection as halfSideToCalendarHalf,
+  normalizeHalfSelection,
+  selectionHalfToSide,
+} from "./half-map";

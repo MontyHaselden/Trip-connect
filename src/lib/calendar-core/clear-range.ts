@@ -2,6 +2,7 @@ import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import { stayDatesForSelection } from "@/lib/host/setup/day-selection-setup";
 import type { NightPairSelection } from "@/lib/host/setup/night-pair-selection";
 
+import { normalizeHalfSelection } from "./half-map";
 import {
   clearHalf,
   emptySlice,
@@ -16,37 +17,52 @@ function halfFromSelection(half: HalfSelection): CalendarHalf | null {
   return null;
 }
 
+function normalizedSelection(selection: NightPairSelection): {
+  rangeStart: string;
+  rangeEnd: string;
+  startHalf: HalfSelection;
+  endHalf: HalfSelection;
+} {
+  return {
+    rangeStart: selection.rangeStart,
+    rangeEnd: selection.rangeEnd || selection.rangeStart,
+    startHalf: normalizeHalfSelection(selection.startHalf ?? "full"),
+    endHalf: normalizeHalfSelection(selection.endHalf ?? "full"),
+  };
+}
+
 /** Remove location paint across a selection span. */
 export function clearRange(
   slices: CalendarDaySlice[],
   selection: NightPairSelection,
 ): CalendarDaySlice[] {
-  const end = selection.rangeEnd || selection.rangeStart;
-  const startHalf = (selection.startHalf ?? "full") as HalfSelection;
-  const endHalf = (selection.endHalf ?? "full") as HalfSelection;
+  const normalized = normalizedSelection(selection);
+  const end = normalized.rangeEnd;
+  const startHalf = normalized.startHalf;
+  const endHalf = normalized.endHalf;
   const byDate = indexSlices(slices);
 
-  if (selection.rangeStart === end && startHalf === "full" && endHalf === "full") {
-    byDate.delete(selection.rangeStart);
+  if (normalized.rangeStart === end && startHalf === "full" && endHalf === "full") {
+    byDate.delete(normalized.rangeStart);
     return sortedSliceValues(byDate);
   }
 
-  if (selection.rangeStart === end && startHalf !== "full") {
+  if (normalized.rangeStart === end && startHalf !== "full") {
     const half = halfFromSelection(startHalf);
     if (!half) return slices;
-    const day = byDate.get(selection.rangeStart);
+    const day = byDate.get(normalized.rangeStart);
     if (!day) return slices;
     const cleared = clearHalf(day, half);
-    if (sliceHasPaint(cleared)) byDate.set(selection.rangeStart, cleared);
-    else byDate.delete(selection.rangeStart);
+    if (sliceHasPaint(cleared)) byDate.set(normalized.rangeStart, cleared);
+    else byDate.delete(normalized.rangeStart);
     return sortedSliceValues(byDate);
   }
 
   const { checkIn, checkOut } = stayDatesForSelection({
-    rangeStart: selection.rangeStart,
+    rangeStart: normalized.rangeStart,
     rangeEnd: end,
-    startHalf: startHalf === "pm" ? "right" : startHalf === "am" ? "left" : "full",
-    endHalf: endHalf === "pm" ? "right" : endHalf === "am" ? "left" : "full",
+    startHalf: selection.startHalf ?? "full",
+    endHalf: selection.endHalf ?? "full",
   });
   const multiDay = checkIn !== checkOut;
 

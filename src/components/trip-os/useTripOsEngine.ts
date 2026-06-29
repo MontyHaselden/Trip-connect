@@ -28,6 +28,7 @@ import {
 } from "@/lib/trip-engine/stub-engine-view";
 import { applyCommandBatch } from "@/lib/trip-engine/apply-command-batch";
 import { computeReadiness } from "@/lib/trip-engine/compute-readiness";
+import { rosterPayloadToSummary } from "@/lib/trip-engine/roster-summary";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 import { groupIdFromCommands } from "@/lib/trip-engine/persist-command";
 import type { CostLedgerProjection } from "@/lib/trip-engine/cost-ledger/types";
@@ -974,6 +975,47 @@ export function useTripOsEngine(tripId: string) {
 
   refreshCostLedgerRef.current = refreshCostLedgerFromServer;
 
+  const refreshRosterSummary = useCallback(async (): Promise<boolean> => {
+    const inviteCode = dataRef.current?.inviteCode;
+    if (!inviteCode) return false;
+    try {
+      const res = await fetch(`/api/host/${encodeURIComponent(inviteCode)}/roster`);
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        participants?: Array<{
+          id: string;
+          fullName: string;
+          role: string;
+          inCostSplit: boolean;
+          groupIds: string[];
+          roomId: string | null;
+        }>;
+        groups?: Array<{ id: string; name: string }>;
+        rooms?: Array<{ id: string; roomName: string }>;
+      };
+      if (!res.ok || !body.participants || !body.groups || !body.rooms) return false;
+      const rosterSummary = rosterPayloadToSummary({
+        participants: body.participants,
+        groups: body.groups,
+        rooms: body.rooms,
+      });
+      setData((prev) => {
+        if (!prev) return prev;
+        const next = {
+          ...prev,
+          rosterSummary,
+          adminProjection: buildTripAdminProjection(prev.graph, rosterSummary),
+          readiness: computeReadiness(prev.graph, prev.calendarProjection, prev.costLedger),
+        };
+        persistLocalSnapshot(prev.graph, { rosterSummary });
+        return next;
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [persistLocalSnapshot]);
+
   const materializeLinkedFinanceLines = useCallback(async (): Promise<void> => {
     const snap = dataRef.current;
     if (!snap?.costLedger) return;
@@ -1428,6 +1470,7 @@ export function useTripOsEngine(tripId: string) {
     activeGroupId,
     load,
     refreshCostLedger: refreshCostLedgerFromServer,
+    refreshRosterSummary,
     dispatch,
     switchGroup,
     patchCosts,

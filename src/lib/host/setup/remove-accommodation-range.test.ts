@@ -294,6 +294,48 @@ describe("removeAccommodationAndCitiesFromRange", () => {
     assert.equal(next.dayPlacesByGroupId.main?.find((d) => d.date === "2026-12-22"), undefined);
   });
 
+  it("clearing the first half of a travel split keeps the arrival city on the second half", () => {
+    const state: TripSetupState = {
+      ...baseState(),
+      basics: {
+        ...baseState().basics,
+        startDate: "2026-12-05",
+        endDate: "2026-12-22",
+        departureCity: "Christchurch",
+        returnCity: "Christchurch",
+      },
+      dayPlacesByGroupId: {
+        main: [
+          {
+            date: "2026-12-05",
+            primaryCity: "Christchurch",
+            secondaryCity: "Tokyo",
+            primaryShare: 0.5,
+            dayType: "travel",
+            includeBuffer: false,
+          },
+        ],
+      },
+      accommodationStays: [],
+      activities: [],
+    };
+
+    const next = clearCalendarContentInRange(
+      state,
+      {
+        rangeStart: "2026-12-05",
+        rangeEnd: "2026-12-05",
+        startHalf: "left",
+        endHalf: "left",
+      },
+      state.mainGroupId,
+    );
+
+    const dec5 = next.dayPlacesByGroupId.main?.find((d) => d.date === "2026-12-05");
+    assert.equal(dec5?.primaryCity, "");
+    assert.equal(dec5?.secondaryCity, "Tokyo");
+  });
+
   it("clearing a personal group range does not remove main-group transport legs", () => {
     const state: TripSetupState = {
       ...baseState(),
