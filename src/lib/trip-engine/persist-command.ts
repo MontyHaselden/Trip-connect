@@ -14,7 +14,7 @@ import { enumerateDates } from "@/lib/host/wizard/location-stays";
 import { purgeTransportItineraryForRemovedLeg, reconcileTransportItineraryItems } from "@/lib/host/import/transport-itinerary-reconcile";
 import { graphToSetupState } from "./adapters";
 import { applyCommands } from "./apply-commands";
-import { allGroupIdsFromCommands, coerceUnknownGroupCommandsToMain, groupIdFromCommands } from "./command-group-ids";
+import { allGroupIdsFromCommands, groupIdFromCommands } from "./command-group-ids";
 import { syncActivitiesForTrip, loadActivitiesForTrip } from "./activities-persistence";
 import { mergeActivitiesById, normalizeGraphActivities } from "./merge-graph-activities";
 import { linkCostLineToActivity } from "./cost-ledger/link-cost-line-to-entity";
@@ -425,8 +425,7 @@ function repairCommandsForPersist(
   commands: TripCommand[],
   graph: TripEntityGraph,
 ): TripCommand[] {
-  return coerceUnknownGroupCommandsToMain(
-    commands.map((command) => {
+  return commands.map((command) => {
     if (command.type !== "setDayPlaces") return command;
     const existing = dayPlacesForGroup(graph, command.groupId);
     const incoming = command.days
@@ -442,9 +441,7 @@ function repairCommandsForPersist(
       ...command,
       days: mergeSetDayPlacesDays(existing, incoming),
     };
-  }),
-    graph,
-  );
+  });
 }
 
 function commandsNeedAuthoritativeGraphReload(commands: TripCommand[]): boolean {
@@ -476,11 +473,18 @@ export async function persistCommands(
     graph,
   );
 
+  let validationGraph = graph;
+  for (const command of normalized) {
+    if (command.type === "ensurePersonalGroup" || command.type === "createGroup") {
+      validationGraph = applyCommands(validationGraph, [command]).graph;
+    }
+  }
+
   for (const command of normalized) {
     const commandGroupId = groupIdFromCommand(command);
     if (
       commandGroupId &&
-      !graph.groups.some((group) => group.id === commandGroupId)
+      !validationGraph.groups.some((group) => group.id === commandGroupId)
     ) {
       throw new Error(
         "Calendar command references an unknown group. Refresh the page and try again.",

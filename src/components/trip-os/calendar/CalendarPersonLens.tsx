@@ -87,8 +87,7 @@ function PartySelectModal(props: {
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
         <h3 className="text-base font-semibold text-zinc-900">Edit multiple together</h3>
         <p className="mt-1 text-sm text-zinc-500">
-          Transport and accommodation changes apply to everyone selected. The calendar always shows
-          the whole group.
+          Calendar, transport, and accommodation changes apply to everyone selected.
         </p>
         <ul className="mt-4 max-h-64 space-y-1 overflow-y-auto">
           {props.participants.map((p) => (
@@ -370,7 +369,11 @@ export function CalendarPersonLens(props: {
 
       {props.lens.kind === "party" ? (
         <p className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] leading-snug text-violet-900">
-          Stays &amp; transport for: <span className="font-semibold">{lensLabel}</span>
+          Editing for: <span className="font-semibold">{lensLabel}</span>
+        </p>
+      ) : props.lens.kind === "person" ? (
+        <p className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] leading-snug text-violet-900">
+          Editing for: <span className="font-semibold">{lensLabel}</span>
         </p>
       ) : null}
 

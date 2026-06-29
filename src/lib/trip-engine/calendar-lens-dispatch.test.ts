@@ -140,4 +140,28 @@ describe("expandCommandsForCalendarLens", () => {
     assert.equal(expanded.length, 1);
     assert.equal(expanded[0]?.type, "paintDayRange");
   });
+
+  it("does not fan out batched transport leg adds", () => {
+    const commands: TripCommand[] = [
+      {
+        type: "addClassifiedTransportLegs",
+        groupId: "g-amanda",
+        legs: [],
+      },
+      {
+        type: "addClassifiedTransportLegs",
+        groupId: "g-kaleb",
+        legs: [],
+      },
+    ];
+
+    const expanded = expandCommandsForCalendarLens(
+      commands,
+      { kind: "party", participantIds: ["p-amanda", "p-kaleb"] },
+      graph(),
+      roster(),
+    );
+
+    assert.equal(expanded.length, 2);
+  });
 });
