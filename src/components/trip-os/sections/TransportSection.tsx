@@ -654,7 +654,12 @@ export function TransportSection(props: {
           </p>
           {!isActiveScope ? (
             <p className="mt-1 text-xs text-violet-700">
-              Edit on {scope.title}&apos;s calendar
+              {adminScopeEditHint(
+                scope.groupId,
+                scope.title,
+                props.calendarEditContext,
+                props.graph,
+              ) ?? `Select ${scope.title} in the lens above`}
             </p>
           ) : null}
         </div>
