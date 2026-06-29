@@ -159,6 +159,83 @@ describe("deriveCalendarState", () => {
     assert.equal(sep4?.primaryCity, "Bangkok");
     assert.equal(sep4?.secondaryCity, null);
     assert.ok(!sep5?.primaryCity.includes("Christchurch"));
-    assert.equal(sep6?.primaryCity, "");
+    assert.equal(sep6?.primaryCity ?? "", "");
+  });
+
+  it("keeps Tokyo|Christchurch split on the last day when return flights and a hotel stay overlap", () => {
+    const trip = {
+      startDate: "2026-12-05",
+      endDate: "2026-12-21",
+      departureCity: "Christchurch",
+      returnCity: "Christchurch",
+    };
+    const state = deriveCalendarState({
+      stays: [
+        {
+          id: "tokyo-hotel",
+          cityLabel: "Tokyo",
+          stayType: "hotel",
+          name: "Hotel Sunroute",
+          url: null,
+          address: null,
+          phone: null,
+          checkInDate: "2026-12-18",
+          checkOutDate: "2026-12-22",
+          notes: null,
+        },
+      ],
+      intercityLegs: [],
+      trip,
+      transportDraft: {
+        outboundLegs: [
+          {
+            id: "out-1",
+            transportType: "plane",
+            bookingStatus: "not_booked",
+            travelDate: "2026-12-05",
+            arrivalDate: "2026-12-05",
+            departureTime: "08:00",
+            arrivalTime: "18:00",
+            fromCity: "Christchurch Airport (CHC)",
+            toCity: "Tokyo",
+            fromStation: null,
+            toStation: null,
+            operator: null,
+            referenceNumber: null,
+            flightNumber: null,
+            notes: null,
+          },
+        ],
+        returnLegs: [
+          {
+            id: "ret-1",
+            transportType: "plane",
+            bookingStatus: "not_booked",
+            travelDate: "2026-12-21",
+            arrivalDate: "2026-12-22",
+            departureTime: "18:00",
+            arrivalTime: "10:00",
+            fromCity: "Tokyo",
+            toCity: "Christchurch Airport (CHC)",
+            fromStation: null,
+            toStation: null,
+            operator: null,
+            referenceNumber: null,
+            flightNumber: null,
+            notes: null,
+          },
+        ],
+        intercityLegs: [],
+        dayPlaces: [],
+      },
+      gridStart: "2026-12-01",
+      gridEnd: "2026-12-31",
+    });
+
+    const dec21 = state.dayPlaces.find((d) => d.date === "2026-12-21");
+    assert.equal(dec21?.primaryCity, "Tokyo");
+    assert.ok(dec21?.secondaryCity?.includes("Christchurch"));
+    assert.equal(dec21?.primaryShare, 0.5);
+    assert.equal(dec21?.dayType, "return");
   });
 });

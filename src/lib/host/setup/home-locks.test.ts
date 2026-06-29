@@ -126,4 +126,29 @@ describe("enforceHomeLocks", () => {
     assert.equal(endDay?.primaryShare, 0.5);
     assert.equal(endDay?.dayType, "return");
   });
+
+  it("splits the last trip day even when a return flight departs that day", () => {
+    const locked = enforceHomeLocks(
+      [
+        {
+          date: "2026-12-21",
+          primaryCity: "Tokyo",
+          secondaryCity: null,
+          primaryShare: 1,
+          dayType: "trip",
+          includeBuffer: false,
+        },
+      ],
+      japanTrip,
+      new Set(["2026-12-21"]),
+      new Set<string>(),
+      false,
+    );
+
+    const endDay = locked.find((d) => d.date === "2026-12-21");
+    assert.equal(endDay?.primaryCity, "Tokyo");
+    assert.equal(endDay?.secondaryCity, "Christchurch");
+    assert.equal(endDay?.primaryShare, 0.5);
+    assert.equal(endDay?.dayType, "return");
+  });
 });

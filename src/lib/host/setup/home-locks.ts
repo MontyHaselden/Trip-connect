@@ -80,7 +80,6 @@ export function enforceHomeLocks(
     if (
       d.date === trip.endDate &&
       ret &&
-      !flightDepartureDates?.has(d.date) &&
       !skipEndHomeLock
     ) {
       const dest = norm(d.primaryCity) !== norm(ret) ? d.primaryCity : "";
