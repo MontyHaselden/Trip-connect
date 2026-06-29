@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   formatGroupedTravellerLabel,
   listPendingTransportNeedsForDisplay,
+  pendingTransportSubmitScopes,
 } from "./group-pending-transport-needs";
 import { pendingTransportNeedGroupKey, pendingTransportNeedRouteKey } from "./hidden-pending-transport";
 import type { PendingTransportNeed } from "./pending-city-moves";
@@ -138,7 +139,29 @@ describe("listPendingTransportNeedsForDisplay", () => {
     assert.equal(items[0]?.type, "grouped");
     if (items[0]?.type === "grouped") {
       assert.equal(items[0].scopes.length, 3);
+      assert.equal(items[0].need.date, "2026-12-06");
     }
+  });
+});
+
+describe("pendingTransportSubmitScopes", () => {
+  it("keeps each traveller's own city-change date for batch adds", () => {
+    const shared = need("intercity", "2026-12-13", "Tottori", "Hiroshima");
+    const scopes = pendingTransportSubmitScopes({
+      groupId: "g-amanda",
+      need: shared,
+      targetScopes: [
+        { groupId: "g-amanda", need: need("intercity", "2026-12-13", "Tottori", "Hiroshima") },
+        { groupId: "g-kaleb", need: need("intercity", "2026-12-13", "Tottori", "Hiroshima") },
+        { groupId: "g-mia", need: need("intercity", "2026-12-14", "Tottori", "Hiroshima") },
+        { groupId: "g-trenuela", need: need("intercity", "2026-12-14", "Tottori", "Hiroshima") },
+      ],
+    });
+    assert.equal(scopes.length, 4);
+    assert.deepEqual(
+      scopes.map((scope) => scope.need.date).sort(),
+      ["2026-12-13", "2026-12-13", "2026-12-14", "2026-12-14"],
+    );
   });
 });
 

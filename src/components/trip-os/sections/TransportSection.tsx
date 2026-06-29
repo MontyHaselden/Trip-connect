@@ -37,6 +37,7 @@ import {
   listPendingTransportNeedsForDisplay,
   type PendingTransportListItem,
   type PendingTransportScopeRef,
+  type PendingTransportSubmitScope,
 } from "@/lib/trip-engine/group-pending-transport-needs";
 import {
   groupPersonalTransportScopesForDisplay,
@@ -349,6 +350,9 @@ export function TransportSection(props: {
   const [prefillNeed, setPrefillNeed] = useState<PendingTransportNeed | null>(null);
   const [addGroupId, setAddGroupId] = useState(editGroupId);
   const [addTargetGroupIds, setAddTargetGroupIds] = useState<string[] | null>(null);
+  const [addTargetScopes, setAddTargetScopes] = useState<PendingTransportSubmitScope[] | null>(
+    null,
+  );
   const [separatedRouteKeys, setSeparatedRouteKeys] = useState<Set<string>>(() => new Set());
   const [editingLeg, setEditingLeg] = useState<{
     leg: TransportLegDraft | IntercityLegDraft;
@@ -515,13 +519,19 @@ export function TransportSection(props: {
     });
   }
 
-  function openAdd(need: PendingTransportNeed, groupId: string, targetGroupIds?: string[]) {
+  function openAdd(
+    need: PendingTransportNeed,
+    groupId: string,
+    targetGroupIds?: string[],
+    targetScopes?: PendingTransportSubmitScope[],
+  ) {
     if (!isScopeEditable(groupId, props.calendarEditContext, props.graph)) {
       props.onSwitchGroup?.(groupId);
     }
     setPrefillNeed(need);
     setAddGroupId(groupId);
     setAddTargetGroupIds(targetGroupIds?.length ? targetGroupIds : null);
+    setAddTargetScopes(targetScopes?.length ? targetScopes : null);
     setAddOpen(true);
   }
 
@@ -584,7 +594,19 @@ export function TransportSection(props: {
             })}
           </p>
           <p className="text-xs text-amber-800">
-            {DateTime.fromISO(need.date).toFormat("d MMM yyyy")}
+            {scopes.some((scope) => scope.need.date !== need.date) ? (
+              <>
+                Travellers split{" "}
+                {[
+                  ...new Set(scopes.map((scope) => scope.need.date)),
+                ]
+                  .sort()
+                  .map((date) => DateTime.fromISO(date).toFormat("d MMM yyyy"))
+                  .join(" / ")}
+              </>
+            ) : (
+              DateTime.fromISO(need.date).toFormat("d MMM yyyy")
+            )}
           </p>
           <p className="mt-1 text-xs text-zinc-600">
             One booking can cover everyone on this route. Use separate flights if numbers or times
@@ -601,7 +623,14 @@ export function TransportSection(props: {
           </button>
           <button
             type="button"
-            onClick={() => openAdd(need, primaryGroupId, groupIds)}
+            onClick={() =>
+              openAdd(
+                need,
+                primaryGroupId,
+                groupIds,
+                scopes.map((scope) => ({ groupId: scope.groupId, need: scope.need })),
+              )
+            }
             title={
               isActiveScope
                 ? `Add transport for ${travellerLabel}`
@@ -958,10 +987,12 @@ export function TransportSection(props: {
           setPrefillNeed(null);
           setAddGroupId(editGroupId);
           setAddTargetGroupIds(null);
+          setAddTargetScopes(null);
         }}
         graph={props.graph}
         groupId={addGroupId}
         targetGroupIds={addTargetGroupIds ?? undefined}
+        targetScopes={addTargetScopes ?? undefined}
         rosterSummary={props.rosterSummary}
         selectedDate={props.selectedDate}
         prefillNeed={prefillNeed}

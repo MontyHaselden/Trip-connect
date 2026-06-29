@@ -8,6 +8,10 @@ import {
   transportProductSuggestionsForTrip,
   defaultPassProductIdForMode,
 } from "@/lib/trip-engine/transport-product-defaults";
+import {
+  pendingTransportSubmitScopes,
+  type PendingTransportSubmitScope,
+} from "@/lib/trip-engine/group-pending-transport-needs";
 import { cityMoveToPlaceholderLeg, type PendingTransportNeed } from "@/lib/trip-engine/pending-city-moves";
 import {
   findReturnFlightPairForNeed,
@@ -55,6 +59,7 @@ export function AddTransportModal(props: {
   graph: TripEntityGraph;
   groupId: string;
   targetGroupIds?: string[];
+  targetScopes?: PendingTransportSubmitScope[];
   rosterSummary?: RosterSummary;
   selectedDate?: string | null;
   prefillNeed?: PendingTransportNeed | null;
@@ -169,11 +174,27 @@ export function AddTransportModal(props: {
     }
   }, [billing, mode, suggestions, productChoice]);
 
+  const need = props.prefillNeed;
+  const submitScopes = useMemo(
+    () =>
+      pendingTransportSubmitScopes({
+        groupId: props.groupId,
+        need: need ?? { kind: "intercity", date: "", fromCity: "", toCity: "" },
+        targetScopes: props.targetScopes,
+        targetGroupIds: props.targetGroupIds,
+      }),
+    [props.groupId, props.targetGroupIds, props.targetScopes, need],
+  );
+  const batchDateLabel = useMemo(() => {
+    const dates = [...new Set(submitScopes.map((scope) => scope.need.date).filter(Boolean))].sort();
+    if (dates.length <= 1) return dates[0] ?? need?.date ?? "";
+    return `${dates[0]}–${dates[dates.length - 1]}`;
+  }, [submitScopes, need?.date]);
+
   if (!props.open) return null;
 
-  const need = props.prefillNeed;
   const groupIds = submitGroupIds(props.groupId, props.targetGroupIds);
-  const isBatchAdd = groupIds.length > 1;
+  const isBatchAdd = submitScopes.length > 1;
   const isFlightNeed = need && need.kind !== "intercity";
   const pairSummary = returnPair ? returnFlightPairSummary(returnPair) : null;
 
@@ -291,13 +312,13 @@ export function AddTransportModal(props: {
       }
     }
 
-    for (const groupId of groupIds) {
+    for (const { groupId, need: scopeNeed } of submitScopes) {
       commands.push({
         type: "addClassifiedTransportLegs",
         groupId,
         legs: [
           {
-            ...cityMoveToPlaceholderLeg(need, groupId, need.kind),
+            ...cityMoveToPlaceholderLeg(scopeNeed, groupId, scopeNeed.kind),
             transportType: modeToTransportType(mode),
             transportProductId: productId,
             billingMode: productId ? ("product" as const) : ("single" as const),
@@ -308,10 +329,10 @@ export function AddTransportModal(props: {
         type: "hidePendingTransportNeed",
         groupId,
         need: {
-          kind: need.kind,
-          date: need.date,
-          fromCity: need.fromCity,
-          toCity: need.toCity,
+          kind: scopeNeed.kind,
+          date: scopeNeed.date,
+          fromCity: scopeNeed.fromCity,
+          toCity: scopeNeed.toCity,
         },
       });
     }
@@ -359,6 +380,21 @@ export function AddTransportModal(props: {
       });
     }
 
+    if (need) {
+      for (const { groupId, need: scopeNeed } of submitScopes) {
+        commands.push({
+          type: "hidePendingTransportNeed",
+          groupId,
+          need: {
+            kind: scopeNeed.kind,
+            date: scopeNeed.date,
+            fromCity: scopeNeed.fromCity,
+            toCity: scopeNeed.toCity,
+          },
+        });
+      }
+    }
+
     const ok = await props.onDispatch(commands);
     if (ok) props.onClose();
     return ok;
@@ -389,8 +425,8 @@ export function AddTransportModal(props: {
             </h3>
             {!canOfferReturnPackage && need ? (
               <p className="mt-1 text-sm text-zinc-500">
-                {need.fromCity} → {need.toCity} · {need.date}
-                {isBatchAdd ? ` · adding for ${groupIds.length} travellers` : ""}
+                {need.fromCity} → {need.toCity} · {batchDateLabel || need.date}
+                {isBatchAdd ? ` · adding for ${submitScopes.length} travellers` : ""}
               </p>
             ) : null}
           </div>

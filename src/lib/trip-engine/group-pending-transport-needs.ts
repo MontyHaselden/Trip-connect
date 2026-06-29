@@ -9,6 +9,26 @@ export type PendingTransportScopeRef = {
   need: PendingTransportNeed;
 };
 
+/** Per-traveller group + calendar gap used when batch-adding transport. */
+export type PendingTransportSubmitScope = {
+  groupId: string;
+  need: PendingTransportNeed;
+};
+
+export function pendingTransportSubmitScopes(input: {
+  groupId: string;
+  need: PendingTransportNeed;
+  targetScopes?: PendingTransportSubmitScope[];
+  targetGroupIds?: string[];
+}): PendingTransportSubmitScope[] {
+  if (input.targetScopes?.length) return input.targetScopes;
+  const groupIds =
+    input.targetGroupIds?.length ?
+      [...new Set(input.targetGroupIds)]
+    : [input.groupId];
+  return groupIds.map((groupId) => ({ groupId, need: input.need }));
+}
+
 export type PendingTransportListItem =
   | {
       type: "grouped";
