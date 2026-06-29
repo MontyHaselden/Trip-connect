@@ -10,15 +10,11 @@ import type {
   EngineConflict,
   EngineSectionReadiness,
   EngineWarning,
-  ProjectedDay,
   RosterSummary,
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
 
 import type { CalendarEditContext, TripAdminProjection } from "@/lib/trip-admin/types";
-
-import type { CalendarSelection } from "./calendar/useCalendarSelection";
-import { EMPTY_CALENDAR_SELECTION } from "@/lib/host/setup/calendar-range-selection";
 
 import { IngestPanel } from "./ingest/IngestPanel";
 import { IngestDisabledPanel } from "./ingest/IngestDisabledPanel";
@@ -56,7 +52,6 @@ export function TripOsWorkspace(props: {
   tripId: string;
   inviteCode: string;
   readiness: EngineSectionReadiness[];
-  selectedDay: ProjectedDay | null;
   warnings: EngineWarning[];
   conflicts: EngineConflict[];
   onDispatch: (commands: TripCommand[]) => Promise<boolean>;
@@ -74,9 +69,6 @@ export function TripOsWorkspace(props: {
   costLedger?: CostLedgerProjection | null;
   onCostsAction?: (payload: Record<string, unknown>) => Promise<CostsPatchResult>;
   resolveFinanceLineId?: (lineId: string) => string;
-  calendarSelection?: CalendarSelection;
-  onHighlightDayFromMap?: (iso: string) => void;
-  onGoToDateFromMap?: (iso: string) => void;
 }) {
   const { graph, groupId, tripId, inviteCode, onDispatch, saving } = props;
 
@@ -87,7 +79,6 @@ export function TripOsWorkspace(props: {
           graph={graph}
           groupId={groupId}
           readiness={props.readiness}
-          selectedDay={props.selectedDay}
           warnings={props.warnings}
           conflicts={props.conflicts}
           costLedger={props.costLedger ?? null}
@@ -122,9 +113,6 @@ export function TripOsWorkspace(props: {
           tripId={tripId}
           graph={graph}
           groupId={groupId}
-          calendarSelection={props.calendarSelection ?? { ...EMPTY_CALENDAR_SELECTION }}
-          onHighlightDay={props.onHighlightDayFromMap ?? (() => {})}
-          onGoToDate={props.onGoToDateFromMap ?? (() => {})}
           onNavigateSection={(s) => props.onNavigateSection(s)}
           onReload={props.onReload}
         />
@@ -135,7 +123,7 @@ export function TripOsWorkspace(props: {
           graph={graph}
           adminProjection={props.adminProjection}
           calendarEditContext={props.calendarEditContext}
-          selectedDate={props.selectedDay?.date ?? null}
+          selectedDate={null}
         />
       );
     case "transport":
@@ -144,7 +132,7 @@ export function TripOsWorkspace(props: {
           graph={graph}
           adminProjection={props.adminProjection}
           calendarEditContext={props.calendarEditContext}
-          selectedDate={props.selectedDay?.date ?? null}
+          selectedDate={null}
           saving={saving}
           onDispatch={onDispatch}
           onSwitchGroup={props.onSwitchGroup}
@@ -163,7 +151,7 @@ export function TripOsWorkspace(props: {
           tripId={tripId}
           inviteCode={inviteCode}
           rosterSummary={props.rosterSummary}
-          selectedDate={props.selectedDay?.date ?? null}
+          selectedDate={null}
           saving={saving}
           onDispatch={onDispatch}
           onReload={props.onReload}

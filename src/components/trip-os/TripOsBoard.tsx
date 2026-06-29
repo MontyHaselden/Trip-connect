@@ -5,31 +5,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { buildTripAdminProjection } from "@/lib/trip-admin/build-admin-projection";
 import { buildCalendarEditContext } from "@/lib/trip-admin/list-adapters";
-import {
-  editGroupIdForLens,
-  normalizeCalendarLens,
-  type CalendarLens,
-} from "@/lib/trip-engine/person-lens";
+import type { CalendarLens } from "@/lib/trip-engine/person-lens";
 import { prepareCommandsForCalendarLens } from "@/lib/trip-engine/calendar-lens-dispatch";
 import {
   clearOversizedTripLocalDraft,
   clearTripLocalDraft,
-  mergeTripLocalDraft,
-  readTripLocalDraft,
 } from "@/lib/trip-os/local-draft";
 import { tripOsHomePath } from "@/lib/trip-os/paths";
-import { calendarViewForLens } from "@/lib/trip-os/calendar-view-for-lens";
 import { TRIP_OS_AI_IMPORT_ENABLED } from "@/lib/trip-os/feature-flags";
 
 import { graphToSetupState } from "@/lib/trip-engine/adapters";
 import type { TripCommand } from "@/lib/trip-engine/commands";
 import { isTripWelcomeState } from "@/lib/host/setup/overview-content";
 
-import { CalendarPersonLens } from "./calendar/CalendarPersonLens";
-import { InteractiveTripCalendar } from "./calendar/InteractiveTripCalendar";
-import { useCalendarScroll } from "./calendar/useCalendarScroll";
-import { useCalendarSelection } from "./calendar/useCalendarSelection";
-import { DayContextPanel } from "./context/DayContextPanel";
 import { financeSectionAllocationStatus } from "@/lib/trip-engine/cost-ledger/finance-section-readiness";
 import type { FinanceBuiltInSection } from "@/lib/trip-engine/cost-ledger/finance-sections";
 import type { EngineSectionReadiness } from "@/lib/trip-engine/types";
@@ -38,24 +26,18 @@ import { TripOsNav } from "./TripOsNav";
 import { TripOsWorkspace, type TripOsSection } from "./TripOsWorkspace";
 import { useTripOsEngine } from "./useTripOsEngine";
 
-type MiddleView = "section" | "day";
+const WHOLE_GROUP_LENS: CalendarLens = { kind: "whole_group" };
 
 export function TripOsBoard(props: { tripId: string }) {
   const router = useRouter();
   const engine = useTripOsEngine(props.tripId);
-  const [middleView, setMiddleView] = useState<MiddleView>("section");
   const [activeSection, setActiveSection] = useState<TripOsSection>("overview");
   const [participantViewRefreshKey, setParticipantViewRefreshKey] = useState(0);
   const [financeFocus, setFinanceFocus] = useState<{
     tab: FinanceBuiltInSection;
     lineId?: string;
   } | null>(null);
-  const [calendarLens, setCalendarLens] = useState<CalendarLens>({ kind: "whole_group" });
-  const calendarLensHydratedRef = useRef(false);
-  const activeSectionRef = useRef(activeSection);
   const previewRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  activeSectionRef.current = activeSection;
 
   useEffect(() => {
     return () => {
@@ -75,16 +57,13 @@ export function TripOsBoard(props: { tripId: string }) {
     void engine.refreshRosterSummary();
   }, [engine.refreshRosterSummary, scheduleParticipantPreviewRefresh]);
 
-  const { scrollRef, saveScrollPosition, rememberScrollPosition } = useCalendarScroll();
-
   const dispatchWithPreviewRefresh = useCallback(
     async (commands: TripCommand[]) => {
-      saveScrollPosition();
       const graph = engine.data?.graph;
       const roster = engine.data?.rosterSummary;
       const prepared =
         graph && roster
-          ? prepareCommandsForCalendarLens(commands, calendarLens, graph, roster)
+          ? prepareCommandsForCalendarLens(commands, WHOLE_GROUP_LENS, graph, roster)
           : commands;
       const ok = await engine.dispatch(prepared);
       if (ok) {
@@ -93,21 +72,12 @@ export function TripOsBoard(props: { tripId: string }) {
       return ok;
     },
     [
-      calendarLens,
       engine.data?.graph,
       engine.data?.rosterSummary,
       engine.dispatch,
       scheduleParticipantPreviewRefresh,
-      saveScrollPosition,
     ],
   );
-
-  const saveStatusLine =
-    engine.saveStatus === "sync_error"
-      ? engine.saveError
-        ? `Sync pending — ${engine.saveError}`
-        : "Sync pending — your edits are saved on this device"
-      : null;
 
   useEffect(() => {
     clearOversizedTripLocalDraft(props.tripId);
@@ -119,34 +89,6 @@ export function TripOsBoard(props: { tripId: string }) {
   }, [props.tripId]); // eslint-disable-line react-hooks/exhaustive-deps -- mount-only initial load
 
   useEffect(() => {
-    calendarLensHydratedRef.current = false;
-  }, [props.tripId]);
-
-  useEffect(() => {
-    if (calendarLensHydratedRef.current) return;
-    if (!engine.data) return;
-    const draft = readTripLocalDraft(props.tripId);
-    if (draft?.calendarLens && engine.data.graph && engine.data.rosterSummary) {
-      setCalendarLens(
-        normalizeCalendarLens(
-          draft.calendarLens,
-          engine.data.graph,
-          engine.data.rosterSummary,
-        ),
-      );
-    }
-    calendarLensHydratedRef.current = true;
-  }, [props.tripId, engine.data]);
-
-  const handleCalendarLensChange = useCallback(
-    (lens: CalendarLens) => {
-      setCalendarLens(lens);
-      mergeTripLocalDraft(props.tripId, { calendarLens: lens });
-    },
-    [props.tripId],
-  );
-
-  useEffect(() => {
     if (!TRIP_OS_AI_IMPORT_ENABLED && activeSection === "ingest") {
       setActiveSection("overview");
     }
@@ -154,19 +96,7 @@ export function TripOsBoard(props: { tripId: string }) {
 
   const graph = engine.data?.graph;
   const rosterSummary = engine.data?.rosterSummary;
-  const editGroupId =
-    graph && rosterSummary
-      ? editGroupIdForLens(graph, calendarLens, rosterSummary)
-      : graph?.mainGroupId ?? engine.activeGroupId ?? "";
-
-  const calendarView = useMemo(() => {
-    if (!engine.data || !graph || !editGroupId) return null;
-    return calendarViewForLens(graph, editGroupId, {
-      calendarRenderModel: engine.data.calendarRenderModel,
-      calendarProjection: engine.data.calendarProjection,
-      costLedger: engine.data.costLedger,
-    });
-  }, [engine.data, graph, editGroupId]);
+  const activeGroupId = graph?.mainGroupId ?? engine.activeGroupId ?? "";
 
   const adminProjection = useMemo(() => {
     if (!graph || !rosterSummary) return null;
@@ -175,48 +105,21 @@ export function TripOsBoard(props: { tripId: string }) {
 
   const calendarEditContext = useMemo(() => {
     if (!graph || !rosterSummary) return null;
-    return buildCalendarEditContext(graph, calendarLens, rosterSummary);
-  }, [graph, rosterSummary, calendarLens]);
+    return buildCalendarEditContext(graph, WHOLE_GROUP_LENS, rosterSummary);
+  }, [graph, rosterSummary]);
 
   useEffect(() => {
     if (!graph?.mainGroupId) return;
-    mergeTripLocalDraft(props.tripId, { calendarLens });
-  }, [calendarLens, graph?.mainGroupId, props.tripId]);
-
-  useEffect(() => {
-    if (!graph || !editGroupId) return;
-    const modelGroupId = engine.data?.calendarRenderModel.groupId;
-    if (editGroupId !== engine.activeGroupId || modelGroupId !== editGroupId) {
-      void engine.switchGroup(editGroupId);
+    if (activeGroupId !== engine.activeGroupId) {
+      void engine.switchGroup(activeGroupId);
     }
-  }, [
-    calendarLens,
-    editGroupId,
-    graph,
-    engine.activeGroupId,
-    engine.data?.calendarRenderModel.groupId,
-    engine.switchGroup,
-  ]);
-
-  const renderModel = calendarView?.calendarRenderModel ?? null;
-
-  const calendar = useCalendarSelection({
-    graph: engine.data?.graph ?? null,
-    renderModel,
-    groupId: editGroupId,
-    onDispatch: dispatchWithPreviewRefresh,
-    onOpenDayView: () => setMiddleView("day"),
-    onOpenSectionView: () => setMiddleView("section"),
-    saveScrollPosition,
-  });
+  }, [activeGroupId, engine.activeGroupId, engine.switchGroup, graph?.mainGroupId]);
 
   const handleNavSelect = useCallback(
     (section: TripOsSection) => {
-      calendar.clearSelection();
       const resolved =
         section === "ingest" && !TRIP_OS_AI_IMPORT_ENABLED ? "overview" : section;
       setActiveSection(resolved);
-      setMiddleView("section");
       if (resolved === "participant-view") {
         setParticipantViewRefreshKey((k) => k + 1);
       }
@@ -224,18 +127,16 @@ export function TripOsBoard(props: { tripId: string }) {
         void engine.refreshCostLedger();
       }
     },
-    [calendar, engine.refreshCostLedger],
+    [engine.refreshCostLedger],
   );
 
   const handleOpenFinanceSection = useCallback(
     (tab: FinanceBuiltInSection, lineId?: string) => {
       setFinanceFocus({ tab, lineId });
-      calendar.clearSelection();
       setActiveSection("finance");
-      setMiddleView("section");
       void engine.refreshCostLedger();
     },
-    [calendar, engine.refreshCostLedger],
+    [engine.refreshCostLedger],
   );
 
   const handleReadinessIndicator = useCallback(
@@ -339,38 +240,9 @@ export function TripOsBoard(props: { tripId: string }) {
 
   const { graph: tripGraph, readiness, warnings, conflicts, rosterSummary: roster, costLedger } =
     engine.data;
-  const calendarRenderModel =
-    calendarView?.calendarRenderModel ?? engine.data.calendarRenderModel;
-  const calendarProjection =
-    calendarView?.calendarProjection ?? engine.data.calendarProjection;
-  const activeGroupId = editGroupId;
   const calmNav = isTripWelcomeState(graphToSetupState(tripGraph));
-  const calendarLensReady =
-    calendarRenderModel.groupId === editGroupId && calendarRenderModel.days.length > 0;
-
-  const selectedDay =
-    calendar.selection.rangeStart
-      ? (calendarProjection.days.find((d) => d.date === calendar.selection.rangeStart) ?? null)
-      : null;
-
-  const hideCalendar = activeSection === "finance" || activeSection === "participant-view";
-  const fullWidthMain = hideCalendar;
+  const fullWidthMain = activeSection === "finance" || activeSection === "participant-view";
   const mapLayout = activeSection === "map";
-
-  const groupSelector = (
-    <CalendarPersonLens
-      graph={tripGraph}
-      roster={roster}
-      lens={calendarLens}
-      activeGroupId={activeGroupId}
-      onLensChange={handleCalendarLensChange}
-      onDispatch={dispatchWithPreviewRefresh}
-      saving={engine.saving || engine.refreshing}
-      onSwitchToPerson={(participantId) => {
-        handleCalendarLensChange({ kind: "person", participantId });
-      }}
-    />
-  );
 
   return (
     <div className="trip-os flex h-dvh min-h-0 flex-col bg-white">
@@ -398,30 +270,13 @@ export function TripOsBoard(props: { tripId: string }) {
             fullWidthMain || mapLayout
               ? "flex min-h-0 flex-col overflow-hidden p-0"
               : "overflow-y-auto px-8 py-8",
-            activeSection === "ingest" && middleView === "section" && !fullWidthMain && !mapLayout
+            activeSection === "ingest" && !fullWidthMain && !mapLayout
               ? "flex min-h-0 flex-col overflow-hidden"
               : "",
-            mapLayout && middleView === "section" ? "px-4 py-4" : "",
+            mapLayout ? "px-4 py-4" : "",
           ].join(" ")}
         >
-          {middleView === "day" && calendar.selection.rangeStart ? (
-            <DayContextPanel
-              tripId={props.tripId}
-              graph={tripGraph}
-              groupId={activeGroupId}
-              model={calendarRenderModel}
-              selection={calendar.selection}
-              conflicts={conflicts}
-              rosterSummary={roster}
-              costLedger={costLedger}
-              saving={engine.saving}
-              error={engine.error}
-              onDispatch={dispatchWithPreviewRefresh}
-              onClearSelection={calendar.clearSelection}
-              onSelectStayDateRange={calendar.selectStayDateRange}
-              onReload={() => void engine.load(undefined, { silent: true })}
-            />
-          ) : adminProjection && calendarEditContext ? (
+          {adminProjection && calendarEditContext ? (
             <TripOsWorkspace
               section={activeSection}
               graph={tripGraph}
@@ -431,7 +286,6 @@ export function TripOsBoard(props: { tripId: string }) {
               tripId={props.tripId}
               inviteCode={engine.data.inviteCode}
               readiness={readiness}
-              selectedDay={selectedDay}
               warnings={warnings}
               conflicts={conflicts}
               saving={engine.saving}
@@ -449,31 +303,11 @@ export function TripOsBoard(props: { tripId: string }) {
               costLedger={costLedger}
               onCostsAction={engine.patchCosts}
               resolveFinanceLineId={engine.resolveFinanceLineId}
-              calendarSelection={calendar.selection}
-              onHighlightDayFromMap={calendar.highlightDayFromMap}
-              onGoToDateFromMap={calendar.goToDateFromMap}
             />
           ) : (
             <p className="px-2 py-8 text-center text-sm text-zinc-500">Preparing trip view…</p>
           )}
         </main>
-        {!hideCalendar ? (
-        <aside className="flex min-h-0 w-[min(42rem,48vw)] min-w-[320px] shrink-0 flex-col overflow-hidden bg-white shadow-[inset_1px_0_0_0_rgb(0_0_0/0.04)]">
-          <InteractiveTripCalendar
-            tripId={props.tripId}
-            model={calendarRenderModel}
-            selection={calendar.selection}
-            onDayClick={calendar.onDayClick}
-            pendingFillHalf={calendar.pendingFillHalf}
-            scrollRef={scrollRef}
-            onInitialScroll={rememberScrollPosition}
-            onClearSelection={calendar.clearSelection}
-            headerAside={groupSelector}
-            statusLine={saveStatusLine ?? undefined}
-            interactionDisabled={!calendarLensReady || engine.refreshing}
-          />
-        </aside>
-        ) : null}
       </div>
     </div>
   );

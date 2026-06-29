@@ -17,7 +17,6 @@ import type {
   EngineConflict,
   EngineSectionReadiness,
   EngineWarning,
-  ProjectedDay,
   RosterSummary,
   TripEntityGraph,
 } from "@/lib/trip-engine/types";
@@ -51,7 +50,6 @@ export function SmartOverview(props: {
   graph: TripEntityGraph;
   groupId?: string;
   readiness: EngineSectionReadiness[];
-  selectedDay: ProjectedDay | null;
   warnings: EngineWarning[];
   conflicts: EngineConflict[];
   costLedger?: CostLedgerProjection | null;
@@ -200,18 +198,6 @@ export function SmartOverview(props: {
               <li key={p.id}>{p.message}</li>
             ))}
           </ul>
-        </section>
-      ) : null}
-
-      {props.selectedDay ? (
-        <section className="text-sm text-zinc-700">
-          <p className="font-semibold text-zinc-900">Selected — {props.selectedDay.date}</p>
-          <p className="mt-1">
-            {props.selectedDay.primaryCity || "No city"}
-            {props.selectedDay.accommodationLabel
-              ? ` · ${props.selectedDay.accommodationLabel}`
-              : ""}
-          </p>
         </section>
       ) : null}
 

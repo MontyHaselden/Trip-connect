@@ -7,7 +7,6 @@ import type { TripMapCategory, TripMapMarker, TripMapRouteLine } from "@/lib/tri
 import { projectTripMap } from "@/lib/trip-engine/project-trip-map";
 import type { TripEntityGraph } from "@/lib/trip-engine/types";
 
-import type { CalendarSelection } from "../calendar/useCalendarSelection";
 import type { TripOsSection } from "../TripOsWorkspace";
 import { TripEyebrow } from "../shared/TripEyebrow";
 import { TripSectionShell } from "../shared/TripSectionShell";
@@ -67,9 +66,6 @@ export function MapView(props: {
   tripId: string;
   graph: TripEntityGraph;
   groupId: string;
-  calendarSelection: CalendarSelection;
-  onHighlightDay: (iso: string) => void;
-  onGoToDate: (iso: string) => void;
   onNavigateSection: (section: TripOsSection) => void;
   onReload: () => void;
 }) {
@@ -78,6 +74,7 @@ export function MapView(props: {
   );
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const [highlightedDate, setHighlightedDate] = useState<string | null>(null);
   const [missingCollapsed, setMissingCollapsed] = useState(false);
   const [fitTripTrigger, setFitTripTrigger] = useState(0);
   const [focusDayTrigger, setFocusDayTrigger] = useState(0);
@@ -88,8 +85,6 @@ export function MapView(props: {
     () => projectTripMap(props.graph, { groupId: props.groupId, categories }),
     [props.graph, props.groupId, categories],
   );
-
-  const highlightedDate = props.calendarSelection.rangeStart;
 
   const focusDayBounds = useMemo(() => {
     if (!highlightedDate) return null;
@@ -110,29 +105,28 @@ export function MapView(props: {
 
   const handleOpenItem = useCallback(
     (section: TripOsSection, linkedDay: string) => {
-      props.onHighlightDay(linkedDay);
+      setHighlightedDate(linkedDay);
       props.onNavigateSection(section);
     },
     [props],
   );
 
-  const handleMarkerClick = useCallback(
-    (marker: TripMapMarker) => {
-      setSelectedMarkerId(marker.id);
-      setSelectedRouteId(null);
-      props.onHighlightDay(marker.linkedCalendarDay);
-    },
-    [props],
-  );
+  const handleMarkerClick = useCallback((marker: TripMapMarker) => {
+    setSelectedMarkerId(marker.id);
+    setSelectedRouteId(null);
+    setHighlightedDate(marker.linkedCalendarDay);
+  }, []);
 
-  const handleRouteClick = useCallback(
-    (route: TripMapRouteLine) => {
-      setSelectedRouteId(route.id);
-      setSelectedMarkerId(null);
-      props.onHighlightDay(route.date);
-    },
-    [props],
-  );
+  const handleRouteClick = useCallback((route: TripMapRouteLine) => {
+    setSelectedRouteId(route.id);
+    setSelectedMarkerId(null);
+    setHighlightedDate(route.date);
+  }, []);
+
+  const handleGoToDate = useCallback((date: string) => {
+    setHighlightedDate(date);
+    setFocusDayTrigger((n) => n + 1);
+  }, []);
 
   const hasMappedContent = projection.markers.length > 0 || projection.routeLines.length > 0;
 
@@ -214,7 +208,7 @@ export function MapView(props: {
                 onMarkerClick={handleMarkerClick}
                 onRouteClick={handleRouteClick}
                 onOpenItem={handleOpenItem}
-                onGoToDate={props.onGoToDate}
+                onGoToDate={handleGoToDate}
               />
             )}
           </div>
